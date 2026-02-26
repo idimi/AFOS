@@ -92,22 +92,22 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
     <motion.aside
       animate={{ width: open ? 216 : 60 }}
       transition={{ duration: 0.22, ease: "easeInOut" }}
-      className="hidden lg:flex shrink-0 flex-col border-r border-white/5 bg-[#07090f] overflow-hidden"
+      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background overflow-hidden"
     >
-      <div className="h-14 flex items-center px-3.5 border-b border-white/5 shrink-0 gap-3">
+      <div className="h-14 flex items-center px-3.5 border-b border-border shrink-0 gap-3">
         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
           <Zap className="w-3.5 h-3.5 text-white" />
         </div>
         <AnimatePresence>
           {open && (
             <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="text-sm font-bold text-white whitespace-nowrap tracking-wide">
+              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide">
               AFOS
             </motion.span>
           )}
         </AnimatePresence>
         <button onClick={() => setOpen(!open)}
-          className="ml-auto text-white/25 hover:text-white/60 transition-colors">
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors">
           <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
@@ -119,7 +119,7 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
           return (
             <button key={item.id} onClick={() => setActivePage(item.id)}
               className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl transition-all text-left ${
-                active ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300" : "text-white/35 hover:text-white/65 hover:bg-white/4"
+                active ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}>
               <Icon className="w-4 h-4 shrink-0" />
               <AnimatePresence>
@@ -133,13 +133,13 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
         })}
       </nav>
 
-      <div className="p-3 border-t border-white/5 shrink-0">
+      <div className="p-3 border-t border-border shrink-0">
         <div className="flex items-center gap-2.5 px-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
           <AnimatePresence>
             {open && (
               <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="text-xs text-white/30 whitespace-nowrap font-mono">agent online</motion.span>
+                className="text-xs text-muted-foreground whitespace-nowrap font-mono">agent online</motion.span>
             )}
           </AnimatePresence>
         </div>
@@ -155,14 +155,14 @@ function MobileTabBar({ navItems, activePage, setActivePage }: {
   setActivePage: (p: NavPage) => void;
 }) {
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#07090f]/95 backdrop-blur-xl border-t border-white/8 flex items-center justify-around px-2 py-2 safe-area-pb">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border flex items-center justify-around px-2 py-2 safe-area-pb">
       {navItems.map(item => {
         const Icon = item.icon;
         const active = activePage === item.id;
         return (
           <button key={item.id} onClick={() => setActivePage(item.id)}
             className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all ${
-              active ? "text-cyan-400" : "text-white/30"
+              active ? "text-cyan-400" : "text-muted-foreground"
             }`}>
             <Icon className="w-5 h-5" />
             <span className="text-[10px] font-medium">{item.label}</span>
@@ -247,24 +247,24 @@ export default function Dashboard() {
   const subPage = renderSubPage();
 
   return (
-    <div className="flex h-screen bg-[#07090f] overflow-hidden font-sans">
+    <div className="flex h-screen bg-background overflow-hidden font-sans">
       <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Topbar */}
-        <header className="h-14 border-b border-white/5 flex items-center justify-between px-4 lg:px-6 shrink-0 bg-[#07090f]/80 backdrop-blur-sm">
+        <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0 bg-background/80 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:gap-3">
             {/* Mobile logo */}
             <div className="lg:hidden w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
               <Zap className="w-3.5 h-3.5 text-white" />
             </div>
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm text-white/50 font-mono hidden sm:block">openclaw-agent</span>
-            <span className="text-white/15 hidden sm:block">·</span>
+            <span className="text-sm text-muted-foreground font-mono hidden sm:block">openclaw-agent</span>
+            <span className="text-muted-foreground/40 hidden sm:block">·</span>
             <span className="text-xs text-cyan-400/70 font-mono">intercomswap@mainnet</span>
           </div>
           <div className="flex items-center gap-2 lg:gap-4">
-            <span className="text-xs text-white/30 font-mono hidden xl:block">0000intercomswapbtcusdt</span>
+            <span className="text-xs text-muted-foreground font-mono hidden xl:block">0000intercomswapbtcusdt</span>
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20">
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
               <span className="text-xs text-violet-300 font-mono">3 peers</span>
@@ -300,14 +300,14 @@ export default function Dashboard() {
               <div className="col-span-5 flex flex-col gap-4 min-h-0">
 
                 {/* Agent Command */}
-                <div className="rounded-2xl border border-cyan-500/15 bg-gradient-to-br from-[#0c1520] to-[#090d14] p-5 shrink-0">
+                <div className="rounded-2xl border border-cyan-500/15 bg-card p-5 shrink-0">
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
                       <Bot className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-sm font-semibold text-white">OpenClaw Agent</p>
-                      <p className="text-xs text-white/35">Natural language → IntercomSwap tool calls</p>
+                      <p className="text-sm font-semibold text-card-foreground">OpenClaw Agent</p>
+                      <p className="text-xs text-muted-foreground">Natural language → IntercomSwap tool calls</p>
                     </div>
                     {agentThinking && (
                       <div className="flex gap-1">
@@ -322,7 +322,7 @@ export default function Dashboard() {
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {AGENT_COMMANDS.map(cmd => (
                       <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
-                        className="text-xs px-2.5 py-1.5 rounded-full border border-white/8 text-white/50 hover:border-cyan-500/35 hover:text-cyan-300 hover:bg-cyan-500/5 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                        className="text-xs px-2.5 py-1.5 rounded-full border border-border text-muted-foreground hover:border-cyan-500/35 hover:text-cyan-300 hover:bg-cyan-500/5 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                         {cmd}
                       </button>
                     ))}
@@ -332,7 +332,7 @@ export default function Dashboard() {
                       onKeyDown={e => e.key === "Enter" && runPipeline()}
                       placeholder="e.g. Swap 0.05 BTC to USDT at best rate…"
                       disabled={pipelineRunning}
-                      className="flex-1 bg-white/4 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
+                      className="flex-1 bg-input border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
                     <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
                       className="px-4 py-2.5 rounded-xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                       <Send className="w-4 h-4" />
@@ -341,9 +341,9 @@ export default function Dashboard() {
                 </div>
 
                 {/* Pipeline — grows to fill remaining height */}
-                <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5 flex-1 flex flex-col min-h-0">
+                <div className="rounded-2xl border border-border bg-card p-5 flex-1 flex flex-col min-h-0">
                   <div className="flex items-center justify-between mb-4 shrink-0">
-                    <p className="text-sm font-semibold text-white">Swap Execution Pipeline</p>
+                    <p className="text-sm font-semibold text-card-foreground">Swap Execution Pipeline</p>
                     {pipelineRunning && <span className="text-xs text-cyan-400 font-mono animate-pulse">executing…</span>}
                     {!pipelineRunning && pipelineStep === PIPELINE_STEPS.length && (
                       <span className="text-xs text-emerald-400 font-mono">✓ settled</span>
@@ -368,27 +368,27 @@ export default function Dashboard() {
                                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                                  <Zap className="w-4 h-4 text-cyan-400" />
                                </motion.div>
-                             ) : <Circle className="w-4 h-4 text-white/15" />}
+                             ) : <Circle className="w-4 h-4 text-muted-foreground/30" />}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-white/35"}`}>
+                              <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-muted-foreground"}`}>
                                 {step.label}
                               </p>
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${CHAIN_BADGE[step.chain] ?? "bg-white/5 text-white/30 border-white/10"}`}>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${CHAIN_BADGE[step.chain] ?? "bg-muted text-muted-foreground border-border"}`}>
                                 {step.chain}
                               </span>
                             </div>
-                            <p className={`text-xs mt-0.5 ${done || active ? "text-white/45" : "text-white/18"}`}>{step.detail}</p>
-                            <p className={`text-[10px] font-mono mt-0.5 ${done || active ? "text-white/25" : "text-white/10"}`}>{step.tool}</p>
+                            <p className={`text-xs mt-0.5 ${done || active ? "text-foreground/60" : "text-muted-foreground/40"}`}>{step.detail}</p>
+                            <p className={`text-[10px] font-mono mt-0.5 ${done || active ? "text-muted-foreground" : "text-muted-foreground/30"}`}>{step.tool}</p>
                           </div>
                         </motion.div>
                       );
                     })}
                     <div className="p-3 rounded-xl border border-dashed border-white/8">
                       <div className="flex items-center gap-2">
-                        <Moon className="w-3.5 h-3.5 text-white/18" />
-                        <p className="text-xs text-white/22 font-mono">Phase 2: MoonPay fiat on-ramp → auto-fund wallet before swap</p>
+                        <Moon className="w-3.5 h-3.5 text-muted-foreground/40" />
+                        <p className="text-xs text-muted-foreground/50 font-mono">Phase 2: MoonPay fiat on-ramp → auto-fund wallet before swap</p>
                       </div>
                     </div>
                   </div>
@@ -406,12 +406,12 @@ export default function Dashboard() {
               <div className="col-span-3 flex flex-col gap-4 min-h-0">
 
                 {/* Agent Log — flex-1 so it fills all available vertical space */}
-                <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5 flex flex-col flex-1 min-h-0">
+                <div className="rounded-2xl border border-border bg-card p-5 flex flex-col flex-1 min-h-0">
                   <div className="flex items-center justify-between mb-3 shrink-0">
-                    <p className="text-sm font-semibold text-white">Agent Log</p>
+                    <p className="text-sm font-semibold text-card-foreground">Agent Log</p>
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      <span className="text-xs text-white/25 font-mono">live</span>
+                      <span className="text-xs text-muted-foreground font-mono">live</span>
                     </div>
                   </div>
                   {/* overflow-y-auto on this inner div — the card itself is flex-1 */}
@@ -423,14 +423,14 @@ export default function Dashboard() {
                       {logs.map(log => (
                         <motion.div key={log.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="text-xs">
                           <div className="flex items-start gap-2">
-                            <span className="text-white/18 font-mono shrink-0 tabular-nums">{log.ts}</span>
+                            <span className="text-muted-foreground/60 font-mono shrink-0 tabular-nums">{log.ts}</span>
                             <div className="flex-1 min-w-0">
                               <p className={`leading-snug ${
                                 log.level === "success" ? "text-emerald-400" :
                                 log.level === "warn" ? "text-amber-400" :
-                                log.level === "error" ? "text-red-400" : "text-white/55"
+                                log.level === "error" ? "text-red-400" : "text-foreground/70"
                               }`}>{log.message}</p>
-                              {log.tool && <p className="text-white/18 font-mono truncate">{log.tool}</p>}
+                              {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
                             </div>
                           </div>
                         </motion.div>
@@ -441,8 +441,8 @@ export default function Dashboard() {
                 </div>
 
                 {/* Stack Status — shrinks to content */}
-                <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5 shrink-0">
-                  <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">Stack Status</p>
+                <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Stack Status</p>
                   <div className="space-y-2.5">
                     {[
                       { name: "OpenClaw", role: "Agent runtime", status: "live", color: "text-cyan-400" },
@@ -450,16 +450,16 @@ export default function Dashboard() {
                       { name: "Bitcoin LN", role: "BTC settlement", status: "live", color: "text-amber-400" },
                       { name: "Solana", role: "USDT escrow", status: "live", color: "text-purple-400" },
                       { name: "Ethereum", role: "ETH HTLC", status: "building", color: "text-blue-400" },
-                      { name: "MoonPay", role: "Fiat on-ramp", status: "planned", color: "text-white/25" },
+                      { name: "MoonPay", role: "Fiat on-ramp", status: "planned", color: "text-muted-foreground" },
                     ].map(s => (
                       <div key={s.name} className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">
                           <span className={`text-xs font-semibold ${s.color}`}>{s.name}</span>
-                          <span className="text-[10px] text-white/25 ml-1.5">{s.role}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5">{s.role}</span>
                         </div>
                         <span className={`text-[10px] font-mono shrink-0 ml-2 ${
                           s.status === "live" ? "text-emerald-400" :
-                          s.status === "building" ? "text-amber-400" : "text-white/18"
+                          s.status === "building" ? "text-amber-400" : "text-muted-foreground/50"
                         }`}>{s.status}</span>
                       </div>
                     ))}
@@ -472,14 +472,14 @@ export default function Dashboard() {
             <div className="lg:hidden flex flex-col gap-4 p-4">
 
               {/* Agent Command — full width */}
-              <div className="rounded-2xl border border-cyan-500/15 bg-gradient-to-br from-[#0c1520] to-[#090d14] p-4">
+              <div className="rounded-2xl border border-cyan-500/15 bg-card p-4">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
                     <Bot className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-white">OpenClaw Agent</p>
-                    <p className="text-xs text-white/35">Tap a command or type below</p>
+                    <p className="text-sm font-semibold text-card-foreground">OpenClaw Agent</p>
+                    <p className="text-xs text-muted-foreground">Tap a command or type below</p>
                   </div>
                   {agentThinking && (
                     <div className="flex gap-1">
@@ -494,7 +494,7 @@ export default function Dashboard() {
                 <div className="flex flex-wrap gap-2 mb-3">
                    {AGENT_COMMANDS.map(cmd => (
                      <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
-                      className="text-xs px-3 py-2 rounded-full border border-white/10 text-white/55 active:bg-cyan-500/10 active:border-cyan-500/30 active:text-cyan-300 transition-all disabled:opacity-30">
+                      className="text-xs px-3 py-2 rounded-full border border-border text-muted-foreground active:bg-cyan-500/10 active:border-cyan-500/30 active:text-cyan-300 transition-all disabled:opacity-30">
                       {cmd}
                     </button>
                   ))}
@@ -504,7 +504,7 @@ export default function Dashboard() {
                     onKeyDown={e => e.key === "Enter" && runPipeline()}
                     placeholder="Type a command…"
                     disabled={pipelineRunning}
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
+                    className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
                    <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
                     className="px-4 py-3 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 active:bg-cyan-500/35 transition-all disabled:opacity-30">
                     <Send className="w-4 h-4" />
@@ -513,9 +513,9 @@ export default function Dashboard() {
               </div>
 
               {/* Pipeline — mobile */}
-              <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-4">
+              <div className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-white">Swap Pipeline</p>
+                  <p className="text-sm font-semibold text-foreground">Swap Pipeline</p>
                   {pipelineRunning && <span className="text-xs text-cyan-400 font-mono animate-pulse">executing…</span>}
                   {!pipelineRunning && pipelineStep === PIPELINE_STEPS.length && <span className="text-xs text-emerald-400 font-mono">✓ settled</span>}
                 </div>
@@ -535,13 +535,13 @@ export default function Dashboard() {
                              <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
                                <Zap className="w-4 h-4 text-cyan-400" />
                              </motion.div>
-                           ) : <Circle className="w-4 h-4 text-white/15" />}
+                           ) : <Circle className="w-4 h-4 text-muted-foreground/30" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-white/35"}`}>{step.label}</p>
-                          <p className={`text-xs truncate ${done || active ? "text-white/35" : "text-white/15"}`}>{step.tool}</p>
+                          <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-muted-foreground"}`}>{step.label}</p>
+                          <p className={`text-xs truncate ${done || active ? "text-foreground/60" : "text-muted-foreground/30"}`}>{step.tool}</p>
                         </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono shrink-0 ${CHAIN_BADGE[step.chain] ?? "bg-white/5 text-white/30 border-white/10"}`}>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono shrink-0 ${CHAIN_BADGE[step.chain] ?? "bg-muted text-muted-foreground border-border"}`}>
                           {step.chain}
                         </span>
                       </div>
@@ -557,25 +557,25 @@ export default function Dashboard() {
               <PairsCard />
 
               {/* Agent Log — mobile: fixed height with scroll */}
-              <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-4">
+              <div className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-white">Agent Log</p>
+                  <p className="text-sm font-semibold text-card-foreground">Agent Log</p>
                   <div className="flex items-center gap-1.5">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs text-white/25 font-mono">live</span>
+                    <span className="text-xs text-muted-foreground font-mono">live</span>
                   </div>
                 </div>
                 <div className="overflow-y-auto space-y-2" style={{ maxHeight: 280 }}>
                   {logs.slice(-20).map(log => (
                     <div key={log.id} className="text-xs flex items-start gap-2">
-                      <span className="text-white/18 font-mono shrink-0 tabular-nums">{log.ts}</span>
+                      <span className="text-muted-foreground/60 font-mono shrink-0 tabular-nums">{log.ts}</span>
                       <div className="flex-1 min-w-0">
                         <p className={`leading-snug ${
                           log.level === "success" ? "text-emerald-400" :
                           log.level === "warn" ? "text-amber-400" :
-                          log.level === "error" ? "text-red-400" : "text-white/55"
+                          log.level === "error" ? "text-red-400" : "text-foreground/70"
                         }`}>{log.message}</p>
-                        {log.tool && <p className="text-white/18 font-mono truncate">{log.tool}</p>}
+                        {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
                       </div>
                     </div>
                   ))}
@@ -584,8 +584,8 @@ export default function Dashboard() {
               </div>
 
               {/* Stack status — mobile */}
-              <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-4">
-                <p className="text-[10px] font-semibold text-white/30 uppercase tracking-widest mb-3">Stack Status</p>
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Stack Status</p>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     { name: "OpenClaw", status: "live", color: "text-cyan-400" },
@@ -593,13 +593,13 @@ export default function Dashboard() {
                     { name: "Bitcoin LN", status: "live", color: "text-amber-400" },
                     { name: "Solana", status: "live", color: "text-purple-400" },
                     { name: "Ethereum", status: "building", color: "text-blue-400" },
-                    { name: "MoonPay", status: "planned", color: "text-white/25" },
+                    { name: "MoonPay", status: "planned", color: "text-muted-foreground" },
                   ].map(s => (
                     <div key={s.name} className="flex items-center justify-between p-2.5 rounded-xl bg-white/3 border border-white/5">
                       <span className={`text-xs font-semibold ${s.color}`}>{s.name}</span>
                       <span className={`text-[10px] font-mono ${
                         s.status === "live" ? "text-emerald-400" :
-                        s.status === "building" ? "text-amber-400" : "text-white/18"
+                        s.status === "building" ? "text-amber-400" : "text-muted-foreground/50"
                       }`}>{s.status}</span>
                     </div>
                   ))}
@@ -620,10 +620,10 @@ export default function Dashboard() {
 // ── Shared card components ─────────────────────────────────────────────────
 function WalletsCard() {
   return (
-    <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5">
+    <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-semibold text-white">Agent Wallets</p>
-        <span className="text-xs text-white/25 font-mono">non-custodial</span>
+        <p className="text-sm font-semibold text-card-foreground">Agent Wallets</p>
+        <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
       </div>
       <div className="space-y-2.5">
         {[
@@ -638,14 +638,14 @@ function WalletsCard() {
             </div>
             <div className="flex-1">
               <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
-              <p className="text-xs text-white/25">{w.network}</p>
+              <p className="text-xs text-muted-foreground">{w.network}</p>
             </div>
-            <p className="text-sm text-white/55 font-mono">{w.usd}</p>
+            <p className="text-sm text-foreground/60 font-mono">{w.usd}</p>
           </div>
         ))}
       </div>
-      <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
-        <span className="text-xs text-white/25">Total Portfolio</span>
+      <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
+        <span className="text-xs text-muted-foreground">Total Portfolio</span>
         <span className="text-base font-bold text-amber-400 font-mono">$18,136</span>
       </div>
     </div>
@@ -654,8 +654,8 @@ function WalletsCard() {
 
 function PairsCard() {
   return (
-    <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5">
-      <p className="text-sm font-semibold text-white mb-3">IntercomSwap Pairs</p>
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <p className="text-sm font-semibold text-card-foreground mb-3">IntercomSwap Pairs</p>
       <div className="space-y-2">
         {[
           { pair: "BTC/LN ↔ USDT/SOL", vol: "$142.8K", change: +3.2, price: "96,420" },
@@ -664,11 +664,11 @@ function PairsCard() {
         ].map(s => (
           <div key={s.pair} className="flex items-center justify-between p-2.5 rounded-xl bg-white/2 border border-white/4">
             <div>
-              <p className="text-xs font-mono text-white/65">{s.pair}</p>
-              <p className="text-[10px] text-white/25 mt-0.5">Vol 24h: {s.vol}</p>
+              <p className="text-xs font-mono text-foreground/65">{s.pair}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Vol 24h: {s.vol}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm font-mono text-white font-semibold">${s.price}</p>
+              <p className="text-sm font-mono text-foreground font-semibold">${s.price}</p>
               <div className={`flex items-center gap-1 justify-end text-xs ${s.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {s.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 {s.change >= 0 ? "+" : ""}{s.change}%
@@ -683,9 +683,9 @@ function PairsCard() {
 
 function LNCard() {
   return (
-    <div className="rounded-2xl border border-white/5 bg-[#0c1218] p-5">
+    <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-white">LN Channel Health</p>
+        <p className="text-sm font-semibold text-card-foreground">LN Channel Health</p>
         <span className="text-xs text-emerald-400 font-mono">4 active</span>
       </div>
       <div className="space-y-2.5">
@@ -697,8 +697,8 @@ function LNCard() {
         ].map(ch => (
           <div key={ch.peer}>
             <div className="flex justify-between text-xs mb-1">
-              <span className="text-white/45 font-mono">{ch.peer}</span>
-              <span className="text-white/25">{ch.local}% local</span>
+              <span className="text-foreground/45 font-mono">{ch.peer}</span>
+              <span className="text-muted-foreground">{ch.local}% local</span>
             </div>
             <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-1000"
