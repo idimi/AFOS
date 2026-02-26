@@ -731,7 +731,8 @@ export default function NetworkPage() {
       {activeTab === "topology" && <NetworkStats peers={livePeers} channels={liveChannels} />}
 
       {/* Topology content — only shown when topology tab is active */}
-      {activeTab === "topology" && <>
+      {activeTab === "topology" && (
+      <>
       {/* Mobile peer list — shown only on small screens instead of the SVG graph */}
       <div className="sm:hidden space-y-2 mb-4">
         {livePeers.filter(p => p.id !== "self").map(peer => {
@@ -924,7 +925,8 @@ export default function NetworkPage() {
         </div>
       </div>
       {/* end hidden sm:grid */}
-      </> }
+      </>
+      )}
     </div>
   );
 }

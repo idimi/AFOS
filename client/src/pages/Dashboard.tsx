@@ -14,7 +14,7 @@ import {
   ChevronRight, Circle, CheckCircle2, Clock,
   TrendingUp, TrendingDown, Send,
   Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X, Terminal,
-  ToggleLeft, ToggleRight
+  ToggleLeft, ToggleRight, QrCode, ArrowUpRight, ArrowDownLeft, Copy, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
@@ -708,38 +708,196 @@ function MobileTerminalWidget({ logs, onNavigateToTerminal }: {
   );
 }
 
+// ── Wallet Send/Receive Modal ──────────────────────────────────────────────
+interface WalletModalState {
+  asset: string;
+  network: string;
+  mode: "send" | "receive";
+}
+
+const MOCK_ADDRESSES: Record<string, string> = {
+  BTC: "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaqnp4q0n326hr8v9zprg8gsvezcch06gfaqqhde2aj730yg0durunfhv66",
+  USDT: "7xKp9mNzQ3aBcDeFgHiJkLmNoPqRsTuVwXyZ2345678",
+  SOL: "9WzDXwBbmkg8ZTbNMqUxvQRnL6iqChFynpXg3NqaFuAm",
+  ETH: "0x742d35Cc6634C0532925a3b8D4C9E4F8B2A1d3E5",
+};
+
+function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [invoice, setInvoice] = useState("");
+  const [copied, setCopied] = useState(false);
+  const addr = MOCK_ADDRESSES[modal.asset] ?? "";
+
+  const handleCopy = () => {
+    navigator.clipboard?.writeText(addr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Address copied");
+  };
+
+  const handleSend = () => {
+    if (!amount) { toast.error("Enter an amount"); return; }
+    if (modal.asset === "BTC" && !invoice) { toast.error("Paste a Lightning invoice"); return; }
+    toast.success(`${modal.asset} send initiated`, {
+      description: modal.asset === "BTC"
+        ? `Paying LN invoice · ${amount} BTC`
+        : `Sending ${amount} ${modal.asset} on ${modal.network}`,
+    });
+    onClose();
+  };
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)" }}
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ opacity: 0, y: 32, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 32, scale: 0.97 }}
+          transition={{ type: "spring", damping: 28, stiffness: 380 }}
+          className="w-full max-w-sm rounded-2xl p-5 space-y-4"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {modal.mode === "send"
+                ? <ArrowUpRight className="w-4 h-4 text-red-400" />
+                : <ArrowDownLeft className="w-4 h-4 text-emerald-400" />}
+              <span className="text-sm font-bold text-foreground">
+                {modal.mode === "send" ? "Send" : "Receive"} {modal.asset}
+              </span>
+              <span className="text-xs text-muted-foreground font-mono">· {modal.network}</span>
+            </div>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {modal.mode === "receive" ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-center p-4 rounded-xl" style={{ background: "var(--muted)" }}>
+                <QrCode className="w-16 h-16 text-muted-foreground/40" />
+              </div>
+              <div className="rounded-xl p-3" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                <p className="text-[9px] text-muted-foreground mb-1">
+                  {modal.asset === "BTC" ? "Lightning Invoice" : `${modal.network} Address`}
+                </p>
+                <p className="text-[10px] font-mono text-foreground break-all leading-relaxed">{addr.slice(0, 60)}…</p>
+              </div>
+              <button onClick={handleCopy}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all"
+                style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981" }}>
+                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copied ? "Copied!" : "Copy Address"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {modal.asset === "BTC" && (
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Lightning Invoice</label>
+                  <textarea
+                    value={invoice}
+                    onChange={e => setInvoice(e.target.value)}
+                    placeholder="lnbc…"
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-xl text-[10px] font-mono text-foreground placeholder:text-muted-foreground/50 outline-none resize-none"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+              )}
+              {modal.asset !== "BTC" && (
+                <div>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Recipient Address</label>
+                  <input
+                    placeholder={`${modal.network} address…`}
+                    className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground placeholder:text-muted-foreground/50 outline-none"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                  />
+                </div>
+              )}
+              <div>
+                <label className="text-[10px] text-muted-foreground mb-1 block">Amount ({modal.asset})</label>
+                <input
+                  value={amount}
+                  onChange={e => setAmount(e.target.value)}
+                  placeholder={modal.asset === "BTC" ? "0.001" : modal.asset === "USDT" ? "100" : "1.0"}
+                  className="w-full px-3 py-2 rounded-xl text-sm font-mono text-foreground placeholder:text-muted-foreground/50 outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                />
+              </div>
+              <button onClick={handleSend}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all"
+                style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#f87171" }}>
+                <Send className="w-3.5 h-3.5" />
+                {modal.asset === "BTC" ? "Pay Invoice" : `Send ${modal.asset}`}
+              </button>
+            </div>
+          )}
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
 // ── Shared card components ─────────────────────────────────────────────────
 function WalletsCard() {
+  const [modal, setModal] = useState<WalletModalState | null>(null);
+
+  const wallets = [
+    { asset: "BTC", network: "Lightning", balance: "0.14200000", usd: "$13,691", color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
+    { asset: "USDT", network: "Solana", balance: "1,240.50", usd: "$1,240", color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
+    { asset: "SOL", network: "Solana", balance: "12.840", usd: "$1,833", color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/8" },
+    { asset: "ETH", network: "Ethereum", balance: "0.5120", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
+  ];
+
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-semibold text-card-foreground">Agent Wallets</p>
-        <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
-      </div>
-      <div className="space-y-2.5">
-        {[
-          { asset: "BTC", network: "Lightning", balance: "0.14200000", usd: "$13,691", color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
-          { asset: "USDT", network: "Solana", balance: "1,240.50", usd: "$1,240", color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
-          { asset: "SOL", network: "Solana", balance: "12.840", usd: "$1,833", color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/8" },
-          { asset: "ETH", network: "Ethereum", balance: "0.5120", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
-        ].map(w => (
-          <div key={w.asset} className={`flex items-center gap-3 p-2.5 rounded-xl border ${w.border} ${w.bg}`}>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-background/50 border border-border`}>
-              {w.asset}
+    <>
+      {modal && <WalletModal modal={modal} onClose={() => setModal(null)} />}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-semibold text-card-foreground">Agent Wallets</p>
+          <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
+        </div>
+        <div className="space-y-2.5">
+          {wallets.map(w => (
+            <div key={w.asset} className={`flex items-center gap-3 p-2.5 rounded-xl border ${w.border} ${w.bg}`}>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-background/50 border border-border shrink-0`}>
+                {w.asset}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
+                <p className="text-xs text-muted-foreground">{w.network}</p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setModal({ asset: w.asset, network: w.network, mode: "receive" })}
+                  title="Receive"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                  style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
+                  <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-400" />
+                </button>
+                <button
+                  onClick={() => setModal({ asset: w.asset, network: w.network, mode: "send" })}
+                  title="Send"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-105"
+                  style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />
+                </button>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
-              <p className="text-xs text-muted-foreground">{w.network}</p>
-            </div>
-            <p className="text-sm text-foreground/60 font-mono">{w.usd}</p>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
+          <span className="text-xs text-muted-foreground">Total Portfolio</span>
+          <span className="text-base font-bold text-amber-400 font-mono">$18,136</span>
+        </div>
       </div>
-      <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Total Portfolio</span>
-        <span className="text-base font-bold text-amber-400 font-mono">$18,136</span>
-      </div>
-    </div>
+    </>
   );
 }
 

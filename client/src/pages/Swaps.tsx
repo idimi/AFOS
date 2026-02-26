@@ -783,16 +783,95 @@ function LiveFeedTab() {
   const [filterChannel, setFilterChannel] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
+  const [wsStatus, setWsStatus] = useState<"connecting" | "live" | "fallback">("connecting");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const simRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Helper: push a message if not paused
+  const pushMsg = (msg: FeedMessage) => {
+    setMessages(prev => [msg, ...prev].slice(0, 80));
+  };
+
+  // Start simulation fallback
+  const startSim = () => {
+    setWsStatus("fallback");
+    if (simRef.current) return;
+    simRef.current = setInterval(() => {
+      if (!paused) pushMsg(generateFeedMsg());
+    }, 1800);
+  };
 
   useEffect(() => {
-    if (paused) return;
-    const interval = setInterval(() => {
-      const msg = generateFeedMsg();
-      setMessages(prev => [msg, ...prev].slice(0, 80));
-    }, 1800);
-    return () => clearInterval(interval);
-  }, [paused]);
+    // Try to connect to a local IntercomSwap WebSocket node
+    // The default IntercomSwap node exposes a WS feed at ws://localhost:8080/feed
+    // or the user-configured endpoint from Settings
+    const wsUrl = (typeof window !== "undefined" && (window as unknown as Record<string,string>).__INTERCOMSWAP_WS__)
+      || "ws://localhost:8080/feed";
+
+    let ws: WebSocket;
+    let connectTimeout: ReturnType<typeof setTimeout>;
+
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      connectTimeout = setTimeout(() => {
+        // If no open within 3s, fall back to simulation
+        if (ws.readyState !== WebSocket.OPEN) {
+          ws.close();
+          startSim();
+        }
+      }, 3000);
+
+      ws.onopen = () => {
+        clearTimeout(connectTimeout);
+        setWsStatus("live");
+        // Subscribe to all rendezvous channels
+        FEED_CHANNELS.forEach(ch => {
+          ws.send(JSON.stringify({ action: "subscribe", channel: ch }));
+        });
+      };
+
+      ws.onmessage = (event) => {
+        if (paused) return;
+        try {
+          const raw = JSON.parse(event.data as string);
+          // Normalize IntercomSwap message format
+          const now = new Date();
+          const ts = `${now.getHours().toString().padStart(2,"0")}:${now.getMinutes().toString().padStart(2,"0")}:${now.getSeconds().toString().padStart(2,"0")}.${now.getMilliseconds().toString().padStart(3,"0")}`;
+          const msg: FeedMessage = {
+            id: `${Date.now()}_${Math.random()}`,
+            ts,
+            kind: (raw.kind ?? raw.type ?? "swap.rfq") as FeedMsgKind,
+            channel: raw.channel ?? raw.rendezvous ?? FEED_CHANNELS[0],
+            peer: raw.peer_id ?? raw.from ?? raw.sender ?? "unknown",
+            payload: raw,
+          };
+          pushMsg(msg);
+        } catch { /* ignore malformed */ }
+      };
+
+      ws.onerror = () => {
+        clearTimeout(connectTimeout);
+        startSim();
+      };
+
+      ws.onclose = () => {
+        clearTimeout(connectTimeout);
+        if (wsStatus !== "live") startSim();
+      };
+    } catch {
+      startSim();
+    }
+
+    return () => {
+      wsRef.current?.close();
+      if (simRef.current) clearInterval(simRef.current);
+      simRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filtered = messages.filter(m => {
     if (filterKind !== "all" && m.kind !== filterKind) return false;
@@ -805,9 +884,14 @@ function LiveFeedTab() {
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-          style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] font-mono text-emerald-400">IntercomSwap DHT</span>
+          style={{
+            background: wsStatus === "live" ? "rgba(16,185,129,0.1)" : wsStatus === "connecting" ? "rgba(245,158,11,0.1)" : "rgba(100,116,139,0.1)",
+            border: `1px solid ${wsStatus === "live" ? "rgba(16,185,129,0.25)" : wsStatus === "connecting" ? "rgba(245,158,11,0.25)" : "rgba(100,116,139,0.25)"}`,
+          }}>
+          <div className={`w-1.5 h-1.5 rounded-full ${wsStatus === "live" ? "bg-emerald-400 animate-pulse" : wsStatus === "connecting" ? "bg-amber-400 animate-pulse" : "bg-slate-400"}`} />
+          <span className={`text-[10px] font-mono ${wsStatus === "live" ? "text-emerald-400" : wsStatus === "connecting" ? "text-amber-400" : "text-slate-400"}`}>
+            {wsStatus === "live" ? "WS Live" : wsStatus === "connecting" ? "Connecting…" : "Simulated"}
+          </span>
         </div>
         <select value={filterKind} onChange={e => setFilterKind(e.target.value as FeedMsgKind | "all")}
           className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-foreground outline-none"
@@ -920,10 +1004,21 @@ interface AutopostTask {
   lastRun: string | null;
 }
 
-function AutopostTab() {
-  const [tasks, setTasks] = useState<AutopostTask[]>([
+const AUTOPOST_STORAGE_KEY = "afos_autopost_tasks_v1";
+
+function loadAutopostTasks(): AutopostTask[] {
+  try {
+    const raw = localStorage.getItem(AUTOPOST_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as AutopostTask[];
+  } catch { /* ignore */ }
+  return [
     { id: "task_1", direction: "buy_btc", amount: "0.001", feeBpsCap: "30", refundWindowMin: "20", refundWindowMax: "40", expiry: "+5m", interval: "10s", repeatCount: "6", channel: "0000intercomswapbtcusdt", active: false, executedCount: 3, lastRun: "2m ago" },
-  ]);
+  ];
+}
+
+function AutopostTab() {
+  const [tasks, setTasks] = useState<AutopostTask[]>(loadAutopostTasks);
+  const [allPaused, setAllPaused] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<Omit<AutopostTask, "id" | "active" | "executedCount" | "lastRun">>({
     direction: "buy_btc",
@@ -955,9 +1050,17 @@ function AutopostTab() {
     toast.info("Task removed");
   };
 
-  // Simulate task execution counter
+  // Persist tasks to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(AUTOPOST_STORAGE_KEY, JSON.stringify(tasks));
+    } catch { /* ignore */ }
+  }, [tasks]);
+
+  // Simulate task execution counter (respects allPaused)
   useEffect(() => {
     const interval = setInterval(() => {
+      if (allPaused) return;
       setTasks(prev => prev.map(t => {
         if (!t.active) return t;
         const maxRuns = parseInt(t.repeatCount) || 999;
@@ -966,22 +1069,47 @@ function AutopostTab() {
       }));
     }, 8000);
     return () => clearInterval(interval);
-  }, []);
+  }, [allPaused]);
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-foreground">Autopost Tasks</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Recurring RFQ/offer posts — Run-as-Bot mode</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">
+            {tasks.filter(t => t.active).length} active · {tasks.length} total · persisted
+          </p>
         </div>
-        <button onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}>
-          {showForm ? <Square className="w-3 h-3" /> : <Repeat className="w-3 h-3" />}
-          {showForm ? "Cancel" : "New Task"}
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Master pause toggle */}
+          <button
+            onClick={() => {
+              const next = !allPaused;
+              setAllPaused(next);
+              if (next) {
+                setTasks(prev => prev.map(t => ({ ...t, active: false })));
+                toast.info("All tasks paused");
+              } else {
+                toast.success("Tasks resumed");
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: allPaused ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.10)",
+              border: `1px solid ${allPaused ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.25)"}`,
+              color: allPaused ? "#f87171" : "#10b981",
+            }}>
+            {allPaused ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            {allPaused ? "Paused" : "Running"}
+          </button>
+          <button onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}>
+            {showForm ? <Square className="w-3 h-3" /> : <Repeat className="w-3 h-3" />}
+            {showForm ? "Cancel" : "New Task"}
+          </button>
+        </div>
       </div>
 
       {/* Create form */}
