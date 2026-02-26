@@ -13,7 +13,8 @@ import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
   ChevronRight, Circle, CheckCircle2, Clock,
   TrendingUp, TrendingDown, Send,
-  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X, Terminal
+  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X, Terminal,
+  ToggleLeft, ToggleRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
@@ -50,6 +51,53 @@ const CHAIN_BADGE: Record<string, string> = {
   "Bitcoin LN": "bg-amber-500/15 text-amber-300 border-amber-500/20",
 };
 
+
+// ── Worker Status Card ────────────────────────────────────────────────────────
+function WorkerStatusCard() {
+  const [tradeauto, setTradeauto] = useState(false);
+  const [ticks, setTicks] = useState(1847);
+  const [actions, setActions] = useState(23);
+  const [lastTick, setLastTick] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTicks(t => t + 1);
+      setLastTick(new Date());
+      if (tradeauto && Math.random() > 0.7) setActions(a => a + 1);
+    }, 3800);
+    return () => clearInterval(interval);
+  }, [tradeauto]);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Worker</p>
+        <button
+          onClick={() => { setTradeauto(v => !v); }}
+          className="flex items-center gap-1.5 text-[10px] font-mono transition-colors"
+          style={{ color: tradeauto ? "#10b981" : "var(--muted-foreground)" }}
+        >
+          {tradeauto
+            ? <ToggleRight className="w-4 h-4 text-emerald-400" />
+            : <ToggleLeft className="w-4 h-4" />}
+          tradeauto
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Ticks", value: ticks.toLocaleString() },
+          { label: "Actions", value: actions },
+          { label: "Last tick", value: `${Math.round((Date.now() - lastTick.getTime()) / 1000)}s ago` },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: "var(--muted)" }}>
+            <div className="text-sm font-bold font-mono text-foreground">{stat.value}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
@@ -440,6 +488,9 @@ export default function Dashboard() {
                     ))}
                   </div>
                 </div>
+
+                {/* Worker Status */}
+                <WorkerStatusCard />
               </div>
             </div>
 
@@ -584,6 +635,9 @@ export default function Dashboard() {
                   ))}
                 </div>
               </div>
+
+              {/* Worker Status — mobile */}
+              <WorkerStatusCard />
 
             </div>
           </div>

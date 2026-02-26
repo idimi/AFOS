@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bot, Zap, Network, Wallet, Moon, Save, Eye, EyeOff, CheckCircle2, Clock } from "lucide-react";
+import { Bot, Zap, Network, Wallet, Moon, Save, Eye, EyeOff, CheckCircle2, Clock, ToggleLeft, ToggleRight, Repeat } from "lucide-react";
 import { toast } from "sonner";
 
 interface Section {
@@ -22,8 +22,63 @@ const SECTIONS: Section[] = [
   { id: "intercomswap", label: "IntercomSwap Node", icon: Network, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
   { id: "lnd", label: "Bitcoin Lightning (LND)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
   { id: "solana", label: "Solana Wallet", icon: Wallet, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },
+  { id: "worker", label: "Worker / Autopost", icon: Repeat, color: "text-violet-400", border: "border-violet-500/20", bg: "bg-violet-500/5" },
   { id: "moonpay", label: "MoonPay (Phase 2)", icon: Moon, color: "text-foreground/70", border: "border-border", bg: "bg-muted" },
 ];
+
+function WorkerConfigSection() {
+  const [tradeauto, setTradeauto] = useState(false);
+  const [maxAmount, setMaxAmount] = useState("0.01");
+  const [feeBpsCap, setFeeBpsCap] = useState("50");
+  const [tickInterval, setTickInterval] = useState("3800");
+  const [minRefundHours, setMinRefundHours] = useState("20");
+  const [maxRefundHours, setMaxRefundHours] = useState("40");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+        <div>
+          <p className="text-xs font-semibold text-foreground">Autonomous Trading (tradeauto)</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Worker auto-accepts matching quotes without manual approval</p>
+        </div>
+        <button onClick={() => setTradeauto(v => !v)}
+          className="flex items-center gap-1.5 text-xs font-mono transition-colors"
+          style={{ color: tradeauto ? "#10b981" : "var(--muted-foreground)" }}>
+          {tradeauto ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5" />}
+          {tradeauto ? "ON" : "OFF"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: "Max trade amount (BTC)", value: maxAmount, set: setMaxAmount, placeholder: "0.01", mono: true },
+          { label: "Max fee cap (bps)", value: feeBpsCap, set: setFeeBpsCap, placeholder: "50", mono: true },
+          { label: "Tick interval (ms)", value: tickInterval, set: setTickInterval, placeholder: "3800", mono: true },
+          { label: "Min HTLC refund (hours)", value: minRefundHours, set: setMinRefundHours, placeholder: "20", mono: true },
+          { label: "Max HTLC refund (hours)", value: maxRefundHours, set: setMaxRefundHours, placeholder: "40", mono: true },
+        ].map(field => (
+          <div key={field.label}>
+            <label className="block text-xs text-foreground/70 mb-1.5">{field.label}</label>
+            <input
+              value={field.value}
+              onChange={e => field.set(e.target.value)}
+              placeholder={field.placeholder}
+              className={`w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-violet-500/35 transition-colors font-mono`}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="p-3 rounded-xl" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }}>
+        <p className="text-[10px] font-mono text-violet-300/70">
+          Worker polls the IntercomSwap rendezvous channel every {tickInterval}ms.
+          When tradeauto is ON, it auto-accepts quotes below {feeBpsCap} bps fee and under {maxAmount} BTC.
+          HTLC refund window: {minRefundHours}–{maxRefundHours}h.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function Field({ label, value, onChange, type = "text", mono = false, placeholder = "", disabled = false }: {
   label: string; value: string; onChange: (v: string) => void;
@@ -197,6 +252,10 @@ export default function AgentSettings() {
                     <p className="text-[10px] text-foreground/70 mt-1 font-mono">Deployed on Solana mainnet — do not modify</p>
                   </div>
                 </div>
+              )}
+
+              {section.id === "worker" && (
+                <WorkerConfigSection />
               )}
 
               {section.id === "moonpay" && (

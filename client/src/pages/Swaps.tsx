@@ -13,7 +13,8 @@ import {
   RefreshCw, AlertCircle, CheckCircle2, Loader2,
   Radio, Network, TrendingUp, TrendingDown,
   Bot, Cpu, Lock, Unlock, ExternalLink, Copy,
-  Activity, Users, Globe, BarChart3
+  Activity, Users, Globe, BarChart3,
+  Repeat, Timer, Filter, Rss, Play, Square, RotateCcw
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -715,13 +716,452 @@ const TOKEN_COLORS: Record<string, string> = {
   USDT: "#26a17b", USDC: "#2775ca", WBTC: "#f7931a",
 };
 
+// ─── Live Feed Component ─────────────────────────────────────────────────────
+
+type FeedMsgKind = "swap.svc_announce" | "swap.rfq" | "swap.quote" | "swap.quote_accept" | "swap.cancel" | "swap.settle";
+
+interface FeedMessage {
+  id: string;
+  ts: string;
+  kind: FeedMsgKind;
+  channel: string;
+  peer: string;
+  payload: Record<string, unknown>;
+}
+
+const FEED_CHANNELS = ["0000intercomswapbtcusdt", "0000intercomswapbtcsol", "0000intercomswapethusdc"];
+
+const KIND_COLORS: Record<FeedMsgKind, string> = {
+  "swap.svc_announce": "#06b6d4",
+  "swap.rfq": "#f59e0b",
+  "swap.quote": "#10b981",
+  "swap.quote_accept": "#8b5cf6",
+  "swap.cancel": "#ef4444",
+  "swap.settle": "#f7931a",
+};
+
+const KIND_LABELS: Record<FeedMsgKind, string> = {
+  "swap.svc_announce": "SVC_ANNOUNCE",
+  "swap.rfq": "RFQ",
+  "swap.quote": "QUOTE",
+  "swap.quote_accept": "ACCEPT",
+  "swap.cancel": "CANCEL",
+  "swap.settle": "SETTLE",
+};
+
+function generateFeedMsg(): FeedMessage {
+  const kinds: FeedMsgKind[] = ["swap.svc_announce", "swap.rfq", "swap.quote", "swap.quote_accept", "swap.cancel", "swap.settle"];
+  const weights = [0.25, 0.30, 0.20, 0.10, 0.10, 0.05];
+  const r = Math.random();
+  let cumulative = 0;
+  let kind: FeedMsgKind = "swap.rfq";
+  for (let i = 0; i < kinds.length; i++) {
+    cumulative += weights[i];
+    if (r < cumulative) { kind = kinds[i]; break; }
+  }
+  const peers = ["GammaLN", "AlphaNode", "BetaSwap", "DeltaNode", "IotaSwap", "ZetaHub"];
+  const peer = peers[Math.floor(Math.random() * peers.length)];
+  const channel = FEED_CHANNELS[Math.floor(Math.random() * FEED_CHANNELS.length)];
+  const now = new Date();
+  const ts = `${now.getHours().toString().padStart(2,"0")}:${now.getMinutes().toString().padStart(2,"0")}:${now.getSeconds().toString().padStart(2,"0")}.${now.getMilliseconds().toString().padStart(3,"0")}`;
+  const btcAmt = (Math.random() * 0.1 + 0.001).toFixed(5);
+  const usdtAmt = (parseFloat(btcAmt) * 43418 * (1 + (Math.random()-0.5)*0.02)).toFixed(2);
+  const payloads: Record<FeedMsgKind, Record<string, unknown>> = {
+    "swap.svc_announce": { peer_id: peer, pairs: ["BTC/USDT", "BTC/SOL"], fee_bps: Math.floor(Math.random()*30+5), version: "1.2.0", channels: Math.floor(Math.random()*8+1) },
+    "swap.rfq": { from: "BTC", to: "USDT", amount: btcAmt, min_fee_bps: 10, max_fee_bps: 50, refund_window_min: 20, expiry: "+5m" },
+    "swap.quote": { from: "BTC", to: "USDT", amount: btcAmt, quote_usdt: usdtAmt, fee_bps: Math.floor(Math.random()*20+5), rate: (parseFloat(usdtAmt)/parseFloat(btcAmt)).toFixed(2), expires_in: "45s" },
+    "swap.quote_accept": { quote_id: `q_${Math.random().toString(36).slice(2,8)}`, peer, amount: btcAmt, rate: (43418*(1+(Math.random()-0.5)*0.01)).toFixed(2) },
+    "swap.cancel": { reason: ["timeout", "rate_mismatch", "liquidity"][Math.floor(Math.random()*3)], rfq_id: `rfq_${Math.random().toString(36).slice(2,8)}` },
+    "swap.settle": { tx_hash: `0x${Array.from({length:12},()=>Math.floor(Math.random()*16).toString(16)).join("")}...`, amount_btc: btcAmt, amount_usdt: usdtAmt, settlement_ms: Math.floor(Math.random()*4000+800) },
+  };
+  return { id: `${Date.now()}_${Math.random()}`, ts, kind, channel, peer, payload: payloads[kind] };
+}
+
+function LiveFeedTab() {
+  const [messages, setMessages] = useState<FeedMessage[]>(() => Array.from({length: 12}, generateFeedMsg));
+  const [filterKind, setFilterKind] = useState<FeedMsgKind | "all">("all");
+  const [filterChannel, setFilterChannel] = useState("all");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (paused) return;
+    const interval = setInterval(() => {
+      const msg = generateFeedMsg();
+      setMessages(prev => [msg, ...prev].slice(0, 80));
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [paused]);
+
+  const filtered = messages.filter(m => {
+    if (filterKind !== "all" && m.kind !== filterKind) return false;
+    if (filterChannel !== "all" && m.channel !== filterChannel) return false;
+    return true;
+  });
+
+  return (
+    <div className="space-y-3">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+          style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] font-mono text-emerald-400">IntercomSwap DHT</span>
+        </div>
+        <select value={filterKind} onChange={e => setFilterKind(e.target.value as FeedMsgKind | "all")}
+          className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-foreground outline-none"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <option value="all">All kinds</option>
+          {(Object.keys(KIND_LABELS) as FeedMsgKind[]).map(k => (
+            <option key={k} value={k}>{KIND_LABELS[k]}</option>
+          ))}
+        </select>
+        <select value={filterChannel} onChange={e => setFilterChannel(e.target.value)}
+          className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-foreground outline-none"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <option value="all">All channels</option>
+          {FEED_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <button onClick={() => setPaused(p => !p)}
+          className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono transition-all"
+          style={{ background: paused ? "rgba(239,68,68,0.1)" : "var(--muted)", border: `1px solid ${paused ? "rgba(239,68,68,0.3)" : "var(--border)"}`, color: paused ? "#ef4444" : "var(--muted-foreground)" }}>
+          {paused ? <Play className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+          {paused ? "Resume" : "Pause"}
+        </button>
+        <button onClick={() => setMessages([])} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all"
+          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+          <RotateCcw className="w-3 h-3" />
+          Clear
+        </button>
+      </div>
+
+      {/* Message stream */}
+      <div ref={scrollRef} className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="px-4 py-2.5 border-b flex items-center justify-between" style={{ borderColor: "var(--border)", background: "var(--muted)" }}>
+          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest">P2P Message Stream</span>
+          <span className="text-[10px] font-mono text-muted-foreground">{filtered.length} msgs</span>
+        </div>
+        <div className="divide-y" style={{ borderColor: "var(--border)", maxHeight: "520px", overflowY: "auto" }}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            {filtered.slice(0, 40).map(msg => (
+              <motion.div key={msg.id}
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="px-4 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                onClick={() => setExpandedId(expandedId === msg.id ? null : msg.id)}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-[9px] font-mono text-muted-foreground/60 shrink-0 tabular-nums mt-0.5">{msg.ts}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
+                      style={{ background: `${KIND_COLORS[msg.kind]}18`, border: `1px solid ${KIND_COLORS[msg.kind]}40`, color: KIND_COLORS[msg.kind] }}>
+                      {KIND_LABELS[msg.kind]}
+                    </span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-foreground/80">{msg.peer}</span>
+                      <span className="text-[9px] text-muted-foreground/50 truncate">{msg.channel}</span>
+                    </div>
+                    {expandedId === msg.id && (
+                      <motion.pre
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-2 text-[9px] font-mono text-cyan-300/70 overflow-x-auto"
+                        style={{ background: "var(--muted)", padding: "8px", borderRadius: "6px" }}
+                      >{JSON.stringify(msg.payload, null, 2)}</motion.pre>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {filtered.length === 0 && (
+            <div className="py-12 text-center text-muted-foreground text-xs">No messages match filters</div>
+          )}
+        </div>
+      </div>
+
+      {/* Channel legend */}
+      <div className="grid grid-cols-3 gap-2">
+        {FEED_CHANNELS.map(ch => (
+          <div key={ch} className="px-3 py-2 rounded-xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] font-mono text-emerald-400">live</span>
+            </div>
+            <div className="text-[9px] font-mono text-foreground/60 truncate">{ch}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Autopost / Run-as-Bot Component ─────────────────────────────────────────
+
+interface AutopostTask {
+  id: string;
+  direction: "buy_btc" | "sell_btc";
+  amount: string;
+  feeBpsCap: string;
+  refundWindowMin: string;
+  refundWindowMax: string;
+  expiry: string;
+  interval: string;
+  repeatCount: string;
+  channel: string;
+  active: boolean;
+  executedCount: number;
+  lastRun: string | null;
+}
+
+function AutopostTab() {
+  const [tasks, setTasks] = useState<AutopostTask[]>([
+    { id: "task_1", direction: "buy_btc", amount: "0.001", feeBpsCap: "30", refundWindowMin: "20", refundWindowMax: "40", expiry: "+5m", interval: "10s", repeatCount: "6", channel: "0000intercomswapbtcusdt", active: false, executedCount: 3, lastRun: "2m ago" },
+  ]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<Omit<AutopostTask, "id" | "active" | "executedCount" | "lastRun">>({
+    direction: "buy_btc",
+    amount: "0.001",
+    feeBpsCap: "30",
+    refundWindowMin: "20",
+    refundWindowMax: "40",
+    expiry: "+5m",
+    interval: "10s",
+    repeatCount: "6",
+    channel: "0000intercomswapbtcusdt",
+  });
+
+  const setF = (k: keyof typeof form) => (v: string) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const addTask = () => {
+    const newTask: AutopostTask = { ...form, id: `task_${Date.now()}`, active: false, executedCount: 0, lastRun: null };
+    setTasks(prev => [newTask, ...prev]);
+    setShowForm(false);
+    toast.success("Autopost task created", { description: `${form.direction === "buy_btc" ? "Buy BTC" : "Sell BTC"} · ${form.amount} BTC · every ${form.interval}` });
+  };
+
+  const toggleTask = (id: string) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, active: !t.active } : t));
+  };
+
+  const deleteTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+    toast.info("Task removed");
+  };
+
+  // Simulate task execution counter
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTasks(prev => prev.map(t => {
+        if (!t.active) return t;
+        const maxRuns = parseInt(t.repeatCount) || 999;
+        if (t.executedCount >= maxRuns) return { ...t, active: false };
+        return { ...t, executedCount: t.executedCount + 1, lastRun: "just now" };
+      }));
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Autopost Tasks</p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Recurring RFQ/offer posts — Run-as-Bot mode</p>
+        </div>
+        <button onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+          style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}>
+          {showForm ? <Square className="w-3 h-3" /> : <Repeat className="w-3 h-3" />}
+          {showForm ? "Cancel" : "New Task"}
+        </button>
+      </div>
+
+      {/* Create form */}
+      <AnimatePresence>
+        {showForm && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+            className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid rgba(59,130,246,0.25)" }}>
+            <p className="text-xs font-bold text-foreground mb-2">New Autopost Task</p>
+
+            {/* Direction */}
+            <div>
+              <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Direction</div>
+              <div className="flex gap-2">
+                {(["buy_btc", "sell_btc"] as const).map(d => (
+                  <button key={d} onClick={() => setF("direction")(d)}
+                    className="flex-1 py-2 rounded-xl text-xs font-mono border transition-all"
+                    style={{
+                      background: form.direction === d ? (d === "buy_btc" ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.12)") : "var(--muted)",
+                      border: `1px solid ${form.direction === d ? (d === "buy_btc" ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.3)") : "var(--border)"}`,
+                      color: form.direction === d ? (d === "buy_btc" ? "#10b981" : "#ef4444") : "var(--muted-foreground)",
+                    }}>
+                    {d === "buy_btc" ? "Buy BTC (post offer)" : "Sell BTC (post RFQ)"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Amount + Fee cap */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Amount (BTC)</div>
+                <input value={form.amount} onChange={e => setF("amount")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="0.001" />
+              </div>
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Max Fee (bps)</div>
+                <input value={form.feeBpsCap} onChange={e => setF("feeBpsCap")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="30" />
+              </div>
+            </div>
+
+            {/* HTLC refund window */}
+            <div>
+              <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">HTLC Refund Window (hours)</div>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={form.refundWindowMin} onChange={e => setF("refundWindowMin")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="Min hrs (e.g. 20)" />
+                <input value={form.refundWindowMax} onChange={e => setF("refundWindowMax")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="Max hrs (e.g. 40)" />
+              </div>
+            </div>
+
+            {/* Interval + Repeat + Expiry */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Interval</div>
+                <select value={form.interval} onChange={e => setF("interval")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  {["5s","10s","30s","1m","5m","15m","1h"].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Repeat</div>
+                <input value={form.repeatCount} onChange={e => setF("repeatCount")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="6" />
+              </div>
+              <div>
+                <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Expiry</div>
+                <select value={form.expiry} onChange={e => setF("expiry")(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  {["+1m","+5m","+15m","+30m","+1h","+6h","+1d","+1w"].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Channel */}
+            <div>
+              <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest mb-1.5">Rendezvous Channel</div>
+              <select value={form.channel} onChange={e => setF("channel")(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl text-xs font-mono text-foreground outline-none"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                {FEED_CHANNELS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <button onClick={addTask}
+              className="w-full py-2.5 rounded-xl text-xs font-bold transition-all"
+              style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.4)", color: "#60a5fa" }}>
+              Create Autopost Task
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Task list */}
+      <div className="space-y-3">
+        {tasks.length === 0 && (
+          <div className="py-12 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <Repeat className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No autopost tasks</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">Create a task to run recurring swaps automatically</p>
+          </div>
+        )}
+        {tasks.map(task => (
+          <motion.div key={task.id} layout
+            className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${task.active ? "rgba(16,185,129,0.3)" : "var(--border)"}` }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
+                    style={{
+                      background: task.direction === "buy_btc" ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.12)",
+                      border: `1px solid ${task.direction === "buy_btc" ? "rgba(16,185,129,0.35)" : "rgba(239,68,68,0.25)"}`,
+                      color: task.direction === "buy_btc" ? "#10b981" : "#ef4444",
+                    }}>
+                    {task.direction === "buy_btc" ? "BUY BTC" : "SELL BTC"}
+                  </span>
+                  {task.active && <div className="flex items-center gap-1"><div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /><span className="text-[9px] font-mono text-emerald-400">running</span></div>}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1">
+                  {[
+                    { label: "Amount", value: `${task.amount} BTC` },
+                    { label: "Fee cap", value: `${task.feeBpsCap} bps` },
+                    { label: "Interval", value: task.interval },
+                    { label: "Expiry", value: task.expiry },
+                    { label: "HTLC window", value: `${task.refundWindowMin}–${task.refundWindowMax}h` },
+                    { label: "Channel", value: task.channel.slice(0, 20) + "..." },
+                    { label: "Executed", value: `${task.executedCount}/${task.repeatCount}` },
+                    { label: "Last run", value: task.lastRun ?? "never" },
+                  ].map(item => (
+                    <div key={item.label}>
+                      <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
+                      <div className="text-[10px] font-mono text-foreground/80">{item.value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                <button onClick={() => toggleTask(task.id)}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all"
+                  style={{
+                    background: task.active ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)",
+                    border: `1px solid ${task.active ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.3)"}`,
+                    color: task.active ? "#ef4444" : "#10b981",
+                  }}>
+                  {task.active ? "Stop" : "Start"}
+                </button>
+                <button onClick={() => deleteTask(task.id)}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Swaps Page ──────────────────────────────────────────────────────────
 
 export default function Swaps() {
+  const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const [fromToken, setFromToken] = useState(TOKENS[0]); // BTC
   const [toToken, setToToken] = useState(TOKENS[3]);     // USDT
   const [fromAmount, setFromAmount] = useState("0.001");
   const [slippage, setSlippage] = useState("0.5");
+  const [feeBpsCap, setFeeBpsCap] = useState("30");
+  const [refundWindowMin, setRefundWindowMin] = useState("20");
+  const [refundWindowMax, setRefundWindowMax] = useState("40");
+  const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
   const [agentMode, setAgentMode] = useState(true);
   const [selectedPeer, setSelectedPeer] = useState<typeof MOCK_PEERS[0] | null>(null);
@@ -824,6 +1264,34 @@ export default function Swaps() {
         </div>
       </div>
 
+      {/* Tab Bar */}
+      <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+        {([
+          { id: "swap", label: "Swap", icon: <ArrowDownUp className="w-3.5 h-3.5" /> },
+          { id: "feed", label: "Live Feed", icon: <Rss className="w-3.5 h-3.5" /> },
+          { id: "autopost", label: "Autopost", icon: <Repeat className="w-3.5 h-3.5" /> },
+        ] as const).map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: activeTab === tab.id ? "var(--card)" : "transparent",
+              color: activeTab === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
+              boxShadow: activeTab === tab.id ? "0 1px 4px rgba(0,0,0,0.2)" : "none",
+            }}>
+            {tab.icon}
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Live Feed Tab */}
+      {activeTab === "feed" && <LiveFeedTab />}
+
+      {/* Autopost Tab */}
+      {activeTab === "autopost" && <AutopostTab />}
+
+      {/* Swap Tab */}
+      {activeTab === "swap" && <>
       {/* Chain Stats */}
       <ChainStatsBar />
 
@@ -1007,6 +1475,65 @@ export default function Swaps() {
                         />
                       </div>
                     </div>
+                    {/* Fee bps cap */}
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">Max Fee Cap (bps)</div>
+                      <div className="flex gap-2">
+                        {["10", "20", "30", "50"].map(s => (
+                          <button key={s} onClick={() => setFeeBpsCap(s)}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-mono transition-all"
+                            style={{
+                              background: feeBpsCap === s ? "rgba(59,130,246,0.2)" : "var(--muted)",
+                              border: `1px solid ${feeBpsCap === s ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                              color: feeBpsCap === s ? "#3b82f6" : "var(--muted-foreground)",
+                            }}>
+                            {s}
+                          </button>
+                        ))}
+                        <input type="number" value={feeBpsCap} onChange={e => setFeeBpsCap(e.target.value)}
+                          className="flex-1 py-1.5 px-2 rounded-lg text-xs font-mono text-center bg-transparent outline-none"
+                          style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}
+                          placeholder="Custom" />
+                      </div>
+                    </div>
+
+                    {/* HTLC Refund Window */}
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">HTLC Refund Window (hours)</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="text-[9px] text-muted-foreground mb-1">Min</div>
+                          <input type="number" value={refundWindowMin} onChange={e => setRefundWindowMin(e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg text-xs font-mono text-foreground outline-none"
+                            style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="20" />
+                        </div>
+                        <div>
+                          <div className="text-[9px] text-muted-foreground mb-1">Max</div>
+                          <input type="number" value={refundWindowMax} onChange={e => setRefundWindowMax(e.target.value)}
+                            className="w-full px-3 py-1.5 rounded-lg text-xs font-mono text-foreground outline-none"
+                            style={{ background: "var(--muted)", border: "1px solid var(--border)" }} placeholder="40" />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Offer Expiry */}
+                    <div>
+                      <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">Offer Expiry</div>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {["+1m","+5m","+15m","+30m","+1h","+6h"].map(e => (
+                          <button key={e} onClick={() => setExpiry(e)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-mono transition-all"
+                            style={{
+                              background: expiry === e ? "rgba(59,130,246,0.2)" : "var(--muted)",
+                              border: `1px solid ${expiry === e ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                              color: expiry === e ? "#3b82f6" : "var(--muted-foreground)",
+                            }}>
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div>
                       <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">Preferred Peer</div>
                       <div className="grid grid-cols-2 gap-1.5">
@@ -1116,9 +1643,9 @@ export default function Swaps() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2">
               {[
                 { label: "Lock time", value: "10 min" },
-                { label: "Refund window", value: "20 min" },
+                { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
                 { label: "Escrow program", value: "Solana" },
-                { label: "Coordination", value: "P2P DHT" },
+                { label: "Fee cap", value: `${feeBpsCap} bps` },
               ].map(item => (
                 <div key={item.label} className="px-2.5 py-2 rounded-lg"
                   style={{ background: "var(--muted)" }}>
@@ -1130,6 +1657,7 @@ export default function Swaps() {
           </div>
         </div>
       </div>
+      </> }
     </div>
   );
 }

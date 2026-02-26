@@ -11,9 +11,10 @@ import {
   CheckCircle2, XCircle, Clock, Loader2, Search,
   ArrowDownUp, TrendingUp, TrendingDown, BarChart3,
   Calendar, RefreshCw, Download, ChevronLeft, ChevronRight,
-  Zap, Globe, Shield
+  Zap, Globe, Shield, AlertTriangle, RotateCcw, History
 } from "lucide-react";
 import { toast } from "sonner";
+import { OpenTradesTab, RefundsTab } from "./SwapHistoryTabs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -211,6 +212,7 @@ interface Filters {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SwapHistory() {
+  const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
   const [filters, setFilters] = useState<Filters>({
     search: "", pair: "All", status: "All", dateRange: "All time", chain: "All"
   });
@@ -294,25 +296,53 @@ export default function SwapHistory() {
   return (
     <div className="flex-1 overflow-y-auto p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Swap History</h1>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">History</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            All past swaps · IntercomSwap P2P · {SWAP_HISTORY.length} total transactions
+            Swaps · Open trades · Refunds
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {activeTab === "history" && (
           <button
             onClick={() => toast.info("Export coming soon")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-slate-200 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV
           </button>
-        </div>
+        )}
       </div>
 
+      {/* Tab bar */}
+      <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+        {([
+          { id: "history", label: "Completed", icon: <History className="w-3.5 h-3.5" /> },
+          { id: "open", label: "Open Trades", icon: <Activity className="w-3.5 h-3.5" /> },
+          { id: "refunds", label: "Refunds", icon: <RotateCcw className="w-3.5 h-3.5" /> },
+        ] as const).map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: activeTab === tab.id ? "var(--card)" : "transparent",
+              color: activeTab === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
+              boxShadow: activeTab === tab.id ? "0 1px 4px rgba(0,0,0,0.2)" : "none",
+            }}>
+            {tab.icon}
+            <span className="hidden sm:inline">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Open Trades Tab */}
+      {activeTab === "open" && <OpenTradesTab />}
+
+      {/* Refunds Tab */}
+      {activeTab === "refunds" && <RefundsTab />}
+
+      {/* History Tab */}
+      {activeTab === "history" && <>
       {/* Summary Stats */}
       <SummaryStats swaps={filtered} />
 
@@ -602,6 +632,7 @@ export default function SwapHistory() {
           </div>
         )}
       </div>
+      </> }
     </div>
   );
 }
