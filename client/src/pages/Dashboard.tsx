@@ -202,10 +202,10 @@ export default function Dashboard() {
 
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
+    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
     { id: "network" as NavPage, icon: Network, label: "Network" },
-    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
     { id: "settings" as NavPage, icon: Settings, label: "Settings" },
   ];
 
