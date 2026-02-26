@@ -180,6 +180,8 @@ export default function Dashboard() {
   const [commandInput, setCommandInput] = useState("");
   const [agentThinking, setAgentThinking] = useState(false);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const logScrollRef = useRef<HTMLDivElement>(null);
+  const [logPulse, setLogPulse] = useState(false);
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
 
@@ -187,6 +189,9 @@ export default function Dashboard() {
     const interval = setInterval(() => {
       const entry = LIVE_LOG_POOL[Math.floor(Math.random() * LIVE_LOG_POOL.length)];
       setLogs(prev => [...prev.slice(-80), { id: Date.now().toString(), ts: nowTs(), ...entry }]);
+      // Pulse the scrollbar thumb for 600ms on every new log entry
+      setLogPulse(true);
+      setTimeout(() => setLogPulse(false), 600);
     }, 3800);
     return () => clearInterval(interval);
   }, []);
@@ -391,7 +396,10 @@ export default function Dashboard() {
                     </div>
                   </div>
                   {/* overflow-y-auto on this inner div — the card itself is flex-1 */}
-                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-0">
+                  <div
+                    ref={logScrollRef}
+                    className={`flex-1 overflow-y-auto space-y-2 pr-1 min-h-0 transition-all duration-300 ${logPulse ? "log-scroll-pulse" : ""}`}
+                  >
                     <AnimatePresence initial={false}>
                       {logs.map(log => (
                         <motion.div key={log.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="text-xs">

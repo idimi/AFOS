@@ -793,25 +793,26 @@ export default function Swaps() {
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
 
   return (
-    <div className="flex-1 overflow-y-auto p-6" style={{ background: "transparent" }}>
+    <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>
       {/* Page Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Agentic Swap</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">Agentic Swap</h1>
+          <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
             P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
             style={{ background: "oklch(0.55 0.18 165 / 0.1)", border: "1px solid oklch(0.55 0.18 165 / 0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span className="text-[10px] font-mono text-emerald-400">P2P Network Live</span>
+            <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">P2P Network Live</span>
+            <span className="text-[10px] font-mono text-emerald-400 sm:hidden">Live</span>
           </div>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
+          <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
             style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
             <Users className="w-3 h-3 text-cyan-400" />
-            <span className="text-[10px] font-mono text-cyan-400">142 peers</span>
+            <span className="text-[10px] font-mono text-cyan-400">142</span>
           </div>
         </div>
       </div>
@@ -819,18 +820,18 @@ export default function Swaps() {
       {/* Chain Stats */}
       <ChainStatsBar />
 
-      {/* Main Layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-5">
+      {/* Main Layout — single column on mobile, side-by-side on xl */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 sm:gap-5">
 
-        {/* Left: Swap Interface */}
-        <div className="space-y-4">
+        {/* Left: Swap Interface — full width on mobile, max-w centered */}
+        <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
 
           {/* Agent Mode */}
           <AgentModeToggle enabled={agentMode} onToggle={() => setAgentMode(!agentMode)} />
 
           {/* Swap Card */}
           <div
-            className="rounded-2xl p-5"
+            className="rounded-2xl p-4 sm:p-5"
             style={{
               background: "oklch(0.13 0.03 265 / 0.85)",
               border: "1px solid oklch(0.28 0.04 255 / 0.3)",
@@ -869,7 +870,7 @@ export default function Swaps() {
             <TokenSelector
               selected={fromToken}
               onSelect={setFromToken}
-              label="You Send"
+              label="YOU SEND"
               exclude={toToken.symbol}
             />
 
@@ -917,7 +918,7 @@ export default function Swaps() {
             <TokenSelector
               selected={toToken}
               onSelect={setToToken}
-              label="You Receive"
+              label="YOU RECEIVE"
               exclude={fromToken.symbol}
             />
 
@@ -1030,7 +1031,7 @@ export default function Swaps() {
             <button
               onClick={isSwapping ? undefined : swapPhase === "complete" ? handleReset : handleSwap}
               disabled={isSwapping}
-              className="mt-5 w-full py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
+              className="mt-5 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
               style={{
                 background: swapPhase === "complete"
                   ? "oklch(0.55 0.18 165 / 0.2)"
@@ -1084,8 +1085,8 @@ export default function Swaps() {
           )}
         </div>
 
-        {/* Right: Info Panels */}
-        <div className="space-y-4">
+        {/* Right: Info Panels — shown below swap card on mobile, side panel on xl */}
+        <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
           <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
           <PeerPanel fromToken={fromToken} toToken={toToken} />
           <RecentSwaps />
@@ -1105,7 +1106,7 @@ export default function Swaps() {
             <p className="text-[11px] text-slate-500 leading-relaxed">
               Funds are locked in a Hash Time-Locked Contract on Solana. The swap settles atomically — either both legs complete or both refund. No counterparty risk.
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2">
               {[
                 { label: "Lock time", value: "10 min" },
                 { label: "Refund window", value: "20 min" },
