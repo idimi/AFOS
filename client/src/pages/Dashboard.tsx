@@ -20,6 +20,9 @@ import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
 import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog } from "../contexts/AgentLogContext";
+import { useWallet } from "../contexts/WalletContext";
+import ConnectWalletModal from "../components/ConnectWalletModal";
+import { useLocation } from "wouter";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -196,6 +199,9 @@ function MobileTabBar({ navItems, activePage, setActivePage }: {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const haptic = useHaptic();
+  const { connectedWallets, primaryWallet } = useWallet();
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [, navigate] = useLocation();
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { entries: logs, addEntry: addLog } = useAgentLog();
@@ -291,6 +297,32 @@ export default function Dashboard() {
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
               <span className="text-xs text-violet-300 font-mono">3 peers</span>
             </div>
+            {/* Wallet connect button */}
+            {connectedWallets.length > 0 ? (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {primaryWallet?.shortAddress}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
+                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
+                <Wallet className="w-3 h-3" />
+                Connect
+              </button>
+            )}
+            {/* Swap shortcut */}
+            <button
+              onClick={() => navigate("/swap")}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
+              style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+              <Zap className="w-3 h-3" />
+              Swap
+            </button>
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}
@@ -646,6 +678,8 @@ export default function Dashboard() {
 
       {/* Mobile bottom tab bar */}
       <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
+      {/* Wallet connect modal */}
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
     </div>
   );
 }

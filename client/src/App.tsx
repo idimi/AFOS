@@ -5,14 +5,21 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AgentLogProvider } from "./contexts/AgentLogContext";
+import { WalletProvider } from "./contexts/WalletContext";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
+import SwapPage from "./pages/SwapPage";
+import AdminPanel from "./pages/AdminPanel";
 
 function Router() {
   return (
     <Switch>
       <Route path={"/"} component={Dashboard} />
       <Route path={"/swaps"} component={Dashboard} />
+      {/* Consumer-facing swap page */}
+      <Route path={"/swap"} component={SwapPage} />
+      {/* Hidden admin panel — not linked from consumer UI */}
+      <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -26,10 +33,12 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark" switchable>
         <AgentLogProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
+          <WalletProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+            </TooltipProvider>
+          </WalletProvider>
         </AgentLogProvider>
       </ThemeProvider>
     </ErrorBoundary>
