@@ -761,6 +761,7 @@ export default function Swaps() {
       phaseTimerRef.current = setTimeout(() => {
         setSwapPhase(phase);
         if (phase === "complete") {
+          haptic.success();
           toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${toAmount} ${toToken.symbol}`, {
             description: "Atomic settlement confirmed on-chain",
           });

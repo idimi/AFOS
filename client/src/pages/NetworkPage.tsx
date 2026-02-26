@@ -501,6 +501,9 @@ export default function NetworkPage() {
           <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
             IntercomSwap DHT · Live peer topology · Atomic swap channels
           </p>
+          <p className="text-xs text-slate-500 mt-0.5 sm:hidden">
+            {livePeers.filter(p => p.online).length}/{livePeers.length} peers online
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
@@ -519,8 +522,83 @@ export default function NetworkPage() {
       {/* Stats */}
       <NetworkStats peers={livePeers} channels={liveChannels} />
 
-      {/* Main layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
+      {/* Mobile peer list — shown only on small screens instead of the SVG graph */}
+      <div className="sm:hidden space-y-2 mb-4">
+        {livePeers.filter(p => p.id !== "self").map(peer => {
+          const color = latencyColor(peer.latency);
+          const isSelected = selectedId === peer.id;
+          return (
+            <motion.div
+              key={peer.id}
+              onClick={() => setSelectedId(prev => prev === peer.id ? null : peer.id)}
+              className="rounded-xl p-3 cursor-pointer transition-all"
+              animate={{ scale: isSelected ? 0.99 : 1 }}
+              style={{
+                background: isSelected
+                  ? "oklch(0.15 0.04 265 / 0.95)"
+                  : "oklch(0.12 0.03 265 / 0.85)",
+                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#ef4444" }} />
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-white truncate">{peer.alias}</div>
+                    <div className="text-[10px] font-mono text-slate-500">{peer.region}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 ml-2">
+                  <div className="text-right">
+                    <div className="text-xs font-mono font-semibold" style={{ color }}>
+                      {peer.online ? `${peer.latency}ms` : "offline"}
+                    </div>
+                    <div className="text-[9px] text-slate-500">{peer.channels}ch</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-mono text-amber-400">{peer.liquidity} BTC</div>
+                    <div className="text-[9px] text-slate-500">${(peer.volume24h/1000).toFixed(0)}k vol</div>
+                  </div>
+                </div>
+              </div>
+              {/* Expanded detail on select */}
+              <AnimatePresence>
+                {isSelected && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-[10px] text-slate-500">Reputation</span>
+                        <span className="text-[10px] font-mono" style={{ color: peer.reputation > 98 ? "#10b981" : peer.reputation > 95 ? "#f59e0b" : "#ef4444" }}>{peer.reputation}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-[10px] text-slate-500">Version</span>
+                        <span className="text-[10px] font-mono text-slate-300">{peer.version}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {peer.pairs.map(pair => (
+                          <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                            style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.8)" }}>
+                            {pair}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {/* Desktop/tablet main layout — hidden on mobile */}
+      <div className="hidden sm:grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
 
         {/* Node Graph */}
         <div className="rounded-2xl overflow-hidden relative"
@@ -635,6 +713,7 @@ export default function NetworkPage() {
           </div>
         </div>
       </div>
+      {/* end hidden sm:grid */}
     </div>
   );
 }
