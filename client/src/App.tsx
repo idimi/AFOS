@@ -16,8 +16,8 @@ function Router() {
     <Switch>
       <Route path={"/"} component={Dashboard} />
       <Route path={"/swaps"} component={Dashboard} />
-      {/* Consumer-facing swap page */}
-      <Route path={"/swap"} component={SwapPage} />
+      {/* Consumer-facing trade page */}
+      <Route path={"/trade"} component={SwapPage} />
       {/* Hidden admin panel — not linked from consumer UI */}
       <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />

@@ -317,7 +317,7 @@ export default function Dashboard() {
             )}
             {/* Swap shortcut */}
             <button
-              onClick={() => navigate("/swap")}
+              onClick={() => navigate("/trade")}
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
               style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
               <Zap className="w-3 h-3" />
