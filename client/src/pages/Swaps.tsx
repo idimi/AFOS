@@ -16,6 +16,7 @@ import {
   Activity, Users, Globe, BarChart3
 } from "lucide-react";
 import { toast } from "sonner";
+import { useHaptic } from "../hooks/useHaptic";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -768,12 +769,16 @@ export default function Swaps() {
     });
   }, [fromAmount, fromToken.symbol, toAmount, toToken.symbol]);
 
+  const haptic = useHaptic();
+
   const handleSwap = () => {
     if (parseFloat(fromAmount) <= 0) {
+      haptic.error();
       toast.error("Enter a valid amount");
       return;
     }
     if (swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error") return;
+    haptic.tap();
     setSwapPhase("idle");
     setTimeout(runSwapAnimation, 100);
   };
@@ -784,6 +789,7 @@ export default function Swaps() {
   };
 
   const handleAcceptOrder = (order: OrderBookEntry) => {
+    haptic.tap();
     setFromAmount(order.fromAmount.toString());
     toast.success(`Quote accepted from ${order.peer}`, {
       description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}`,

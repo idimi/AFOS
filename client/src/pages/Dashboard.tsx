@@ -13,12 +13,15 @@ import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
   ChevronRight, Circle, CheckCircle2, Clock,
   TrendingUp, TrendingDown, Send,
-  Network, Radio, Moon, Cpu, Wallet, Menu, X
+  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTheme } from "../contexts/ThemeContext";
+import { useHaptic } from "../hooks/useHaptic";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
+import NetworkPage from "./NetworkPage";
 
 type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings";
 
@@ -172,6 +175,8 @@ function MobileTabBar({ navItems, activePage, setActivePage }: {
 
 // ── Main ───────────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
+  const haptic = useHaptic();
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [logs, setLogs] = useState<AgentLog[]>(INITIAL_LOGS);
@@ -264,6 +269,20 @@ export default function Dashboard() {
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
               <span className="text-xs text-violet-300 font-mono">3 peers</span>
             </div>
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+              style={{
+                background: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)",
+                border: theme === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)",
+              }}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark"
+                ? <Sun className="w-3.5 h-3.5 text-amber-400" />
+                : <Moon className="w-3.5 h-3.5 text-slate-500" />}
+            </button>
           </div>
         </header>
 
@@ -302,7 +321,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {AGENT_COMMANDS.map(cmd => (
-                      <button key={cmd} onClick={() => runPipeline(cmd)} disabled={pipelineRunning}
+                      <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
                         className="text-xs px-2.5 py-1.5 rounded-full border border-white/8 text-white/50 hover:border-cyan-500/35 hover:text-cyan-300 hover:bg-cyan-500/5 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                         {cmd}
                       </button>
@@ -314,7 +333,7 @@ export default function Dashboard() {
                       placeholder="e.g. Swap 0.05 BTC to USDT at best rate…"
                       disabled={pipelineRunning}
                       className="flex-1 bg-white/4 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
-                    <button onClick={() => runPipeline()} disabled={pipelineRunning}
+                    <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
                       className="px-4 py-2.5 rounded-xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                       <Send className="w-4 h-4" />
                     </button>
@@ -473,8 +492,8 @@ export default function Dashboard() {
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {AGENT_COMMANDS.map(cmd => (
-                    <button key={cmd} onClick={() => runPipeline(cmd)} disabled={pipelineRunning}
+                   {AGENT_COMMANDS.map(cmd => (
+                     <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
                       className="text-xs px-3 py-2 rounded-full border border-white/10 text-white/55 active:bg-cyan-500/10 active:border-cyan-500/30 active:text-cyan-300 transition-all disabled:opacity-30">
                       {cmd}
                     </button>
@@ -486,7 +505,7 @@ export default function Dashboard() {
                     placeholder="Type a command…"
                     disabled={pipelineRunning}
                     className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
-                  <button onClick={() => runPipeline()} disabled={pipelineRunning}
+                   <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
                     className="px-4 py-3 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 active:bg-cyan-500/35 transition-all disabled:opacity-30">
                     <Send className="w-4 h-4" />
                   </button>
@@ -692,23 +711,3 @@ function LNCard() {
   );
 }
 
-// ── Network placeholder ────────────────────────────────────────────────────
-function NetworkPage() {
-  return (
-    <div className="flex-1 flex items-center justify-center p-12">
-      <div className="text-center">
-        <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mx-auto mb-4">
-          <Network className="w-8 h-8 text-violet-400" />
-        </div>
-        <h2 className="text-xl font-bold text-white mb-2">P2P Network Map</h2>
-        <p className="text-white/35 text-sm max-w-sm mx-auto">
-          Live IntercomSwap peer graph — 142 nodes, active swap channels, and geographic distribution.
-        </p>
-        <div className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-mono">
-          <Clock className="w-3.5 h-3.5" />
-          Coming in Phase 2
-        </div>
-      </div>
-    </div>
-  );
-}
