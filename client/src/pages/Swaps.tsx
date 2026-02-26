@@ -1383,25 +1383,6 @@ export default function Swaps() {
           </p>
         </div>
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Wallet connect */}
-            {connectedWallets.length > 0 ? (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {primaryWallet?.shortAddress}
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
-                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
-                <Wallet className="w-3 h-3" />
-                <span className="hidden sm:inline">Connect Wallet</span>
-                <span className="sm:hidden">Connect</span>
-              </button>
-            )}
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
             style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
