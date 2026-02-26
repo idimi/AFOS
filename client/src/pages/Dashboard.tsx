@@ -155,11 +155,15 @@ export default function Dashboard() {
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [commandInput, setCommandInput] = useState("");
   const [agentThinking, setAgentThinking] = useState(false);
-  const logsEndRef = useRef<HTMLDivElement>(null);
   const logScrollRef = useRef<HTMLDivElement>(null);
   const [logPulse, setLogPulse] = useState(false);
 
-  useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
+  // Scroll the desktop log panel — NOT the whole page (no scrollIntoView on mobile)
+  useEffect(() => {
+    const el = logScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logs]);
 
   // Pulse scrollbar on new log entries
   useEffect(() => {
@@ -408,7 +412,6 @@ export default function Dashboard() {
                         </motion.div>
                       ))}
                     </AnimatePresence>
-                    <div ref={logsEndRef} />
                   </div>
                 </div>
 
@@ -484,6 +487,9 @@ export default function Dashboard() {
                 </div>
               </div>
 
+              {/* Terminal Widget — synced with Terminal page */}
+              <MobileTerminalWidget logs={logs} onNavigateToTerminal={() => setActivePage("terminal")} />
+
               {/* Pipeline — mobile */}
               <div className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -537,7 +543,7 @@ export default function Dashboard() {
                     <span className="text-xs text-muted-foreground font-mono">live</span>
                   </div>
                 </div>
-                <div className="overflow-y-auto space-y-2" style={{ maxHeight: 280 }}>
+                <div className="overflow-y-auto space-y-2" style={{ maxHeight: 280 }} ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
                   {logs.slice(-20).map(log => (
                     <div key={log.id} className="text-xs flex items-start gap-2">
                       <span className="text-muted-foreground/60 font-mono shrink-0 tabular-nums">{log.ts}</span>
@@ -553,7 +559,6 @@ export default function Dashboard() {
                       </div>
                     </div>
                   ))}
-                  <div ref={logsEndRef} />
                 </div>
               </div>
 
@@ -587,6 +592,64 @@ export default function Dashboard() {
 
       {/* Mobile bottom tab bar */}
       <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
+    </div>
+  );
+}
+
+// ── Mobile Terminal Widget ────────────────────────────────────────────────
+function MobileTerminalWidget({ logs, onNavigateToTerminal }: {
+  logs: import("../contexts/AgentLogContext").TerminalEntry[];
+  onNavigateToTerminal: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep scrolled to bottom when new entries arrive
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs]);
+
+  const recent = logs.slice(-12);
+
+  const levelColor = (level: string) =>
+    level === "success" ? "text-emerald-400" :
+    level === "warn" ? "text-amber-400" :
+    level === "error" ? "text-red-400" :
+    level === "cmd" ? "text-violet-400" :
+    level === "debug" ? "text-slate-400" : "text-cyan-300/80";
+
+  return (
+    <div className="rounded-2xl border border-violet-500/15 bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-xs font-bold font-mono text-foreground">Agent Output</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        </div>
+        <button
+          onClick={onNavigateToTerminal}
+          className="text-[10px] font-mono text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-md hover:bg-cyan-500/10"
+        >
+          Open Terminal →
+        </button>
+      </div>
+
+      {/* Log output */}
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto px-3 py-2 space-y-0.5"
+        style={{ maxHeight: 200, background: "var(--background)" }}
+      >
+        {recent.map(log => (
+          <div key={log.id} className="flex items-start gap-2 text-[11px] font-mono py-0.5">
+            <span className="text-muted-foreground/40 shrink-0 tabular-nums w-[68px]">{log.ts.slice(0, 8)}</span>
+            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>
+              {log.level === "cmd" ? log.message : log.message}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
