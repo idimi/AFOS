@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Swaps from "./Swaps";
+import SwapHistory from "./SwapHistory";
 // Pure SVG chart — no recharts dependency needed for sparkline
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -904,7 +905,7 @@ export default function Dashboard() {
   const [activity, setActivity] = useState<ActivityItem[]>(ACTIVITY_LOG);
   const [txCount, setTxCount] = useState(47);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activePage, setActivePage] = useState<"dashboard" | "swaps">("dashboard");
+  const [activePage, setActivePage] = useState<"dashboard" | "swaps" | "history">("dashboard");
   const runRef = useRef(false);
 
   const BG_URL = "https://private-us-east-1.manuscdn.com/sessionFile/Rf8GQw20ieLRndEIY01aHd/sandbox/CMHXyEbOGZ9uI8wwGu3io8-img-1_1772065364000_na1fn_YWZvcy1iZw.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvUmY4R1F3MjBpZUxSbmRFSVkwMWFIZC9zYW5kYm94L0NNSFh5RWJPR1o5dUk4d3dHdTNpbzgtaW1nLTFfMTc3MjA2NTM2NDAwMF9uYTFmbl9ZV1p2Y3kxaVp3LnBuZz94LW9zcy1wcm9jZXNzPWltYWdlL3Jlc2l6ZSx3XzE5MjAsaF8xOTIwL2Zvcm1hdCx3ZWJwL3F1YWxpdHkscV84MCIsIkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTc5ODc2MTYwMH19fV19&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=s7lioW45otsoPZdYjq~k8BWx~~dUJTFmAxl5JPa7x97vrjTPi9yjYO7IQ8sHYVP-EhsudPQzUBGnDBOltdoNp6TLh8ULLv42iyR8IxmMY0ZB9M1Ah~JqPctENNRau3vLDzFyFgJwp6iHRiSTU9UH9C7pToZHQblD1h5-oTnftnurrEjUJg9gBA8WrB6a6f~PgEGjtYIbhHcTEcWsJIRvAAYFy64aR1DjSaujb92eQR2bN6Gw4yFSQmmmxw9~8~fD9K6KTVYUJk~j8vtvJ5NR9qa-TPgHLvl1v-t4N7UxIKecb6fEY2P9HkcJbE3A2Oe3~tuR6OhPxQQxyeKy6R-tQw__";
@@ -959,7 +960,7 @@ export default function Dashboard() {
     { icon: <Wallet size={16} />, label: "Wallets", active: false, action: undefined },
     { icon: <ArrowLeftRight size={16} />, label: "Swaps", active: activePage === "swaps", action: () => setActivePage("swaps") },
     { icon: <Phone size={16} />, label: "Voice Calls", active: false, action: undefined },
-    { icon: <Activity size={16} />, label: "Activity", active: false, action: undefined },
+    { icon: <Activity size={16} />, label: "Activity", active: activePage === "history", action: () => setActivePage("history") },
     { icon: <Network size={16} />, label: "P2P Network", active: false, action: undefined },
     { icon: <Shield size={16} />, label: "Security", active: false, action: undefined },
     { icon: <Settings size={16} />, label: "Settings", active: false, action: () => setSettingsOpen(true) },
@@ -1093,6 +1094,8 @@ export default function Dashboard() {
         <div className="flex-1 flex overflow-hidden">
           {/* Swaps Page */}
           {activePage === "swaps" && <Swaps />}
+          {/* Swap History Page */}
+          {activePage === "history" && <SwapHistory />}
 
           {/* Center: Stats + Pipeline */}
           {activePage === "dashboard" && <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">

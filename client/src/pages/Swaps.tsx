@@ -504,6 +504,216 @@ function AgentModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: ()
   );
 }
 
+// ─── Live Order Book ─────────────────────────────────────────────────────────
+
+interface OrderBookEntry {
+  id: string;
+  peer: string;
+  fromSymbol: string;
+  toSymbol: string;
+  fromAmount: number;
+  toAmount: number;
+  rate: number;
+  usdValue: number;
+  expiresIn: number; // seconds
+  latency: number;
+  reputation: number;
+}
+
+function generateOrders(fromSym: string, toSym: string, baseRate: number): OrderBookEntry[] {
+  const peers = ["GammaLN", "AlphaNode", "BetaSwap", "DeltaNode", "EpsilonPeer", "ZetaHub", "EtaNode"];
+  return Array.from({ length: 7 }, (_, i) => {
+    const spread = (Math.random() - 0.5) * 0.02; // ±1% spread
+    const rate = baseRate * (1 + spread);
+    const fromAmount = parseFloat((Math.random() * 0.5 + 0.001).toFixed(5));
+    const usdValue = fromAmount * (fromSym === "BTC" ? 43418 : fromSym === "ETH" ? 2998 : fromSym === "SOL" ? 150 : 1);
+    return {
+      id: `order_${i}_${Date.now()}`,
+      peer: peers[i % peers.length],
+      fromSymbol: fromSym,
+      toSymbol: toSym,
+      fromAmount,
+      toAmount: parseFloat((fromAmount * rate).toFixed(toSym === "USDT" || toSym === "USDC" ? 2 : 6)),
+      rate,
+      usdValue,
+      expiresIn: Math.floor(Math.random() * 55 + 10),
+      latency: Math.floor(Math.random() * 60 + 5),
+      reputation: parseFloat((95 + Math.random() * 5).toFixed(1)),
+    };
+  }).sort((a, b) => b.rate - a.rate);
+}
+
+function LiveOrderBook({ fromToken, toToken, onAccept }: {
+  fromToken: typeof TOKENS[0];
+  toToken: typeof TOKENS[0];
+  onAccept: (order: OrderBookEntry) => void;
+}) {
+  const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
+  const [orders, setOrders] = useState<OrderBookEntry[]>(() =>
+    generateOrders(fromToken.symbol, toToken.symbol, baseRate)
+  );
+  const [flash, setFlash] = useState<string | null>(null);
+
+  // Refresh orders when pair changes
+  useEffect(() => {
+    setOrders(generateOrders(fromToken.symbol, toToken.symbol, baseRate));
+  }, [fromToken.symbol, toToken.symbol]);
+
+  // Simulate live order book updates every 4s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setOrders(prev => {
+        const updated = prev.map(o => ({
+          ...o,
+          expiresIn: Math.max(0, o.expiresIn - 4),
+          rate: o.rate * (1 + (Math.random() - 0.5) * 0.004),
+        })).filter(o => o.expiresIn > 0);
+
+        // Add new order occasionally
+        if (updated.length < 7 || Math.random() < 0.4) {
+          const newOrder = generateOrders(fromToken.symbol, toToken.symbol, baseRate)[0];
+          setFlash(newOrder.id);
+          setTimeout(() => setFlash(null), 800);
+          return [...updated.slice(0, 6), newOrder].sort((a, b) => b.rate - a.rate);
+        }
+        return updated;
+      });
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fromToken.symbol, toToken.symbol, baseRate]);
+
+  const bestRate = orders.length > 0 ? Math.max(...orders.map(o => o.rate)) : baseRate;
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: "oklch(0.13 0.03 265 / 0.85)",
+        border: "1px solid oklch(0.28 0.04 255 / 0.25)",
+        backdropFilter: "blur(20px)",
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "oklch(0.28 0.04 255 / 0.15)" }}>
+        <div>
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-xs font-bold text-white">Live Order Book</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          </div>
+          <p className="text-[9px] text-slate-600 mt-0.5">Open RFQ offers · {fromToken.symbol}/{toToken.symbol} · Updates every 4s</p>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
+          <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
+        </div>
+      </div>
+
+      {/* Column headers */}
+      <div
+        className="grid text-[9px] font-mono uppercase tracking-widest text-slate-600 px-4 py-2 border-b"
+        style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr", borderColor: "oklch(0.28 0.04 255 / 0.08)" }}
+      >
+        <span>Peer</span>
+        <span>Offer</span>
+        <span>Rate</span>
+        <span>Expires</span>
+        <span>Action</span>
+      </div>
+
+      {/* Order rows */}
+      <div className="divide-y" style={{ borderColor: "oklch(0.28 0.04 255 / 0.06)" }}>
+        <AnimatePresence mode="popLayout">
+          {orders.slice(0, 6).map((order, i) => {
+            const isBest = order.rate === bestRate;
+            const isFlashing = flash === order.id;
+            const expiryPct = (order.expiresIn / 60) * 100;
+            return (
+              <motion.div
+                key={order.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0, background: isFlashing ? "oklch(0.55 0.2 220 / 0.12)" : "transparent" }}
+                exit={{ opacity: 0, x: 10 }}
+                transition={{ delay: i * 0.04 }}
+                className="grid items-center px-4 py-2.5 hover:bg-white/3 transition-colors"
+                style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr" }}
+              >
+                {/* Peer */}
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    {isBest && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
+                    <span className="text-[10px] font-mono text-slate-300">{order.peer}</span>
+                  </div>
+                  <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
+                </div>
+
+                {/* Offer amount */}
+                <div>
+                  <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[order.fromSymbol] ?? "#94a3b8" }}>
+                    {order.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {order.fromSymbol}
+                  </div>
+                  <div className="text-[9px] text-slate-600">${order.usdValue.toFixed(0)}</div>
+                </div>
+
+                {/* Rate */}
+                <div>
+                  <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
+                    {order.rate.toFixed(4)}
+                  </div>
+                  <div className="text-[9px] text-slate-600">{order.toAmount} {order.toSymbol}</div>
+                </div>
+
+                {/* Expiry */}
+                <div>
+                  <div className={`text-[10px] font-mono ${order.expiresIn < 15 ? "text-red-400" : "text-slate-500"}`}>
+                    {order.expiresIn}s
+                  </div>
+                  <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "oklch(0.2 0.03 265)" }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-1000"
+                      style={{
+                        width: `${expiryPct}%`,
+                        background: order.expiresIn < 15 ? "oklch(0.65 0.22 25)" : "oklch(0.65 0.2 165)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Accept button */}
+                <button
+                  onClick={() => onAccept(order)}
+                  className="px-2 py-1 rounded-lg text-[9px] font-bold transition-all hover:scale-105 active:scale-95"
+                  style={{
+                    background: isBest ? "oklch(0.55 0.2 220 / 0.2)" : "oklch(0.17 0.03 265)",
+                    border: `1px solid ${isBest ? "oklch(0.55 0.2 220 / 0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
+                    color: isBest ? "oklch(0.75 0.2 220)" : "#64748b",
+                  }}
+                >
+                  Accept
+                </button>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+
+      {/* Footer */}
+      <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: "oklch(0.28 0.04 255 / 0.1)" }}>
+        <span className="text-[9px] text-slate-600">IntercomSwap DHT · 142 total peers</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[9px] text-emerald-500">Live</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const TOKEN_COLORS: Record<string, string> = {
+  BTC: "#f7931a", ETH: "#627eea", SOL: "#9945ff",
+  USDT: "#26a17b", USDC: "#2775ca", WBTC: "#f7931a",
+};
+
 // ─── Main Swaps Page ──────────────────────────────────────────────────────────
 
 export default function Swaps() {
@@ -571,6 +781,13 @@ export default function Swaps() {
   const handleReset = () => {
     if (phaseTimerRef.current) clearTimeout(phaseTimerRef.current);
     setSwapPhase("idle");
+  };
+
+  const handleAcceptOrder = (order: OrderBookEntry) => {
+    setFromAmount(order.fromAmount.toString());
+    toast.success(`Quote accepted from ${order.peer}`, {
+      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}`,
+    });
   };
 
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
@@ -869,6 +1086,7 @@ export default function Swaps() {
 
         {/* Right: Info Panels */}
         <div className="space-y-4">
+          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
           <PeerPanel fromToken={fromToken} toToken={toToken} />
           <RecentSwaps />
 
