@@ -22,7 +22,6 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { useLocation } from "wouter";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -201,7 +200,6 @@ export default function Dashboard() {
   const haptic = useHaptic();
   const { connectedWallets, primaryWallet } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [, navigate] = useLocation();
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { entries: logs, addEntry: addLog } = useAgentLog();
@@ -315,14 +313,6 @@ export default function Dashboard() {
                 Connect
               </button>
             )}
-            {/* Swap shortcut */}
-            <button
-              onClick={() => navigate("/trade")}
-              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
-              style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
-              <Zap className="w-3 h-3" />
-              Swap
-            </button>
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}

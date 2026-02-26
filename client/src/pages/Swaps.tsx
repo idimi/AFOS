@@ -18,6 +18,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
+import { useWallet } from "../contexts/WalletContext";
+import ConnectWalletModal from "../components/ConnectWalletModal";
+import { Wallet } from "lucide-react";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -1282,6 +1285,8 @@ function AutopostTab() {
 
 export default function Swaps() {
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
+  const { connectedWallets, primaryWallet } = useWallet();
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [fromToken, setFromToken] = useState(TOKENS[0]); // BTC
   const [toToken, setToToken] = useState(TOKENS[3]);     // USDT
   const [fromAmount, setFromAmount] = useState("0.001");
@@ -1377,7 +1382,26 @@ export default function Swaps() {
             P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
           </p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            {/* Wallet connect */}
+            {connectedWallets.length > 0 ? (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {primaryWallet?.shortAddress}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all"
+                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
+                <Wallet className="w-3 h-3" />
+                <span className="hidden sm:inline">Connect Wallet</span>
+                <span className="sm:hidden">Connect</span>
+              </button>
+            )}
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
             style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
@@ -1786,6 +1810,7 @@ export default function Swaps() {
         </div>
       </div>
       </> }
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
     </div>
   );
 }
