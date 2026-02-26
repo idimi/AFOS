@@ -119,10 +119,10 @@ function truncateHash(hash: string): string {
 
 function StatusBadge({ status }: { status: SwapStatus }) {
   const config = {
-    complete: { icon: <CheckCircle2 className="w-3 h-3" />, label: "Complete", bg: "oklch(0.55 0.18 165 / 0.12)", border: "oklch(0.55 0.18 165 / 0.3)", color: "oklch(0.75 0.18 165)" },
-    failed: { icon: <XCircle className="w-3 h-3" />, label: "Failed", bg: "oklch(0.55 0.22 25 / 0.12)", border: "oklch(0.55 0.22 25 / 0.3)", color: "oklch(0.75 0.22 25)" },
-    pending: { icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Pending", bg: "oklch(0.55 0.2 220 / 0.12)", border: "oklch(0.55 0.2 220 / 0.3)", color: "oklch(0.75 0.2 220)" },
-    refunded: { icon: <RefreshCw className="w-3 h-3" />, label: "Refunded", bg: "oklch(0.55 0.18 60 / 0.12)", border: "oklch(0.55 0.18 60 / 0.3)", color: "oklch(0.75 0.18 60)" },
+    complete: { icon: <CheckCircle2 className="w-3 h-3" />, label: "Complete", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)", color: "#10b981" },
+    failed: { icon: <XCircle className="w-3 h-3" />, label: "Failed", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)", color: "#ef4444" },
+    pending: { icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Pending", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.35)", color: "#3b82f6" },
+    refunded: { icon: <RefreshCw className="w-3 h-3" />, label: "Refunded", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", color: "#f59e0b" },
   }[status];
 
   return (
@@ -179,13 +179,13 @@ function SummaryStats({ swaps }: { swaps: SwapRecord[] }) {
           transition={{ delay: i * 0.06 }}
           className="rounded-xl px-4 py-3"
           style={{
-            background: "oklch(0.13 0.03 265 / 0.8)",
-            border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+            background: "var(--card)",
+            border: "1px solid var(--border)",
           }}
         >
           <div className={`flex items-center gap-1.5 mb-1.5 ${s.color}`}>
             {s.icon}
-            <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500">{s.label}</span>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">{s.label}</span>
           </div>
           <div className={`text-lg font-bold font-mono ${s.color}`}>{s.value}</div>
         </motion.div>
@@ -296,16 +296,16 @@ export default function SwapHistory() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-white tracking-tight">Swap History</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Swap History</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
             All past swaps · IntercomSwap P2P · {SWAP_HISTORY.length} total transactions
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => toast.info("Export coming soon")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200 transition-colors"
-            style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-slate-200 transition-colors"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
             <Download className="w-3.5 h-3.5" />
             Export CSV
@@ -320,21 +320,21 @@ export default function SwapHistory() {
       <div
         className="rounded-2xl p-4 mb-4"
         style={{
-          background: "oklch(0.13 0.03 265 / 0.8)",
-          border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
         }}
       >
         <div className="flex flex-wrap gap-3 items-center">
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search pair, peer, hash..."
               value={filters.search}
               onChange={e => setFilter("search", e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg text-xs text-slate-300 placeholder-slate-600 outline-none"
-              style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.25)" }}
+              className="w-full pl-9 pr-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
             />
           </div>
 
@@ -373,7 +373,7 @@ export default function SwapHistory() {
           {/* Reset */}
           <button
             onClick={() => { setFilters({ search: "", pair: "All", status: "All", dateRange: "All time", chain: "All" }); setPage(1); }}
-            className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
+            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
           >
             <RefreshCw className="w-3 h-3" />
             Reset
@@ -385,16 +385,16 @@ export default function SwapHistory() {
       <div
         className="rounded-2xl overflow-hidden"
         style={{
-          background: "oklch(0.13 0.03 265 / 0.8)",
-          border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
         }}
       >
         {/* Table header */}
         <div
-          className="grid text-[10px] font-mono uppercase tracking-widest text-slate-500 px-5 py-3 border-b"
+          className="grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
           style={{
             gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
-            borderColor: "oklch(0.28 0.04 255 / 0.15)",
+            borderColor: "var(--border)",
           }}
         >
           <SortHeader label="Time" field="timestamp" current={sortField} dir={sortDir} onClick={handleSort} />
@@ -423,16 +423,16 @@ export default function SwapHistory() {
               >
                 {/* Main row */}
                 <div
-                  className="grid items-center px-5 py-3.5 cursor-pointer hover:bg-white/3 transition-colors border-b"
+                  className="grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
                   style={{
                     gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
-                    borderColor: "oklch(0.28 0.04 255 / 0.08)",
+                    borderColor: "var(--border)",
                   }}
                   onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
                 >
                   {/* Time */}
                   <div>
-                    <div className="text-xs text-slate-400">{formatTime(swap.timestamp)}</div>
+                    <div className="text-xs text-muted-foreground">{formatTime(swap.timestamp)}</div>
                     <div className="text-[9px] text-slate-600 mt-0.5">
                       {swap.timestamp.toLocaleDateString()} {swap.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
@@ -453,7 +453,7 @@ export default function SwapHistory() {
 
                   {/* Protocol */}
                   <div>
-                    <div className="text-[10px] text-slate-400 leading-tight">{swap.protocol}</div>
+                    <div className="text-[10px] text-muted-foreground leading-tight">{swap.protocol}</div>
                     <div className="text-[9px] text-slate-600 mt-0.5">{swap.peer}</div>
                   </div>
 
@@ -463,12 +463,12 @@ export default function SwapHistory() {
                   </div>
 
                   {/* Fee */}
-                  <div className="text-xs font-mono text-slate-400">
+                  <div className="text-xs font-mono text-muted-foreground">
                     {swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}
                   </div>
 
                   {/* Speed */}
-                  <div className="text-xs font-mono text-slate-400">
+                  <div className="text-xs font-mono text-muted-foreground">
                     {formatSettlement(swap.settlementTime)}
                   </div>
 
@@ -477,7 +477,7 @@ export default function SwapHistory() {
 
                   {/* Tx hash */}
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono text-slate-500">{truncateHash(swap.txHash)}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground">{truncateHash(swap.txHash)}</span>
                     <button onClick={e => { e.stopPropagation(); copyHash(swap.txHash); }}
                       className="text-slate-600 hover:text-cyan-400 transition-colors">
                       <Copy className="w-3 h-3" />
@@ -501,8 +501,8 @@ export default function SwapHistory() {
                       <div
                         className="px-5 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
                         style={{
-                          background: "oklch(0.11 0.025 265 / 0.8)",
-                          borderColor: "oklch(0.28 0.04 255 / 0.08)",
+                          background: "var(--muted)",
+                          borderColor: "var(--border)",
                         }}
                       >
                         <div>
@@ -515,14 +515,14 @@ export default function SwapHistory() {
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Executed By</div>
-                          <span className={`text-xs font-semibold ${swap.agentExecuted ? "text-cyan-400" : "text-slate-400"}`}>
+                          <span className={`text-xs font-semibold ${swap.agentExecuted ? "text-cyan-400" : "text-muted-foreground"}`}>
                             {swap.agentExecuted ? "🤖 OpenClaw Agent" : "👤 Manual"}
                           </span>
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Full Tx Hash</div>
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-slate-400 truncate max-w-[140px]">{swap.txHash}</span>
+                            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]">{swap.txHash}</span>
                             <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0">
                               <Copy className="w-3 h-3" />
                             </button>
@@ -530,15 +530,15 @@ export default function SwapHistory() {
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Settlement Time</div>
-                          <span className="text-xs font-mono text-slate-300">{formatSettlement(swap.settlementTime)}</span>
+                          <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Peer</div>
-                          <span className="text-xs font-mono text-slate-300">{swap.peer}</span>
+                          <span className="text-xs font-mono text-foreground">{swap.peer}</span>
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>
-                          <span className="text-xs font-mono text-slate-300">
+                          <span className="text-xs font-mono text-foreground">
                             1 {swap.fromSymbol} = {(swap.toAmount / swap.fromAmount).toFixed(4)} {swap.toSymbol}
                           </span>
                         </div>
@@ -571,8 +571,8 @@ export default function SwapHistory() {
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 disabled:opacity-30 transition-colors"
-                style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                style={{ background: "var(--card)", border: "1px solid var(--border)" }}
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
@@ -582,9 +582,9 @@ export default function SwapHistory() {
                   onClick={() => setPage(p)}
                   className="w-7 h-7 rounded-lg text-xs font-mono transition-all"
                   style={{
-                    background: p === page ? "oklch(0.55 0.2 220 / 0.2)" : "oklch(0.17 0.03 265)",
-                    border: `1px solid ${p === page ? "oklch(0.55 0.2 220 / 0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
-                    color: p === page ? "oklch(0.75 0.2 220)" : "#64748b",
+                    background: p === page ? "rgba(59,130,246,0.15)" : "var(--muted)",
+                    border: `1px solid ${p === page ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                    color: p === page ? "#3b82f6" : "var(--muted-foreground)",
                   }}
                 >
                   {p}
@@ -593,8 +593,8 @@ export default function SwapHistory() {
               <button
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-300 disabled:opacity-30 transition-colors"
-                style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                style={{ background: "var(--card)", border: "1px solid var(--border)" }}
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -616,15 +616,15 @@ function FilterSelect({ label, value, options, onChange }: {
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
-        className="appearance-none pl-3 pr-7 py-2 rounded-lg text-xs text-slate-300 outline-none cursor-pointer"
+        className="appearance-none pl-3 pr-7 py-2 rounded-lg text-xs text-foreground outline-none cursor-pointer"
         style={{
-          background: "oklch(0.17 0.03 265)",
-          border: "1px solid oklch(0.28 0.04 255 / 0.25)",
+          background: "var(--card)",
+          border: "1px solid var(--border)",
         }}
       >
         {options.map(o => <option key={o} value={o}>{label}: {o}</option>)}
       </select>
-      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
     </div>
   );
 }
@@ -640,7 +640,7 @@ function SortHeader({ label, field, current, dir, onClick }: {
   return (
     <button
       onClick={() => onClick(field)}
-      className={`flex items-center gap-1 hover:text-slate-300 transition-colors ${active ? "text-cyan-400" : ""}`}
+      className={`flex items-center gap-1 hover:text-foreground transition-colors ${active ? "text-cyan-400" : ""}`}
     >
       {label}
       <ArrowDownUp className="w-2.5 h-2.5" />

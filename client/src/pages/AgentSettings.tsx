@@ -22,7 +22,7 @@ const SECTIONS: Section[] = [
   { id: "intercomswap", label: "IntercomSwap Node", icon: Network, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
   { id: "lnd", label: "Bitcoin Lightning (LND)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
   { id: "solana", label: "Solana Wallet", icon: Wallet, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },
-  { id: "moonpay", label: "MoonPay (Phase 2)", icon: Moon, color: "text-white/25", border: "border-white/8", bg: "bg-white/2" },
+  { id: "moonpay", label: "MoonPay (Phase 2)", icon: Moon, color: "text-foreground/70", border: "border-border", bg: "bg-muted" },
 ];
 
 function Field({ label, value, onChange, type = "text", mono = false, placeholder = "", disabled = false }: {
@@ -33,7 +33,7 @@ function Field({ label, value, onChange, type = "text", mono = false, placeholde
   const isPassword = type === "password";
   return (
     <div>
-      <label className="block text-xs text-white/40 mb-1.5">{label}</label>
+      <label className="block text-xs text-foreground/70 mb-1.5">{label}</label>
       <div className="relative">
         <input
           type={isPassword && !show ? "password" : "text"}
@@ -41,10 +41,10 @@ function Field({ label, value, onChange, type = "text", mono = false, placeholde
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className={`w-full bg-white/4 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-500/35 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${mono ? "font-mono" : ""}`}
+          className={`w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-cyan-500/35 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${mono ? "font-mono" : ""}`}
         />
         {isPassword && (
-          <button onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors">
+          <button onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/70 hover:text-foreground/70 transition-colors">
             {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         )}
@@ -59,13 +59,13 @@ function Toggle({ label, description, value, onChange, disabled = false }: {
   return (
     <div className="flex items-center justify-between gap-4">
       <div>
-        <p className="text-sm text-white/70">{label}</p>
-        {description && <p className="text-xs text-white/30 mt-0.5">{description}</p>}
+        <p className="text-sm text-foreground/70">{label}</p>
+        {description && <p className="text-xs text-foreground/70 mt-0.5">{description}</p>}
       </div>
       <button
         onClick={() => !disabled && onChange(!value)}
         disabled={disabled}
-        className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${value ? "bg-cyan-500/60" : "bg-white/10"}`}
+        className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${value ? "bg-cyan-500/60" : "bg-muted"}`}
       >
         <motion.div
           animate={{ x: value ? 18 : 2 }}
@@ -113,8 +113,8 @@ export default function AgentSettings() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">Agent Settings</h1>
-        <p className="text-sm text-white/35 mt-1">Configure your OpenClaw agent and IntercomSwap node</p>
+        <h1 className="text-xl font-bold text-foreground">Agent Settings</h1>
+        <p className="text-sm text-foreground/70 mt-1">Configure your OpenClaw agent and IntercomSwap node</p>
       </div>
 
       <div className="space-y-4">
@@ -128,7 +128,7 @@ export default function AgentSettings() {
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${section.bg} border ${section.border}`}>
                   <Icon className={`w-4 h-4 ${section.color}`} />
                 </div>
-                <p className={`text-sm font-semibold ${isPlanned ? "text-white/30" : "text-white"}`}>{section.label}</p>
+                <p className={`text-sm font-semibold ${isPlanned ? "text-foreground/70" : "text-foreground"}`}>{section.label}</p>
                 {isPlanned && (
                   <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
                     <Clock className="w-3 h-3 text-amber-400" />
@@ -141,9 +141,9 @@ export default function AgentSettings() {
                 <div className="space-y-4">
                   <Field label="LLM Model" value={settings.llmModel} onChange={set("llmModel")} placeholder="kimi-k2-turbo" />
                   <div>
-                    <label className="block text-xs text-white/40 mb-1.5">System Prompt</label>
+                    <label className="block text-xs text-foreground/70 mb-1.5">System Prompt</label>
                     <textarea value={settings.systemPrompt} onChange={e => set("systemPrompt")(e.target.value)} rows={3}
-                      className="w-full bg-white/4 border border-white/8 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-cyan-500/35 resize-none" />
+                      className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-cyan-500/35 resize-none" />
                   </div>
                   <Field label="Max Transaction Amount (USD)" value={settings.maxTxAmount} onChange={set("maxTxAmount")} placeholder="500" />
                   <Toggle label="Auto-confirm swaps" description="Agent executes without asking for confirmation" value={settings.autoConfirm} onChange={set("autoConfirm") as (v: boolean) => void} />
@@ -159,14 +159,14 @@ export default function AgentSettings() {
                   </div>
                   <Field label="SC-Bridge Port" value={settings.scBridgePort} onChange={set("scBridgePort")} mono placeholder="49222" />
                   <div>
-                    <label className="block text-xs text-white/40 mb-1.5">Peer Mode</label>
+                    <label className="block text-xs text-foreground/70 mb-1.5">Peer Mode</label>
                     <div className="flex gap-2">
                       {["maker", "taker", "maker-taker"].map(mode => (
                         <button key={mode} onClick={() => set("peerMode")(mode)}
                           className={`flex-1 py-2 rounded-xl text-xs font-mono border transition-all ${
                             settings.peerMode === mode
                               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                              : "border-white/8 bg-white/3 text-white/40 hover:border-white/15"
+                              : "border-border bg-muted text-foreground/70 hover:border-border"
                           }`}>
                           {mode}
                         </button>
@@ -189,12 +189,12 @@ export default function AgentSettings() {
                   <Field label="RPC URL" value={settings.solanaRpc} onChange={set("solanaRpc")} mono placeholder="https://api.mainnet-beta.solana.com" />
                   <Field label="Keypair Path" value={settings.solanaKeypairPath} onChange={set("solanaKeypairPath")} mono placeholder="onchain/solana/keypair.json" />
                   <div>
-                    <label className="block text-xs text-white/40 mb-1.5">Escrow Program ID</label>
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-white/3 border border-white/6">
+                    <label className="block text-xs text-foreground/70 mb-1.5">Escrow Program ID</label>
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-muted border border-border">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="text-xs font-mono text-white/50 truncate">{settings.escrowProgramId}</span>
+                      <span className="text-xs font-mono text-foreground/70 truncate">{settings.escrowProgramId}</span>
                     </div>
-                    <p className="text-[10px] text-white/25 mt-1 font-mono">Deployed on Solana mainnet — do not modify</p>
+                    <p className="text-[10px] text-foreground/70 mt-1 font-mono">Deployed on Solana mainnet — do not modify</p>
                   </div>
                 </div>
               )}
@@ -203,7 +203,7 @@ export default function AgentSettings() {
                 <div className="space-y-4 opacity-40 pointer-events-none">
                   <Field label="API Key" value={settings.moonpayApiKey} onChange={set("moonpayApiKey")} type="password" placeholder="pk_live_…" disabled />
                   <Field label="Destination Wallet Address" value={settings.moonpayWallet} onChange={set("moonpayWallet")} mono placeholder="bc1q…" disabled />
-                  <p className="text-xs text-white/30 font-mono">MoonPay fiat on-ramp will be integrated in Phase 2 to auto-fund the agent wallet before executing swaps.</p>
+                  <p className="text-xs text-foreground/70 font-mono">MoonPay fiat on-ramp will be integrated in Phase 2 to auto-fund the agent wallet before executing swaps.</p>
                 </div>
               )}
             </motion.div>

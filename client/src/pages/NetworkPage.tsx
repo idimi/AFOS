@@ -312,8 +312,8 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
       transition={{ duration: 0.2 }}
       className="absolute top-4 right-4 w-64 rounded-2xl p-4 z-20"
       style={{
-        background: "oklch(0.11 0.03 265 / 0.95)",
-        border: "1px solid oklch(0.28 0.04 255 / 0.35)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
         backdropFilter: "blur(24px)",
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
       }}
@@ -322,11 +322,11 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
         <div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full" style={{ background: peer.online ? "#10b981" : "#ef4444" }} />
-            <span className="text-sm font-bold text-white">{peer.alias}</span>
+            <span className="text-sm font-bold text-foreground">{peer.alias}</span>
           </div>
-          <span className="text-[10px] font-mono text-slate-500">{peer.region}</span>
+          <span className="text-[10px] font-mono text-muted-foreground">{peer.region}</span>
         </div>
-        <button onClick={onClose} className="text-white/25 hover:text-white/60 transition-colors">
+        <button onClick={onClose} className="text-foreground/25 hover:text-foreground/60 transition-colors">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -341,13 +341,13 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
           { label: "Version", value: peer.version, color: "#64748b" },
         ].map(item => (
           <div key={item.label} className="flex items-center justify-between">
-            <span className="text-[10px] text-slate-500">{item.label}</span>
+            <span className="text-[10px] text-muted-foreground">{item.label}</span>
             <span className="text-[10px] font-mono font-semibold" style={{ color: item.color }}>{item.value}</span>
           </div>
         ))}
       </div>
 
-      <div className="mt-3 pt-3 border-t border-white/5">
+      <div className="mt-3 pt-3 border-t border-border">
         <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Active Pairs</div>
         <div className="flex flex-wrap gap-1">
           {peer.pairs.map(pair => (
@@ -381,14 +381,14 @@ function NetworkStats({ peers, channels }: { peers: Peer[]; channels: Channel[] 
         const Icon = stat.icon;
         return (
           <div key={stat.label} className="rounded-xl p-3 flex items-center gap-3"
-            style={{ background: "oklch(0.13 0.03 265 / 0.8)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
               style={{ background: `${stat.color}18`, border: `1px solid ${stat.color}30` }}>
               <Icon className="w-3.5 h-3.5" style={{ color: stat.color }} />
             </div>
             <div>
               <div className="text-sm font-bold font-mono" style={{ color: stat.color }}>{stat.value}</div>
-              <div className="text-[9px] text-slate-500">{stat.label}</div>
+              <div className="text-[9px] text-muted-foreground">{stat.label}</div>
             </div>
           </div>
         );
@@ -406,16 +406,16 @@ function PeerList({ peers, selectedId, onSelect }: {
 }) {
   return (
     <div className="rounded-2xl overflow-hidden"
-      style={{ background: "oklch(0.13 0.03 265 / 0.8)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+      style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <div className="px-4 py-3 border-b flex items-center justify-between"
-        style={{ borderColor: "oklch(0.28 0.04 255 / 0.12)" }}>
+        style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
           <Globe className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-xs font-bold text-white">Peer Directory</span>
+          <span className="text-xs font-bold text-foreground">Peer Directory</span>
         </div>
-        <span className="text-[10px] font-mono text-slate-500">{peers.length} nodes</span>
+        <span className="text-[10px] font-mono text-muted-foreground">{peers.length} nodes</span>
       </div>
-      <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: "oklch(0.28 0.04 255 / 0.06)" }}>
+      <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: "var(--border)" }}>
         {peers.filter(p => p.id !== "self").map(peer => {
           const color = latencyColor(peer.latency);
           const isSelected = selectedId === peer.id;
@@ -423,7 +423,7 @@ function PeerList({ peers, selectedId, onSelect }: {
             <button
               key={peer.id}
               onClick={() => onSelect(peer.id)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/3 transition-colors text-left"
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
               style={{ background: isSelected ? "rgba(6,182,212,0.06)" : undefined }}
             >
               <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
@@ -497,22 +497,22 @@ export default function NetworkPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">P2P Network</h1>
-          <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
+          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">P2P Network</h1>
+          <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
             IntercomSwap DHT · Live peer topology · Atomic swap channels
           </p>
-          <p className="text-xs text-slate-500 mt-0.5 sm:hidden">
+          <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
             {livePeers.filter(p => p.online).length}/{livePeers.length} peers online
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-            style={{ background: "oklch(0.55 0.18 165 / 0.1)", border: "1px solid oklch(0.55 0.18 165 / 0.25)" }}>
+            style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
             <span className="text-[10px] font-mono text-emerald-400">DHT Live</span>
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-            style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <Shield className="w-3 h-3 text-cyan-400" />
             <span className="text-[10px] font-mono text-cyan-400">Non-custodial</span>
           </div>
@@ -535,17 +535,17 @@ export default function NetworkPage() {
               animate={{ scale: isSelected ? 0.99 : 1 }}
               style={{
                 background: isSelected
-                  ? "oklch(0.15 0.04 265 / 0.95)"
-                  : "oklch(0.12 0.03 265 / 0.85)",
-                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
+                  ? "var(--accent)"
+                  : "var(--card)",
+                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
               }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#ef4444" }} />
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-white truncate">{peer.alias}</div>
-                    <div className="text-[10px] font-mono text-slate-500">{peer.region}</div>
+                    <div className="text-sm font-bold text-foreground truncate">{peer.alias}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">{peer.region}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-2">
@@ -553,11 +553,11 @@ export default function NetworkPage() {
                     <div className="text-xs font-mono font-semibold" style={{ color }}>
                       {peer.online ? `${peer.latency}ms` : "offline"}
                     </div>
-                    <div className="text-[9px] text-slate-500">{peer.channels}ch</div>
+                    <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xs font-mono text-amber-400">{peer.liquidity} BTC</div>
-                    <div className="text-[9px] text-slate-500">${(peer.volume24h/1000).toFixed(0)}k vol</div>
+                    <div className="text-[9px] text-muted-foreground">${(peer.volume24h/1000).toFixed(0)}k vol</div>
                   </div>
                 </div>
               </div>
@@ -571,14 +571,14 @@ export default function NetworkPage() {
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
+                    <div className="mt-3 pt-3 border-t border-border space-y-1.5">
                       <div className="flex justify-between">
-                        <span className="text-[10px] text-slate-500">Reputation</span>
+                        <span className="text-[10px] text-muted-foreground">Reputation</span>
                         <span className="text-[10px] font-mono" style={{ color: peer.reputation > 98 ? "#10b981" : peer.reputation > 95 ? "#f59e0b" : "#ef4444" }}>{peer.reputation}%</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-[10px] text-slate-500">Version</span>
-                        <span className="text-[10px] font-mono text-slate-300">{peer.version}</span>
+                        <span className="text-[10px] text-muted-foreground">Version</span>
+                        <span className="text-[10px] font-mono text-foreground/80">{peer.version}</span>
                       </div>
                       <div className="flex flex-wrap gap-1 mt-2">
                         {peer.pairs.map(pair => (
@@ -603,8 +603,8 @@ export default function NetworkPage() {
         {/* Node Graph */}
         <div className="rounded-2xl overflow-hidden relative"
           style={{
-            background: "oklch(0.10 0.03 265 / 0.9)",
-            border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+            background: "var(--card)",
+            border: "1px solid var(--border)",
             backdropFilter: "blur(20px)",
             height: "480px",
           }}>
@@ -627,7 +627,7 @@ export default function NetworkPage() {
 
           {/* Bottom activity ticker */}
           <div className="absolute bottom-0 left-0 right-0 px-4 py-2.5 border-t flex items-center gap-2"
-            style={{ background: "oklch(0.09 0.03 265 / 0.9)", borderColor: "oklch(0.28 0.04 255 / 0.12)" }}>
+            style={{ background: "var(--background)", borderColor: "var(--border)" }}>
             <Activity className="w-3 h-3 text-cyan-400 shrink-0 animate-pulse" />
             <motion.span
               key={lastActivity}
@@ -649,7 +649,7 @@ export default function NetworkPage() {
             ].map(item => (
               <div key={item.label} className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
-                <span className="text-[9px] font-mono text-white/35">{item.label}</span>
+                <span className="text-[9px] font-mono text-foreground/35">{item.label}</span>
               </div>
             ))}
           </div>
@@ -661,10 +661,10 @@ export default function NetworkPage() {
 
           {/* Channel activity */}
           <div className="rounded-2xl p-4"
-            style={{ background: "oklch(0.13 0.03 265 / 0.8)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-bold text-white">Active Channels</span>
+              <span className="text-xs font-bold text-foreground">Active Channels</span>
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-auto" />
             </div>
             <div className="space-y-2">
@@ -676,7 +676,7 @@ export default function NetworkPage() {
                   <div key={i} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                      <span className="text-[10px] font-mono text-slate-300 truncate">
+                      <span className="text-[10px] font-mono text-foreground/80 truncate">
                         {from.alias.split(" ")[0]} ↔ {to.alias.split(" ")[0]}
                       </span>
                     </div>
@@ -692,10 +692,10 @@ export default function NetworkPage() {
 
           {/* Rendezvous info */}
           <div className="rounded-2xl p-4"
-            style={{ background: "oklch(0.13 0.03 265 / 0.8)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Globe className="w-3.5 h-3.5 text-violet-400" />
-              <span className="text-xs font-bold text-white">Rendezvous</span>
+              <span className="text-xs font-bold text-foreground">Rendezvous</span>
             </div>
             <div className="space-y-1.5">
               {[
@@ -705,8 +705,8 @@ export default function NetworkPage() {
                 { label: "Settlement", value: "Lightning + HTLC" },
               ].map(item => (
                 <div key={item.label} className="flex justify-between">
-                  <span className="text-[10px] text-slate-500">{item.label}</span>
-                  <span className="text-[10px] font-mono text-slate-300">{item.value}</span>
+                  <span className="text-[10px] text-muted-foreground">{item.label}</span>
+                  <span className="text-[10px] font-mono text-foreground/80">{item.value}</span>
                 </div>
               ))}
             </div>

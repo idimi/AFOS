@@ -135,7 +135,7 @@ function TokenSelector({
           {selected.icon}
         </div>
         <div className="flex-1 text-left">
-          <div className="text-sm font-bold text-white">{selected.symbol}</div>
+          <div className="text-sm font-bold text-foreground">{selected.symbol}</div>
           <div className="text-[10px] text-slate-400">{selected.name}</div>
         </div>
         <div className="text-right">
@@ -154,8 +154,8 @@ function TokenSelector({
             transition={{ duration: 0.15 }}
             className="absolute top-full mt-2 left-0 right-0 z-50 rounded-xl overflow-hidden"
             style={{
-              background: "oklch(0.13 0.03 265)",
-              border: "1px solid oklch(0.28 0.04 255 / 0.4)",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
               boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
             }}
           >
@@ -165,14 +165,14 @@ function TokenSelector({
                 <button
                   key={token.symbol}
                   onClick={() => { onSelect(token); setOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/50 transition-colors"
                 >
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-base font-bold"
                     style={{ background: `${token.color}22`, color: token.color }}>
                     {token.icon}
                   </div>
                   <div className="flex-1 text-left">
-                    <div className="text-sm font-semibold text-white">{token.symbol}</div>
+                    <div className="text-sm font-semibold text-foreground">{token.symbol}</div>
                     <div className="text-[10px] text-slate-500">{tc.network}</div>
                   </div>
                   <div className="text-right">
@@ -215,8 +215,8 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl p-5 mt-4"
       style={{
-        background: "oklch(0.13 0.03 265 / 0.9)",
-        border: "1px solid oklch(0.28 0.04 255 / 0.3)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
         backdropFilter: "blur(20px)",
       }}
     >
@@ -248,9 +248,9 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
                 <div
                   className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-500"
                   style={{
-                    background: isComplete ? "oklch(0.55 0.18 165)" : isActive ? "oklch(0.55 0.2 220)" : "oklch(0.2 0.03 265)",
-                    border: isActive ? "2px solid oklch(0.7 0.2 220)" : "2px solid transparent",
-                    boxShadow: isActive ? "0 0 12px oklch(0.7 0.2 220 / 0.5)" : "none",
+                    background: isComplete ? "#10b981" : isActive ? "#3b82f6" : "var(--muted)",
+                    border: isActive ? "2px solid #60a5fa" : "2px solid transparent",
+                    boxShadow: isActive ? "0 0 12px rgba(96,165,250,0.5)" : "none",
                   }}
                 >
                   {isComplete ? (
@@ -264,7 +264,7 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
                 {i < steps.length - 1 && (
                   <div
                     className="w-px h-4 mt-1 transition-all duration-500"
-                    style={{ background: isComplete ? "oklch(0.55 0.18 165 / 0.5)" : "oklch(0.25 0.03 265)" }}
+                    style={{ background: isComplete ? "rgba(16,185,129,0.5)" : "var(--muted)" }}
                   />
                 )}
               </div>
@@ -287,7 +287,7 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           className="mt-4 p-3 rounded-xl flex items-center gap-3"
-          style={{ background: "oklch(0.55 0.18 165 / 0.1)", border: "1px solid oklch(0.55 0.18 165 / 0.3)" }}
+          style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)" }}
         >
           <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
           <div>
@@ -321,8 +321,8 @@ function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToke
     <div
       className="rounded-2xl p-4"
       style={{
-        background: "oklch(0.13 0.03 265 / 0.7)",
-        border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
       }}
     >
       <div className="flex items-center justify-between mb-3">
@@ -341,7 +341,7 @@ function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToke
           <div
             key={peer.id}
             className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-            style={{ background: "oklch(0.17 0.03 265 / 0.5)" }}
+            style={{ background: "var(--muted)" }}
           >
             <div className={`w-2 h-2 rounded-full flex-shrink-0 ${peer.online ? "bg-emerald-400" : "bg-slate-600"}`} />
             <div className="flex-1 min-w-0">
@@ -356,7 +356,7 @@ function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToke
         ))}
       </div>
 
-      <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
+      <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
         <span className="text-[10px] text-slate-600">IntercomSwap DHT</span>
         <span className="text-[10px] font-mono text-cyan-500">142 total peers</span>
       </div>
@@ -379,8 +379,8 @@ function RecentSwaps() {
     <div
       className="rounded-2xl p-4"
       style={{
-        background: "oklch(0.13 0.03 265 / 0.7)",
-        border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
       }}
     >
       <div className="flex items-center justify-between mb-3">
@@ -396,7 +396,7 @@ function RecentSwaps() {
           <div
             key={i}
             className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-            style={{ background: "oklch(0.17 0.03 265 / 0.5)" }}
+            style={{ background: "var(--muted)" }}
           >
             <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${swap.status === "complete" ? "bg-emerald-400" : "bg-red-400"}`} />
             <div className="flex-1 min-w-0">
@@ -453,7 +453,7 @@ function ChainStatsBar() {
           <div className="text-xl font-bold" style={{ color: stat.color }}>{stat.icon}</div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold font-mono text-white">${stat.price.toLocaleString()}</span>
+              <span className="text-sm font-bold font-mono text-foreground">${stat.price.toLocaleString()}</span>
               <span className={`text-[10px] font-mono ${stat.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                 {stat.change >= 0 ? "▲" : "▼"} {Math.abs(stat.change)}%
               </span>
@@ -474,13 +474,13 @@ function AgentModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: ()
       onClick={onToggle}
       className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all w-full"
       style={{
-        background: enabled ? "oklch(0.55 0.2 220 / 0.15)" : "oklch(0.17 0.03 265)",
-        border: `1px solid ${enabled ? "oklch(0.55 0.2 220 / 0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
+        background: enabled ? "rgba(59,130,246,0.15)" : "var(--muted)",
+        border: `1px solid ${enabled ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
       }}
     >
       <div
         className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: enabled ? "oklch(0.55 0.2 220 / 0.2)" : "oklch(0.2 0.03 265)" }}
+        style={{ background: enabled ? "rgba(59,130,246,0.2)" : "var(--muted)" }}
       >
         {enabled ? <Bot className="w-4 h-4 text-cyan-400" /> : <Cpu className="w-4 h-4 text-slate-500" />}
       </div>
@@ -494,7 +494,7 @@ function AgentModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: ()
       </div>
       <div
         className="w-9 h-5 rounded-full relative transition-all flex-shrink-0"
-        style={{ background: enabled ? "oklch(0.55 0.2 220)" : "oklch(0.25 0.03 265)" }}
+        style={{ background: enabled ? "#3b82f6" : "var(--muted)" }}
       >
         <div
           className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-300"
@@ -589,17 +589,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        background: "oklch(0.13 0.03 265 / 0.85)",
-        border: "1px solid oklch(0.28 0.04 255 / 0.25)",
+        background: "var(--card)",
+        border: "1px solid var(--border)",
         backdropFilter: "blur(20px)",
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "oklch(0.28 0.04 255 / 0.15)" }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
         <div>
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-xs font-bold text-white">Live Order Book</span>
+            <span className="text-xs font-bold text-foreground">Live Order Book</span>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">Open RFQ offers · {fromToken.symbol}/{toToken.symbol} · Updates every 4s</p>
@@ -613,7 +613,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       {/* Column headers */}
       <div
         className="grid text-[9px] font-mono uppercase tracking-widest text-slate-600 px-4 py-2 border-b"
-        style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr", borderColor: "oklch(0.28 0.04 255 / 0.08)" }}
+        style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr", borderColor: "var(--border)" }}
       >
         <span>Peer</span>
         <span>Offer</span>
@@ -623,7 +623,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       </div>
 
       {/* Order rows */}
-      <div className="divide-y" style={{ borderColor: "oklch(0.28 0.04 255 / 0.06)" }}>
+      <div className="divide-y" style={{ borderColor: "var(--border)" }}>
         <AnimatePresence mode="popLayout">
           {orders.slice(0, 6).map((order, i) => {
             const isBest = order.rate === bestRate;
@@ -633,10 +633,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
               <motion.div
                 key={order.id}
                 initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0, background: isFlashing ? "oklch(0.55 0.2 220 / 0.12)" : "transparent" }}
+                animate={{ opacity: 1, x: 0, background: isFlashing ? "rgba(59,130,246,0.12)" : "transparent" }}
                 exit={{ opacity: 0, x: 10 }}
                 transition={{ delay: i * 0.04 }}
-                className="grid items-center px-4 py-2.5 hover:bg-white/3 transition-colors"
+                className="grid items-center px-4 py-2.5 hover:bg-muted/50 transition-colors"
                 style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr" }}
               >
                 {/* Peer */}
@@ -669,12 +669,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
                   <div className={`text-[10px] font-mono ${order.expiresIn < 15 ? "text-red-400" : "text-slate-500"}`}>
                     {order.expiresIn}s
                   </div>
-                  <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "oklch(0.2 0.03 265)" }}>
+                  <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
                     <div
                       className="h-full rounded-full transition-all duration-1000"
                       style={{
                         width: `${expiryPct}%`,
-                        background: order.expiresIn < 15 ? "oklch(0.65 0.22 25)" : "oklch(0.65 0.2 165)",
+                        background: order.expiresIn < 15 ? "#ef4444" : "#10b981",
                       }}
                     />
                   </div>
@@ -685,9 +685,9 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
                   onClick={() => onAccept(order)}
                   className="px-2 py-1 rounded-lg text-[9px] font-bold transition-all hover:scale-105 active:scale-95"
                   style={{
-                    background: isBest ? "oklch(0.55 0.2 220 / 0.2)" : "oklch(0.17 0.03 265)",
-                    border: `1px solid ${isBest ? "oklch(0.55 0.2 220 / 0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
-                    color: isBest ? "oklch(0.75 0.2 220)" : "#64748b",
+                    background: isBest ? "rgba(59,130,246,0.2)" : "var(--muted)",
+                    border: `1px solid ${isBest ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                    color: isBest ? "#3b82f6" : "var(--muted-foreground)",
                   }}
                 >
                   Accept
@@ -699,7 +699,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: "oklch(0.28 0.04 255 / 0.1)" }}>
+      <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
         <span className="text-[9px] text-slate-600">IntercomSwap DHT · 142 total peers</span>
         <div className="flex items-center gap-1.5">
           <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
@@ -804,20 +804,20 @@ export default function Swaps() {
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">Agentic Swap</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">Agentic Swap</h1>
           <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
             P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
           </p>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2">
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
-            style={{ background: "oklch(0.55 0.18 165 / 0.1)", border: "1px solid oklch(0.55 0.18 165 / 0.25)" }}>
+            style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
             <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">P2P Network Live</span>
             <span className="text-[10px] font-mono text-emerald-400 sm:hidden">Live</span>
           </div>
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
-            style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
             <Users className="w-3 h-3 text-cyan-400" />
             <span className="text-[10px] font-mono text-cyan-400">142</span>
           </div>
@@ -840,8 +840,8 @@ export default function Swaps() {
           <div
             className="rounded-2xl p-4 sm:p-5"
             style={{
-              background: "oklch(0.13 0.03 265 / 0.85)",
-              border: "1px solid oklch(0.28 0.04 255 / 0.3)",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
               backdropFilter: "blur(20px)",
               boxShadow: "0 8px 40px rgba(0,0,0,0.4)",
             }}
@@ -852,21 +852,21 @@ export default function Swaps() {
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
                   style={{
-                    background: swapPair.native ? "oklch(0.55 0.2 220 / 0.12)" : "oklch(0.55 0.18 165 / 0.1)",
-                    border: `1px solid ${swapPair.native ? "oklch(0.55 0.2 220 / 0.3)" : "oklch(0.55 0.18 165 / 0.25)"}`,
-                    color: swapPair.native ? "oklch(0.75 0.2 220)" : "oklch(0.75 0.18 165)",
+                    background: swapPair.native ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.1)",
+                    border: `1px solid ${swapPair.native ? "rgba(59,130,246,0.3)" : "rgba(16,185,129,0.25)"}`,
+                    color: swapPair.native ? "#60a5fa" : "#34d399",
                   }}
                 >
                   {swapPair.native ? <Zap className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
                   {swapPair.protocol}
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
-                  style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)", color: "#94a3b8" }}>
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}>
                   <Clock className="w-3 h-3" />
                   {swapPair.time}
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
-                  style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)", color: "#94a3b8" }}>
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}>
                   <Shield className="w-3 h-3" />
                   Non-custodial
                 </div>
@@ -889,10 +889,10 @@ export default function Swaps() {
                   value={fromAmount}
                   onChange={e => setFromAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-4 py-3 rounded-xl text-2xl font-bold font-mono text-white bg-transparent outline-none"
+                  className="w-full px-4 py-3 rounded-xl text-2xl font-bold font-mono text-foreground bg-transparent outline-none"
                   style={{
-                    background: "oklch(0.17 0.03 265)",
-                    border: "1px solid oklch(0.28 0.04 255 / 0.3)",
+                    background: "var(--muted)",
+                    border: "1px solid var(--border)",
                   }}
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right">
@@ -913,8 +913,8 @@ export default function Swaps() {
                 onClick={handleFlip}
                 className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
                 style={{
-                  background: "oklch(0.55 0.2 220 / 0.15)",
-                  border: "1px solid oklch(0.55 0.2 220 / 0.4)",
+                  background: "rgba(59,130,246,0.15)",
+                  border: "1px solid rgba(59,130,246,0.4)",
                 }}
               >
                 <ArrowDownUp className="w-4 h-4 text-cyan-400" />
@@ -931,9 +931,9 @@ export default function Swaps() {
 
             {/* Output Amount */}
             <div className="mt-3 px-4 py-3 rounded-xl"
-              style={{ background: "oklch(0.17 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.2)" }}>
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold font-mono text-white">{toAmount}</span>
+                <span className="text-2xl font-bold font-mono text-foreground">{toAmount}</span>
                 <div className="text-right">
                   <div className="text-xs text-slate-500">≈ ${parseFloat(toUsd).toLocaleString()}</div>
                   <div className="text-[10px] text-slate-600">1 {fromToken.symbol} = {rate.toFixed(4)} {toToken.symbol}</div>
@@ -943,7 +943,7 @@ export default function Swaps() {
 
             {/* Fee Breakdown */}
             <div className="mt-4 px-4 py-3 rounded-xl space-y-1.5"
-              style={{ background: "oklch(0.15 0.03 265 / 0.5)", border: "1px solid oklch(0.25 0.03 265)" }}>
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
               <div className="flex justify-between text-[11px]">
                 <span className="text-slate-500">Platform fee (0.5%)</span>
                 <span className="font-mono text-slate-400">${platformFee}</span>
@@ -952,7 +952,7 @@ export default function Swaps() {
                 <span className="text-slate-500">Trade fee (0.3%)</span>
                 <span className="font-mono text-slate-400">${tradeFee}</span>
               </div>
-              <div className="flex justify-between text-[11px] pt-1 border-t border-white/5">
+              <div className="flex justify-between text-[11px] pt-1 border-t border-border">
                 <span className="text-slate-400 font-semibold">Total fees</span>
                 <span className="font-mono text-amber-400 font-semibold">${totalFee}</span>
               </div>
@@ -985,9 +985,9 @@ export default function Swaps() {
                             onClick={() => setSlippage(s)}
                             className="flex-1 py-1.5 rounded-lg text-xs font-mono transition-all"
                             style={{
-                              background: slippage === s ? "oklch(0.55 0.2 220 / 0.2)" : "oklch(0.17 0.03 265)",
-                              border: `1px solid ${slippage === s ? "oklch(0.55 0.2 220 / 0.4)" : "oklch(0.28 0.04 255 / 0.2)"}`,
-                              color: slippage === s ? "oklch(0.75 0.2 220)" : "#64748b",
+                              background: slippage === s ? "rgba(59,130,246,0.2)" : "var(--muted)",
+                              border: `1px solid ${slippage === s ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                              color: slippage === s ? "#3b82f6" : "var(--muted-foreground)",
                             }}
                           >
                             {s}%
@@ -999,8 +999,8 @@ export default function Swaps() {
                           onChange={e => setSlippage(e.target.value)}
                           className="flex-1 py-1.5 px-2 rounded-lg text-xs font-mono text-center bg-transparent outline-none"
                           style={{
-                            background: "oklch(0.17 0.03 265)",
-                            border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+                            background: "var(--muted)",
+                            border: "1px solid var(--border)",
                             color: "#94a3b8",
                           }}
                           placeholder="Custom"
@@ -1016,8 +1016,8 @@ export default function Swaps() {
                             onClick={() => setSelectedPeer(selectedPeer?.id === peer.id ? null : peer)}
                             className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all"
                             style={{
-                              background: selectedPeer?.id === peer.id ? "oklch(0.55 0.2 220 / 0.15)" : "oklch(0.17 0.03 265)",
-                              border: `1px solid ${selectedPeer?.id === peer.id ? "oklch(0.55 0.2 220 / 0.35)" : "oklch(0.28 0.04 255 / 0.2)"}`,
+                              background: selectedPeer?.id === peer.id ? "rgba(59,130,246,0.15)" : "var(--muted)",
+                              border: `1px solid ${selectedPeer?.id === peer.id ? "rgba(59,130,246,0.35)" : "var(--border)"}`,
                             }}
                           >
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
@@ -1041,15 +1041,15 @@ export default function Swaps() {
               className="mt-5 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
               style={{
                 background: swapPhase === "complete"
-                  ? "oklch(0.55 0.18 165 / 0.2)"
+                  ? "rgba(16,185,129,0.2)"
                   : swapPhase === "error"
-                    ? "oklch(0.55 0.22 25 / 0.2)"
+                    ? "rgba(239,68,68,0.2)"
                     : isSwapping
-                      ? "oklch(0.55 0.2 220 / 0.15)"
-                      : "oklch(0.55 0.2 220)",
-                border: `1px solid ${swapPhase === "complete" ? "oklch(0.55 0.18 165 / 0.4)" : "oklch(0.65 0.2 220 / 0.5)"}`,
-                color: swapPhase === "complete" ? "oklch(0.75 0.18 165)" : "white",
-                boxShadow: isSwapping ? "none" : "0 4px 20px oklch(0.55 0.2 220 / 0.3)",
+                      ? "rgba(59,130,246,0.15)"
+                      : "#3b82f6",
+                border: `1px solid ${swapPhase === "complete" ? "rgba(16,185,129,0.4)" : "rgba(59,130,246,0.5)"}`,
+                color: swapPhase === "complete" ? "#10b981" : "white",
+                boxShadow: isSwapping ? "none" : "0 4px 20px rgba(59,130,246,0.3)",
               }}
             >
               {isSwapping ? (
@@ -1102,8 +1102,8 @@ export default function Swaps() {
           <div
             className="rounded-2xl p-4"
             style={{
-              background: "oklch(0.13 0.03 265 / 0.7)",
-              border: "1px solid oklch(0.28 0.04 255 / 0.2)",
+              background: "var(--card)",
+              border: "1px solid var(--border)",
             }}
           >
             <div className="flex items-center gap-2 mb-3">
@@ -1121,7 +1121,7 @@ export default function Swaps() {
                 { label: "Coordination", value: "P2P DHT" },
               ].map(item => (
                 <div key={item.label} className="px-2.5 py-2 rounded-lg"
-                  style={{ background: "oklch(0.17 0.03 265 / 0.5)" }}>
+                  style={{ background: "var(--muted)" }}>
                   <div className="text-[9px] text-slate-600">{item.label}</div>
                   <div className="text-[11px] font-mono text-slate-300 mt-0.5">{item.value}</div>
                 </div>

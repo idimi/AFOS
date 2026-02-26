@@ -358,7 +358,7 @@ export default function Dashboard() {
                           className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
                             done ? "border-emerald-500/20 bg-emerald-500/4" :
                             active ? "border-cyan-500/35 bg-cyan-500/8" :
-                            "border-white/4 bg-white/1"
+                            "border-border bg-muted/30"
                           }`}
                           animate={active ? { boxShadow: ["0 0 0px rgba(6,182,212,0)", "0 0 14px rgba(6,182,212,0.12)", "0 0 0px rgba(6,182,212,0)"] } : {}}
                           transition={{ duration: 1.3, repeat: Infinity }}>
@@ -385,7 +385,7 @@ export default function Dashboard() {
                         </motion.div>
                       );
                     })}
-                    <div className="p-3 rounded-xl border border-dashed border-white/8">
+                    <div className="p-3 rounded-xl border border-dashed border-border">
                       <div className="flex items-center gap-2">
                         <Moon className="w-3.5 h-3.5 text-muted-foreground/40" />
                         <p className="text-xs text-muted-foreground/50 font-mono">Phase 2: MoonPay fiat on-ramp → auto-fund wallet before swap</p>
@@ -527,7 +527,7 @@ export default function Dashboard() {
                       <div key={step.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
                         done ? "border-emerald-500/20 bg-emerald-500/4" :
                         active ? "border-cyan-500/35 bg-cyan-500/8" :
-                        "border-white/4"
+                        "border-border"
                       }`}>
                         <div className="shrink-0">
                           {done ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> :
@@ -595,7 +595,7 @@ export default function Dashboard() {
                     { name: "Ethereum", status: "building", color: "text-blue-400" },
                     { name: "MoonPay", status: "planned", color: "text-muted-foreground" },
                   ].map(s => (
-                    <div key={s.name} className="flex items-center justify-between p-2.5 rounded-xl bg-white/3 border border-white/5">
+                    <div key={s.name} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 border border-border">
                       <span className={`text-xs font-semibold ${s.color}`}>{s.name}</span>
                       <span className={`text-[10px] font-mono ${
                         s.status === "live" ? "text-emerald-400" :
@@ -633,7 +633,7 @@ function WalletsCard() {
           { asset: "ETH", network: "Ethereum", balance: "0.5120", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
         ].map(w => (
           <div key={w.asset} className={`flex items-center gap-3 p-2.5 rounded-xl border ${w.border} ${w.bg}`}>
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-black/20 border border-white/5`}>
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-background/50 border border-border`}>
               {w.asset}
             </div>
             <div className="flex-1">
@@ -662,7 +662,7 @@ function PairsCard() {
           { pair: "SOL ↔ USDT/SOL", vol: "$28.4K", change: -1.1, price: "142.80" },
           { pair: "ETH ↔ USDT/SOL", vol: "$61.2K", change: +0.8, price: "2,680" },
         ].map(s => (
-          <div key={s.pair} className="flex items-center justify-between p-2.5 rounded-xl bg-white/2 border border-white/4">
+          <div key={s.pair} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border">
             <div>
               <p className="text-xs font-mono text-foreground/65">{s.pair}</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">Vol 24h: {s.vol}</p>
@@ -700,7 +700,7 @@ function LNCard() {
               <span className="text-foreground/45 font-mono">{ch.peer}</span>
               <span className="text-muted-foreground">{ch.local}% local</span>
             </div>
-            <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
+            <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-1000"
                 style={{ width: `${ch.local}%` }} />
             </div>
