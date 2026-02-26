@@ -13,45 +13,20 @@ import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
   ChevronRight, Circle, CheckCircle2, Clock,
   TrendingUp, TrendingDown, Send,
-  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X
+  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X, Terminal
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
 import { useHaptic } from "../hooks/useHaptic";
+import { useAgentLog } from "../contexts/AgentLogContext";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
 import NetworkPage from "./NetworkPage";
+import TerminalPage from "./TerminalPage";
 
-type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings";
+type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings" | "terminal";
 
-interface AgentLog {
-  id: string;
-  ts: string;
-  level: "info" | "success" | "warn" | "error";
-  message: string;
-  tool?: string;
-}
-
-const INITIAL_LOGS: AgentLog[] = [
-  { id: "1", ts: "02:41:07", level: "success", message: "IntercomSwap peer connected", tool: "intercomswap_peer_start" },
-  { id: "2", ts: "02:41:09", level: "info", message: "Joined rendezvous: 0000intercomswapbtcusdt", tool: "intercomswap_sc_join" },
-  { id: "3", ts: "02:41:12", level: "info", message: "Scanning for RFQ offers…", tool: "intercomswap_rfq_scan" },
-  { id: "4", ts: "02:41:15", level: "success", message: "3 active peers discovered", tool: "intercomswap_peer_list" },
-  { id: "5", ts: "02:41:20", level: "info", message: "LND healthy — 4 channels, 0.142 BTC", tool: "intercomswap_ln_getinfo" },
-  { id: "6", ts: "02:41:22", level: "success", message: "Solana wallet — 1,240.50 USDT", tool: "intercomswap_solctl_balance" },
-];
-
-const LIVE_LOG_POOL: Omit<AgentLog, "id" | "ts">[] = [
-  { level: "info", message: "Heartbeat — peer alive", tool: "intercomswap_peer_ping" },
-  { level: "info", message: "RFQ offer from peer 3f8a…c12d", tool: "intercomswap_rfq_receive" },
-  { level: "success", message: "Quote accepted: 0.001 BTC → 96.42 USDT", tool: "intercomswap_quote_accept" },
-  { level: "info", message: "Monitoring escrow PDA 7xKp…9mNz", tool: "intercomswap_escrow_watch" },
-  { level: "warn", message: "Peer 9a2b…ff01 slow (1.8s)", tool: "intercomswap_peer_probe" },
-  { level: "success", message: "LN channel balanced — local: 0.08 BTC", tool: "intercomswap_ln_getinfo" },
-  { level: "info", message: "svc_announce broadcast sent", tool: "intercomswap_svc_announce" },
-  { level: "success", message: "Escrow claimed — preimage revealed", tool: "intercomswap_escrow_claim" },
-];
 
 const PIPELINE_STEPS = [
   { id: 1, label: "Agent Parses Command", tool: "openclaw:parse", detail: "OpenClaw interprets natural language instruction", chain: "OpenClaw" },
@@ -75,10 +50,6 @@ const CHAIN_BADGE: Record<string, string> = {
   "Bitcoin LN": "bg-amber-500/15 text-amber-300 border-amber-500/20",
 };
 
-function nowTs() {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
-}
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
@@ -179,7 +150,7 @@ export default function Dashboard() {
   const haptic = useHaptic();
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [logs, setLogs] = useState<AgentLog[]>(INITIAL_LOGS);
+  const { entries: logs, addEntry: addLog } = useAgentLog();
   const [pipelineStep, setPipelineStep] = useState(0);
   const [pipelineRunning, setPipelineRunning] = useState(false);
   const [commandInput, setCommandInput] = useState("");
@@ -190,16 +161,12 @@ export default function Dashboard() {
 
   useEffect(() => { logsEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [logs]);
 
+  // Pulse scrollbar on new log entries
   useEffect(() => {
-    const interval = setInterval(() => {
-      const entry = LIVE_LOG_POOL[Math.floor(Math.random() * LIVE_LOG_POOL.length)];
-      setLogs(prev => [...prev.slice(-80), { id: Date.now().toString(), ts: nowTs(), ...entry }]);
-      // Pulse the scrollbar thumb for 600ms on every new log entry
-      setLogPulse(true);
-      setTimeout(() => setLogPulse(false), 600);
-    }, 3800);
-    return () => clearInterval(interval);
-  }, []);
+    setLogPulse(true);
+    const t = setTimeout(() => setLogPulse(false), 600);
+    return () => clearTimeout(t);
+  }, [logs.length]);
 
   const runPipeline = (cmd?: string) => {
     if (pipelineRunning) return;
@@ -208,16 +175,17 @@ export default function Dashboard() {
     setAgentThinking(true);
     setPipelineRunning(true);
     setPipelineStep(0);
-    setLogs(prev => [...prev, { id: Date.now().toString(), ts: nowTs(), level: "info", message: `Agent received: "${instruction}"`, tool: "openclaw:parse" }]);
+    addLog({ level: "cmd", message: `> ${instruction}`, tool: "openclaw:parse" });
+    addLog({ level: "info", message: `Agent received: "${instruction}"`, tool: "openclaw:parse",
+      payload: { raw_input: instruction, intent: "swap", confidence: 0.94 } });
     setTimeout(() => setAgentThinking(false), 700);
     PIPELINE_STEPS.forEach((step, i) => {
       setTimeout(() => {
         setPipelineStep(i + 1);
-        setLogs(prev => [...prev, {
-          id: Date.now().toString() + i, ts: nowTs(),
+        addLog({
           level: i === PIPELINE_STEPS.length - 1 ? "success" : "info",
           message: step.detail, tool: step.tool,
-        }]);
+        });
         if (i === PIPELINE_STEPS.length - 1) {
           setTimeout(() => {
             setPipelineRunning(false);
@@ -233,6 +201,7 @@ export default function Dashboard() {
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
     { id: "network" as NavPage, icon: Network, label: "Network" },
+    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
     { id: "settings" as NavPage, icon: Settings, label: "Settings" },
   ];
 
@@ -241,6 +210,7 @@ export default function Dashboard() {
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
     if (activePage === "network") return <NetworkPage />;
+    if (activePage === "terminal") return <TerminalPage />;
     return null;
   };
 
@@ -428,7 +398,9 @@ export default function Dashboard() {
                               <p className={`leading-snug ${
                                 log.level === "success" ? "text-emerald-400" :
                                 log.level === "warn" ? "text-amber-400" :
-                                log.level === "error" ? "text-red-400" : "text-foreground/70"
+                                log.level === "error" ? "text-red-400" :
+                                log.level === "cmd" ? "text-violet-400" :
+                                log.level === "debug" ? "text-slate-400" : "text-foreground/70"
                               }`}>{log.message}</p>
                               {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
                             </div>
@@ -573,7 +545,9 @@ export default function Dashboard() {
                         <p className={`leading-snug ${
                           log.level === "success" ? "text-emerald-400" :
                           log.level === "warn" ? "text-amber-400" :
-                          log.level === "error" ? "text-red-400" : "text-foreground/70"
+                          log.level === "error" ? "text-red-400" :
+                          log.level === "cmd" ? "text-violet-400" :
+                          log.level === "debug" ? "text-slate-400" : "text-foreground/70"
                         }`}>{log.message}</p>
                         {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
                       </div>
