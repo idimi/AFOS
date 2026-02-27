@@ -10,7 +10,8 @@ import {
   Lock, Eye, EyeOff, Shield, DollarSign, Wallet, Settings,
   BarChart3, Activity, AlertTriangle, CheckCircle2, Copy,
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
-  ArrowUpRight, ArrowDownRight, Server, Database
+  ArrowUpRight, ArrowDownRight, Server, Database,
+  GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -148,7 +149,7 @@ function PasswordGate({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users";
+type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -194,10 +195,33 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     toast.info("Wallet removed");
   };
 
+  // LP node state
+  const [lpConfig, setLpConfig] = useState({
+    btcReserve: 0.85,
+    usdtReserve: 42500,
+    solReserve: 284,
+    spreadBps: 15,
+    maxSingleTradeBtc: 0.1,
+    autoRebalance: true,
+    lpEnabled: true,
+  });
+
+  // Routing config state
+  const [routingConfig, setRoutingConfig] = useState({
+    defaultRoute: "afos_lp" as "afos_lp" | "p2p" | "best",
+    p2pEnabled: true,
+    p2pMinImprovementBps: 10,
+    maxPeerLatencyMs: 500,
+    preferLpBelow: 1000,
+    autoFallback: true,
+  });
+
   const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
     { id: "revenue", label: "Revenue", icon: BarChart3 },
     { id: "fees", label: "Fee Config", icon: Settings },
     { id: "treasury", label: "Treasury", icon: Wallet },
+    { id: "lp", label: "LP Node", icon: Droplets },
+    { id: "routing", label: "Routing", icon: Route },
     { id: "nodes", label: "Node Health", icon: Server },
     { id: "users", label: "Users", icon: Users },
   ];
@@ -573,6 +597,148 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <RefreshCw className="w-3.5 h-3.5" />
               Refresh Status
             </button>
+          </div>
+        )}
+
+        {/* ── LP Node Tab ── */}
+        {activeTab === "lp" && (
+          <div className="space-y-4 max-w-lg mx-auto">
+            {/* LP Status Banner */}
+            <div className="rounded-2xl p-4 flex items-center justify-between"
+              style={{ background: lpConfig.lpEnabled ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${lpConfig.lpEnabled ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)"}` }}>
+              <div>
+                <p className="text-xs font-bold" style={{ color: lpConfig.lpEnabled ? "#10b981" : "#ef4444" }}>
+                  {lpConfig.lpEnabled ? "AFOS LP Node — Active" : "AFOS LP Node — Paused"}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Serving as default counterparty for all trades</p>
+              </div>
+              <button onClick={() => { setLpConfig(p => ({ ...p, lpEnabled: !p.lpEnabled })); toast.success(lpConfig.lpEnabled ? "LP node paused" : "LP node activated"); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                style={{ background: lpConfig.lpEnabled ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)", border: `1px solid ${lpConfig.lpEnabled ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.3)"}`, color: lpConfig.lpEnabled ? "#ef4444" : "#10b981" }}>
+                {lpConfig.lpEnabled ? "Pause LP" : "Activate LP"}
+              </button>
+            </div>
+
+            {/* Reserve Balances */}
+            <div className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold text-foreground">LP Reserve Balances</p>
+              {[
+                { label: "BTC (Lightning)", value: `${lpConfig.btcReserve} BTC`, usd: `$${(lpConfig.btcReserve * 96420).toLocaleString()}`, color: "#f59e0b", pct: (lpConfig.btcReserve / 1.0) * 100 },
+                { label: "USDT (Solana)", value: `${lpConfig.usdtReserve.toLocaleString()} USDT`, usd: `$${lpConfig.usdtReserve.toLocaleString()}`, color: "#10b981", pct: (lpConfig.usdtReserve / 100000) * 100 },
+                { label: "SOL (Gas)", value: `${lpConfig.solReserve} SOL`, usd: `$${(lpConfig.solReserve * 142.8).toFixed(0)}`, color: "#a78bfa", pct: (lpConfig.solReserve / 500) * 100 },
+              ].map(r => (
+                <div key={r.label}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-[10px] text-muted-foreground">{r.label}</span>
+                    <span className="text-[10px] font-semibold text-foreground">{r.value} <span className="text-muted-foreground">≈ {r.usd}</span></span>
+                  </div>
+                  <div className="h-1.5 rounded-full" style={{ background: "var(--muted)" }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(r.pct, 100)}%`, background: r.color }} />
+                  </div>
+                </div>
+              ))}
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => toast.info("Fund LP — connect to node wallet to deposit")} className="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>+ Add Liquidity</button>
+                <button onClick={() => toast.info("Withdraw — connect to node wallet to withdraw")} className="flex-1 py-2 rounded-lg text-[10px] font-bold transition-all" style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444" }}>Withdraw</button>
+              </div>
+            </div>
+
+            {/* LP Config */}
+            <div className="rounded-2xl p-4 space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold text-foreground">LP Parameters</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Spread (bps) — LP profit margin per trade</label>
+                  <input type="number" value={lpConfig.spreadBps} onChange={e => setLpConfig(p => ({ ...p, spreadBps: +e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-xs font-mono bg-transparent text-foreground"
+                    style={{ border: "1px solid var(--border)" }} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Max single trade (BTC)</label>
+                  <input type="number" value={lpConfig.maxSingleTradeBtc} step="0.01" onChange={e => setLpConfig(p => ({ ...p, maxSingleTradeBtc: +e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-xs font-mono bg-transparent text-foreground"
+                    style={{ border: "1px solid var(--border)" }} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold text-foreground">Auto-rebalance</p>
+                    <p className="text-[9px] text-muted-foreground">Automatically rebalance BTC/USDT reserves</p>
+                  </div>
+                  <button onClick={() => setLpConfig(p => ({ ...p, autoRebalance: !p.autoRebalance }))}
+                    style={{ color: lpConfig.autoRebalance ? "#10b981" : "var(--muted-foreground)" }}>
+                    {lpConfig.autoRebalance ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => toast.success("LP configuration saved")} className="w-full py-2.5 rounded-xl text-xs font-bold transition-all" style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>Save LP Config</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Routing Config Tab ── */}
+        {activeTab === "routing" && (
+          <div className="space-y-4 max-w-lg mx-auto">
+            <div className="rounded-2xl p-4 space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold text-foreground">Default Route Mode</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(["afos_lp", "p2p", "best"] as const).map(mode => (
+                  <button key={mode} onClick={() => setRoutingConfig(p => ({ ...p, defaultRoute: mode }))}
+                    className="py-2.5 rounded-xl text-[10px] font-bold transition-all"
+                    style={{
+                      background: routingConfig.defaultRoute === mode ? "rgba(59,130,246,0.15)" : "var(--muted)",
+                      border: `1px solid ${routingConfig.defaultRoute === mode ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                      color: routingConfig.defaultRoute === mode ? "#60a5fa" : "var(--muted-foreground)",
+                    }}>
+                    {mode === "afos_lp" ? "AFOS LP" : mode === "p2p" ? "P2P Only" : "Best Rate"}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                {routingConfig.defaultRoute === "afos_lp" && "All trades routed through AFOS LP node. Fastest execution, guaranteed liquidity."}
+                {routingConfig.defaultRoute === "p2p" && "All trades routed to P2P peers. Best rates but requires peer availability."}
+                {routingConfig.defaultRoute === "best" && "AFOS LP is default. P2P peers are used if they beat the LP rate by the threshold below."}
+              </p>
+            </div>
+
+            <div className="rounded-2xl p-4 space-y-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold text-foreground">P2P Routing Rules</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold text-foreground">Enable P2P routing</p>
+                    <p className="text-[9px] text-muted-foreground">Allow trades to route to P2P peers</p>
+                  </div>
+                  <button onClick={() => setRoutingConfig(p => ({ ...p, p2pEnabled: !p.p2pEnabled }))} style={{ color: routingConfig.p2pEnabled ? "#10b981" : "var(--muted-foreground)" }}>
+                    {routingConfig.p2pEnabled ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Min improvement over LP rate (bps) to use P2P</label>
+                  <input type="number" value={routingConfig.p2pMinImprovementBps} onChange={e => setRoutingConfig(p => ({ ...p, p2pMinImprovementBps: +e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-xs font-mono bg-transparent text-foreground" style={{ border: "1px solid var(--border)" }} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Max peer latency (ms)</label>
+                  <input type="number" value={routingConfig.maxPeerLatencyMs} onChange={e => setRoutingConfig(p => ({ ...p, maxPeerLatencyMs: +e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-xs font-mono bg-transparent text-foreground" style={{ border: "1px solid var(--border)" }} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block mb-1">Prefer LP for trades below ($USD)</label>
+                  <input type="number" value={routingConfig.preferLpBelow} onChange={e => setRoutingConfig(p => ({ ...p, preferLpBelow: +e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg text-xs font-mono bg-transparent text-foreground" style={{ border: "1px solid var(--border)" }} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold text-foreground">Auto-fallback to LP</p>
+                    <p className="text-[9px] text-muted-foreground">Fall back to AFOS LP if no P2P peer responds</p>
+                  </div>
+                  <button onClick={() => setRoutingConfig(p => ({ ...p, autoFallback: !p.autoFallback }))} style={{ color: routingConfig.autoFallback ? "#10b981" : "var(--muted-foreground)" }}>
+                    {routingConfig.autoFallback ? <ToggleRight className="w-7 h-7" /> : <ToggleLeft className="w-7 h-7" />}
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => toast.success("Routing configuration saved")} className="w-full py-2.5 rounded-xl text-xs font-bold transition-all" style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>Save Routing Config</button>
+            </div>
           </div>
         )}
 

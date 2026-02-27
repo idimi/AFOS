@@ -14,7 +14,7 @@ import {
   Radio, Network, TrendingUp, TrendingDown,
   Bot, Cpu, Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
-  Repeat, Timer, Filter, Rss, Play, Square, RotateCcw
+  Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -1470,6 +1470,11 @@ export default function Swaps() {
                   style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}>
                   <Shield className="w-3 h-3" />
                   Non-custodial
+                </div>
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
+                  style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#10b981" }}>
+                  <GitMerge className="w-3 h-3" />
+                  Hybrid routing
                 </div>
               </div>
             )}

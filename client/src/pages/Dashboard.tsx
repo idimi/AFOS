@@ -101,6 +101,58 @@ function WorkerStatusCard() {
   );
 }
 
+// ── LP Health Card ───────────────────────────────────────────────────────────
+function LPHealthCard() {
+  const [lpData] = useState({
+    btcReserve: 0.85,
+    usdtReserve: 42500,
+    spread: 15,
+    tradesServed: 284,
+    route: "best" as "afos_lp" | "p2p" | "best",
+    lpActive: true,
+  });
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">LP Health</p>
+        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+          style={{ background: lpData.lpActive ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)", color: lpData.lpActive ? "#10b981" : "#ef4444" }}>
+          {lpData.lpActive ? "ACTIVE" : "PAUSED"}
+        </span>
+      </div>
+      <div className="space-y-2 mb-3">
+        <div className="flex justify-between">
+          <span className="text-[10px] text-muted-foreground">BTC Reserve</span>
+          <span className="text-[10px] font-mono font-semibold text-amber-400">{lpData.btcReserve} BTC</span>
+        </div>
+        <div className="h-1 rounded-full" style={{ background: "var(--muted)" }}>
+          <div className="h-full rounded-full bg-amber-400" style={{ width: `${(lpData.btcReserve / 1.0) * 100}%` }} />
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[10px] text-muted-foreground">USDT Reserve</span>
+          <span className="text-[10px] font-mono font-semibold text-emerald-400">{lpData.usdtReserve.toLocaleString()} USDT</span>
+        </div>
+        <div className="h-1 rounded-full" style={{ background: "var(--muted)" }}>
+          <div className="h-full rounded-full bg-emerald-400" style={{ width: `${(lpData.usdtReserve / 100000) * 100}%` }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Spread", value: `${lpData.spread}bps` },
+          { label: "Served", value: lpData.tradesServed },
+          { label: "Route", value: lpData.route === "best" ? "Hybrid" : lpData.route === "afos_lp" ? "LP" : "P2P" },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: "var(--muted)" }}>
+            <div className="text-xs font-bold font-mono text-foreground">{stat.value}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
   navItems: { id: NavPage; icon: React.ElementType; label: string }[];
@@ -513,6 +565,8 @@ export default function Dashboard() {
 
                 {/* Worker Status */}
                 <WorkerStatusCard />
+                {/* LP Health */}
+                <LPHealthCard />
               </div>
             </div>
 
@@ -660,6 +714,9 @@ export default function Dashboard() {
 
               {/* Worker Status — mobile */}
               <WorkerStatusCard />
+
+              {/* LP Health — mobile */}
+              <LPHealthCard />
 
             </div>
           </div>
