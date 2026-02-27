@@ -19,7 +19,7 @@ import {
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
 import { useHaptic } from "../hooks/useHaptic";
-import { useAgentLog, PIPELINE_STEPS, CHAIN_BADGE } from "../contexts/AgentLogContext";
+import { useAgentLog } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import Swaps from "./Swaps";
@@ -31,13 +31,27 @@ import TerminalPage from "./TerminalPage";
 type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings" | "terminal";
 
 
-// PIPELINE_STEPS and CHAIN_BADGE are imported from AgentLogContext (shared with TerminalPage)
+const PIPELINE_STEPS = [
+  { id: 1, label: "Agent Parses Command", tool: "openclaw:parse", detail: "OpenClaw interprets natural language instruction", chain: "OpenClaw" },
+  { id: 2, label: "Broadcast RFQ", tool: "intercomswap_rfq_send", detail: "Request-for-Quote sent to P2P rendezvous channel", chain: "IntercomSwap" },
+  { id: 3, label: "Peer Negotiation", tool: "intercomswap_quote_accept", detail: "Best quote selected, swap terms agreed P2P", chain: "IntercomSwap" },
+  { id: 4, label: "HTLC Escrow Lock", tool: "intercomswap_escrow_init", detail: "Solana escrow locked with payment hash (atomic)", chain: "Solana" },
+  { id: 5, label: "Lightning Settlement", tool: "intercomswap_ln_pay", detail: "BTC sent via LN, preimage reveals USDT to maker", chain: "Bitcoin LN" },
+];
+
 const AGENT_COMMANDS = [
   "Swap 0.01 BTC to USDT",
   "Get best BTC quote",
   "Check LN liquidity",
   "List active peers",
 ];
+
+const CHAIN_BADGE: Record<string, string> = {
+  "OpenClaw": "bg-violet-500/15 text-violet-300 border-violet-500/20",
+  "IntercomSwap": "bg-cyan-500/15 text-cyan-300 border-cyan-500/20",
+  "Solana": "bg-purple-500/15 text-purple-300 border-purple-500/20",
+  "Bitcoin LN": "bg-amber-500/15 text-amber-300 border-amber-500/20",
+};
 
 
 // ── Worker Status Card ────────────────────────────────────────────────────────
@@ -240,7 +254,9 @@ export default function Dashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const { entries: logs, addEntry: addLog, pipelineStep, pipelineRunning, runPipeline: ctxRunPipeline } = useAgentLog();
+  const { entries: logs, addEntry: addLog } = useAgentLog();
+  const [pipelineStep, setPipelineStep] = useState(0);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
   const [commandInput, setCommandInput] = useState("");
   const [agentThinking, setAgentThinking] = useState(false);
   const logScrollRef = useRef<HTMLDivElement>(null);
@@ -265,11 +281,27 @@ export default function Dashboard() {
     const instruction = cmd || commandInput || "Swap 0.01 BTC to USDT";
     setCommandInput("");
     setAgentThinking(true);
+    setPipelineRunning(true);
+    setPipelineStep(0);
+    addLog({ level: "cmd", message: `> ${instruction}`, tool: "openclaw:parse" });
+    addLog({ level: "info", message: `Agent received: "${instruction}"`, tool: "openclaw:parse",
+      payload: { raw_input: instruction, intent: "swap", confidence: 0.94 } });
     setTimeout(() => setAgentThinking(false), 700);
-    ctxRunPipeline(instruction);
-    setTimeout(() => {
-      toast.success("Swap executed", { description: "Funds settled atomically on-chain" });
-    }, PIPELINE_STEPS.length * 1200 + 800);
+    PIPELINE_STEPS.forEach((step, i) => {
+      setTimeout(() => {
+        setPipelineStep(i + 1);
+        addLog({
+          level: i === PIPELINE_STEPS.length - 1 ? "success" : "info",
+          message: step.detail, tool: step.tool,
+        });
+        if (i === PIPELINE_STEPS.length - 1) {
+          setTimeout(() => {
+            setPipelineRunning(false);
+            toast.success("Swap executed", { description: "Funds settled atomically on-chain" });
+          }, 500);
+        }
+      }, 800 + i * 1050);
+    });
   };
 
   const navItems = [
