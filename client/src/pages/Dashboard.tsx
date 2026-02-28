@@ -644,13 +644,20 @@ function WalletsCard() {
   );
 }
 
-// ── Market Ticker ──────────────────────────────────────────────────────────
+// ── Market Ticker with expandable TradingView chart ───────────────────────
+const TV_SYMBOLS: Record<string, string> = {
+  "BTC/USDT": "BINANCE:BTCUSDT",
+  "ETH/USDT": "BINANCE:ETHUSDT",
+  "SOL/USDT": "BINANCE:SOLUSDT",
+};
+
 function MarketTicker() {
   const [prices, setPrices] = useState({
     BTC: { price: 96420, change: +3.2 },
     ETH: { price: 2680, change: +0.8 },
     SOL: { price: 142.80, change: -1.1 },
   });
+  const [activePair, setActivePair] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -669,35 +676,99 @@ function MarketTicker() {
     { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400", icon: "◎" },
   ];
 
+  const handlePairClick = (symbol: string) => {
+    setActivePair(prev => prev === symbol ? null : symbol);
+  };
+
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Market</h3>
+          {activePair && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              {activePair}
+            </span>
+          )}
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono">IntercomSwap rates</span>
+        <div className="flex items-center gap-2">
+          {activePair && (
+            <button
+              onClick={() => setActivePair(null)}
+              className="text-[10px] text-muted-foreground hover:text-foreground font-mono flex items-center gap-1 transition-colors"
+            >
+              <X className="w-3 h-3" /> close chart
+            </button>
+          )}
+          <span className="text-[10px] text-muted-foreground font-mono">live</span>
+        </div>
       </div>
-      <div className="space-y-2">
-        {tickers.map(t => (
-          <div key={t.symbol} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/20 border border-border">
-            <div className="flex items-center gap-2.5">
-              <span className={`text-lg font-bold ${t.color}`}>{t.icon}</span>
-              <div>
-                <p className="text-xs font-mono text-foreground font-semibold">{t.symbol}</p>
-              </div>
+
+      {/* Pair rows */}
+      <div className="px-3 pb-3 space-y-1.5">
+        {tickers.map(t => {
+          const isActive = activePair === t.symbol;
+          return (
+            <div key={t.symbol}>
+              <button
+                onClick={() => handlePairClick(t.symbol)}
+                className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] ${
+                  isActive
+                    ? "bg-cyan-500/8 border-cyan-500/25"
+                    : "bg-muted/20 border-border hover:bg-muted/35 hover:border-border"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className={`text-lg font-bold leading-none ${t.color}`}>{t.icon}</span>
+                  <div className="text-left">
+                    <p className="text-xs font-mono text-foreground font-semibold">{t.symbol}</p>
+                    <p className="text-[9px] text-muted-foreground font-mono mt-0.5">
+                      {isActive ? "click to close" : "click for chart"}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-mono text-foreground font-bold">
+                    ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
+                  </p>
+                  <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${
+                    t.change >= 0 ? "text-emerald-400" : "text-red-400"
+                  }`}>
+                    {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                    {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
+                  </span>
+                </div>
+              </button>
+
+              {/* Inline TradingView chart — expands below the clicked row */}
+              <AnimatePresence>
+                {isActive && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 260, opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.28, ease: "easeInOut" }}
+                    className="overflow-hidden rounded-xl mt-1.5"
+                    style={{ border: "1px solid rgba(6,182,212,0.2)" }}
+                  >
+                    <iframe
+                      key={t.symbol}
+                      src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${t.symbol.replace("/","")}&symbol=${TV_SYMBOLS[t.symbol]}&interval=60&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
+                      width="100%"
+                      height="260"
+                      frameBorder="0"
+                      allowTransparency={true}
+                      scrolling="no"
+                      style={{ display: "block", background: "#000" }}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-            <div className="text-right">
-              <p className="text-sm font-mono text-foreground font-bold">
-                ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
-              </p>
-              <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${t.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
-              </span>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
