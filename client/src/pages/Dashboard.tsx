@@ -811,7 +811,7 @@ function MarketTicker() {
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
               <iframe
                 key={`${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=f8fafc&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
                 width="100%"
                 height="440"
                 frameBorder="0"
@@ -1307,7 +1307,7 @@ function MobileMarketCard() {
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
               <iframe
                 key={`mob-${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
                 width="100%"
                 height="260"
                 frameBorder="0"
