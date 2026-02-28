@@ -43,10 +43,14 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
     <motion.aside
       animate={{ width: open ? 220 : 64 }}
       transition={{ duration: 0.22, ease: "easeInOut" }}
-      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background overflow-hidden relative"
+      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background relative"
+      style={{ overflow: "visible" }}
     >
+      {/* Inner clip so content doesn't spill */}
+      <div className="absolute inset-0 overflow-hidden flex flex-col" style={{ pointerEvents: "none" }} />
+
       {/* Header */}
-      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2.5">
+      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2.5 overflow-hidden">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
           <Zap className="w-4 h-4 text-white" />
         </div>
@@ -60,21 +64,22 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
             </motion.span>
           )}
         </AnimatePresence>
-        {/* Prominent toggle button */}
-        <button
-          onClick={() => setOpen(!open)}
-          title={open ? "Collapse sidebar" : "Expand sidebar"}
-          className={`flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${
-            open ? "ml-auto w-7 h-7" : "w-8 h-8 mx-auto"
-          }`}
-          style={{
-            background: "rgba(6,182,212,0.12)",
-            border: "1px solid rgba(6,182,212,0.3)",
-          }}
-        >
-          <ChevronRight className={`w-3.5 h-3.5 text-cyan-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-        </button>
       </div>
+
+      {/* Floating toggle tab — always fully visible on the right edge */}
+      <button
+        onClick={() => setOpen(!open)}
+        title={open ? "Collapse sidebar" : "Expand sidebar"}
+        className="absolute top-1/2 -translate-y-1/2 -right-[18px] z-50 w-[18px] h-12 flex items-center justify-center rounded-r-lg transition-all duration-150 hover:w-[22px] group"
+        style={{
+          background: "linear-gradient(135deg, rgba(6,182,212,0.25), rgba(139,92,246,0.2))",
+          border: "1px solid rgba(6,182,212,0.5)",
+          borderLeft: "none",
+          boxShadow: "2px 0 12px rgba(6,182,212,0.2)",
+        }}
+      >
+        <ChevronRight className={`w-3 h-3 text-cyan-400 transition-transform duration-200 group-hover:text-cyan-300 ${open ? "rotate-180" : ""}`} />
+      </button>
 
       <nav className="flex-1 py-3 space-y-0.5 px-2">
         {navItems.map(item => {
@@ -810,8 +815,10 @@ export default function Dashboard() {
   const subPage = renderSubPage();
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden font-sans">
-      <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
+    <div className="flex h-screen bg-background font-sans" style={{ overflow: "hidden" }}>
+      <div className="relative z-10 flex-shrink-0" style={{ overflow: "visible" }}>
+        <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
+      </div>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Topbar */}
