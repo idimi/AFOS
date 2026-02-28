@@ -658,118 +658,171 @@ function MarketTicker() {
     SOL: { price: 142.80, change: -1.1 },
   });
   const [activePair, setActivePair] = useState<string | null>(null);
+  const [interval, setIntervalTF] = useState("60"); // TradingView interval
+
+  const TF_OPTIONS = [
+    { label: "1m", value: "1" },
+    { label: "30m", value: "30" },
+    { label: "1h", value: "60" },
+    { label: "4h", value: "240" },
+    { label: "1D", value: "D" },
+  ];
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       setPrices(prev => ({
         BTC: { price: prev.BTC.price + (Math.random() - 0.5) * 50, change: prev.BTC.change + (Math.random() - 0.5) * 0.1 },
         ETH: { price: prev.ETH.price + (Math.random() - 0.5) * 5, change: prev.ETH.change + (Math.random() - 0.5) * 0.1 },
         SOL: { price: prev.SOL.price + (Math.random() - 0.5) * 0.5, change: prev.SOL.change + (Math.random() - 0.5) * 0.1 },
       }));
     }, 4000);
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, []);
 
   const tickers = [
-    { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", icon: "₿" },
-    { symbol: "ETH/USDT", ...prices.ETH, color: "text-blue-400", icon: "Ξ" },
-    { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400", icon: "◎" },
+    { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
+    { symbol: "ETH/USDT", ...prices.ETH, color: "text-blue-400",  bg: "bg-blue-500/10",  border: "border-blue-500/20",  icon: "Ξ" },
+    { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400",bg: "bg-purple-500/10",border: "border-purple-500/20",icon: "◎" },
   ];
 
-  const handlePairClick = (symbol: string) => {
-    setActivePair(prev => prev === symbol ? null : symbol);
-  };
+  const activeTicker = tickers.find(t => t.symbol === activePair);
 
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
+    <div className={`rounded-2xl border bg-card overflow-hidden transition-all duration-300 ${
+      activePair ? "border-cyan-500/30" : "border-border"
+    }`} style={activePair ? { boxShadow: "0 0 0 1px rgba(6,182,212,0.15), 0 4px 24px rgba(6,182,212,0.08)" } : {}}>
+
+      {/* ── Card header ── */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Market</h3>
-          {activePair && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
-              {activePair}
-            </span>
-          )}
+          <span className="text-[10px] text-muted-foreground font-mono">IntercomSwap rates</span>
         </div>
-        <div className="flex items-center gap-2">
-          {activePair && (
-            <button
-              onClick={() => setActivePair(null)}
-              className="text-[10px] text-muted-foreground hover:text-foreground font-mono flex items-center gap-1 transition-colors"
-            >
-              <X className="w-3 h-3" /> close chart
-            </button>
-          )}
-          <span className="text-[10px] text-muted-foreground font-mono">live</span>
-        </div>
+        {activePair ? (
+          <button
+            onClick={() => setActivePair(null)}
+            className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/8"
+          >
+            <X className="w-3 h-3" /> close
+          </button>
+        ) : (
+          <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+            live
+          </span>
+        )}
       </div>
 
-      {/* Pair rows */}
-      <div className="px-3 pb-3 space-y-1.5">
+      {/* ── Ticker rows: compact when chart open, full when closed ── */}
+      <div className="px-3 space-y-1.5">
         {tickers.map(t => {
           const isActive = activePair === t.symbol;
+          const isHidden = activePair !== null && !isActive;
           return (
-            <div key={t.symbol}>
+            <motion.div
+              key={t.symbol}
+              animate={{ opacity: isHidden ? 0.45 : 1, scale: isHidden ? 0.98 : 1 }}
+              transition={{ duration: 0.2 }}
+            >
               <button
-                onClick={() => handlePairClick(t.symbol)}
-                className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] ${
+                onClick={() => setActivePair(prev => prev === t.symbol ? null : t.symbol)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
                   isActive
-                    ? "bg-cyan-500/8 border-cyan-500/25"
-                    : "bg-muted/20 border-border hover:bg-muted/35 hover:border-border"
+                    ? `${t.bg} ${t.border}`
+                    : "bg-muted/15 border-border hover:bg-muted/30 hover:border-border/80"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
-                  <span className={`text-lg font-bold leading-none ${t.color}`}>{t.icon}</span>
+                  <span className={`text-base font-bold leading-none w-5 text-center ${t.color}`}>{t.icon}</span>
                   <div className="text-left">
-                    <p className="text-xs font-mono text-foreground font-semibold">{t.symbol}</p>
-                    <p className="text-[9px] text-muted-foreground font-mono mt-0.5">
-                      {isActive ? "click to close" : "click for chart"}
-                    </p>
+                    <p className="text-xs font-mono text-foreground font-semibold tracking-wide">{t.symbol}</p>
+                    {!isActive && (
+                      <p className="text-[9px] text-muted-foreground font-mono mt-0.5">click for chart</p>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-mono text-foreground font-bold">
-                    ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
-                  </p>
-                  <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${
-                    t.change >= 0 ? "text-emerald-400" : "text-red-400"
-                  }`}>
-                    {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                    {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-sm font-mono text-foreground font-bold">
+                      ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
+                    </p>
+                    <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${
+                      t.change >= 0 ? "text-emerald-400" : "text-red-400"
+                    }`}>
+                      {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                      {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
+                    </span>
+                  </div>
+                  <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                    isActive ? "rotate-90" : ""
+                  }`} />
                 </div>
               </button>
-
-              {/* Inline TradingView chart — expands below the clicked row */}
-              <AnimatePresence>
-                {isActive && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 480, opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.32, ease: "easeInOut" }}
-                    className="overflow-hidden rounded-xl mt-1.5"
-                    style={{ border: "1px solid rgba(6,182,212,0.2)" }}
-                  >
-                    <iframe
-                      key={t.symbol}
-                      src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${t.symbol.replace("/","")}&symbol=${TV_SYMBOLS[t.symbol]}&interval=60&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
-                      width="100%"
-                      height="480"
-                      frameBorder="0"
-                      allowTransparency={true}
-                      scrolling="no"
-                      style={{ display: "block", background: "#000" }}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            </motion.div>
           );
         })}
       </div>
+
+      {/* ── Chart panel — shown below all rows when a pair is active ── */}
+      <AnimatePresence>
+        {activePair && activeTicker && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.32, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            {/* Chart toolbar */}
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+              {/* Timeframe pills */}
+              <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-0.5">
+                {TF_OPTIONS.map(tf => (
+                  <button
+                    key={tf.value}
+                    onClick={() => setIntervalTF(tf.value)}
+                    className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-semibold transition-all duration-150 ${
+                      interval === tf.value
+                        ? `${activeTicker.bg} ${activeTicker.color} ${activeTicker.border} border`
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+              </div>
+              {/* Swap CTA */}
+              <button
+                onClick={() => toast.info(`Opening swap for ${activePair}`)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] ${
+                  activeTicker.bg
+                } ${activeTicker.border} ${activeTicker.color}`}
+              >
+                <ArrowLeftRight className="w-3 h-3" />
+                Swap {activePair.split("/")[0]}
+              </button>
+            </div>
+
+            {/* TradingView iframe */}
+            <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
+              <iframe
+                key={`${activePair}-${interval}`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
+                width="100%"
+                height="440"
+                frameBorder="0"
+                allowTransparency={true}
+                scrolling="no"
+                style={{ display: "block", background: "#000" }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bottom padding when no chart */}
+      {!activePair && <div className="pb-3" />}
     </div>
   );
 }
