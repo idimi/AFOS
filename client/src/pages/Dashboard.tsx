@@ -659,7 +659,8 @@ function MarketTicker() {
     ETH: { price: 2680, change: +0.8 },
     SOL: { price: 142.80, change: -1.1 },
   });
-  const [activePair, setActivePair] = useState<string | null>(null);
+  // Open BTC/USDT chart by default on desktop
+  const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
   const [interval, setIntervalTF] = useState("60"); // TradingView interval
 
   const TF_OPTIONS = [
