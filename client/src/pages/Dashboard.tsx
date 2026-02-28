@@ -652,6 +652,8 @@ const TV_SYMBOLS: Record<string, string> = {
 };
 
 function MarketTicker() {
+  const { theme } = useTheme();
+  const tvTheme = theme === "light" ? "light" : "dark";
   const [prices, setPrices] = useState({
     BTC: { price: 96420, change: +3.2 },
     ETH: { price: 2680, change: +0.8 },
@@ -807,8 +809,8 @@ function MarketTicker() {
             {/* TradingView iframe */}
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
               <iframe
-                key={`${activePair}-${interval}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
+                key={`${activePair}-${interval}-${tvTheme}`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=f8fafc&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
                 width="100%"
                 height="440"
                 frameBorder="0"
