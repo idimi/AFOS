@@ -41,25 +41,38 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
 }) {
   return (
     <motion.aside
-      animate={{ width: open ? 216 : 60 }}
+      animate={{ width: open ? 220 : 64 }}
       transition={{ duration: 0.22, ease: "easeInOut" }}
-      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background overflow-hidden"
+      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background overflow-hidden relative"
     >
-      <div className="h-14 flex items-center px-3.5 border-b border-border shrink-0 gap-3">
-        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
-          <Zap className="w-3.5 h-3.5 text-white" />
+      {/* Header */}
+      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
+          <Zap className="w-4 h-4 text-white" />
         </div>
         <AnimatePresence>
           {open && (
-            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide">
+            <motion.span
+              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
+              transition={{ duration: 0.15 }}
+              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide flex-1">
               AFOS
             </motion.span>
           )}
         </AnimatePresence>
-        <button onClick={() => setOpen(!open)}
-          className="ml-auto text-muted-foreground hover:text-foreground transition-colors">
-          <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        {/* Prominent toggle button */}
+        <button
+          onClick={() => setOpen(!open)}
+          title={open ? "Collapse sidebar" : "Expand sidebar"}
+          className={`flex items-center justify-center rounded-lg transition-all duration-150 hover:scale-105 active:scale-95 shrink-0 ${
+            open ? "ml-auto w-7 h-7" : "w-8 h-8 mx-auto"
+          }`}
+          style={{
+            background: "rgba(6,182,212,0.12)",
+            border: "1px solid rgba(6,182,212,0.3)",
+          }}
+        >
+          <ChevronRight className={`w-3.5 h-3.5 text-cyan-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
         </button>
       </div>
 
@@ -68,14 +81,23 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
           const Icon = item.icon;
           const active = activePage === item.id;
           return (
-            <button key={item.id} onClick={() => setActivePage(item.id)}
-              className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl transition-all text-left ${
-                active ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            <button
+              key={item.id}
+              onClick={() => setActivePage(item.id)}
+              title={!open ? item.label : undefined}
+              className={`w-full flex items-center gap-3 rounded-xl transition-all text-left ${
+                open ? "px-2.5 py-2.5" : "px-0 py-2.5 justify-center"
+              } ${
+                active
+                  ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
               }`}>
-              <Icon className="w-4 h-4 shrink-0" />
+              <Icon className={`w-4 h-4 shrink-0 ${open ? "" : "mx-auto"}`} />
               <AnimatePresence>
                 {open && (
-                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  <motion.span
+                    initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }}
+                    transition={{ duration: 0.12 }}
                     className="text-sm whitespace-nowrap">{item.label}</motion.span>
                 )}
               </AnimatePresence>
@@ -84,12 +106,14 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
         })}
       </nav>
 
+      {/* Footer */}
       <div className="p-3 border-t border-border shrink-0">
-        <div className="flex items-center gap-2.5 px-2">
+        <div className={`flex items-center gap-2.5 ${open ? "px-2" : "justify-center"}`}>
           <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
           <AnimatePresence>
             {open && (
-              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              <motion.span
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="text-xs text-muted-foreground whitespace-nowrap font-mono">agent online</motion.span>
             )}
           </AnimatePresence>
