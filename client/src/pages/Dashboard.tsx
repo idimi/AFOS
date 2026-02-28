@@ -661,7 +661,7 @@ function MarketTicker() {
   });
   // Open BTC/USDT chart by default on desktop
   const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
-  const [interval, setIntervalTF] = useState("60"); // TradingView interval
+  const [interval, setIntervalTF] = useState("240"); // TradingView interval — default 4h
 
   const TF_OPTIONS = [
     { label: "1m", value: "1" },
@@ -811,9 +811,9 @@ function MarketTicker() {
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
               <iframe
                 key={`${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=6M`}
                 width="100%"
-                height="440"
+                height="520"
                 frameBorder="0"
                 scrolling="no"
                 style={{ display: "block", background: "#000" }}
@@ -1179,7 +1179,7 @@ function MobileMarketCard() {
     SOL: { price: 142.80, change: -1.1 },
   });
   const [activePair, setActivePair] = useState<string | null>(null);
-  const [interval, setIntervalTF] = useState("60");
+  const [interval, setIntervalTF] = useState("240"); // default 4h
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1307,9 +1307,9 @@ function MobileMarketCard() {
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
               <iframe
                 key={`mob-${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=6M`}
                 width="100%"
-                height="260"
+                height="340"
                 frameBorder="0"
                 scrolling="no"
                 style={{ display: "block" }}
