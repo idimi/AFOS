@@ -1,7 +1,7 @@
 /**
  * WalletContext — Multi-chain wallet connection context
  * Design: Dark terminal aesthetic, AFOS brand
- * Supports: Solana (Phantom, Backpack, Solflare), EVM (MetaMask), Bitcoin (Xverse)
+ * Supports: Solana (Phantom, Backpack, Solflare), EVM (MetaMask), Bitcoin (Xverse, TAP Wallet)
  */
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
@@ -76,9 +76,9 @@ const WALLET_CONFIGS: Record<string, { chain: WalletChain; icon: string; mockAdd
     icon: "https://www.xverse.app/favicon.ico",
     mockAddress: "bc1q...x7k2",
   },
-  Leather: {
+  "TAP Wallet": {
     chain: "bitcoin",
-    icon: "https://leather.io/favicon.ico",
+    icon: "https://trac.network/favicon.ico",
     mockAddress: "bc1p...m3n8",
   },
 };

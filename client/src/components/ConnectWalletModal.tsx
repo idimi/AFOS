@@ -31,7 +31,7 @@ const WALLETS_BY_CHAIN: Record<WalletChain, { name: string; description: string;
   ],
   bitcoin: [
     { name: "Xverse", description: "Bitcoin & Ordinals wallet", popular: true },
-    { name: "Leather", description: "Bitcoin & Stacks wallet" },
+    { name: "TAP Wallet", description: "Bitcoin, Ordinals & TAP Protocol" },
   ],
 };
 
@@ -42,7 +42,7 @@ const WALLET_ICONS: Record<string, string> = {
   MetaMask: "🦊",
   "Coinbase Wallet": "🔵",
   Xverse: "₿",
-  Leather: "🟠",
+  "TAP Wallet": "🔷",
 };
 
 export default function ConnectWalletModal({ open, onClose }: ConnectWalletModalProps) {
