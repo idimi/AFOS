@@ -747,9 +747,9 @@ function MarketTicker() {
                 {isActive && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 260, opacity: 1 }}
+                    animate={{ height: 480, opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.28, ease: "easeInOut" }}
+                    transition={{ duration: 0.32, ease: "easeInOut" }}
                     className="overflow-hidden rounded-xl mt-1.5"
                     style={{ border: "1px solid rgba(6,182,212,0.2)" }}
                   >
@@ -757,7 +757,7 @@ function MarketTicker() {
                       key={t.symbol}
                       src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${t.symbol.replace("/","")}&symbol=${TV_SYMBOLS[t.symbol]}&interval=60&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
                       width="100%"
-                      height="260"
+                      height="480"
                       frameBorder="0"
                       allowTransparency={true}
                       scrolling="no"
