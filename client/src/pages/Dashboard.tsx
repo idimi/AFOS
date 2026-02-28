@@ -953,19 +953,19 @@ export default function Dashboard() {
               {/* ── DESKTOP: 2-column layout ── */}
               <div className="hidden lg:grid grid-cols-12 gap-5 p-5 h-full" style={{ minHeight: 0 }}>
 
-                {/* LEFT col — Agent Status + Metrics + Recent Swaps + Quick Actions */}
+                {/* LEFT col — Agent Status + Metrics + Quick Actions + Market (with charts) */}
                 <div className="col-span-7 flex flex-col gap-4 min-h-0">
                   <AgentStatusCard onNavigateToTerminal={() => setActivePage("terminal")} />
                   <MetricsRow />
                   <QuickActions onNavigate={setActivePage} />
-                  <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
+                  <MarketTicker />
                 </div>
 
-                {/* RIGHT col — Portfolio + Wallets + Market + Agent Activity */}
+                {/* RIGHT col — Portfolio + Wallets + Recent Swaps + Agent Activity */}
                 <div className="col-span-5 flex flex-col gap-4 min-h-0">
                   <PortfolioCard />
                   <WalletsCard />
-                  <MarketTicker />
+                  <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
                   <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
                 </div>
               </div>
@@ -977,8 +977,8 @@ export default function Dashboard() {
                 <PortfolioCard />
                 <WalletsCard />
                 <QuickActions onNavigate={setActivePage} />
-                <MarketTicker />
                 <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
+                <MarketTicker />
                 <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
               </div>
             </div>
