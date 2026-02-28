@@ -1,26 +1,25 @@
 /**
  * AFOS Dashboard — Agentic Financial Operating System
- * Redesigned Overview: Production-ready operator command center
- * Layout: 2-column (left: agent status + metrics + activity, right: portfolio + market + thought stream)
- * Mobile: Single column, prioritized order
+ * Stack: OpenClaw Agent → IntercomSwap (BTC/LN ↔ USDT/SOL, ETH, SOL)
+ * MoonPay: Phase 2 future layer
+ * Design: Glassmorphism + Agentic Sci-Fi
+ * Mobile: Uniswap-style — bottom tab bar, single-column cards, full-width inputs
+ * Desktop: 3-column grid, agent log fills full available height
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
-  ChevronRight, CheckCircle2, Clock,
-  TrendingUp, TrendingDown, Send,
-  Network, Radio, Moon, Sun, Cpu, Wallet, X, Terminal,
-  QrCode, ArrowUpRight, ArrowDownLeft, Copy, Check,
-  Shield, AlertTriangle, Loader2, ExternalLink,
-  BarChart3, Users, Globe, Gauge, Play, RefreshCw,
-  Sparkles, Eye, CircleDot, ArrowRight
+  ChevronRight, Circle, CheckCircle2, Clock,
+  TrendingUp, TrendingDown, Send, BarChart3, ArrowRight,
+  Network, Radio, Moon, Sun, Cpu, Wallet, Menu, X, Terminal,
+  ToggleLeft, ToggleRight, QrCode, ArrowUpRight, ArrowDownLeft, Copy, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
 import { useHaptic } from "../hooks/useHaptic";
-import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
+import { useAgentLog } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import Swaps from "./Swaps";
@@ -30,6 +29,129 @@ import NetworkPage from "./NetworkPage";
 import TerminalPage from "./TerminalPage";
 
 type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings" | "terminal";
+
+
+const PIPELINE_STEPS = [
+  { id: 1, label: "Agent Parses Command", tool: "openclaw:parse", detail: "OpenClaw interprets natural language instruction", chain: "OpenClaw" },
+  { id: 2, label: "Broadcast RFQ", tool: "intercomswap_rfq_send", detail: "Request-for-Quote sent to P2P rendezvous channel", chain: "IntercomSwap" },
+  { id: 3, label: "Peer Negotiation", tool: "intercomswap_quote_accept", detail: "Best quote selected, swap terms agreed P2P", chain: "IntercomSwap" },
+  { id: 4, label: "HTLC Escrow Lock", tool: "intercomswap_escrow_init", detail: "Solana escrow locked with payment hash (atomic)", chain: "Solana" },
+  { id: 5, label: "Lightning Settlement", tool: "intercomswap_ln_pay", detail: "BTC sent via LN, preimage reveals USDT to maker", chain: "Bitcoin LN" },
+];
+
+const AGENT_COMMANDS = [
+  "Swap 0.01 BTC to USDT",
+  "Get best BTC quote",
+  "Check LN liquidity",
+  "List active peers",
+];
+
+const CHAIN_BADGE: Record<string, string> = {
+  "OpenClaw": "bg-violet-500/15 text-violet-300 border-violet-500/20",
+  "IntercomSwap": "bg-cyan-500/15 text-cyan-300 border-cyan-500/20",
+  "Solana": "bg-purple-500/15 text-purple-300 border-purple-500/20",
+  "Bitcoin LN": "bg-amber-500/15 text-amber-300 border-amber-500/20",
+};
+
+
+// ── Worker Status Card ────────────────────────────────────────────────────────
+function WorkerStatusCard() {
+  const [tradeauto, setTradeauto] = useState(false);
+  const [ticks, setTicks] = useState(1847);
+  const [actions, setActions] = useState(23);
+  const [lastTick, setLastTick] = useState(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTicks(t => t + 1);
+      setLastTick(new Date());
+      if (tradeauto && Math.random() > 0.7) setActions(a => a + 1);
+    }, 3800);
+    return () => clearInterval(interval);
+  }, [tradeauto]);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Worker</p>
+        <button
+          onClick={() => { setTradeauto(v => !v); }}
+          className="flex items-center gap-1.5 text-[10px] font-mono transition-colors"
+          style={{ color: tradeauto ? "#10b981" : "var(--muted-foreground)" }}
+        >
+          {tradeauto
+            ? <ToggleRight className="w-4 h-4 text-emerald-400" />
+            : <ToggleLeft className="w-4 h-4" />}
+          tradeauto
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Ticks", value: ticks.toLocaleString() },
+          { label: "Actions", value: actions },
+          { label: "Last tick", value: `${Math.round((Date.now() - lastTick.getTime()) / 1000)}s ago` },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: "var(--muted)" }}>
+            <div className="text-sm font-bold font-mono text-foreground">{stat.value}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── LP Health Card ───────────────────────────────────────────────────────────
+function LPHealthCard() {
+  const [lpData] = useState({
+    btcReserve: 0.85,
+    usdtReserve: 42500,
+    spread: 15,
+    tradesServed: 284,
+    route: "best" as "afos_lp" | "p2p" | "best",
+    lpActive: true,
+  });
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">LP Health</p>
+        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full"
+          style={{ background: lpData.lpActive ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)", color: lpData.lpActive ? "#10b981" : "#ef4444" }}>
+          {lpData.lpActive ? "ACTIVE" : "PAUSED"}
+        </span>
+      </div>
+      <div className="space-y-2 mb-3">
+        <div className="flex justify-between">
+          <span className="text-[10px] text-muted-foreground">BTC Reserve</span>
+          <span className="text-[10px] font-mono font-semibold text-amber-400">{lpData.btcReserve} BTC</span>
+        </div>
+        <div className="h-1 rounded-full" style={{ background: "var(--muted)" }}>
+          <div className="h-full rounded-full bg-amber-400" style={{ width: `${(lpData.btcReserve / 1.0) * 100}%` }} />
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[10px] text-muted-foreground">USDT Reserve</span>
+          <span className="text-[10px] font-mono font-semibold text-emerald-400">{lpData.usdtReserve.toLocaleString()} USDT</span>
+        </div>
+        <div className="h-1 rounded-full" style={{ background: "var(--muted)" }}>
+          <div className="h-full rounded-full bg-emerald-400" style={{ width: `${(lpData.usdtReserve / 100000) * 100}%` }} />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: "Spread", value: `${lpData.spread}bps` },
+          { label: "Served", value: lpData.tradesServed },
+          { label: "Route", value: lpData.route === "best" ? "Hybrid" : lpData.route === "afos_lp" ? "LP" : "P2P" },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-lg p-2 text-center" style={{ background: "var(--muted)" }}>
+            <div className="text-xs font-bold font-mono text-foreground">{stat.value}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
@@ -41,68 +163,41 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
 }) {
   return (
     <motion.aside
-      animate={{ width: open ? 220 : 64 }}
+      animate={{ width: open ? 216 : 60 }}
       transition={{ duration: 0.22, ease: "easeInOut" }}
-      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background relative"
-      style={{ overflow: "visible" }}
+      className="hidden lg:flex shrink-0 flex-col border-r border-border bg-background overflow-hidden"
     >
-      {/* Inner clip so content doesn't spill */}
-      <div className="absolute inset-0 overflow-hidden flex flex-col" style={{ pointerEvents: "none" }} />
-
-      {/* Header */}
-      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2.5 overflow-hidden">
-        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
-          <Zap className="w-4 h-4 text-white" />
+      <div className="h-14 flex items-center px-3.5 border-b border-border shrink-0 gap-3">
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center shrink-0">
+          <Zap className="w-3.5 h-3.5 text-white" />
         </div>
         <AnimatePresence>
           {open && (
-            <motion.span
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.15 }}
-              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide flex-1">
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide">
               AFOS
             </motion.span>
           )}
         </AnimatePresence>
+        <button onClick={() => setOpen(!open)}
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors">
+          <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
       </div>
-
-      {/* Floating toggle tab — top of sidebar, right edge */}
-      <button
-        onClick={() => setOpen(!open)}
-        title={open ? "Collapse sidebar" : "Expand sidebar"}
-        className="absolute top-[14px] -right-[18px] z-50 w-[18px] h-8 flex items-center justify-center rounded-r-lg transition-all duration-150 hover:w-[22px] group"
-        style={{
-          background: "linear-gradient(135deg, rgba(6,182,212,0.25), rgba(139,92,246,0.2))",
-          border: "1px solid rgba(6,182,212,0.5)",
-          borderLeft: "none",
-          boxShadow: "2px 0 12px rgba(6,182,212,0.2)",
-        }}
-      >
-        <ChevronRight className={`w-3 h-3 text-cyan-400 transition-transform duration-200 group-hover:text-cyan-300 ${open ? "rotate-180" : ""}`} />
-      </button>
 
       <nav className="flex-1 py-3 space-y-0.5 px-2">
         {navItems.map(item => {
           const Icon = item.icon;
           const active = activePage === item.id;
           return (
-            <button
-              key={item.id}
-              onClick={() => setActivePage(item.id)}
-              title={!open ? item.label : undefined}
-              className={`w-full flex items-center gap-3 rounded-xl transition-all text-left ${
-                open ? "px-2.5 py-2.5" : "px-0 py-2.5 justify-center"
-              } ${
-                active
-                  ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
+            <button key={item.id} onClick={() => setActivePage(item.id)}
+              className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl transition-all text-left ${
+                active ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}>
-              <Icon className={`w-4 h-4 shrink-0 ${open ? "" : "mx-auto"}`} />
+              <Icon className="w-4 h-4 shrink-0" />
               <AnimatePresence>
                 {open && (
-                  <motion.span
-                    initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }}
-                    transition={{ duration: 0.12 }}
+                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                     className="text-sm whitespace-nowrap">{item.label}</motion.span>
                 )}
               </AnimatePresence>
@@ -111,14 +206,12 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
         })}
       </nav>
 
-      {/* Footer */}
       <div className="p-3 border-t border-border shrink-0">
-        <div className={`flex items-center gap-2.5 ${open ? "px-2" : "justify-center"}`}>
+        <div className="flex items-center gap-2.5 px-2">
           <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
           <AnimatePresence>
             {open && (
-              <motion.span
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 className="text-xs text-muted-foreground whitespace-nowrap font-mono">agent online</motion.span>
             )}
           </AnimatePresence>
@@ -153,300 +246,548 @@ function MobileTabBar({ navItems, activePage, setActivePage }: {
   );
 }
 
-// ── Agent Status Card ──────────────────────────────────────────────────────
-function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
-  const [uptime, setUptime] = useState(0);
-  const [currentTask, setCurrentTask] = useState("Monitoring rendezvous channel");
-  const [taskCycle, setTaskCycle] = useState(0);
+// ── Main ───────────────────────────────────────────────────────────────────
+export default function Dashboard() {
+  const { theme, toggleTheme } = useTheme();
+  const haptic = useHaptic();
+  const { connectedWallets, primaryWallet } = useWallet();
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [activePage, setActivePage] = useState<NavPage>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { entries: logs, addEntry: addLog } = useAgentLog();
+  const [pipelineStep, setPipelineStep] = useState(0);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [commandInput, setCommandInput] = useState("");
+  const [agentThinking, setAgentThinking] = useState(false);
+  const logScrollRef = useRef<HTMLDivElement>(null);
+  const [logPulse, setLogPulse] = useState(false);
 
-  const TASKS = useMemo(() => [
-    "Monitoring rendezvous channel",
-    "Scanning for RFQ opportunities",
-    "Rebalancing LN channel liquidity",
-    "Checking escrow PDA states",
-    "Heartbeat ping to 3 peers",
-    "Evaluating best BTC/USDT rate",
-    "Idle — awaiting instructions",
-  ], []);
-
+  // Scroll the desktop log panel — NOT the whole page (no scrollIntoView on mobile)
   useEffect(() => {
-    const interval = setInterval(() => setUptime(u => u + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
+    const el = logScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [logs]);
 
+  // Pulse scrollbar on new log entries
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTaskCycle(c => {
-        const next = (c + 1) % TASKS.length;
-        setCurrentTask(TASKS[next]);
-        return next;
-      });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [TASKS]);
+    setLogPulse(true);
+    const t = setTimeout(() => setLogPulse(false), 600);
+    return () => clearTimeout(t);
+  }, [logs.length]);
 
-  const formatUptime = (s: number) => {
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    return `${h}h ${m}m ${sec}s`;
+  const runPipeline = (cmd?: string) => {
+    if (pipelineRunning) return;
+    const instruction = cmd || commandInput || "Swap 0.01 BTC to USDT";
+    setCommandInput("");
+    setAgentThinking(true);
+    setPipelineRunning(true);
+    setPipelineStep(0);
+    addLog({ level: "cmd", message: `> ${instruction}`, tool: "openclaw:parse" });
+    addLog({ level: "info", message: `Agent received: "${instruction}"`, tool: "openclaw:parse",
+      payload: { raw_input: instruction, intent: "swap", confidence: 0.94 } });
+    setTimeout(() => setAgentThinking(false), 700);
+    PIPELINE_STEPS.forEach((step, i) => {
+      setTimeout(() => {
+        setPipelineStep(i + 1);
+        addLog({
+          level: i === PIPELINE_STEPS.length - 1 ? "success" : "info",
+          message: step.detail, tool: step.tool,
+        });
+        if (i === PIPELINE_STEPS.length - 1) {
+          setTimeout(() => {
+            setPipelineRunning(false);
+            toast.success("Swap executed", { description: "Funds settled atomically on-chain" });
+          }, 500);
+        }
+      }, 800 + i * 1050);
+    });
   };
 
+  const navItems = [
+    { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
+    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
+    { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
+    { id: "activity" as NavPage, icon: Activity, label: "History" },
+    { id: "network" as NavPage, icon: Network, label: "Network" },
+    { id: "settings" as NavPage, icon: Settings, label: "Settings" },
+  ];
+
+  const renderSubPage = () => {
+    if (activePage === "swaps") return <Swaps />;
+    if (activePage === "activity") return <SwapHistory />;
+    if (activePage === "settings") return <AgentSettings />;
+    if (activePage === "network") return <NetworkPage />;
+    if (activePage === "terminal") return <TerminalPage />;
+    return null;
+  };
+
+  const subPage = renderSubPage();
+
   return (
-    <div className="rounded-2xl border border-cyan-500/15 bg-card p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center relative">
-            <Bot className="w-5 h-5 text-cyan-400" />
-            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2 border-card" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-foreground">OpenClaw Agent</h3>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">ACTIVE</span>
+    <div className="flex h-screen bg-background overflow-hidden font-sans">
+      <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
+
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Topbar */}
+        <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0 bg-background/80 backdrop-blur-sm">
+          <div className="flex items-center gap-2 lg:gap-3">
+            {/* Mobile logo */}
+            <div className="lg:hidden w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
+              <Zap className="w-3.5 h-3.5 text-white" />
             </div>
-            <p className="text-xs text-muted-foreground font-mono">gpt-4o-mini · intercomswap@mainnet</p>
+            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-sm text-muted-foreground font-mono hidden sm:block">openclaw-agent</span>
+            <span className="text-muted-foreground/40 hidden sm:block">·</span>
+            <span className="text-xs text-cyan-400/70 font-mono">intercomswap@mainnet</span>
           </div>
+          <div className="flex items-center gap-2 lg:gap-4">
+            <span className="text-xs text-muted-foreground font-mono hidden xl:block">0000intercomswapbtcusdt</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20">
+              <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
+              <span className="text-xs text-violet-300 font-mono">3 peers</span>
+            </div>
+            {/* Wallet connect button */}
+            {connectedWallets.length > 0 ? (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {primaryWallet?.shortAddress}
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
+                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
+                <Wallet className="w-3 h-3" />
+                Connect
+              </button>
+            )}
+            {/* Theme toggle */}
+            <button
+              onClick={toggleTheme}
+              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+              style={{
+                background: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)",
+                border: theme === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)",
+              }}
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark"
+                ? <Sun className="w-3.5 h-3.5 text-amber-400" />
+                : <Moon className="w-3.5 h-3.5 text-slate-500" />}
+            </button>
+          </div>
+        </header>
+
+        {/* Content */}
+        {subPage ? (
+          <main className="flex-1 overflow-auto pb-16 lg:pb-0">{subPage}</main>
+        ) : (
+          /* ── DASHBOARD ── */
+          <div className="flex-1 overflow-auto pb-20 lg:pb-0">
+
+            {/* ── DESKTOP: 3-column grid fills full height ── */}
+            <div className="hidden lg:grid grid-cols-12 gap-4 p-5 h-full" style={{ minHeight: 0 }}>
+
+              {/* LEFT col — Command + Pipeline */}
+              <div className="col-span-5 flex flex-col gap-4 min-h-0">
+
+                {/* Agent Command */}
+                <div className="rounded-2xl border border-cyan-500/15 bg-card p-5 shrink-0">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                      <Bot className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-card-foreground">OpenClaw Agent</p>
+                      <p className="text-xs text-muted-foreground">Natural language → IntercomSwap tool calls</p>
+                    </div>
+                    {agentThinking && (
+                      <div className="flex gap-1">
+                        {[0, 1, 2].map(i => (
+                          <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {AGENT_COMMANDS.map(cmd => (
+                      <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
+                        className="text-xs px-2.5 py-1.5 rounded-full border border-border text-muted-foreground hover:border-cyan-500/35 hover:text-cyan-300 hover:bg-cyan-500/5 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                        {cmd}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="text" value={commandInput} onChange={e => setCommandInput(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && runPipeline()}
+                      placeholder="e.g. Swap 0.05 BTC to USDT at best rate…"
+                      disabled={pipelineRunning}
+                      className="flex-1 bg-input border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
+                    <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
+                      className="px-4 py-2.5 rounded-xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pipeline — grows to fill remaining height */}
+                <div className="rounded-2xl border border-border bg-card p-5 flex-1 flex flex-col min-h-0">
+                  <div className="flex items-center justify-between mb-4 shrink-0">
+                    <p className="text-sm font-semibold text-card-foreground">Swap Execution Pipeline</p>
+                    {pipelineRunning && <span className="text-xs text-cyan-400 font-mono animate-pulse">executing…</span>}
+                    {!pipelineRunning && pipelineStep === PIPELINE_STEPS.length && (
+                      <span className="text-xs text-emerald-400 font-mono">✓ settled</span>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-auto space-y-2.5">
+                    {PIPELINE_STEPS.map((step, i) => {
+                      const done = pipelineStep > i;
+                      const active = pipelineStep === i && pipelineRunning;
+                      return (
+                        <motion.div key={step.id}
+                          className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                            done ? "border-emerald-500/20 bg-emerald-500/4" :
+                            active ? "border-cyan-500/35 bg-cyan-500/8" :
+                            "border-border bg-muted/30"
+                          }`}
+                          animate={active ? { boxShadow: ["0 0 0px rgba(6,182,212,0)", "0 0 14px rgba(6,182,212,0.12)", "0 0 0px rgba(6,182,212,0)"] } : {}}
+                          transition={{ duration: 1.3, repeat: Infinity }}>
+                          <div className="mt-0.5 shrink-0">
+                            {done ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> :
+                             active ? (
+                               <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                                 <Zap className="w-4 h-4 text-cyan-400" />
+                               </motion.div>
+                             ) : <Circle className="w-4 h-4 text-muted-foreground/30" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-muted-foreground"}`}>
+                                {step.label}
+                              </p>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${CHAIN_BADGE[step.chain] ?? "bg-muted text-muted-foreground border-border"}`}>
+                                {step.chain}
+                              </span>
+                            </div>
+                            <p className={`text-xs mt-0.5 ${done || active ? "text-foreground/60" : "text-muted-foreground/40"}`}>{step.detail}</p>
+                            <p className={`text-[10px] font-mono mt-0.5 ${done || active ? "text-muted-foreground" : "text-muted-foreground/30"}`}>{step.tool}</p>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                    <div className="p-3 rounded-xl border border-dashed border-border">
+                      <div className="flex items-center gap-2">
+                        <Moon className="w-3.5 h-3.5 text-muted-foreground/40" />
+                        <p className="text-xs text-muted-foreground/50 font-mono">Phase 2: MoonPay fiat on-ramp → auto-fund wallet before swap</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* CENTER col — Wallets + Market (with charts) + LN */}
+              <div className="col-span-4 flex flex-col gap-4 min-h-0 overflow-auto">
+                <WalletsCard />
+                <MarketTicker />
+                <LNCard />
+              </div>
+
+              {/* RIGHT col — Agent Log fills full height + Stack status below */}
+              <div className="col-span-3 flex flex-col gap-4 min-h-0">
+
+                {/* Agent Log — flex-1 so it fills all available vertical space */}
+                <div className="rounded-2xl border border-border bg-card p-5 flex flex-col flex-1 min-h-0">
+                  <div className="flex items-center justify-between mb-3 shrink-0">
+                    <p className="text-sm font-semibold text-card-foreground">Agent Log</p>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="text-xs text-muted-foreground font-mono">live</span>
+                    </div>
+                  </div>
+                  {/* overflow-y-auto on this inner div — the card itself is flex-1 */}
+                  <div
+                    ref={logScrollRef}
+                    className={`flex-1 overflow-y-auto space-y-2 pr-1 min-h-0 transition-all duration-300 ${logPulse ? "log-scroll-pulse" : ""}`}
+                  >
+                    <AnimatePresence initial={false}>
+                      {logs.map(log => (
+                        <motion.div key={log.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }} className="text-xs">
+                          <div className="flex items-start gap-2">
+                            <span className="text-muted-foreground/60 font-mono shrink-0 tabular-nums">{log.ts}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`leading-snug ${
+                                log.level === "success" ? "text-emerald-400" :
+                                log.level === "warn" ? "text-amber-400" :
+                                log.level === "error" ? "text-red-400" :
+                                log.level === "cmd" ? "text-violet-400" :
+                                log.level === "debug" ? "text-slate-400" : "text-foreground/70"
+                              }`}>{log.message}</p>
+                              {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                </div>
+
+                {/* Compact Recent Swaps */}
+                <CompactRecentSwaps />
+
+                {/* Stack Status — shrinks to content */}
+                <div className="rounded-2xl border border-border bg-card p-5 shrink-0">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Stack Status</p>
+                  <div className="space-y-2.5">
+                    {[
+                      { name: "OpenClaw", role: "Agent runtime", status: "live", color: "text-cyan-400" },
+                      { name: "IntercomSwap", role: "P2P swap protocol", status: "live", color: "text-emerald-400" },
+                      { name: "Bitcoin LN", role: "BTC settlement", status: "live", color: "text-amber-400" },
+                      { name: "Solana", role: "USDT escrow", status: "live", color: "text-purple-400" },
+                      { name: "Ethereum", role: "ETH HTLC", status: "building", color: "text-blue-400" },
+                      { name: "MoonPay", role: "Fiat on-ramp", status: "planned", color: "text-muted-foreground" },
+                    ].map(s => (
+                      <div key={s.name} className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-xs font-semibold ${s.color}`}>{s.name}</span>
+                          <span className="text-[10px] text-muted-foreground ml-1.5">{s.role}</span>
+                        </div>
+                        <span className={`text-[10px] font-mono shrink-0 ml-2 ${
+                          s.status === "live" ? "text-emerald-400" :
+                          s.status === "building" ? "text-amber-400" : "text-muted-foreground/50"
+                        }`}>{s.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Worker Status */}
+                <WorkerStatusCard />
+                {/* LP Health */}
+                <LPHealthCard />
+              </div>
+            </div>
+
+            {/* ── MOBILE: single-column stacked cards ── */}
+            <div className="lg:hidden flex flex-col gap-4 p-4">
+
+              {/* Agent Command — full width */}
+              <div className="rounded-2xl border border-cyan-500/15 bg-card p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center">
+                    <Bot className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-card-foreground">OpenClaw Agent</p>
+                    <p className="text-xs text-muted-foreground">Tap a command or type below</p>
+                  </div>
+                  {agentThinking && (
+                    <div className="flex gap-1">
+                      {[0, 1, 2].map(i => (
+                        <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-cyan-400"
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.2 }} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                   {AGENT_COMMANDS.map(cmd => (
+                     <button key={cmd} onClick={() => { haptic.tap(); runPipeline(cmd); }} disabled={pipelineRunning}
+                      className="text-xs px-3 py-2 rounded-full border border-border text-muted-foreground active:bg-cyan-500/10 active:border-cyan-500/30 active:text-cyan-300 transition-all disabled:opacity-30">
+                      {cmd}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input type="text" value={commandInput} onChange={e => setCommandInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && runPipeline()}
+                    placeholder="Type a command…"
+                    disabled={pipelineRunning}
+                    className="flex-1 bg-input border border-border rounded-xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-500/35 font-mono disabled:opacity-40" />
+                   <button onClick={() => { haptic.tap(); runPipeline(); }} disabled={pipelineRunning}
+                    className="px-4 py-3 rounded-xl bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 active:bg-cyan-500/35 transition-all disabled:opacity-30">
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Terminal Widget — synced with Terminal page */}
+              <MobileTerminalWidget logs={logs} onNavigateToTerminal={() => setActivePage("terminal")} />
+
+              {/* Pipeline — mobile */}
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-foreground">Swap Pipeline</p>
+                  {pipelineRunning && <span className="text-xs text-cyan-400 font-mono animate-pulse">executing…</span>}
+                  {!pipelineRunning && pipelineStep === PIPELINE_STEPS.length && <span className="text-xs text-emerald-400 font-mono">✓ settled</span>}
+                </div>
+                <div className="space-y-2">
+                  {PIPELINE_STEPS.map((step, i) => {
+                    const done = pipelineStep > i;
+                    const active = pipelineStep === i && pipelineRunning;
+                    return (
+                      <div key={step.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                        done ? "border-emerald-500/20 bg-emerald-500/4" :
+                        active ? "border-cyan-500/35 bg-cyan-500/8" :
+                        "border-border"
+                      }`}>
+                        <div className="shrink-0">
+                          {done ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> :
+                           active ? (
+                             <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}>
+                               <Zap className="w-4 h-4 text-cyan-400" />
+                             </motion.div>
+                           ) : <Circle className="w-4 h-4 text-muted-foreground/30" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${done ? "text-emerald-300" : active ? "text-cyan-300" : "text-muted-foreground"}`}>{step.label}</p>
+                          <p className={`text-xs truncate ${done || active ? "text-foreground/60" : "text-muted-foreground/30"}`}>{step.tool}</p>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono shrink-0 ${CHAIN_BADGE[step.chain] ?? "bg-muted text-muted-foreground border-border"}`}>
+                          {step.chain}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Wallets — mobile */}
+              <WalletsCard />
+
+              {/* Pairs — mobile */}
+              <PairsCard />
+
+              {/* Agent Log — mobile: fixed height with scroll */}
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-card-foreground">Agent Log</p>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs text-muted-foreground font-mono">live</span>
+                  </div>
+                </div>
+                <div className="overflow-y-auto space-y-2" style={{ maxHeight: 280 }} ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }}>
+                  {logs.slice(-20).map(log => (
+                    <div key={log.id} className="text-xs flex items-start gap-2">
+                      <span className="text-muted-foreground/60 font-mono shrink-0 tabular-nums">{log.ts}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`leading-snug ${
+                          log.level === "success" ? "text-emerald-400" :
+                          log.level === "warn" ? "text-amber-400" :
+                          log.level === "error" ? "text-red-400" :
+                          log.level === "cmd" ? "text-violet-400" :
+                          log.level === "debug" ? "text-slate-400" : "text-foreground/70"
+                        }`}>{log.message}</p>
+                        {log.tool && <p className="text-muted-foreground/50 font-mono truncate">{log.tool}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Stack status — mobile */}
+              <div className="rounded-2xl border border-border bg-card p-4">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Stack Status</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { name: "OpenClaw", status: "live", color: "text-cyan-400" },
+                    { name: "IntercomSwap", status: "live", color: "text-emerald-400" },
+                    { name: "Bitcoin LN", status: "live", color: "text-amber-400" },
+                    { name: "Solana", status: "live", color: "text-purple-400" },
+                    { name: "Ethereum", status: "building", color: "text-blue-400" },
+                    { name: "MoonPay", status: "planned", color: "text-muted-foreground" },
+                  ].map(s => (
+                    <div key={s.name} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/40 border border-border">
+                      <span className={`text-xs font-semibold ${s.color}`}>{s.name}</span>
+                      <span className={`text-[10px] font-mono ${
+                        s.status === "live" ? "text-emerald-400" :
+                        s.status === "building" ? "text-amber-400" : "text-muted-foreground/50"
+                      }`}>{s.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Worker Status — mobile */}
+              <WorkerStatusCard />
+
+              {/* LP Health — mobile */}
+              <LPHealthCard />
+
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Mobile bottom tab bar */}
+      <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
+      {/* Wallet connect modal */}
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
+    </div>
+  );
+}
+
+// ── Mobile Terminal Widget ────────────────────────────────────────────────
+function MobileTerminalWidget({ logs, onNavigateToTerminal }: {
+  logs: import("../contexts/AgentLogContext").TerminalEntry[];
+  onNavigateToTerminal: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep scrolled to bottom when new entries arrive
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs]);
+
+  const recent = logs.slice(-12);
+
+  const levelColor = (level: string) =>
+    level === "success" ? "text-emerald-400" :
+    level === "warn" ? "text-amber-400" :
+    level === "error" ? "text-red-400" :
+    level === "cmd" ? "text-violet-400" :
+    level === "debug" ? "text-slate-400" : "text-cyan-300/80";
+
+  return (
+    <div className="rounded-2xl border border-violet-500/15 bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Terminal className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-xs font-bold font-mono text-foreground">Agent Output</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
         <button
           onClick={onNavigateToTerminal}
-          className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors px-2.5 py-1.5 rounded-lg hover:bg-cyan-500/10 font-mono"
+          className="text-[10px] font-mono text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-md hover:bg-cyan-500/10"
         >
-          Terminal →
+          Open Terminal →
         </button>
       </div>
 
-      {/* Current task */}
-      <div className="rounded-xl bg-muted/40 border border-border p-3 mb-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Current Task</span>
-        </div>
-        <motion.p
-          key={currentTask}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-sm text-foreground font-mono"
-        >
-          {currentTask}
-        </motion.p>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
-          <p className="text-xs font-bold font-mono text-foreground">{formatUptime(uptime)}</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">Uptime</p>
-        </div>
-        <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
-          <p className="text-xs font-bold font-mono text-foreground">3</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">Skills loaded</p>
-        </div>
-        <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
-          <p className="text-xs font-bold font-mono text-emerald-400">Healthy</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">LND / SOL / ETH</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Key Metrics Row ────────────────────────────────────────────────────────
-function MetricsRow() {
-  const [metrics, setMetrics] = useState({
-    volume24h: 142800,
-    feesEarned: 428.40,
-    successRate: 98.7,
-    activePeers: 3,
-  });
-
-  // Simulate slight metric changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        volume24h: prev.volume24h + (Math.random() - 0.4) * 200,
-        feesEarned: prev.feesEarned + Math.random() * 0.5,
-        successRate: Math.min(100, Math.max(95, prev.successRate + (Math.random() - 0.5) * 0.1)),
-        activePeers: Math.random() > 0.9 ? (prev.activePeers === 3 ? 4 : 3) : prev.activePeers,
-      }));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const cards = [
-    {
-      label: "24h Volume",
-      value: `$${(metrics.volume24h / 1000).toFixed(1)}K`,
-      change: "+3.2%",
-      positive: true,
-      icon: BarChart3,
-      color: "text-cyan-400",
-      bg: "bg-cyan-500/8",
-      border: "border-cyan-500/15",
-    },
-    {
-      label: "Fees Earned",
-      value: `$${metrics.feesEarned.toFixed(2)}`,
-      change: "+12.4%",
-      positive: true,
-      icon: TrendingUp,
-      color: "text-emerald-400",
-      bg: "bg-emerald-500/8",
-      border: "border-emerald-500/15",
-    },
-    {
-      label: "Success Rate",
-      value: `${metrics.successRate.toFixed(1)}%`,
-      change: "0.0%",
-      positive: true,
-      icon: Shield,
-      color: "text-violet-400",
-      bg: "bg-violet-500/8",
-      border: "border-violet-500/15",
-    },
-    {
-      label: "Active Peers",
-      value: String(metrics.activePeers),
-      change: "stable",
-      positive: true,
-      icon: Users,
-      color: "text-amber-400",
-      bg: "bg-amber-500/8",
-      border: "border-amber-500/15",
-    },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-      {cards.map(card => {
-        const Icon = card.icon;
-        return (
-          <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-4`}>
-            <div className="flex items-center justify-between mb-2">
-              <Icon className={`w-4 h-4 ${card.color}`} />
-              <span className={`text-[10px] font-mono ${card.positive ? "text-emerald-400" : "text-red-400"}`}>
-                {card.change}
-              </span>
-            </div>
-            <p className="text-lg font-bold font-mono text-foreground">{card.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{card.label}</p>
+      {/* Log output */}
+      <div
+        ref={scrollRef}
+        className="overflow-y-auto px-3 py-2 space-y-0.5"
+        style={{ maxHeight: 200, background: "var(--background)" }}
+      >
+        {recent.map(log => (
+          <div key={log.id} className="flex items-start gap-2 text-[11px] font-mono py-0.5">
+            <span className="text-muted-foreground/40 shrink-0 tabular-nums w-[68px]">{log.ts.slice(0, 8)}</span>
+            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>
+              {log.level === "cmd" ? log.message : log.message}
+            </span>
           </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Recent Swaps Card ──────────────────────────────────────────────────────
-function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
-  const RECENT_SWAPS = useMemo(() => [
-    { id: "sw-001", from: "BTC", to: "USDT", fromAmt: "0.012", toAmt: "1,157.04", status: "complete" as const, time: "2m ago", protocol: "Lightning ↔ Solana" },
-    { id: "sw-002", from: "ETH", to: "USDT", fromAmt: "0.5", toAmt: "1,602.50", status: "complete" as const, time: "8m ago", protocol: "EVM HTLC" },
-    { id: "sw-003", from: "SOL", to: "USDT", fromAmt: "15.0", toAmt: "2,142.00", status: "complete" as const, time: "14m ago", protocol: "Solana SPL" },
-    { id: "sw-004", from: "BTC", to: "SOL", fromAmt: "0.005", toAmt: "2.56", status: "pending" as const, time: "18m ago", protocol: "Lightning ↔ Solana" },
-    { id: "sw-005", from: "BTC", to: "USDT", fromAmt: "0.001", toAmt: "96.42", status: "complete" as const, time: "25m ago", protocol: "Lightning ↔ Solana" },
-  ], []);
-
-  const STATUS_STYLE = {
-    complete: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    pending: { icon: Loader2, color: "text-amber-400", bg: "bg-amber-500/10" },
-    failed: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-500/10" },
-  };
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 flex-1 flex flex-col min-h-0">
-      <div className="flex items-center justify-between mb-4 shrink-0">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">Recent Swaps</h3>
-        </div>
-        <button
-          onClick={onViewAll}
-          className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1"
-        >
-          View all <ArrowRight className="w-3 h-3" />
-        </button>
+        ))}
       </div>
-
-      <div className="flex-1 overflow-auto space-y-1.5 min-h-0">
-        {RECENT_SWAPS.map(swap => {
-          const statusCfg = STATUS_STYLE[swap.status];
-          const StatusIcon = statusCfg.icon;
-          return (
-            <div key={swap.id} className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 border border-border hover:bg-muted/40 transition-colors group">
-              <div className={`w-8 h-8 rounded-lg ${statusCfg.bg} flex items-center justify-center shrink-0`}>
-                <StatusIcon className={`w-4 h-4 ${statusCfg.color} ${swap.status === "pending" ? "animate-spin" : ""}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm font-mono font-semibold text-foreground">{swap.fromAmt} {swap.from}</span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-sm font-mono font-semibold text-foreground">{swap.toAmt} {swap.to}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground font-mono">{swap.protocol}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className={`text-[10px] font-mono ${statusCfg.color}`}>{swap.status}</p>
-                <p className="text-[10px] text-muted-foreground">{swap.time}</p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ── Quick Actions ──────────────────────────────────────────────────────────
-function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
-  const haptic = useHaptic();
-  const actions = [
-    { label: "Open Terminal", icon: Terminal, page: "terminal" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-    { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
-    { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-    { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
-  ];
-
-  return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-      {actions.map(action => {
-        const Icon = action.icon;
-        return (
-          <button
-            key={action.label}
-            onClick={() => { haptic.tap(); onNavigate(action.page); }}
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border ${action.border} ${action.bg} hover:scale-[1.02] active:scale-[0.98] transition-all`}
-          >
-            <Icon className={`w-4 h-4 ${action.color}`} />
-            <span className="text-xs font-semibold text-foreground">{action.label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// ── Portfolio Card ─────────────────────────────────────────────────────────
-function PortfolioCard() {
-  const [totalUsd] = useState(18136);
-  const [change24h] = useState(+2.4);
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Total Portfolio</p>
-        <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
-      </div>
-      <div className="flex items-end gap-3 mb-1">
-        <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
-          ${totalUsd.toLocaleString()}
-        </p>
-        <div className={`flex items-center gap-1 text-sm font-mono mb-1 ${change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {change24h >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-          {change24h >= 0 ? "+" : ""}{change24h}%
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">24h change across all chains</p>
     </div>
   );
 }
@@ -504,6 +845,7 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
           style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           onClick={e => e.stopPropagation()}
         >
+          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {modal.mode === "send"
@@ -586,7 +928,7 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
   );
 }
 
-// ── Wallets Card (compact) ─────────────────────────────────────────────────
+// ── Shared card components ─────────────────────────────────────────────────
 function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
 
@@ -601,56 +943,115 @@ function WalletsCard() {
     <>
       {modal && <WalletModal modal={modal} onClose={() => setModal(null)} />}
       <div className="rounded-2xl border border-border bg-card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Wallet className="w-4 h-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">Wallets</h3>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm font-semibold text-card-foreground">Agent Wallets</p>
+          <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {wallets.map(w => (
             <div key={w.asset} className={`flex items-center gap-3 p-2.5 rounded-xl border ${w.border} ${w.bg}`}>
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-background/50 border border-border shrink-0`}>
                 {w.asset}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
-                  <span className="text-[10px] text-muted-foreground">{w.usd}</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground">{w.network}</p>
+                <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
+                <p className="text-xs text-muted-foreground">{w.network}</p>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => setModal({ asset: w.asset, network: w.network, mode: "receive" })}
                   title="Receive"
-                  className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-105"
                   style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                  <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
+                  <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-400" />
                 </button>
                 <button
                   onClick={() => setModal({ asset: w.asset, network: w.network, mode: "send" })}
                   title="Send"
-                  className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-105"
                   style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
-                  <ArrowUpRight className="w-3 h-3 text-red-400" />
+                  <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />
                 </button>
               </div>
             </div>
           ))}
+        </div>
+        <div className="mt-3 pt-3 border-t border-border flex justify-between items-center">
+          <span className="text-xs text-muted-foreground">Total Portfolio</span>
+          <span className="text-base font-bold text-amber-400 font-mono">$18,136</span>
         </div>
       </div>
     </>
   );
 }
 
-// ── Market Ticker with expandable TradingView chart ───────────────────────
+function PairsCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <p className="text-sm font-semibold text-card-foreground mb-3">IntercomSwap Pairs</p>
+      <div className="space-y-2">
+        {[
+          { pair: "BTC/LN ↔ USDT/SOL", vol: "$142.8K", change: +3.2, price: "96,420" },
+          { pair: "SOL ↔ USDT/SOL", vol: "$28.4K", change: -1.1, price: "142.80" },
+          { pair: "ETH ↔ USDT/SOL", vol: "$61.2K", change: +0.8, price: "2,680" },
+        ].map(s => (
+          <div key={s.pair} className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border">
+            <div>
+              <p className="text-xs font-mono text-foreground/65">{s.pair}</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Vol 24h: {s.vol}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-mono text-foreground font-semibold">${s.price}</p>
+              <div className={`flex items-center gap-1 justify-end text-xs ${s.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {s.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {s.change >= 0 ? "+" : ""}{s.change}%
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LNCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm font-semibold text-card-foreground">LN Channel Health</p>
+        <span className="text-xs text-emerald-400 font-mono">4 active</span>
+      </div>
+      <div className="space-y-2.5">
+        {[
+          { peer: "ACINQ", local: 72 },
+          { peer: "Bitfinex", local: 45 },
+          { peer: "River", local: 88 },
+          { peer: "Kraken", local: 31 },
+        ].map(ch => (
+          <div key={ch.peer}>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-foreground/45 font-mono">{ch.peer}</span>
+              <span className="text-muted-foreground">{ch.local}% local</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-1000"
+                style={{ width: `${ch.local}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── TradingView symbol map ────────────────────────────────────────────────────────
 const TV_SYMBOLS: Record<string, string> = {
   "BTC/USDT": "BINANCE:BTCUSDT",
   "ETH/USDT": "BINANCE:ETHUSDT",
   "SOL/USDT": "BINANCE:SOLUSDT",
 };
 
+// ── Market Ticker with expandable TradingView chart ───────────────────────
 function MarketTicker() {
   const [prices, setPrices] = useState({
     BTC: { price: 96420, change: +3.2 },
@@ -676,13 +1077,8 @@ function MarketTicker() {
     { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400", icon: "◎" },
   ];
 
-  const handlePairClick = (symbol: string) => {
-    setActivePair(prev => prev === symbol ? null : symbol);
-  };
-
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 pt-4 pb-3">
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
@@ -695,38 +1091,30 @@ function MarketTicker() {
         </div>
         <div className="flex items-center gap-2">
           {activePair && (
-            <button
-              onClick={() => setActivePair(null)}
-              className="text-[10px] text-muted-foreground hover:text-foreground font-mono flex items-center gap-1 transition-colors"
-            >
-              <X className="w-3 h-3" /> close chart
+            <button onClick={() => setActivePair(null)}
+              className="text-[10px] text-muted-foreground hover:text-foreground font-mono flex items-center gap-1 transition-colors">
+              <X className="w-3 h-3" /> close
             </button>
           )}
           <span className="text-[10px] text-muted-foreground font-mono">live</span>
         </div>
       </div>
-
-      {/* Pair rows */}
       <div className="px-3 pb-3 space-y-1.5">
         {tickers.map(t => {
           const isActive = activePair === t.symbol;
           return (
             <div key={t.symbol}>
               <button
-                onClick={() => handlePairClick(t.symbol)}
+                onClick={() => setActivePair(prev => prev === t.symbol ? null : t.symbol)}
                 className={`w-full flex items-center justify-between p-2.5 rounded-xl border transition-all duration-150 hover:scale-[1.01] active:scale-[0.99] ${
-                  isActive
-                    ? "bg-cyan-500/8 border-cyan-500/25"
-                    : "bg-muted/20 border-border hover:bg-muted/35 hover:border-border"
+                  isActive ? "bg-cyan-500/8 border-cyan-500/25" : "bg-muted/20 border-border hover:bg-muted/35"
                 }`}
               >
                 <div className="flex items-center gap-2.5">
                   <span className={`text-lg font-bold leading-none ${t.color}`}>{t.icon}</span>
                   <div className="text-left">
                     <p className="text-xs font-mono text-foreground font-semibold">{t.symbol}</p>
-                    <p className="text-[9px] text-muted-foreground font-mono mt-0.5">
-                      {isActive ? "click to close" : "click for chart"}
-                    </p>
+                    <p className="text-[9px] text-muted-foreground font-mono mt-0.5">{isActive ? "click to close" : "click for chart"}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -741,8 +1129,6 @@ function MarketTicker() {
                   </span>
                 </div>
               </button>
-
-              {/* Inline TradingView chart — expands below the clicked row */}
               <AnimatePresence>
                 {isActive && (
                   <motion.div
@@ -755,7 +1141,7 @@ function MarketTicker() {
                   >
                     <iframe
                       key={t.symbol}
-                      src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${t.symbol.replace("/","")}&symbol=${TV_SYMBOLS[t.symbol]}&interval=60&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&studies_overrides={}&overrides={}&enabled_features=[]&disabled_features=[]&locale=en&utm_source=afos`}
+                      src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${t.symbol.replace("/","")}&symbol=${TV_SYMBOLS[t.symbol]}&interval=60&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&toolbarbg=000000&studies=[]&theme=dark&style=1&timezone=Etc%2FUTC&locale=en`}
                       width="100%"
                       height="260"
                       frameBorder="0"
@@ -774,223 +1160,43 @@ function MarketTicker() {
   );
 }
 
-// ── Agent Thought Stream (compact live feed) ───────────────────────────────
-function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
-  const { entries } = useAgentLog();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const recent = entries.slice(-8);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [entries]);
-
-  const levelColor = (level: string) =>
-    level === "success" ? "text-emerald-400" :
-    level === "warn" ? "text-amber-400" :
-    level === "error" ? "text-red-400" :
-    level === "cmd" ? "text-violet-400" :
-    level === "debug" ? "text-slate-400" : "text-cyan-300/80";
-
+// ── Compact Recent Swaps (right col) ───────────────────────────────────────────
+function CompactRecentSwaps({ onViewAll }: { onViewAll?: () => void }) {
+  const SWAPS = useMemo(() => [
+    { id: "s1", from: "BTC", to: "USDT", fromAmt: "0.012", toAmt: "1,157.04", status: "complete" as const, time: "2m ago" },
+    { id: "s2", from: "ETH", to: "USDT", fromAmt: "0.5",   toAmt: "1,602.50", status: "complete" as const, time: "8m ago" },
+    { id: "s3", from: "SOL", to: "USDT", fromAmt: "15.0",  toAmt: "2,142.00", status: "complete" as const, time: "14m ago" },
+    { id: "s4", from: "BTC", to: "SOL",  fromAmt: "0.005", toAmt: "2.56",     status: "pending"  as const, time: "18m ago" },
+    { id: "s5", from: "BTC", to: "USDT", fromAmt: "0.001", toAmt: "96.42",    status: "complete" as const, time: "25m ago" },
+  ], []);
+  const DOT: Record<string, string> = { complete: "bg-emerald-400", pending: "bg-amber-400 animate-pulse", failed: "bg-red-400" };
+  const TXT: Record<string, string> = { complete: "text-emerald-400", pending: "text-amber-400", failed: "text-red-400" };
   return (
-    <div className="rounded-2xl border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+    <div className="rounded-2xl border border-border bg-card p-4 shrink-0">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Eye className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">Agent Activity</h3>
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+          <p className="text-sm font-semibold text-foreground">Recent Swaps</p>
         </div>
-        <button
-          onClick={onNavigateToTerminal}
-          className="text-[10px] font-mono text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-md hover:bg-cyan-500/10"
-        >
-          Full log →
-        </button>
-      </div>
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-2.5 space-y-1 min-h-0"
-        style={{ background: "var(--background)" }}
-      >
-        {recent.map(log => (
-          <motion.div
-            key={log.id}
-            initial={{ opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.15 }}
-            className="flex items-start gap-2 text-[11px] font-mono py-0.5"
-          >
-            <span className="text-muted-foreground/40 shrink-0 tabular-nums w-[68px]">{log.ts.slice(0, 8)}</span>
-            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>
-              {log.message}
-            </span>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Stack Health Strip ─────────────────────────────────────────────────────
-function StackHealthStrip() {
-  const services = [
-    { name: "OpenClaw", status: "live", color: "bg-emerald-400" },
-    { name: "IntercomSwap", status: "live", color: "bg-emerald-400" },
-    { name: "Bitcoin LN", status: "live", color: "bg-emerald-400" },
-    { name: "Solana", status: "live", color: "bg-emerald-400" },
-    { name: "Ethereum", status: "building", color: "bg-amber-400" },
-  ];
-
-  return (
-    <div className="flex items-center gap-3 px-5 py-2.5 border-t border-border bg-muted/20 shrink-0">
-      <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">Stack</span>
-      <div className="flex items-center gap-3 flex-1">
-        {services.map(s => (
-          <div key={s.name} className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${s.color} ${s.status === "live" ? "animate-pulse" : ""}`} />
-            <span className="text-[10px] text-muted-foreground font-mono">{s.name}</span>
-          </div>
-        ))}
-      </div>
-      <span className="text-[10px] text-emerald-400 font-mono">4/5 live</span>
-    </div>
-  );
-}
-
-// ── Main Dashboard ─────────────────────────────────────────────────────────
-export default function Dashboard() {
-  const { theme, toggleTheme } = useTheme();
-  const { connectedWallets, primaryWallet } = useWallet();
-  const [showWalletModal, setShowWalletModal] = useState(false);
-  const [activePage, setActivePage] = useState<NavPage>("dashboard");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const navItems = [
-    { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
-    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
-    { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
-    { id: "activity" as NavPage, icon: Activity, label: "History" },
-    { id: "network" as NavPage, icon: Network, label: "Network" },
-    { id: "settings" as NavPage, icon: Settings, label: "Settings" },
-  ];
-
-  const renderSubPage = () => {
-    if (activePage === "swaps") return <Swaps />;
-    if (activePage === "activity") return <SwapHistory />;
-    if (activePage === "settings") return <AgentSettings />;
-    if (activePage === "network") return <NetworkPage />;
-    if (activePage === "terminal") return <TerminalPage />;
-    return null;
-  };
-
-  const subPage = renderSubPage();
-
-  return (
-    <div className="flex h-screen bg-background font-sans" style={{ overflow: "hidden" }}>
-      <div className="relative z-10 flex-shrink-0" style={{ overflow: "visible" }}>
-        <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
-      </div>
-
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Topbar */}
-        <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0 bg-background/80 backdrop-blur-sm">
-          <div className="flex items-center gap-2 lg:gap-3">
-            <div className="lg:hidden w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-white" />
-            </div>
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm text-muted-foreground font-mono hidden sm:block">openclaw-agent</span>
-            <span className="text-muted-foreground/40 hidden sm:block">·</span>
-            <span className="text-xs text-cyan-400/70 font-mono">intercomswap@mainnet</span>
-          </div>
-          <div className="flex items-center gap-2 lg:gap-4">
-            <span className="text-xs text-muted-foreground font-mono hidden xl:block">0000intercomswapbtcusdt</span>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20">
-              <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
-              <span className="text-xs text-violet-300 font-mono">3 peers</span>
-            </div>
-            {connectedWallets.length > 0 ? (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
-                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {primaryWallet?.shortAddress}
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
-                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
-                <Wallet className="w-3 h-3" />
-                Connect
-              </button>
-            )}
-            <button
-              onClick={toggleTheme}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-              style={{
-                background: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.06)",
-                border: theme === "dark" ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)",
-              }}
-              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {theme === "dark"
-                ? <Sun className="w-3.5 h-3.5 text-amber-400" />
-                : <Moon className="w-3.5 h-3.5 text-slate-500" />}
-            </button>
-          </div>
-        </header>
-
-        {/* Content */}
-        {subPage ? (
-          <main className="flex-1 overflow-auto pb-16 lg:pb-0">{subPage}</main>
-        ) : (
-          /* ── OVERVIEW ── */
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto pb-20 lg:pb-0">
-
-              {/* ── DESKTOP: 2-column layout ── */}
-              <div className="hidden lg:grid grid-cols-12 gap-5 p-5 h-full" style={{ minHeight: 0 }}>
-
-                {/* LEFT col — Agent Status + Metrics + Recent Swaps + Quick Actions */}
-                <div className="col-span-7 flex flex-col gap-4 min-h-0">
-                  <AgentStatusCard onNavigateToTerminal={() => setActivePage("terminal")} />
-                  <MetricsRow />
-                  <QuickActions onNavigate={setActivePage} />
-                  <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
-                </div>
-
-                {/* RIGHT col — Portfolio + Wallets + Market + Agent Activity */}
-                <div className="col-span-5 flex flex-col gap-4 min-h-0">
-                  <PortfolioCard />
-                  <WalletsCard />
-                  <MarketTicker />
-                  <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
-                </div>
-              </div>
-
-              {/* ── MOBILE: single-column stacked ── */}
-              <div className="lg:hidden flex flex-col gap-4 p-4">
-                <AgentStatusCard onNavigateToTerminal={() => setActivePage("terminal")} />
-                <MetricsRow />
-                <PortfolioCard />
-                <WalletsCard />
-                <QuickActions onNavigate={setActivePage} />
-                <MarketTicker />
-                <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
-                <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
-              </div>
-            </div>
-
-            {/* Stack health strip at bottom */}
-            <StackHealthStrip />
-          </div>
+        {onViewAll && (
+          <button onClick={onViewAll} className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1">
+            All <ArrowRight className="w-2.5 h-2.5" />
+          </button>
         )}
       </div>
-
-      <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
-      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
+      <div className="space-y-1">
+        {SWAPS.map(s => (
+          <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/30 transition-colors">
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${DOT[s.status]}`} />
+            <span className="text-xs font-mono text-foreground flex-1 truncate">
+              {s.fromAmt} {s.from} <span className="text-muted-foreground">→</span> {s.toAmt} {s.to}
+            </span>
+            <span className={`text-[10px] font-mono shrink-0 ${TXT[s.status]}`}>{s.status}</span>
+            <span className="text-[10px] text-muted-foreground font-mono shrink-0">{s.time}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
+
