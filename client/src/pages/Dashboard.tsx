@@ -66,11 +66,11 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
         </AnimatePresence>
       </div>
 
-      {/* Floating toggle tab — always fully visible on the right edge */}
+      {/* Floating toggle tab — top of sidebar, right edge */}
       <button
         onClick={() => setOpen(!open)}
         title={open ? "Collapse sidebar" : "Expand sidebar"}
-        className="absolute top-1/2 -translate-y-1/2 -right-[18px] z-50 w-[18px] h-12 flex items-center justify-center rounded-r-lg transition-all duration-150 hover:w-[22px] group"
+        className="absolute top-[14px] -right-[18px] z-50 w-[18px] h-8 flex items-center justify-center rounded-r-lg transition-all duration-150 hover:w-[22px] group"
         style={{
           background: "linear-gradient(135deg, rgba(6,182,212,0.25), rgba(139,92,246,0.2))",
           border: "1px solid rgba(6,182,212,0.5)",
