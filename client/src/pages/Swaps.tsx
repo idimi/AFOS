@@ -444,25 +444,26 @@ function ChainStatsBar() {
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3 mb-6">
+    <div className="flex gap-3 mb-5 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
       {stats.map(stat => (
         <div
           key={stat.symbol}
-          className="rounded-xl px-4 py-3 flex items-center gap-3"
+          className="rounded-xl px-3 py-2.5 flex items-center gap-2.5 flex-shrink-0 sm:flex-shrink sm:px-4 sm:py-3 sm:gap-3"
           style={{
             background: `${stat.color}0d`,
             border: `1px solid ${stat.color}30`,
+            minWidth: "140px",
           }}
         >
-          <div className="text-xl font-bold" style={{ color: stat.color }}>{stat.icon}</div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold font-mono text-foreground">${stat.price.toLocaleString()}</span>
+          <div className="text-lg sm:text-xl font-bold" style={{ color: stat.color }}>{stat.icon}</div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1">
+              <span className="text-xs sm:text-sm font-bold font-mono text-foreground">${stat.price.toLocaleString()}</span>
               <span className={`text-[10px] font-mono ${stat.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {stat.change >= 0 ? "▲" : "▼"} {Math.abs(stat.change)}%
+                {stat.change >= 0 ? "▲" : "▼"}{Math.abs(stat.change)}%
               </span>
             </div>
-            <div className="text-[10px] text-slate-500">{stat.network}</div>
+            <div className="text-[10px] text-slate-500 truncate">{stat.network}</div>
           </div>
         </div>
       ))}
@@ -1449,7 +1450,7 @@ export default function Swaps() {
           >
             {/* Protocol Badge */}
             {swapPair && (
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-1.5 mb-4">
                 <div
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
                   style={{

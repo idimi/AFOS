@@ -151,6 +151,41 @@ function ChainTag({ chain }: { chain: ChainId }) {
   );
 }
 
+// ─── Mobile Summary Stats (horizontal scroll strip) ─────────────────────────
+
+function MobileSummaryStats({ swaps }: { swaps: SwapRecord[] }) {
+  const completed = swaps.filter(s => s.status === "complete");
+  const totalVolume = completed.reduce((acc, s) => acc + s.fromUsd, 0);
+  const totalFees = completed.reduce((acc, s) => acc + s.fee, 0);
+  const avgSettlement = completed.length > 0
+    ? completed.reduce((acc, s) => acc + s.settlementTime, 0) / completed.length
+    : 0;
+  const successRate = swaps.length > 0 ? (completed.length / swaps.length) * 100 : 0;
+
+  const stats = [
+    { label: "Volume", value: `$${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: "text-amber-400" },
+    { label: "Txns", value: String(swaps.length), color: "text-cyan-400" },
+    { label: "Fees", value: `$${totalFees.toFixed(2)}`, color: "text-violet-400" },
+    { label: "Success", value: `${successRate.toFixed(1)}%`, color: "text-emerald-400" },
+    { label: "Avg Speed", value: formatSettlement(avgSettlement), color: "text-sky-400" },
+  ];
+
+  return (
+    <div className="sm:hidden flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
+      {stats.map(s => (
+        <div
+          key={s.label}
+          className="flex-shrink-0 rounded-xl px-3 py-2.5 min-w-[90px]"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+        >
+          <div className="text-[9px] font-mono uppercase tracking-widest text-muted-foreground mb-1">{s.label}</div>
+          <div className={`text-sm font-bold font-mono ${s.color}`}>{s.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Summary Stats ────────────────────────────────────────────────────────────
 
 function SummaryStats({ swaps }: { swaps: SwapRecord[] }) {
@@ -220,6 +255,7 @@ export default function SwapHistory() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const PAGE_SIZE = 8;
 
   const filtered = useMemo(() => {
@@ -294,7 +330,7 @@ export default function SwapHistory() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -343,8 +379,9 @@ export default function SwapHistory() {
 
       {/* History Tab */}
       {activeTab === "history" && <>
-      {/* Summary Stats */}
-      <SummaryStats swaps={filtered} />
+      {/* Summary Stats — horizontal scroll on mobile */}
+      <div className="hidden sm:block"><SummaryStats swaps={filtered} /></div>
+      <MobileSummaryStats swaps={filtered} />
 
       {/* Filters */}
       <div
@@ -354,7 +391,48 @@ export default function SwapHistory() {
           border: "1px solid var(--border)",
         }}
       >
-        <div className="flex flex-wrap gap-3 items-center">
+        {/* Mobile filter toggle */}
+        <div className="sm:hidden flex items-center justify-between mb-3">
+          <div className="relative flex-1 mr-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search pair, peer, hash..."
+              value={filters.search}
+              onChange={e => setFilter("search", e.target.value)}
+              className="w-full pl-9 pr-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+            />
+          </div>
+          <button
+            onClick={() => setShowFilters(f => !f)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs flex-shrink-0"
+            style={{
+              background: showFilters ? "rgba(6,182,212,0.12)" : "var(--muted)",
+              border: `1px solid ${showFilters ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
+              color: showFilters ? "#06b6d4" : "var(--muted-foreground)",
+            }}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+          </button>
+        </div>
+        {/* Mobile collapsible filters */}
+        {showFilters && (
+          <div className="sm:hidden flex flex-wrap gap-2 mb-3">
+            <FilterSelect label="Pair" value={filters.pair} options={["All", ...ALL_PAIRS]} onChange={v => setFilter("pair", v)} />
+            <FilterSelect label="Status" value={filters.status} options={["All", ...ALL_STATUSES]} onChange={v => setFilter("status", v)} />
+            <FilterSelect label="Chain" value={filters.chain} options={["All", "bitcoin", "ethereum", "solana"]} onChange={v => setFilter("chain", v)} />
+            <FilterSelect label="Date" value={filters.dateRange} options={DATE_RANGES} onChange={v => setFilter("dateRange", v)} />
+            <button onClick={() => { setFilters({ search: "", pair: "All", status: "All", dateRange: "All time", chain: "All" }); setPage(1); setShowFilters(false); }}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <RefreshCw className="w-3 h-3" /> Reset
+            </button>
+          </div>
+        )}
+        {/* Desktop filters */}
+        <div className="hidden sm:flex flex-wrap gap-3 items-center">
           {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -411,7 +489,7 @@ export default function SwapHistory() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Desktop Table / Mobile Cards */}
       <div
         className="rounded-2xl overflow-hidden"
         style={{
@@ -419,9 +497,9 @@ export default function SwapHistory() {
           border: "1px solid var(--border)",
         }}
       >
-        {/* Table header */}
+        {/* ── Desktop table header (hidden on mobile) ── */}
         <div
-          className="grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
+          className="hidden sm:grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
           style={{
             gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
             borderColor: "var(--border)",
@@ -437,7 +515,7 @@ export default function SwapHistory() {
           <span>Tx</span>
         </div>
 
-        {/* Rows */}
+        {/* ── Rows ── */}
         <AnimatePresence mode="popLayout">
           {paginated.length === 0 ? (
             <div className="py-16 text-center text-slate-600 text-sm">
@@ -451,75 +529,89 @@ export default function SwapHistory() {
                 exit={{ opacity: 0 }}
                 transition={{ delay: i * 0.03 }}
               >
-                {/* Main row */}
+                {/* ── Desktop row (hidden on mobile) ── */}
                 <div
-                  className="grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
+                  className="hidden sm:grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
                   style={{
                     gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
                     borderColor: "var(--border)",
                   }}
                   onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
                 >
-                  {/* Time */}
                   <div>
                     <div className="text-xs text-muted-foreground">{formatTime(swap.timestamp)}</div>
                     <div className="text-[9px] text-slate-600 mt-0.5">
                       {swap.timestamp.toLocaleDateString()} {swap.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
-
-                  {/* Swap pair */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
-                        {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.fromSymbol}
-                      </span>
-                      <span className="text-slate-600">→</span>
-                      <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
-                        {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toSymbol}
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
+                      {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.fromSymbol}
+                    </span>
+                    <span className="text-slate-600">→</span>
+                    <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
+                      {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toSymbol}
+                    </span>
                   </div>
-
-                  {/* Protocol */}
                   <div>
                     <div className="text-[10px] text-muted-foreground leading-tight">{swap.protocol}</div>
                     <div className="text-[9px] text-slate-600 mt-0.5">{swap.peer}</div>
                   </div>
-
-                  {/* Value */}
                   <div className="text-xs font-mono text-amber-400 font-semibold">
                     ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </div>
-
-                  {/* Fee */}
                   <div className="text-xs font-mono text-muted-foreground">
                     {swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}
                   </div>
-
-                  {/* Speed */}
                   <div className="text-xs font-mono text-muted-foreground">
                     {formatSettlement(swap.settlementTime)}
                   </div>
-
-                  {/* Status */}
                   <StatusBadge status={swap.status} />
-
-                  {/* Tx hash */}
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] font-mono text-muted-foreground">{truncateHash(swap.txHash)}</span>
-                    <button onClick={e => { e.stopPropagation(); copyHash(swap.txHash); }}
-                      className="text-slate-600 hover:text-cyan-400 transition-colors">
-                      <Copy className="w-3 h-3" />
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); openExplorer(swap); }}
-                      className="text-slate-600 hover:text-cyan-400 transition-colors">
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
+                    <button onClick={e => { e.stopPropagation(); copyHash(swap.txHash); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><Copy className="w-3 h-3" /></button>
+                    <button onClick={e => { e.stopPropagation(); openExplorer(swap); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><ExternalLink className="w-3 h-3" /></button>
                   </div>
                 </div>
 
-                {/* Expanded detail */}
+                {/* ── Mobile card (visible only on mobile) ── */}
+                <div
+                  className="sm:hidden px-3 py-3 cursor-pointer border-b active:bg-muted transition-colors"
+                  style={{ borderColor: "var(--border)" }}
+                  onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
+                >
+                  {/* Row 1: pair amounts (left) + status badge (right) */}
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <div className="flex flex-col min-w-0">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
+                          {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.fromSymbol}
+                        </span>
+                        <span className="text-muted-foreground text-xs">→</span>
+                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
+                          {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.toSymbol}
+                        </span>
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate mt-0.5">{swap.protocol}</div>
+                    </div>
+                    <StatusBadge status={swap.status} />
+                  </div>
+                  {/* Row 2: USD value + peer + time + chevron */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-amber-400 font-semibold">
+                        ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </span>
+                      <span className="text-[10px] text-slate-600">{swap.peer}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground">{formatTime(swap.timestamp)}</span>
+                      <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${expandedId === swap.id ? "rotate-180" : ""}`} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Expanded detail (shared desktop + mobile) ── */}
                 <AnimatePresence>
                   {expandedId === swap.id && (
                     <motion.div
@@ -529,7 +621,7 @@ export default function SwapHistory() {
                       className="overflow-hidden"
                     >
                       <div
-                        className="px-5 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
+                        className="px-4 sm:px-5 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
                         style={{
                           background: "var(--muted)",
                           borderColor: "var(--border)",
@@ -550,21 +642,16 @@ export default function SwapHistory() {
                           </span>
                         </div>
                         <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Full Tx Hash</div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]">{swap.txHash}</span>
-                            <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0">
-                              <Copy className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Settlement Time</div>
-                          <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
-                        </div>
-                        <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Peer</div>
                           <span className="text-xs font-mono text-foreground">{swap.peer}</span>
+                        </div>
+                        <div>
+                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Fee</div>
+                          <span className="text-xs font-mono text-foreground">{swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}</span>
+                        </div>
+                        <div>
+                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Speed</div>
+                          <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
                         </div>
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>
@@ -573,14 +660,12 @@ export default function SwapHistory() {
                           </span>
                         </div>
                         <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Explorer</div>
-                          <button
-                            onClick={() => openExplorer(swap)}
-                            className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-                          >
-                            View on {CHAIN_CONFIG[swap.fromChain].name}
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
+                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Tx Hash</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">{truncateHash(swap.txHash)}</span>
+                            <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><Copy className="w-3 h-3" /></button>
+                            <button onClick={() => openExplorer(swap)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><ExternalLink className="w-3 h-3" /></button>
+                          </div>
                         </div>
                       </div>
                     </motion.div>
