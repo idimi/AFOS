@@ -275,10 +275,20 @@ function MetricsRow() {
       bg: "bg-violet-500/8",
       border: "border-violet-500/15",
     },
+    {
+      label: "Active Peers",
+      value: String(metrics.activePeers),
+      change: "stable",
+      positive: true,
+      icon: Users,
+      color: "text-amber-400",
+      bg: "bg-amber-500/8",
+      border: "border-amber-500/15",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
       {cards.map(card => {
         const Icon = card.icon;
         return (
@@ -365,10 +375,11 @@ function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
     { label: "Open Terminal", icon: Terminal, page: "terminal" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
     { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
     { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
+    { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
       {actions.map(action => {
         const Icon = action.icon;
         return (
