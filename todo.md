@@ -1,0 +1,76 @@
+# AFOS Dashboard — Code Audit & Overview Redesign Plan
+
+## Audit Findings
+
+### What's GOOD (keep)
+- [x] Sidebar + topbar shell — clean, collapsible, mobile tab bar
+- [x] AgentLogContext — shared log stream across pages
+- [x] WalletContext — multi-chain wallet connection
+- [x] TerminalPage — full-featured log viewer with filters, JSON expand, copy/download
+- [x] Swaps page — detailed swap flow with progress tracker
+- [x] SwapHistory — table with filters, pagination, stats
+- [x] NetworkPage — animated P2P node graph
+- [x] AdminPanel — operator dashboard at /admin
+- [x] AgentSettings — config for all stack components
+- [x] LiveFeedPage — P2P sidechannel message stream
+- [x] Theme system — dark/light with OKLCH tokens
+
+### What's WRONG with Overview (remove/fix)
+- [ ] **3-column layout is cluttered** — Agent Command, Pipeline, Wallets, Pairs, Agent Log, Stack Status, Worker, LP Health all crammed in
+- [ ] **Pipeline duplicated** — same 5-step pipeline exists in Overview AND should only live in Terminal
+- [ ] **Agent Command input duplicated** — exists in Overview AND Terminal; confusing
+- [ ] **Hardcoded mock data everywhere** — wallet balances, pair prices, LN channels all static
+- [ ] **Agent Log in Overview is redundant** — Terminal page already shows full log; Overview just shows a truncated copy
+- [ ] **Stack Status is static** — never changes, not useful as a dashboard widget
+- [ ] **LN Channel Health card** — static mock data, belongs in Network page not Overview
+- [ ] **Worker card** — fake ticks counter, not connected to anything real
+- [ ] **LP Health card** — static reserves, not connected to real data
+- [ ] **IntercomSwap Pairs** — static prices, no real feed
+- [ ] **Mobile layout** — duplicates every desktop card in a long scroll
+
+## Overview Redesign Plan — Production-Ready Agentic Dashboard
+
+### Design Philosophy
+The Overview should be an **operator's command center** — a single glance tells you:
+1. Is the agent healthy and running?
+2. What are my balances across chains?
+3. What happened recently? (last 5 swaps)
+4. What's the agent doing right now? (current task/status)
+5. Key metrics (24h volume, fees earned, success rate)
+
+### New Layout: 2-column (desktop), stacked (mobile)
+
+#### LEFT COLUMN — Agent Status + Metrics
+- [ ] **Agent Status Card** — live/offline indicator, uptime, current task, model info
+- [ ] **Key Metrics Row** — 4 compact stat cards: 24h Volume, Fees Earned, Success Rate, Active Peers
+- [ ] **Recent Activity Feed** — last 5 swap summaries (from/to/amount/status/time) with "View All" link to History
+- [ ] **Quick Actions** — 3-4 action buttons: New Swap, Check Balances, Rebalance LN, View Peers
+
+#### RIGHT COLUMN — Balances + Market
+- [ ] **Portfolio Summary** — total USD value, 24h change, mini sparkline
+- [ ] **Wallet Balances** — compact list with send/receive (keep existing WalletsCard but cleaner)
+- [ ] **Market Rates** — live-updating BTC/USDT, SOL/USDT, ETH/USDT ticker strip
+- [ ] **Agent Thought Stream** — compact 3-line live feed of what the agent is thinking/doing (not full terminal)
+
+### What to REMOVE from Overview
+- [ ] Pipeline tracker (move to Terminal only)
+- [ ] Agent Command input (move to Terminal only)
+- [ ] Full Agent Log panel (Terminal only)
+- [ ] Stack Status card (move to Settings or Network)
+- [ ] LN Channel Health (move to Network)
+- [ ] Worker card (integrate into Agent Status)
+- [ ] LP Health (move to Admin panel)
+- [ ] Mobile duplicate of every card
+
+### Implementation Steps
+- [ ] Rewrite Dashboard.tsx Overview section (keep sidebar/topbar/routing shell)
+- [ ] Create clean AgentStatusCard component
+- [ ] Create MetricsRow component
+- [ ] Create RecentSwapsCard component
+- [ ] Create QuickActionsCard component
+- [ ] Create PortfolioCard component
+- [ ] Clean up WalletsCard (keep send/receive modals)
+- [ ] Create MarketTicker component
+- [ ] Create AgentThoughtStream mini-feed
+- [ ] Remove pipeline state from Dashboard (keep in AgentLogContext for Terminal)
+- [ ] Responsive mobile layout — single column, prioritized order
