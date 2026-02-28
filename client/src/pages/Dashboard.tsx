@@ -815,7 +815,6 @@ function MarketTicker() {
                 width="100%"
                 height="440"
                 frameBorder="0"
-                allowTransparency={true}
                 scrolling="no"
                 style={{ display: "block", background: "#000" }}
               />
