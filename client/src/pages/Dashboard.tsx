@@ -886,6 +886,443 @@ function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: ()
   );
 }
 
+// ── Mobile Hero Banner (portfolio + agent status merged) ────────────────────
+function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
+  const [uptime, setUptime] = useState(0);
+  const [currentTask, setCurrentTask] = useState("Monitoring rendezvous channel");
+  const TASKS = useMemo(() => [
+    "Monitoring rendezvous channel",
+    "Scanning for RFQ opportunities",
+    "Rebalancing LN channel liquidity",
+    "Heartbeat ping to 3 peers",
+    "Evaluating best BTC/USDT rate",
+    "Idle — awaiting instructions",
+  ], []);
+
+  useEffect(() => {
+    const t = setInterval(() => setUptime(u => u + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setCurrentTask(prev => {
+        const idx = TASKS.indexOf(prev);
+        return TASKS[(idx + 1) % TASKS.length];
+      });
+    }, 8000);
+    return () => clearInterval(t);
+  }, [TASKS]);
+
+  const fmtUptime = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m}m ${sec}s`;
+  };
+
+  return (
+    <div className="rounded-2xl border border-cyan-500/20 bg-card overflow-hidden">
+      {/* Portfolio row */}
+      <div className="px-4 pt-4 pb-3 border-b border-border/50">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Total Portfolio</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-foreground">$18,136</span>
+              <span className="text-sm font-mono text-emerald-400 flex items-center gap-0.5">
+                <TrendingUp className="w-3 h-3" />+2.4%
+              </span>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground font-mono">non-custodial</p>
+            <p className="text-[10px] text-muted-foreground font-mono">4 chains</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Agent row */}
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center relative shrink-0">
+            <Bot className="w-4 h-4 text-cyan-400" />
+            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-2 border-card" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-xs font-bold text-foreground">OpenClaw Agent</span>
+              <span className="text-[9px] font-mono px-1 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">ACTIVE</span>
+            </div>
+            <motion.p
+              key={currentTask}
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-[10px] text-muted-foreground font-mono truncate"
+            >
+              {currentTask}
+            </motion.p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span className="text-[10px] font-mono text-cyan-400">{fmtUptime(uptime)}</span>
+            <button
+              onClick={onNavigateToTerminal}
+              className="text-[9px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono px-1.5 py-0.5 rounded hover:bg-cyan-500/10"
+            >
+              Terminal →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Metric Strip (horizontal scroll) ───────────────────────────────
+function MobileMetricStrip() {
+  const [metrics, setMetrics] = useState({
+    volume24h: 142800,
+    feesEarned: 428.40,
+    successRate: 98.7,
+    activePeers: 3,
+  });
+  useEffect(() => {
+    const t = setInterval(() => {
+      setMetrics(prev => ({
+        volume24h: prev.volume24h + (Math.random() - 0.4) * 200,
+        feesEarned: prev.feesEarned + Math.random() * 0.5,
+        successRate: Math.min(100, Math.max(95, prev.successRate + (Math.random() - 0.5) * 0.1)),
+        activePeers: Math.random() > 0.9 ? (prev.activePeers === 3 ? 4 : 3) : prev.activePeers,
+      }));
+    }, 5000);
+    return () => clearInterval(t);
+  }, []);
+
+  const cards = [
+    { label: "24h Volume", value: `$${(metrics.volume24h / 1000).toFixed(1)}K`, change: "+3.2%", icon: BarChart3, color: "text-cyan-400", bg: "bg-cyan-500/8", border: "border-cyan-500/20" },
+    { label: "Fees Earned", value: `$${metrics.feesEarned.toFixed(2)}`, change: "+12.4%", icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
+    { label: "Success Rate", value: `${metrics.successRate.toFixed(1)}%`, change: "0.0%", icon: Shield, color: "text-violet-400", bg: "bg-violet-500/8", border: "border-violet-500/20" },
+    { label: "Active Peers", value: String(metrics.activePeers), change: "stable", icon: Users, color: "text-amber-400", bg: "bg-amber-500/8", border: "border-amber-500/20" },
+  ];
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none" style={{ scrollSnapType: "x mandatory" }}>
+      {cards.map(card => {
+        const Icon = card.icon;
+        return (
+          <div
+            key={card.label}
+            className={`rounded-xl border ${card.border} ${card.bg} p-3.5 shrink-0 w-[140px]`}
+            style={{ scrollSnapAlign: "start" }}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <Icon className={`w-3.5 h-3.5 ${card.color}`} />
+              <span className="text-[9px] font-mono text-emerald-400">{card.change}</span>
+            </div>
+            <p className={`text-base font-bold font-mono ${card.color}`}>{card.value}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">{card.label}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Mobile Wallets Strip (horizontal scroll chips) ────────────────────────
+function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: string, network: string, mode: "send" | "receive") => void }) {
+  const wallets = [
+    { asset: "BTC", network: "Lightning", balance: "0.142", usd: "$13,691", color: "text-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/8" },
+    { asset: "USDT", network: "Solana", balance: "1,240", usd: "$1,240", color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8" },
+    { asset: "SOL", network: "Solana", balance: "12.84", usd: "$1,833", color: "text-purple-400", border: "border-purple-500/25", bg: "bg-purple-500/8" },
+    { asset: "ETH", network: "Ethereum", balance: "0.512", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/25", bg: "bg-blue-500/8" },
+  ];
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Wallets</span>
+        </div>
+        <span className="text-[10px] text-muted-foreground font-mono">non-custodial</span>
+      </div>
+      <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+        {wallets.map(w => (
+          <div
+            key={w.asset}
+            className={`rounded-xl border ${w.border} ${w.bg} p-3 shrink-0 w-[120px]`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <span className={`text-xs font-bold font-mono ${w.color}`}>{w.asset}</span>
+              <span className="text-[9px] text-muted-foreground font-mono">{w.network.slice(0, 3)}</span>
+            </div>
+            <p className={`text-sm font-mono font-bold ${w.color} mb-0.5`}>{w.balance}</p>
+            <p className="text-[9px] text-muted-foreground mb-2.5">{w.usd}</p>
+            <div className="flex gap-1.5">
+              <button
+                onClick={() => onOpenWalletModal(w.asset, w.network, "receive")}
+                className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
+                style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}
+              >
+                <ArrowDownLeft className="w-2.5 h-2.5" />
+              </button>
+              <button
+                onClick={() => onOpenWalletModal(w.asset, w.network, "send")}
+                className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
+                style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
+              >
+                <ArrowUpRight className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────
+function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
+  const SWAPS = useMemo(() => [
+    { id: "s1", from: "BTC", to: "USDT", fromAmt: "0.012", toAmt: "1,157.04", status: "complete" as const, time: "2m ago", protocol: "Lightning ↔ Solana" },
+    { id: "s2", from: "ETH", to: "USDT", fromAmt: "0.5", toAmt: "1,602.50", status: "complete" as const, time: "8m ago", protocol: "EVM HTLC" },
+    { id: "s3", from: "SOL", to: "USDT", fromAmt: "15.0", toAmt: "2,142.00", status: "complete" as const, time: "14m ago", protocol: "Solana SPL" },
+    { id: "s4", from: "BTC", to: "SOL", fromAmt: "0.005", toAmt: "2.56", status: "pending" as const, time: "18m ago", protocol: "Lightning ↔ Solana" },
+  ], []);
+
+  const STATUS_STYLE = {
+    complete: { icon: CheckCircle2, color: "text-emerald-400", dot: "bg-emerald-400" },
+    pending: { icon: Loader2, color: "text-amber-400", dot: "bg-amber-400" },
+    failed: { icon: AlertTriangle, color: "text-red-400", dot: "bg-red-400" },
+  };
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Recent Swaps</span>
+        </div>
+        <button onClick={onViewAll} className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1">
+          View all <ArrowRight className="w-2.5 h-2.5" />
+        </button>
+      </div>
+      <div className="space-y-2">
+        {SWAPS.slice(0, 3).map(swap => {
+          const s = STATUS_STYLE[swap.status];
+          return (
+            <div key={swap.id} className="flex items-center gap-2.5 py-2 border-b border-border/40 last:border-0">
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot} ${swap.status === "pending" ? "animate-pulse" : ""}`} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-mono font-semibold text-foreground">{swap.fromAmt} {swap.from}</span>
+                  <ArrowRight className="w-2.5 h-2.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-mono font-semibold text-foreground">{swap.toAmt} {swap.to}</span>
+                </div>
+                <p className="text-[9px] text-muted-foreground font-mono">{swap.protocol}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-[9px] font-mono ${s.color}`}>{swap.status}</p>
+                <p className="text-[9px] text-muted-foreground">{swap.time}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Agent Activity (compact, 5 lines) ──────────────────────────────
+function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
+  const { entries } = useAgentLog();
+  const recent = entries.slice(-5);
+  const levelColor = (level: string) =>
+    level === "success" ? "text-emerald-400" :
+    level === "warn" ? "text-amber-400" :
+    level === "error" ? "text-red-400" :
+    level === "cmd" ? "text-violet-400" : "text-cyan-300/80";
+
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Agent Activity</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        </div>
+        <button
+          onClick={onNavigateToTerminal}
+          className="text-[10px] font-mono text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded hover:bg-cyan-500/10"
+        >
+          Full log →
+        </button>
+      </div>
+      <div className="px-4 py-2.5 space-y-1" style={{ background: "var(--background)" }}>
+        {recent.map(log => (
+          <div key={log.id} className="flex items-start gap-2 text-[10px] font-mono py-0.5">
+            <span className="text-muted-foreground/40 shrink-0 tabular-nums">{log.ts.slice(0, 8)}</span>
+            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>{log.message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Market Card (chart at 260px height) ────────────────────────────
+function MobileMarketCard() {
+  const { theme } = useTheme();
+  const tvTheme = theme === "light" ? "light" : "dark";
+  const [prices, setPrices] = useState({
+    BTC: { price: 96420, change: +3.2 },
+    ETH: { price: 2680, change: +0.8 },
+    SOL: { price: 142.80, change: -1.1 },
+  });
+  const [activePair, setActivePair] = useState<string | null>(null);
+  const [interval, setIntervalTF] = useState("60");
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setPrices(prev => ({
+        BTC: { price: prev.BTC.price + (Math.random() - 0.5) * 50, change: prev.BTC.change + (Math.random() - 0.5) * 0.1 },
+        ETH: { price: prev.ETH.price + (Math.random() - 0.5) * 5, change: prev.ETH.change + (Math.random() - 0.5) * 0.1 },
+        SOL: { price: prev.SOL.price + (Math.random() - 0.5) * 0.5, change: prev.SOL.change + (Math.random() - 0.5) * 0.1 },
+      }));
+    }, 4000);
+    return () => clearInterval(t);
+  }, []);
+
+  const tickers = [
+    { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
+    { symbol: "ETH/USDT", ...prices.ETH, color: "text-blue-400",  bg: "bg-blue-500/10",  border: "border-blue-500/20",  icon: "Ξ" },
+    { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20", icon: "◎" },
+  ];
+
+  const TF_OPTIONS = [
+    { label: "1m", value: "1" },
+    { label: "1h", value: "60" },
+    { label: "4h", value: "240" },
+    { label: "1D", value: "D" },
+  ];
+
+  const activeTicker = tickers.find(t => t.symbol === activePair);
+
+  return (
+    <div className={`rounded-2xl border bg-card overflow-hidden transition-all duration-300 ${
+      activePair ? "border-cyan-500/30" : "border-border"
+    }`}>
+      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Market</span>
+          {activePair && (
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full border ${
+              activeTicker ? `${activeTicker.bg} ${activeTicker.border} ${activeTicker.color}` : ""
+            }`}>{activePair}</span>
+          )}
+        </div>
+        {activePair ? (
+          <button onClick={() => setActivePair(null)} className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-red-400 transition-colors">
+            <X className="w-3 h-3" /> close
+          </button>
+        ) : (
+          <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block" />
+            live
+          </span>
+        )}
+      </div>
+
+      <div className="px-3 space-y-1.5">
+        {tickers.map(t => {
+          const isActive = activePair === t.symbol;
+          const isHidden = activePair !== null && !isActive;
+          return (
+            <motion.div key={t.symbol} animate={{ opacity: isHidden ? 0.4 : 1 }} transition={{ duration: 0.2 }}>
+              <button
+                onClick={() => setActivePair(prev => prev === t.symbol ? null : t.symbol)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
+                  isActive ? `${t.bg} ${t.border}` : "bg-muted/15 border-border hover:bg-muted/30"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-bold w-4 text-center ${t.color}`}>{t.icon}</span>
+                  <span className="text-xs font-mono text-foreground font-semibold">{t.symbol}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <p className="text-xs font-mono text-foreground font-bold">
+                      ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
+                    </p>
+                    <span className={`text-[9px] font-mono flex items-center gap-0.5 justify-end ${
+                      t.change >= 0 ? "text-emerald-400" : "text-red-400"
+                    }`}>
+                      {t.change >= 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
+                      {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
+                    </span>
+                  </div>
+                  <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${isActive ? "rotate-90" : ""}`} />
+                </div>
+              </button>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <AnimatePresence>
+        {activePair && activeTicker && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 pt-3 pb-2">
+              <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-0.5">
+                {TF_OPTIONS.map(tf => (
+                  <button
+                    key={tf.value}
+                    onClick={() => setIntervalTF(tf.value)}
+                    className={`px-2 py-1 rounded-md text-[9px] font-mono font-semibold transition-all ${
+                      interval === tf.value
+                        ? `${activeTicker.bg} ${activeTicker.color} ${activeTicker.border} border`
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => toast.info(`Opening swap for ${activePair}`)}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all active:scale-95 ${
+                  activeTicker.bg
+                } ${activeTicker.border} ${activeTicker.color}`}
+              >
+                <ArrowLeftRight className="w-2.5 h-2.5" />
+                Swap {activePair.split("/")[0]}
+              </button>
+            </div>
+            <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
+              <iframe
+                key={`mob-${activePair}-${interval}-${tvTheme}`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=1&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en`}
+                width="100%"
+                height="260"
+                frameBorder="0"
+                scrolling="no"
+                style={{ display: "block" }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {!activePair && <div className="pb-3" />}
+    </div>
+  );
+}
+
 // ── Stack Health Strip ─────────────────────────────────────────────────────
 function StackHealthStrip() {
   const services = [
@@ -917,6 +1354,7 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connectedWallets, primaryWallet } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -1025,16 +1463,28 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* ── MOBILE: single-column stacked ── */}
-              <div className="lg:hidden flex flex-col gap-4 p-4">
-                <AgentStatusCard onNavigateToTerminal={() => setActivePage("terminal")} />
-                <MetricsRow />
-                <PortfolioCard />
-                <WalletsCard />
+              {/* ── MOBILE: optimized single-column layout ── */}
+              <div className="lg:hidden flex flex-col gap-3 p-3 pb-24">
+                {/* 1. Hero: portfolio + agent status merged */}
+                <MobileHeroBanner onNavigateToTerminal={() => setActivePage("terminal")} />
+
+                {/* 2. Metrics: horizontal scroll strip */}
+                <MobileMetricStrip />
+
+                {/* 3. Quick actions: 2×2 grid with large tap targets */}
                 <QuickActions onNavigate={setActivePage} />
-                <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
-                <MarketTicker />
-                <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
+
+                {/* 4. Market chart: compact with 260px chart height */}
+                <MobileMarketCard />
+
+                {/* 5. Wallets: horizontal scroll chips */}
+                 <MobileWalletStrip onOpenWalletModal={(asset, network, mode) => setWalletModal({ asset, network, mode })} />
+
+                {/* 6. Recent swaps: compact 3-item list */}
+                <MobileRecentSwaps onViewAll={() => setActivePage("activity")} />
+
+                {/* 7. Agent activity: compact 5-line feed */}
+                <MobileAgentActivity onNavigateToTerminal={() => setActivePage("terminal")} />
               </div>
             </div>
 
@@ -1045,6 +1495,7 @@ export default function Dashboard() {
       </div>
 
       <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
+      {walletModal && <WalletModal modal={walletModal} onClose={() => setWalletModal(null)} />}
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
     </div>
   );
