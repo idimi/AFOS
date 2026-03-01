@@ -1826,7 +1826,7 @@ export default function Swaps() {
                   value={fromAmount}
                   onChange={e => setFromAmount(e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-4 py-3 rounded-xl text-2xl font-bold font-mono text-foreground bg-transparent outline-none"
+                  className="w-full pl-4 pr-20 py-3 rounded-xl text-2xl font-bold font-mono text-foreground bg-transparent outline-none"
                   style={{
                     background: "var(--muted)",
                     border: "1px solid var(--border)",

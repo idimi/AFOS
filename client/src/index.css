@@ -346,3 +346,16 @@
 .log-scroll-pulse::-webkit-scrollbar-thumb {
   animation: scrollbar-pulse 0.6s ease forwards;
 }
+
+/* ─── Hide native number input spin buttons ─────────────────────────────────
+   Prevents browser-native up/down arrows from overflowing into custom UI
+   elements (e.g. the ≈ $value / MAX overlay in the swap amount input). */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
