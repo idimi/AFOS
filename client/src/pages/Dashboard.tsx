@@ -1252,7 +1252,7 @@ function MarketTicker() {
                 symbol={TV_SYMBOLS[activePair]}
                 interval={interval}
                 theme={tvTheme}
-                height={260}
+                height={240}
               />
             </div>
           </motion.div>
