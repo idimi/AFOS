@@ -3,12 +3,11 @@
  * Manages wallet connections for three chains:
  *   - Solana: via @solana/wallet-adapter-react (Phantom, Solflare)
  *   - Ethereum: via EIP-1193 window.ethereum or window.phantom.ethereum (MetaMask, Coinbase, Phantom)
- *   - Bitcoin: via sats-connect (Xverse), window.tracnetwork (Tap Wallet), or window.phantom.bitcoin (Phantom)
+ *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tracnetwork (Tap Wallet), or window.phantom.bitcoin (Phantom)
  *
  * Phantom is a multi-chain wallet: connecting it once unlocks Solana, Ethereum, and Bitcoin simultaneously.
- * MetaMask → Ethereum only.
+ * MetaMask → Ethereum + native Bitcoin via wallet_createSession (CAIP-25 bip122 scope).
  * Coinbase Wallet → Ethereum only.
- * Xverse → Bitcoin only.
  * Tap Wallet → Bitcoin + TNK only.
  * Solflare → Solana only (handled by @solana/wallet-adapter).
  */
@@ -22,13 +21,12 @@ import React, {
   ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { request as satsRequest, AddressPurpose } from "sats-connect";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Chain = "solana" | "ethereum" | "bitcoin";
 export type EthProviderType = "metamask" | "coinbase" | "phantom";
-export type BtcProviderType = "xverse" | "tap" | "phantom";
+export type BtcProviderType = "metamask" | "tap" | "phantom";
 
 export interface ChainWallet {
   chain: Chain;
@@ -469,51 +467,82 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, [phantomMultiChain, disconnectPhantom]);
 
-  // ── Bitcoin / Xverse ──────────────────────────────────────────────────────
+  // ── Bitcoin / MetaMask (native BTC via Multichain API) ──────────────────────
 
-  const connectXverse = useCallback(async () => {
-    try {
-      const response = await satsRequest("wallet_connect", {
-        addresses: [AddressPurpose.Payment, AddressPurpose.Ordinals],
-        message: "AFOS wants to connect to your Bitcoin wallet",
+  const connectMetaMaskBitcoin = useCallback(async () => {
+    // MetaMask exposes Bitcoin via the CAIP-25 Multichain API.
+    // Chain ID for Bitcoin mainnet: bip122:000000000019d6689c085ae165831e93
+    const eth = window.ethereum as EthWindowProvider | undefined;
+    if (!eth) {
+      toast.error("MetaMask not detected", {
+        description: "Please install the MetaMask browser extension.",
+        action: { label: "Install", onClick: () => window.open("https://metamask.io/download", "_blank") },
       });
+      return;
+    }
 
-      if (response.status === "success") {
-        const paymentAddr = response.result.addresses.find(
-          (a: { purpose: string }) => a.purpose === AddressPurpose.Payment
-        );
-        if (!paymentAddr) throw new Error("No payment address returned");
+    try {
+      // Step 1: Request a multichain session that includes the Bitcoin mainnet scope.
+      // MetaMask will prompt the user to approve the Bitcoin account access.
+      const sessionResult = await eth.request({
+        method: "wallet_createSession",
+        params: [{
+          optionalScopes: {
+            "bip122:000000000019d6689c085ae165831e93": {
+              methods: ["sendTransfer"],
+              notifications: [],
+            },
+          },
+        }],
+      }) as {
+        sessionScopes?: Record<string, { accounts?: string[] }>;
+      };
 
-        const address = paymentAddr.address;
-        const [{ btc: btcBalance, sats }, priceUsd] = await Promise.all([
-          fetchBtcBalanceFromMempool(address),
-          fetchBtcPriceUsd(),
-        ]);
-        const balanceUsd = (sats / 1e8) * priceUsd;
+      // Step 2: Extract the BTC address from the session response.
+      // Accounts are returned as CAIP-10 strings: "bip122:000000000019d6689c085ae165831e93:bc1q..."
+      const btcScope = sessionResult?.sessionScopes?.["bip122:000000000019d6689c085ae165831e93"];
+      const caip10Accounts = btcScope?.accounts ?? [];
 
-        setBitcoin({
-          chain: "bitcoin",
-          walletName: "Xverse",
-          address,
-          shortAddress: shortAddr(address),
-          balance: btcBalance,
-          balanceUsd,
-          symbol: "BTC",
-          connected: true,
-          connecting: false,
-          isPhantom: false,
-        });
-        toast.success("Xverse connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
-      } else if (response.status === "error") {
-        const errMsg = (response as unknown as { error?: { message?: string } }).error?.message ?? "Unknown error";
-        if (!errMsg.includes("cancel") && !errMsg.includes("reject")) {
-          toast.error("Xverse connection failed", { description: errMsg });
+      if (!caip10Accounts.length) {
+        // Fallback: try wallet_getSession to retrieve already-approved BTC accounts
+        const existingSession = await eth.request({ method: "wallet_getSession" }) as {
+          sessionScopes?: Record<string, { accounts?: string[] }>;
+        };
+        const existingBtcScope = existingSession?.sessionScopes?.["bip122:000000000019d6689c085ae165831e93"];
+        const existingAccounts = existingBtcScope?.accounts ?? [];
+        if (!existingAccounts.length) {
+          throw new Error("No Bitcoin accounts returned from MetaMask. Make sure you have updated MetaMask to the latest version.");
         }
+        caip10Accounts.push(...existingAccounts);
       }
+
+      // CAIP-10 format: "namespace:chainId:address" — take the part after the second colon
+      const address = caip10Accounts[0].split(":").slice(2).join(":");
+      if (!address) throw new Error("Could not parse Bitcoin address from MetaMask session");
+
+      const [{ btc: btcBalance, sats }, priceUsd] = await Promise.all([
+        fetchBtcBalanceFromMempool(address),
+        fetchBtcPriceUsd(),
+      ]);
+      const balanceUsd = (sats / 1e8) * priceUsd;
+
+      setBitcoin({
+        chain: "bitcoin",
+        walletName: "MetaMask",
+        address,
+        shortAddress: shortAddr(address),
+        balance: btcBalance,
+        balanceUsd,
+        symbol: "BTC",
+        connected: true,
+        connecting: false,
+        isPhantom: false,
+      });
+      toast.success("MetaMask BTC connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("cancel") && !msg.includes("reject")) {
-        toast.error("Xverse connection failed", { description: msg });
+      if (!msg.includes("cancel") && !msg.includes("reject") && !msg.includes("User rejected")) {
+        toast.error("MetaMask BTC connection failed", { description: msg });
       }
     }
   }, []);
@@ -572,12 +601,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
     setBtcConnecting(true);
     try {
-      if (provider === "xverse") await connectXverse();
+      if (provider === "metamask") await connectMetaMaskBitcoin();
       else await connectTapWallet();
     } finally {
       setBtcConnecting(false);
     }
-  }, [connectXverse, connectTapWallet, connectPhantomMultiChain]);
+  }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain]);
 
   const disconnectBitcoin = useCallback(() => {
     if (bitcoin?.isPhantom) {

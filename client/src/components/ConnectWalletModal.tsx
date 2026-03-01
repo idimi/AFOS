@@ -6,13 +6,13 @@
  * │ Wallet          │ Solana │ Ethereum │ Bitcoin │
  * ├─────────────────┼────────┼──────────┼─────────┤
  * │ Phantom         │   ✅   │    ✅    │   ✅    │
- * │ MetaMask        │ ✅ WS  │    ✅    │   —     │
+ * │ MetaMask        │ ✅ WS  │    ✅    │ ✅ BTC  │
  * │ Coinbase Wallet │   —    │    ✅    │   —     │
  * │ Solflare        │   ✅   │    —     │   —     │
- * │ Xverse          │   —    │    —     │   ✅    │
  * │ Tap Wallet      │   —    │    —     │ ✅ +TNK │
  * └─────────────────┴────────┴──────────┴─────────┘
  * WS = Wallet Standard (handled by @solana/wallet-adapter automatically)
+ * BTC = MetaMask native Bitcoin via Multichain API (CAIP-25 wallet_createSession)
  *
  * UX: Phantom appears on all 3 tabs with a "Multi-chain" badge.
  * Clicking Phantom on any tab connects all available chains simultaneously.
@@ -325,16 +325,16 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       onClick={connectPhantomMultiChain}
                     />
 
-                    {/* Xverse — Bitcoin only */}
+                    {/* MetaMask — native Bitcoin via Multichain API */}
                     <WalletButton
-                      icon={XVERSE_ICON}
-                      name="Xverse"
-                      desc="On-chain BTC wallet"
-                      chains={["bitcoin"]}
+                      icon={METAMASK_ICON}
+                      name="MetaMask"
+                      desc="Native BTC · ETH · Multichain"
+                      chains={["bitcoin", "ethereum"]}
                       bg="rgba(247,147,26,0.08)"
                       border="rgba(247,147,26,0.2)"
                       loading={btcConnecting}
-                      onClick={() => connectBitcoin("xverse")}
+                      onClick={() => connectBitcoin("metamask")}
                     />
 
                     {/* Tap Wallet — Bitcoin + TNK */}
@@ -353,7 +353,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       label="Connect Bitcoin Wallet"
                       gradient="linear-gradient(135deg,#F7931A 0%,#FFCC00 100%)"
                       shadow="rgba(247,147,26,0.3)"
-                      onClick={() => connectBitcoin("xverse")}
+                      onClick={() => connectBitcoin("metamask")}
                       loading={btcConnecting}
                     />
                   </>

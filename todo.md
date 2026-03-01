@@ -204,3 +204,12 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Agent Insights Card Fix
 
 - [x] Make Agent Insights card content area vertically scrollable so Last Event is not clipped (desktop + mobile)
+
+## MetaMask Native Bitcoin Support
+
+- [x] Research MetaMask BTC API — uses CAIP-25 wallet_createSession with bip122:000000000019d6689c085ae165831e93 scope
+- [x] Replace Xverse with MetaMask on Bitcoin tab of ConnectWalletModal
+- [x] Add connectMetaMaskBitcoin() to MultiChainWalletContext using wallet_createSession + wallet_getSession fallback
+- [x] Fetch BTC balance from Mempool.space after MetaMask BTC connection
+- [x] Update BtcProviderType: "metamask" | "tap" | "phantom" (removed "xverse")
+- [x] Remove sats-connect import (no longer needed)
