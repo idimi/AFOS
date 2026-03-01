@@ -266,11 +266,28 @@ function MobileSidebarDrawer({
 }
 
 // ── Mini Chat Widget (replaces Agent Status Card on Overview) ─────────────────
+interface QuoteData {
+  fromToken: string;
+  toToken: string;
+  fromAmount: number;
+  toAmount: number;
+  fromAmountUsd: number;
+  toAmountUsd: number;
+  rate: number;
+  priceImpact: number;
+  platformFee: number;
+  platformFeeUsd: number;
+  route: string;
+  quoteResponse: unknown;
+}
+
 interface MiniChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+  type?: "text" | "quote_card" | "tx_success" | "error";
+  quoteData?: QuoteData;
 }
 
 function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
@@ -301,11 +318,47 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
     }]);
   }, []);
 
+  const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
+
+  const handleConfirmSwap = useCallback(async (quoteData: QuoteData) => {
+    if (!publicKey) {
+      addMessage({ role: "assistant", content: "Please connect your Solana wallet first to execute swaps.", type: "error" });
+      return;
+    }
+    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}…`, type: "text" });
+    try {
+      const { swapTransaction } = await buildSwapTx.mutateAsync({
+        quoteResponse: quoteData.quoteResponse,
+        userPublicKey: publicKey.toString(),
+      });
+      // Decode and sign via Phantom
+      const { Connection, VersionedTransaction } = await import("@solana/web3.js");
+      const connection = new Connection("https://api.mainnet-beta.solana.com");
+      const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
+      const tx = VersionedTransaction.deserialize(txBytes);
+      const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+      if (!phantom?.signAndSendTransaction) {
+        addMessage({ role: "assistant", content: "Phantom wallet not found. Please install Phantom to execute swaps.", type: "error" });
+        return;
+      }
+      const { signature } = await phantom.signAndSendTransaction(tx);
+      await connection.confirmTransaction(signature, "confirmed");
+      addMessage({
+        role: "assistant",
+        content: `Swap confirmed! ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken}`,
+        type: "tx_success",
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Transaction failed";
+      addMessage({ role: "assistant", content: `Swap failed: ${msg}`, type: "error" });
+    }
+  }, [publicKey, buildSwapTx, addMessage]);
+
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text ?? input).trim();
     if (!messageText || isTyping) return;
     setInput("");
-    addMessage({ role: "user", content: messageText });
+    addMessage({ role: "user", content: messageText, type: "text" });
     setIsTyping(true);
     try {
       const history = messages
@@ -317,9 +370,14 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
         walletAddress: publicKey?.toString(),
         walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
       });
-      addMessage({ role: "assistant", content: result.content });
+      addMessage({
+        role: "assistant",
+        content: result.content,
+        type: result.type,
+        quoteData: result.type === "quote_card" ? (result as { type: "quote_card"; content: string; quoteData: QuoteData }).quoteData : undefined,
+      });
     } catch {
-      addMessage({ role: "assistant", content: "Sorry, something went wrong. Please try again." });
+      addMessage({ role: "assistant", content: "Sorry, something went wrong. Please try again.", type: "error" });
     } finally {
       setIsTyping(false);
     }
@@ -356,25 +414,77 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
             {msg.role === "assistant" && (
               <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
                 style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.2), rgba(139,92,246,0.2))", border: "1px solid rgba(6,182,212,0.3)" }}>
-                <Bot className="w-3 h-3 text-cyan-400" />
+                {msg.type === "tx_success" ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> :
+                 msg.type === "error" ? <AlertTriangle className="w-3 h-3 text-red-400" /> :
+                 <Bot className="w-3 h-3 text-cyan-400" />}
               </div>
             )}
-            <div
-              className={`px-3 py-2 rounded-xl text-xs leading-relaxed max-w-[80%] ${
-                msg.role === "user" ? "rounded-tr-sm" : "rounded-tl-sm"
-              }`}
-              style={{
-                background: msg.role === "user"
-                  ? "linear-gradient(135deg, rgba(6,182,212,0.18), rgba(139,92,246,0.18))"
-                  : "var(--muted)",
-                border: msg.role === "user"
-                  ? "1px solid rgba(6,182,212,0.25)"
-                  : "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            >
-              {msg.content}
-            </div>
+            {/* Quote card — rich inline swap confirmation */}
+            {msg.type === "quote_card" && msg.quoteData ? (
+              <div className="flex-1 max-w-[90%] rounded-xl rounded-tl-sm overflow-hidden"
+                style={{ border: "1px solid rgba(6,182,212,0.3)", background: "linear-gradient(135deg, rgba(6,182,212,0.06), rgba(139,92,246,0.06))" }}>
+                {/* Quote header */}
+                <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
+                  <ArrowLeftRight className="w-3 h-3 text-cyan-400" />
+                  <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Swap Quote</span>
+                  <span className="ml-auto text-[9px] font-mono text-muted-foreground">{msg.quoteData.route}</span>
+                </div>
+                {/* Token flow */}
+                <div className="flex items-center gap-2 px-3 py-2">
+                  <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                    <p className="text-[9px] text-muted-foreground mb-0.5">You pay</p>
+                    <p className="text-sm font-bold font-mono text-foreground">{msg.quoteData.fromAmount} {msg.quoteData.fromToken}</p>
+                    <p className="text-[9px] text-muted-foreground">${msg.quoteData.fromAmountUsd.toFixed(2)}</p>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                    <p className="text-[9px] text-muted-foreground mb-0.5">You receive</p>
+                    <p className="text-sm font-bold font-mono text-emerald-400">{msg.quoteData.toAmount.toFixed(6)} {msg.quoteData.toToken}</p>
+                    <p className="text-[9px] text-muted-foreground">${msg.quoteData.toAmountUsd.toFixed(2)}</p>
+                  </div>
+                </div>
+                {/* Fee row */}
+                <div className="flex items-center justify-between px-3 pb-2 text-[9px] font-mono text-muted-foreground">
+                  <span>Fee: {msg.quoteData.platformFee.toFixed(6)} {msg.quoteData.fromToken} (${msg.quoteData.platformFeeUsd.toFixed(4)})</span>
+                  <span className={msg.quoteData.priceImpact > 1 ? "text-amber-400" : "text-emerald-400"}>
+                    Impact: {msg.quoteData.priceImpact < 0.01 ? "<0.01" : msg.quoteData.priceImpact.toFixed(2)}%
+                  </span>
+                </div>
+                {/* Confirm button */}
+                <div className="px-3 pb-3">
+                  <button
+                    onClick={() => handleConfirmSwap(msg.quoteData!)}
+                    disabled={buildSwapTx.isPending}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all active:scale-[0.98] disabled:opacity-60"
+                    style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
+                  >
+                    {buildSwapTx.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
+                    {buildSwapTx.isPending ? "Building tx…" : `Confirm Swap`}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`px-3 py-2 rounded-xl text-xs leading-relaxed max-w-[80%] ${
+                  msg.role === "user" ? "rounded-tr-sm" : "rounded-tl-sm"
+                }`}
+                style={{
+                  background: msg.role === "user"
+                    ? "linear-gradient(135deg, rgba(6,182,212,0.18), rgba(139,92,246,0.18))"
+                    : msg.type === "tx_success" ? "rgba(16,185,129,0.1)"
+                    : msg.type === "error" ? "rgba(239,68,68,0.1)"
+                    : "var(--muted)",
+                  border: msg.role === "user"
+                    ? "1px solid rgba(6,182,212,0.25)"
+                    : msg.type === "tx_success" ? "1px solid rgba(16,185,129,0.3)"
+                    : msg.type === "error" ? "1px solid rgba(239,68,68,0.3)"
+                    : "1px solid var(--border)",
+                  color: msg.type === "tx_success" ? "#10b981" : msg.type === "error" ? "#f87171" : "var(--foreground)",
+                }}
+              >
+                {msg.content}
+              </div>
+            )}
           </div>
         ))}
         {isTyping && (
@@ -1109,9 +1219,21 @@ function MarketTicker() {
     SOL: { price: 87.2, change: 0 },
   });
   const [priceSource, setPriceSource] = useState<'live' | 'mock'>('mock');
-  // Open BTC/USDT chart by default on desktop
-  const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
-  const [interval, setIntervalTF] = useState("5"); // TradingView interval — default 5m
+  // Persist chart pair + timeframe in localStorage
+  const [activePair, setActivePairState] = useState<string | null>(() => {
+    try { return localStorage.getItem("afos_chart_pair") ?? "BTC/USDT"; } catch { return "BTC/USDT"; }
+  });
+  const [interval, setIntervalTFState] = useState<string>(() => {
+    try { return localStorage.getItem("afos_chart_tf") ?? "5"; } catch { return "5"; }
+  });
+  const setActivePair = (pair: string | null) => {
+    setActivePairState(pair);
+    try { if (pair) localStorage.setItem("afos_chart_pair", pair); } catch { /* ignore */ }
+  };
+  const setIntervalTF = (tf: string) => {
+    setIntervalTFState(tf);
+    try { localStorage.setItem("afos_chart_tf", tf); } catch { /* ignore */ }
+  };
 
   const TF_OPTIONS = [
     { label: "1m", value: "1" },
@@ -1188,7 +1310,7 @@ function MarketTicker() {
               transition={{ duration: 0.2 }}
             >
               <button
-                onClick={() => setActivePair(prev => prev === t.symbol ? null : t.symbol)}
+                onClick={() => setActivePair(activePair === t.symbol ? null : t.symbol)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
                   isActive
                     ? `${t.bg} ${t.border}`
@@ -1891,8 +2013,21 @@ function MobileMarketCard() {
     ETH: { price: 2680, change: +0.8 },
     SOL: { price: 142.80, change: -1.1 },
   });
-  const [activePair, setActivePair] = useState<string | null>(null);
-  const [interval, setIntervalTF] = useState("5"); // default 5m
+  // Persist chart pair + timeframe in localStorage (shared key with desktop)
+  const [activePair, setActivePairState] = useState<string | null>(() => {
+    try { return localStorage.getItem("afos_chart_pair") ?? null; } catch { return null; }
+  });
+  const [interval, setIntervalTFState] = useState<string>(() => {
+    try { return localStorage.getItem("afos_chart_tf") ?? "5"; } catch { return "5"; }
+  });
+  const setActivePair = (pair: string | null) => {
+    setActivePairState(pair);
+    try { if (pair) localStorage.setItem("afos_chart_pair", pair); else localStorage.removeItem("afos_chart_pair"); } catch { /* ignore */ }
+  };
+  const setIntervalTF = (tf: string) => {
+    setIntervalTFState(tf);
+    try { localStorage.setItem("afos_chart_tf", tf); } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1955,7 +2090,7 @@ function MobileMarketCard() {
           return (
             <motion.div key={t.symbol} animate={{ opacity: isHidden ? 0.4 : 1 }} transition={{ duration: 0.2 }}>
               <button
-                onClick={() => setActivePair(prev => prev === t.symbol ? null : t.symbol)}
+                onClick={() => setActivePair(activePair === t.symbol ? null : t.symbol)}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all duration-200 ${
                   isActive ? `${t.bg} ${t.border}` : "bg-muted/15 border-border hover:bg-muted/30"
                 }`}
