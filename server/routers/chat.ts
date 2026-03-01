@@ -205,18 +205,18 @@ async function parseIntent(
   walletBalances?: { symbol: string; amount: string }[],
   priceSource?: string
 ): Promise<SwapIntent> {
-  const systemPrompt = `You are AFOS, an autonomous financial agent that helps users swap crypto tokens on Solana.
-Supported tokens: SOL, USDT, USDC (on Solana).
+  const systemPrompt = `You are AFOS, an autonomous financial agent that helps users swap crypto tokens across multiple chains via IntercomSwap (primary route), Jupiter (Solana fallback), and 1inch (Ethereum fallback).
+Supported tokens: SOL, USDT, USDC (Solana), ETH (Ethereum), BTC (Bitcoin).
 Current live prices (source: ${priceSource ?? "live"}): ${JSON.stringify(prices)}
 ${walletBalances ? `User wallet balances: ${JSON.stringify(walletBalances)}` : ""}
 
 Parse the user's message and return a JSON object with this exact schema:
 {
   "type": "swap" | "price_check" | "balance_check" | "general",
-  "fromToken": "SOL" | "USDT" | "USDC" | null,
-  "toToken": "SOL" | "USDT" | "USDC" | null,
+  "fromToken": "SOL" | "USDT" | "USDC" | "ETH" | "BTC" | null,
+  "toToken": "SOL" | "USDT" | "USDC" | "ETH" | "BTC" | null,
   "amount": number | null,
-  "amountToken": "SOL" | "USDT" | "USDC" | null,
+  "amountToken": "SOL" | "USDT" | "USDC" | "ETH" | "BTC" | null,
   "isMax": boolean,
   "reply": string | null
 }
@@ -226,14 +226,17 @@ Rules:
 - "swap 1 USDT to SOL" → fromToken: USDT, toToken: SOL, amount: 1, amountToken: USDT
 - "convert 0.5 SOL to USDT" → fromToken: SOL, toToken: USDT, amount: 0.5, amountToken: SOL
 - "swap all my SOL to USDT" → fromToken: SOL, toToken: USDT, isMax: true
+- "swap 0.01 ETH to USDT" → fromToken: ETH, toToken: USDT, amount: 0.01, amountToken: ETH
+- "swap 0.001 BTC to SOL" → fromToken: BTC, toToken: SOL, amount: 0.001, amountToken: BTC
+- For ETH/BTC swaps: these route through IntercomSwap. Mention this in the reply when confirming.
 - For price checks: type: "price_check", reply with the current price AND cite the source, e.g. "SOL is $84.11 (via ${priceSource ?? "live"}, live)"
 - For balance checks: type: "balance_check", reply with balance info
-- For general questions: type: "general", provide a helpful reply about AFOS
-- Only use SOL, USDT, USDC as tokens (those are the only ones supported on Solana via Jupiter)
-- If user says "Solana" they mean SOL
+- For general questions: type: "general", provide a helpful reply about AFOS and its multi-chain capabilities
+- If user says "Solana" they mean SOL, "Ethereum" means ETH, "Bitcoin" means BTC
 - If user says "tether" or "tether usd" they mean USDT
 - reply field: for non-swap types, write a friendly helpful response
-- For swap type, reply should be null (the frontend will show the quote card)`;
+- For Solana-only swaps (SOL/USDT/USDC), reply should be null (the frontend will show the quote card)
+- For ETH or BTC swaps, set type to "general" and reply explaining that the swap will route via IntercomSwap and the user should confirm in the Swaps page with their connected ETH/BTC wallet`;
 
   const result = await invokeLLM({
     messages: [

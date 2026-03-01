@@ -184,3 +184,8 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Mempool.space BTC Balance Fetch
 - [x] Fetch real on-chain BTC balance from Mempool.space for Xverse (BTC) and Tap Wallet (BTC+TNK) after connection
+
+## BTC Balance Auto-Refresh + Chat ETH/BTC + Wallet Logos
+- [x] Add 60s polling for BTC balance refresh in MultiChainWalletContext
+- [x] Add real logos for MetaMask, Coinbase Wallet, Xverse, Tap Wallet in ConnectWalletModal (CDN hosted)
+- [x] Extend chat agent intent parser to detect ETH and BTC swap requests (routes via IntercomSwap)

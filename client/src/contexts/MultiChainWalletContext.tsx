@@ -330,6 +330,44 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     toast.info("Bitcoin wallet disconnected");
   }, []);
 
+  // ── Auto-refresh BTC balance every 60 seconds ─────────────────────────────
+  useEffect(() => {
+    if (!bitcoin?.connected || !bitcoin.address) return;
+
+    const refreshBtcBalance = async () => {
+      try {
+        const [{ btc, sats }, priceUsd] = await Promise.all([
+          fetchBtcBalanceFromMempool(bitcoin.address),
+          fetchBtcPriceUsd(),
+        ]);
+        const balanceUsd = (sats / 1e8) * priceUsd;
+
+        setBitcoin(prev => {
+          if (!prev) return null;
+          // For Tap Wallet, preserve the TNK part of the display balance
+          const isTapWallet = prev.walletName === "Tap Wallet";
+          const tnkPart = isTapWallet && prev.balance.includes("TNK")
+            ? prev.balance.split(" / ")[1] ?? ""
+            : "";
+          const newBalance = isTapWallet && tnkPart
+            ? (sats > 0 ? `${btc} BTC / ${tnkPart}` : tnkPart)
+            : btc;
+          return {
+            ...prev,
+            balance: newBalance,
+            balanceUsd,
+            symbol: sats > 0 ? "BTC" : prev.symbol,
+          };
+        });
+      } catch {
+        // Silently ignore refresh errors — stale balance is fine
+      }
+    };
+
+    const interval = setInterval(refreshBtcBalance, 60_000);
+    return () => clearInterval(interval);
+  }, [bitcoin?.connected, bitcoin?.address]);
+
   return (
     <MultiChainWalletContext.Provider value={{
       ethereum,
