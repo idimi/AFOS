@@ -128,3 +128,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Rewrote AgentLogContext to load real /api/agent/log history on mount
 - [x] Wired real SSE events: agent_decision, agent_log, p2p_rfq, swap_executed, peer_connected, peer_disconnected
 - [x] Removed all "openclaw" references from boot entries and live pool (now "afos:init", "afos:ready", "afos:decision")
+
+## Agent Insights — Replace Activity Card + Hide Terminal Nav
+
+- [x] Hide Terminal from sidebar nav items (keep page accessible via Full log link)
+- [x] Replace MobileAgentActivity raw log card with Agent Insights widget
+- [x] Agent Insights: decision type breakdown (MONITOR / BROADCAST_RFQ / WAIT counts with animated bars)
+- [x] Agent Insights: last meaningful event in readable format (not raw log lines)
+- [x] Agent Insights: confidence score trend (last 5 decisions, mini bar chart)
+- [x] Agent Insights: Full log link still accessible for power users
+- [x] Renamed AgentThoughtStream to AgentInsights consistently across desktop and mobile

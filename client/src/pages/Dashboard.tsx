@@ -1103,29 +1103,63 @@ function MarketTicker() {
 }
 
 // ── Agent Thought Stream (compact live feed) ───────────────────────────────
-function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
+function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
   const { entries } = useAgentLog();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const recent = entries.slice(-8);
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+  // Count decision types from real entries
+  const decisionCounts = useMemo(() => {
+    const counts: Record<string, number> = { MONITOR: 0, BROADCAST_RFQ: 0, WAIT: 0 };
+    entries.forEach(e => {
+      if (e.message.startsWith("Agent decision:")) {
+        if (e.message.includes("BROADCAST_RFQ")) counts.BROADCAST_RFQ++;
+        else if (e.message.includes("WAIT")) counts.WAIT++;
+        else counts.MONITOR++;
+      }
+    });
+    return counts;
   }, [entries]);
 
-  const levelColor = (level: string) =>
+  // Last 5 confidence scores
+  const confidenceTrend = useMemo(() => {
+    return entries
+      .filter(e => e.message.startsWith("Agent decision:"))
+      .slice(-5)
+      .map((e, i) => {
+        const match = e.message.match(/(\d+)%/);
+        return { i, value: match ? parseInt(match[1]) : 85 };
+      });
+  }, [entries]);
+
+  // Last meaningful event (non-MONITOR)
+  const lastEvent = useMemo(() => {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.level === "success" || e.level === "warn" || e.level === "error") return e;
+      if (e.message.includes("BROADCAST_RFQ") || e.message.includes("Swap") || e.message.includes("Peer")) return e;
+    }
+    return entries[entries.length - 1] ?? null;
+  }, [entries]);
+
+  const total = decisionCounts.MONITOR + decisionCounts.BROADCAST_RFQ + decisionCounts.WAIT;
+  const monitorPct = total > 0 ? Math.round((decisionCounts.MONITOR / total) * 100) : 0;
+  const rfqPct = total > 0 ? Math.round((decisionCounts.BROADCAST_RFQ / total) * 100) : 0;
+  const waitPct = total > 0 ? Math.round((decisionCounts.WAIT / total) * 100) : 0;
+  const avgConfidence = confidenceTrend.length > 0
+    ? Math.round(confidenceTrend.reduce((s, c) => s + c.value, 0) / confidenceTrend.length)
+    : 85;
+
+  const eventLevelColor = (level: string) =>
     level === "success" ? "text-emerald-400" :
     level === "warn" ? "text-amber-400" :
-    level === "error" ? "text-red-400" :
-    level === "cmd" ? "text-violet-400" :
-    level === "debug" ? "text-slate-400" : "text-cyan-300/80";
+    level === "error" ? "text-red-400" : "text-cyan-300";
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
+      {/* Header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <Eye className="w-4 h-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold text-foreground">Agent Activity</h3>
+          <Gauge className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold text-foreground">Agent Insights</h3>
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
         <button
@@ -1135,25 +1169,66 @@ function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: ()
           Full log →
         </button>
       </div>
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-2.5 space-y-1 min-h-0"
-        style={{ background: "var(--background)" }}
-      >
-        {recent.map(log => (
-          <motion.div
-            key={log.id}
-            initial={{ opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.15 }}
-            className="flex items-start gap-2 text-[11px] font-mono py-0.5"
-          >
-            <span className="text-muted-foreground/40 shrink-0 tabular-nums w-[68px]">{log.ts.slice(0, 8)}</span>
-            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>
-              {log.message}
-            </span>
-          </motion.div>
-        ))}
+
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+        {/* Decision breakdown */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Decision Breakdown</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{total} total</span>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-cyan-400/70 w-24 shrink-0">MONITOR</span>
+              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <motion.div className="h-full rounded-full bg-cyan-500/60" initial={{ width: 0 }} animate={{ width: `${monitorPct}%` }} transition={{ duration: 0.6, ease: "easeOut" }} />
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{monitorPct}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-emerald-400/70 w-24 shrink-0">RFQ</span>
+              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <motion.div className="h-full rounded-full bg-emerald-500/60" initial={{ width: 0 }} animate={{ width: `${rfqPct}%` }} transition={{ duration: 0.6, ease: "easeOut" }} />
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{rfqPct}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono text-amber-400/70 w-24 shrink-0">WAIT</span>
+              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                <motion.div className="h-full rounded-full bg-amber-500/60" initial={{ width: 0 }} animate={{ width: `${waitPct}%` }} transition={{ duration: 0.6, ease: "easeOut" }} />
+              </div>
+              <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{waitPct}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Confidence score */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Avg Confidence</div>
+            <div className="text-xl font-bold text-foreground">{avgConfidence}%</div>
+          </div>
+          <div className="flex items-end gap-0.5 h-8">
+            {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
+              <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Last meaningful event */}
+        {lastEvent && (
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Last Event</div>
+            <div className="p-3 rounded-xl bg-muted/20 border border-border">
+              <div className="flex items-start gap-2">
+                <span className="text-[9px] font-mono text-muted-foreground/50 shrink-0 mt-0.5 tabular-nums">{lastEvent.ts.slice(0, 8)}</span>
+                <span className={`text-[11px] font-mono leading-snug ${eventLevelColor(lastEvent.level)}`}>
+                  {lastEvent.message.length > 80 ? lastEvent.message.slice(0, 80) + "…" : lastEvent.message}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1470,22 +1545,56 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
   );
 }
 
-// ── Mobile Agent Activity (compact, 5 lines) ──────────────────────────────
+// ── Mobile Agent Insights (decision breakdown + confidence) ──────────────────
 function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
   const { entries } = useAgentLog();
-  const recent = entries.slice(-5);
-  const levelColor = (level: string) =>
-    level === "success" ? "text-emerald-400" :
-    level === "warn" ? "text-amber-400" :
-    level === "error" ? "text-red-400" :
-    level === "cmd" ? "text-violet-400" : "text-cyan-300/80";
+
+  const decisionCounts = useMemo(() => {
+    const counts: Record<string, number> = { MONITOR: 0, BROADCAST_RFQ: 0, WAIT: 0 };
+    entries.forEach(e => {
+      if (e.message.startsWith("Agent decision:")) {
+        if (e.message.includes("BROADCAST_RFQ")) counts.BROADCAST_RFQ++;
+        else if (e.message.includes("WAIT")) counts.WAIT++;
+        else counts.MONITOR++;
+      }
+    });
+    return counts;
+  }, [entries]);
+
+  const confidenceTrend = useMemo(() => {
+    return entries
+      .filter(e => e.message.startsWith("Agent decision:"))
+      .slice(-5)
+      .map((e, i) => {
+        const match = e.message.match(/(\d+)%/);
+        return { i, value: match ? parseInt(match[1]) : 85 };
+      });
+  }, [entries]);
+
+  const lastEvent = useMemo(() => {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.level === "success" || e.level === "warn" || e.level === "error") return e;
+      if (e.message.includes("BROADCAST_RFQ") || e.message.includes("Swap") || e.message.includes("Peer")) return e;
+    }
+    return entries[entries.length - 1] ?? null;
+  }, [entries]);
+
+  const total = decisionCounts.MONITOR + decisionCounts.BROADCAST_RFQ + decisionCounts.WAIT;
+  const monitorPct = total > 0 ? Math.round((decisionCounts.MONITOR / total) * 100) : 0;
+  const rfqPct = total > 0 ? Math.round((decisionCounts.BROADCAST_RFQ / total) * 100) : 0;
+  const waitPct = total > 0 ? Math.round((decisionCounts.WAIT / total) * 100) : 0;
+  const avgConfidence = confidenceTrend.length > 0
+    ? Math.round(confidenceTrend.reduce((s, c) => s + c.value, 0) / confidenceTrend.length)
+    : 85;
 
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <Eye className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-xs font-semibold text-foreground">Agent Activity</span>
+          <Gauge className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-foreground">Agent Insights</span>
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
         <button
@@ -1495,13 +1604,47 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
           Full log →
         </button>
       </div>
-      <div className="px-4 py-2.5 space-y-1" style={{ background: "var(--background)" }}>
-        {recent.map(log => (
-          <div key={log.id} className="flex items-start gap-2 text-[10px] font-mono py-0.5">
-            <span className="text-muted-foreground/40 shrink-0 tabular-nums">{log.ts.slice(0, 8)}</span>
-            <span className={`flex-1 min-w-0 break-words leading-snug ${levelColor(log.level)}`}>{log.message}</span>
+
+      <div className="px-4 py-3 space-y-3">
+        {/* Decision breakdown */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Decisions</span>
+            <span className="text-[9px] font-mono text-muted-foreground">{total} total</span>
           </div>
-        ))}
+          <div className="space-y-1.5">
+            {[{label:"MONITOR",pct:monitorPct,color:"bg-cyan-500/60",textColor:"text-cyan-400/70"},{label:"RFQ",pct:rfqPct,color:"bg-emerald-500/60",textColor:"text-emerald-400/70"},{label:"WAIT",pct:waitPct,color:"bg-amber-500/60",textColor:"text-amber-400/70"}].map(row => (
+              <div key={row.label} className="flex items-center gap-2">
+                <span className={`text-[9px] font-mono w-16 shrink-0 ${row.textColor}`}>{row.label}</span>
+                <div className="flex-1 h-1 rounded-full bg-muted overflow-hidden">
+                  <motion.div className={`h-full rounded-full ${row.color}`} initial={{ width: 0 }} animate={{ width: `${row.pct}%` }} transition={{ duration: 0.6, ease: "easeOut" }} />
+                </div>
+                <span className="text-[9px] font-mono text-muted-foreground w-7 text-right">{row.pct}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Confidence + last event */}
+        <div className="flex gap-2">
+          <div className="flex-1 p-2.5 rounded-xl bg-muted/30 border border-border">
+            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Confidence</div>
+            <div className="text-lg font-bold text-foreground">{avgConfidence}%</div>
+            <div className="flex items-end gap-0.5 h-4 mt-1">
+              {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
+                <div key={c.i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: `${Math.max(20, c.value)}%` }} />
+              ))}
+            </div>
+          </div>
+          {lastEvent && (
+            <div className="flex-1 p-2.5 rounded-xl bg-muted/20 border border-border overflow-hidden">
+              <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Last Event</div>
+              <div className="text-[9px] font-mono text-cyan-300 leading-snug line-clamp-3">
+                {lastEvent.message.slice(0, 60)}{lastEvent.message.length > 60 ? "…" : ""}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1715,11 +1858,11 @@ export default function Dashboard() {
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
     { id: "chat" as NavPage, icon: Bot, label: "Agent Chat" },
-    { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
     { id: "network" as NavPage, icon: Network, label: "Network" },
     { id: "settings" as NavPage, icon: Settings, label: "Settings" },
+    // Terminal is intentionally excluded from nav — accessible via "Full log →" link on Overview
   ];
 
   const renderSubPage = () => {
@@ -1825,7 +1968,7 @@ export default function Dashboard() {
                   <PortfolioCard />
                   <WalletsCard />
                   <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
-                  <AgentThoughtStream onNavigateToTerminal={() => setActivePage("terminal")} />
+                  <AgentInsights onNavigateToTerminal={() => setActivePage("terminal")} />
                 </div>
               </div>
 
