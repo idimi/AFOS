@@ -201,7 +201,11 @@ export async function getPrices(): Promise<Record<string, TokenPrice>> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data.prices;
+  const prices: Record<string, TokenPrice> = data.prices ?? {};
+  // Stablecoins are always $1.00 — inject them if the Oracle VM omits them
+  if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
+  if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
+  return prices;
 }
 
 export async function getSwapQuote(

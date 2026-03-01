@@ -64,8 +64,9 @@ export function useWallet() {
   return ctx;
 }
 
-// ─── USDT mint on Solana mainnet ──────────────────────────────────────────────
+// ─── Token mints on Solana mainnet ──────────────────────────────────────────────
 const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const SOL_DECIMALS = 9;
 
 // ─── Inner provider that uses Solana wallet adapter hooks ─────────────────────
@@ -84,7 +85,7 @@ function WalletInner({ children }: { children: ReactNode }) {
 
   const [balances, setBalances] = useState<WalletBalance[]>([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
-  const [prices, setPrices] = useState<{ SOL: number; USDT: number }>({ SOL: 0, USDT: 1 });
+  const [prices, setPrices] = useState<{ SOL: number; USDT: number; USDC: number }>({ SOL: 0, USDT: 1, USDC: 1 });
 
   // Fetch prices from AFOS backend
   useEffect(() => {
@@ -96,7 +97,8 @@ function WalletInner({ children }: { children: ReactNode }) {
           const p = data.prices || {};
           setPrices({
             SOL: p.SOL?.usd || p.sol?.usd || 0,
-            USDT: 1,
+            USDT: 1, // stablecoin — always $1.00
+            USDC: 1, // stablecoin — always $1.00
           });
         }
       } catch (_) {}
@@ -127,30 +129,28 @@ function WalletInner({ children }: { children: ReactNode }) {
 
       // USDT balance (SPL token)
       try {
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+        const usdtAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
           mint: new PublicKey(USDT_MINT),
         });
-        if (tokenAccounts.value.length > 0) {
-          const info = tokenAccounts.value[0].account.data.parsed.info;
-          const usdtAmount = info.tokenAmount.uiAmount || 0;
-          newBalances.push({
-            symbol: "USDT",
-            amount: usdtAmount.toFixed(2),
-            usdValue: usdtAmount,
-            decimals: 6,
-            mint: USDT_MINT,
-          });
-        } else {
-          newBalances.push({
-            symbol: "USDT",
-            amount: "0.00",
-            usdValue: 0,
-            decimals: 6,
-            mint: USDT_MINT,
-          });
-        }
+        const usdtAmount = usdtAccounts.value.length > 0
+          ? (usdtAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0)
+          : 0;
+        newBalances.push({ symbol: "USDT", amount: usdtAmount.toFixed(2), usdValue: usdtAmount, decimals: 6, mint: USDT_MINT });
       } catch (_) {
         newBalances.push({ symbol: "USDT", amount: "0.00", usdValue: 0, decimals: 6, mint: USDT_MINT });
+      }
+
+      // USDC balance (SPL token)
+      try {
+        const usdcAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+          mint: new PublicKey(USDC_MINT),
+        });
+        const usdcAmount = usdcAccounts.value.length > 0
+          ? (usdcAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0)
+          : 0;
+        newBalances.push({ symbol: "USDC", amount: usdcAmount.toFixed(2), usdValue: usdcAmount, decimals: 6, mint: USDC_MINT });
+      } catch (_) {
+        newBalances.push({ symbol: "USDC", amount: "0.00", usdValue: 0, decimals: 6, mint: USDC_MINT });
       }
 
       setBalances(newBalances);
