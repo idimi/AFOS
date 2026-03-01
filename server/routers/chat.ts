@@ -99,25 +99,71 @@ async function getJupiterSwapTx(
   return res.json();
 }
 
-// ─── Price fetching ────────────────────────────────────────────────────────────
-async function getTokenPrices(): Promise<Record<string, number>> {
+// ─── Price fetching ──────────────────────────────────────────────────────────
+// CoinGecko is the primary source — works from the server without geo-restrictions
+async function getTokenPricesFromCoinGecko(): Promise<Record<string, number> | null> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin&vs_currencies=usd",
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as { solana?: { usd: number }; ethereum?: { usd: number }; bitcoin?: { usd: number } };
+    const sol = data.solana?.usd;
+    if (!sol || sol < 1) return null;
+    return {
+      SOL: sol,
+      ETH: data.ethereum?.usd ?? 2000,
+      BTC: data.bitcoin?.usd ?? 66000,
+      USDT: 1,
+      USDC: 1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Binance fallback (may be geo-blocked in some regions)
+async function getTokenPricesFromBinance(): Promise<Record<string, number> | null> {
   try {
     const res = await fetch(
       "https://api.binance.com/api/v3/ticker/price?symbols=[\"SOLUSDT\",\"ETHUSDT\",\"BTCUSDT\"]",
       { signal: AbortSignal.timeout(5000) }
     );
-    if (!res.ok) return { SOL: 150, ETH: 3200, BTC: 95000, USDT: 1, USDC: 1 };
-    const data = await res.json();
+    if (!res.ok) return null;
+    const data = await res.json() as { symbol: string; price: string }[];
+    if (!Array.isArray(data)) return null;
     const prices: Record<string, number> = { USDT: 1, USDC: 1 };
     for (const item of data) {
       if (item.symbol === "SOLUSDT") prices.SOL = parseFloat(item.price);
       if (item.symbol === "ETHUSDT") prices.ETH = parseFloat(item.price);
       if (item.symbol === "BTCUSDT") prices.BTC = parseFloat(item.price);
     }
+    if (!prices.SOL || prices.SOL < 1) return null;
     return prices;
   } catch {
-    return { SOL: 150, ETH: 3200, BTC: 95000, USDT: 1, USDC: 1 };
+    return null;
   }
+}
+
+async function getTokenPrices(): Promise<Record<string, number>> {
+  // Primary: CoinGecko (confirmed working from server)
+  const cgPrices = await getTokenPricesFromCoinGecko();
+  if (cgPrices) {
+    console.log(`[Chat] Prices from CoinGecko: SOL=$${cgPrices.SOL}`);
+    return cgPrices;
+  }
+
+  // Fallback: Binance (may be geo-blocked)
+  const binancePrices = await getTokenPricesFromBinance();
+  if (binancePrices) {
+    console.log(`[Chat] Prices from Binance: SOL=$${binancePrices.SOL}`);
+    return binancePrices;
+  }
+
+  // Final hardcoded fallback — approximate current values
+  console.warn("[Chat] All price APIs failed, using approximate fallback prices");
+  return { SOL: 85, ETH: 1970, BTC: 66000, USDT: 1, USDC: 1 };
 }
 
 // ─── Intent parsing ────────────────────────────────────────────────────────────

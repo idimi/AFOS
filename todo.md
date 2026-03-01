@@ -154,3 +154,6 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Mini Chat Widget on Overview
 - [x] Replace Agent Status card on Overview with embedded mini Agent Chat widget (shared chat state with ChatPage)
+
+## Live Price Injection in Chat
+- [x] Fix chat agent to inject live prices from CoinGecko (primary) into system prompt — Binance was geo-blocked from server
