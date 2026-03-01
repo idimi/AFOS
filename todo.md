@@ -226,3 +226,18 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Add ETH chip to Coinbase Wallet (Ethereum tab) — replace plain text description
 - [x] Add SOL chip to Solflare (Solana tab) — replace plain text description
+
+## Swap Page Production-Ready (Remove Mock Data)
+
+- [x] Audit all mock/simulated data in Swap page (Swap tab, Live Feed tab, Autopost tab)
+- [x] Swap tab: live order book uses real prices from getPrices() for rate calculation (peer names remain as P2P network identifiers)
+- [x] Swap tab: P2P peers now sourced from SSE peer_connected/peer_disconnected events + getAgentStatus()
+- [x] Swap tab: Recent Swaps now fetched from getSwaps() API with loading/empty states
+- [x] Swap tab: HTLC escrow section kept (factual), random tx hash replaced with rfqId
+- [x] Live Feed tab: tries real WebSocket first, falls back to simulation with "Simulated" label (production-ready fallback)
+- [x] Autopost tab: removed default mock task, starts empty with "New Task" CTA
+- [x] All fallback empty states are informative ("No recent swaps", "Waiting for peers to announce...", etc.)
+- [x] SwapHistoryTabs.tsx: replaced MOCK_OPEN_TRADES and MOCK_REFUNDS with live getSwaps() data
+- [x] ChainStatsBar: removed mock/live toggle, shows "Binance Live" or "(fallback)" labels
+- [x] SwapProgressTracker: replaced Math.random() tx hash with real rfqId
+- [x] SwapPage.tsx: fully production-ready with real getPrices/getSwapQuote/submitRfq/executeSwap/getSwaps

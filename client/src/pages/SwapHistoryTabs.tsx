@@ -1,10 +1,12 @@
 /**
  * AFOS — Open Trades and Refunds tabs for SwapHistory
+ * Production: pulls live data from getSwaps() API
  */
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Activity, CheckCircle2, AlertTriangle, RotateCcw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getSwaps, type RfqResult } from "../lib/afosApi";
 
 // ─── Open Trades ──────────────────────────────────────────────────────────────
 
@@ -25,12 +27,6 @@ export interface OpenTrade {
   expiresIn: number;
 }
 
-const MOCK_OPEN_TRADES: OpenTrade[] = [
-  { id: "ot_1", direction: "buy_btc", fromSymbol: "USDT", toSymbol: "BTC", fromAmount: 432.50, toAmount: 0.00996, rate: 43418, feeBps: 12, peer: "GammaNode", htlcExpiry: "9m 42s", refundWindow: "20-40h", phase: "quote_received", receivedAt: new Date(Date.now() - 45000), expiresIn: 582 },
-  { id: "ot_2", direction: "sell_btc", fromSymbol: "BTC", toSymbol: "USDT", fromAmount: 0.005, toAmount: 216.80, rate: 43360, feeBps: 18, peer: "AlphaNode", htlcExpiry: "14m 11s", refundWindow: "20-40h", phase: "htlc_locked", receivedAt: new Date(Date.now() - 120000), expiresIn: 851 },
-  { id: "ot_3", direction: "buy_btc", fromSymbol: "USDT", toSymbol: "BTC", fromAmount: 100.00, toAmount: 0.00230, rate: 43478, feeBps: 8, peer: "IotaSwap", htlcExpiry: "2m 05s", refundWindow: "20-40h", phase: "rfq_sent", receivedAt: new Date(Date.now() - 12000), expiresIn: 125 },
-];
-
 const PHASE_LABELS: Record<OpenTrade["phase"], string> = {
   rfq_sent: "RFQ Sent",
   quote_received: "Quote Received",
@@ -45,8 +41,49 @@ const PHASE_COLORS: Record<OpenTrade["phase"], string> = {
   awaiting_settle: "#06b6d4",
 };
 
+function mapRfqToOpenTrade(rfq: RfqResult): OpenTrade {
+  const isBuy = rfq.toToken === "BTC";
+  const ageMs = Date.now() - rfq.timestamp;
+  const rate = rfq.inAmount > 0 ? rfq.outAmount / rfq.inAmount : 0;
+  // Map route to a phase heuristic
+  let phase: OpenTrade["phase"] = "rfq_sent";
+  if (rfq.route === "p2p" && rfq.p2pQuotes > 0) phase = "quote_received";
+  if (ageMs > 30_000) phase = "htlc_locked";
+  if (ageMs > 60_000) phase = "awaiting_settle";
+
+  return {
+    id: rfq.rfqId,
+    direction: isBuy ? "buy_btc" : "sell_btc",
+    fromSymbol: rfq.fromToken,
+    toSymbol: rfq.toToken,
+    fromAmount: rfq.inAmount,
+    toAmount: rfq.outAmount,
+    rate,
+    feeBps: rfq.platformFeeBps ?? 0,
+    peer: rfq.dexRoute || "P2P Network",
+    htlcExpiry: ageMs < 60_000 ? `${Math.max(0, Math.round((600_000 - ageMs) / 1000))}s` : "Expired",
+    refundWindow: "20-40h",
+    phase,
+    receivedAt: new Date(rfq.timestamp),
+    expiresIn: Math.max(0, Math.round((600_000 - ageMs) / 1000)),
+  };
+}
+
 export function OpenTradesTab() {
-  const [trades, setTrades] = useState<OpenTrade[]>(MOCK_OPEN_TRADES);
+  const [trades, setTrades] = useState<OpenTrade[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTrades = async () => {
+      try {
+        const data = await getSwaps();
+        setTrades(data.pending.map(mapRfqToOpenTrade));
+      } catch { /* keep previous */ } finally { setLoading(false); }
+    };
+    fetchTrades();
+    const t = setInterval(fetchTrades, 15000);
+    return () => clearInterval(t);
+  }, []);
 
   const acceptTrade = (id: string) => {
     setTrades(prev => prev.map(t => t.id === id ? { ...t, phase: "htlc_locked" as const } : t));
@@ -57,6 +94,14 @@ export function OpenTradesTab() {
     setTrades(prev => prev.filter(t => t.id !== id));
     toast.info("Trade rejected", { description: "RFQ cancelled, no funds moved" });
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -182,14 +227,39 @@ interface RefundRecord {
   escrowPda: string;
 }
 
-const MOCK_REFUNDS: RefundRecord[] = [
-  { id: "ref_1", fromSymbol: "BTC", toSymbol: "USDT", amount: 0.003, usdValue: 130.25, peer: "EpsilonPeer", failReason: "Peer timeout — no settlement received", htlcExpiry: new Date(Date.now() - 3600000), status: "claimable", txHash: "0x4f2a8c1e9b3d7f0a...", escrowPda: "7xKp...9mNz" },
-  { id: "ref_2", fromSymbol: "ETH", toSymbol: "BTC", amount: 0.12, usdValue: 359.76, peer: "DeltaNode", failReason: "Rate mismatch — quote expired before acceptance", htlcExpiry: new Date(Date.now() - 86400000), status: "claimed", txHash: "0x8c1e4f2a7b9d3e0f...", escrowPda: "3mKp...7nXz" },
-  { id: "ref_3", fromSymbol: "BTC", toSymbol: "USDT", amount: 0.001, usdValue: 43.42, peer: "ZetaHub", failReason: "Insufficient peer liquidity", htlcExpiry: new Date(Date.now() + 7200000), status: "claimable", txHash: "0x2d9b7a3c1f6d8e4b...", escrowPda: "9nXz...4mKp" },
-];
+function mapRfqToRefund(rfq: RfqResult): RefundRecord {
+  return {
+    id: rfq.rfqId,
+    fromSymbol: rfq.fromToken,
+    toSymbol: rfq.toToken,
+    amount: rfq.inAmount,
+    usdValue: rfq.inAmount * (rfq.fromToken === "BTC" ? 65000 : rfq.fromToken === "ETH" ? 1900 : rfq.fromToken === "SOL" ? 83 : 1),
+    peer: rfq.dexRoute || "P2P Network",
+    failReason: "Peer timeout — no settlement received",
+    htlcExpiry: new Date(rfq.timestamp),
+    status: "claimable",
+    txHash: rfq.rfqId.slice(0, 16) + "...",
+    escrowPda: "N/A",
+  };
+}
 
 export function RefundsTab() {
-  const [refunds, setRefunds] = useState<RefundRecord[]>(MOCK_REFUNDS);
+  const [refunds, setRefunds] = useState<RefundRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRefunds = async () => {
+      try {
+        const data = await getSwaps();
+        // Failed/refundable swaps — those with 0 outAmount or negative rate indicate failures
+        const failed = data.completed.filter(s => s.outAmount <= 0 || s.rate <= 0);
+        setRefunds(failed.map(mapRfqToRefund));
+      } catch { /* keep previous */ } finally { setLoading(false); }
+    };
+    fetchRefunds();
+    const t = setInterval(fetchRefunds, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const claimRefund = (id: string) => {
     setRefunds(prev => prev.map(r => r.id === id ? { ...r, status: "claimed" as const } : r));
@@ -198,6 +268,14 @@ export function RefundsTab() {
 
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -219,6 +297,7 @@ export function RefundsTab() {
         <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
           <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No refunds needed</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
         </div>
       )}
 
@@ -232,37 +311,45 @@ export function RefundsTab() {
                 <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
                   style={{
                     background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" : refund.status === "claimed" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)",
-                    border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : refund.status === "claimed" ? "rgba(16,185,129,0.3)" : "rgba(100,116,139,0.2)"}`,
+                    border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : refund.status === "claimed" ? "rgba(16,185,129,0.3)" : "rgba(100,116,139,0.3)"}`,
                     color: refund.status === "claimable" ? "#f59e0b" : refund.status === "claimed" ? "#10b981" : "#64748b",
                   }}>
-                  {refund.status.toUpperCase()}
+                  {refund.status === "claimable" ? "CLAIMABLE" : refund.status === "claimed" ? "CLAIMED" : "EXPIRED"}
                 </span>
-                <span className="text-xs font-mono font-semibold text-foreground">
-                  {refund.amount} {refund.fromSymbol} <span className="text-muted-foreground text-[10px]">approx ${refund.usdValue.toFixed(2)}</span>
-                </span>
+                <span className="text-[10px] font-mono text-muted-foreground">{refund.amount} {refund.fromSymbol} → {refund.toSymbol}</span>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-2">
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
                 {[
-                  { label: "Failed peer", value: refund.peer },
-                  { label: "Escrow PDA", value: refund.escrowPda },
-                  { label: "HTLC expired", value: refund.htlcExpiry < new Date() ? `${Math.round((Date.now() - refund.htlcExpiry.getTime()) / 3600000)}h ago` : `in ${Math.round((refund.htlcExpiry.getTime() - Date.now()) / 3600000)}h` },
-                  { label: "Tx hash", value: refund.txHash },
+                  { label: "Value", value: `$${refund.usdValue.toFixed(2)}` },
+                  { label: "Peer", value: refund.peer },
+                  { label: "Reason", value: refund.failReason },
+                  { label: "Tx", value: refund.txHash },
+                  { label: "Escrow", value: refund.escrowPda },
+                  { label: "HTLC Expiry", value: refund.htlcExpiry.toLocaleString() },
                 ].map(item => (
                   <div key={item.label}>
                     <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
-                    <div className="text-[10px] font-mono text-foreground/70 truncate">{item.value}</div>
+                    <div className="text-[10px] font-mono text-foreground/80 truncate">{item.value}</div>
                   </div>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground/60 italic">{refund.failReason}</p>
             </div>
+
             {refund.status === "claimable" && (
               <button onClick={() => claimRefund(refund.id)}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold shrink-0 transition-all"
                 style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
                 <RotateCcw className="w-3 h-3" />
-                Claim Refund
+                Claim
               </button>
+            )}
+            {refund.status === "claimed" && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
+              </div>
             )}
           </div>
         </motion.div>

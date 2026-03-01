@@ -6,7 +6,7 @@
  * Fee structure: Platform 5% + Trade 10%, capped at 15% total
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowDownUp, Zap, Shield, Clock, ChevronDown,
@@ -21,7 +21,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
-import { getPrices, getSwapQuote, submitRfq, onSSEEvent, type SwapQuote, type RfqResult } from "../lib/afosApi";
+import { getPrices, getSwapQuote, submitRfq, onSSEEvent, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -84,15 +84,16 @@ const SWAP_PAIRS = [
   { from: "BTC", to: "SOL", protocol: "IntercomSwap BTC↔SOL", native: true, fee: "0.7%", time: "~10m" },
 ];
 
-// ─── Mock P2P Peers ───────────────────────────────────────────────────────────
+// ─── Live P2P Peer type (populated from SSE / getAgentStatus) ────────────────
 
-const MOCK_PEERS = [
-  { id: "peer_0x4f2a", alias: "AlphaNode", latency: 12, volume: "$142k", pairs: ["BTC/USDT", "BTC/SOL"], online: true, reputation: 99.2 },
-  { id: "peer_0x8c1e", alias: "BetaSwap", latency: 34, volume: "$89k", pairs: ["ETH/USDC", "ETH/SOL"], online: true, reputation: 97.8 },
-  { id: "peer_0x2d9b", alias: "GammaNode", latency: 8, volume: "$231k", pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8 },
-  { id: "peer_0x7a3c", alias: "DeltaNode", latency: 67, volume: "$45k", pairs: ["SOL/USDT"], online: true, reputation: 95.1 },
-  { id: "peer_0x1f6d", alias: "EpsilonPeer", latency: 21, volume: "$178k", pairs: ["BTC/USDT", "ETH/USDC"], online: false, reputation: 98.4 },
-];
+interface LivePeer {
+  id: string;
+  alias: string;
+  latency: number;
+  pairs: string[];
+  online: boolean;
+  reputation: number;
+}
 
 // ─── Swap Step Types ──────────────────────────────────────────────────────────
 
@@ -196,12 +197,13 @@ function TokenSelector({
 
 // ─── Swap Progress Tracker ────────────────────────────────────────────────────
 
-function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }: {
+function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount, rfqId }: {
   phase: SwapPhase;
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   fromAmount: string;
   toAmount: string;
+  rfqId?: string;
 }) {
   const steps: { id: SwapPhase; label: string; desc: string }[] = [
     { id: "rfq", label: "RFQ Broadcast", desc: "Broadcasting request-for-quote to P2P network" },
@@ -298,7 +300,7 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
           <div>
             <div className="text-xs font-semibold text-emerald-400">Atomic swap settled successfully</div>
             <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-              Tx: 0x{Math.random().toString(16).slice(2, 14)}...{Math.random().toString(16).slice(2, 8)}
+              {rfqId ? `RFQ: ${rfqId}` : 'Settlement confirmed'}
             </div>
           </div>
           <button
@@ -313,14 +315,20 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount }
   );
 }
 
-// ─── P2P Peer Panel ───────────────────────────────────────────────────────────
+// ─── P2P Peer Panel (live from SSE) ───────────────────────────────────────────────────
 
-function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToken: typeof TOKENS[0] }) {
+function PeerPanel({ fromToken, toToken, livePeers, activePeerCount }: {
+  fromToken: typeof TOKENS[0];
+  toToken: typeof TOKENS[0];
+  livePeers: LivePeer[];
+  activePeerCount: number;
+}) {
   const pair = `${fromToken.symbol}/${toToken.symbol}`;
-  const relevantPeers = MOCK_PEERS.filter(p =>
+  const relevantPeers = livePeers.filter(p =>
     p.pairs.some(pp => pp === pair || pp === `${toToken.symbol}/${fromToken.symbol}`)
   );
-  const allPeers = relevantPeers.length > 0 ? relevantPeers : MOCK_PEERS.slice(0, 3);
+  const displayPeers = relevantPeers.length > 0 ? relevantPeers : livePeers.slice(0, 3);
+  const onlineCount = livePeers.filter(p => p.online).length;
 
   return (
     <div
@@ -337,49 +345,70 @@ function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToke
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] text-slate-500">{allPeers.filter(p => p.online).length} online</span>
+          <span className="text-[10px] text-slate-500">{onlineCount} online</span>
         </div>
       </div>
 
-      <div className="space-y-2">
-        {allPeers.map(peer => (
-          <div
-            key={peer.id}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-            style={{ background: "var(--muted)" }}
-          >
-            <div className={`w-2 h-2 rounded-full flex-shrink-0 ${peer.online ? "bg-emerald-400" : "bg-slate-600"}`} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-mono text-slate-300 truncate">{peer.alias}</div>
-              <div className="text-[9px] text-slate-600">{peer.id}</div>
+      {displayPeers.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground text-center py-3">
+          Waiting for peers to announce…
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {displayPeers.map(peer => (
+            <div
+              key={peer.id}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+              style={{ background: "var(--muted)" }}
+            >
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${peer.online ? "bg-emerald-400" : "bg-slate-600"}`} />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-mono text-slate-300 truncate">{peer.alias}</div>
+                <div className="text-[9px] text-slate-600">{peer.id}</div>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <div className="text-[10px] font-mono text-cyan-400">{peer.latency}ms</div>
+                <div className="text-[9px] text-slate-600">{peer.reputation}%</div>
+              </div>
             </div>
-            <div className="text-right flex-shrink-0">
-              <div className="text-[10px] font-mono text-cyan-400">{peer.latency}ms</div>
-              <div className="text-[9px] text-slate-600">{peer.reputation}%</div>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
         <span className="text-[10px] text-slate-600">IntercomSwap DHT</span>
-        <span className="text-[10px] font-mono text-cyan-500">142 total peers</span>
+        <span className="text-[10px] font-mono text-cyan-500">{activePeerCount > 0 ? `${activePeerCount} total peers` : 'Connecting…'}</span>
       </div>
     </div>
   );
 }
 
-// ─── Recent Swaps ─────────────────────────────────────────────────────────────
+// ─── Recent Swaps (live from Oracle VM) ──────────────────────────────────────
 
-const RECENT_SWAPS = [
-  { from: "BTC", to: "USDT", fromAmt: "0.0023", toAmt: "100.00", status: "complete", time: "2m ago", peer: "GammaNode", protocol: "IntercomSwap" },
-  { from: "ETH", to: "SOL", fromAmt: "0.12", toAmt: "24.01", status: "complete", time: "18m ago", peer: "BetaSwap", protocol: "EVM ↔ Solana" },
-  { from: "SOL", to: "USDT", fromAmt: "5.0", toAmt: "750.00", status: "complete", time: "1h ago", peer: "AlphaNode", protocol: "Solana SPL" },
-  { from: "BTC", to: "ETH", fromAmt: "0.005", toAmt: "0.072", status: "failed", time: "3h ago", peer: "DeltaNode", protocol: "IntercomSwap" },
-  { from: "USDC", to: "SOL", fromAmt: "300.00", toAmt: "2.00", status: "complete", time: "5h ago", peer: "GammaNode", protocol: "IntercomSwap" },
-];
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60_000) return `${Math.max(1, Math.round(diff / 1000))}s ago`;
+  if (diff < 3_600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)}h ago`;
+  return `${Math.round(diff / 86_400_000)}d ago`;
+}
 
 function RecentSwaps() {
+  const [swaps, setSwaps] = useState<RfqResult[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSwaps = async () => {
+      try {
+        const data = await getSwaps();
+        setSwaps([...data.completed, ...data.pending].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5));
+      } catch { /* keep previous */ } finally { setLoading(false); }
+    };
+    fetchSwaps();
+    const t = setInterval(fetchSwaps, 30000);
+    return () => clearInterval(t);
+  }, []);
+
   return (
     <div
       className="rounded-2xl p-4"
@@ -396,26 +425,36 @@ function RecentSwaps() {
         <span className="text-[10px] text-slate-600">Last 24h</span>
       </div>
 
-      <div className="space-y-2">
-        {RECENT_SWAPS.map((swap, i) => (
-          <div
-            key={i}
-            className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-            style={{ background: "var(--muted)" }}
-          >
-            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${swap.status === "complete" ? "bg-emerald-400" : "bg-red-400"}`} />
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-mono text-slate-200">
-                <span className="text-amber-400">{swap.fromAmt} {swap.from}</span>
-                <span className="text-slate-500 mx-1">→</span>
-                <span className="text-cyan-400">{swap.toAmt} {swap.to}</span>
+      {loading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
+        </div>
+      ) : swaps.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground text-center py-3">No recent swaps</p>
+      ) : (
+        <div className="space-y-2">
+          {swaps.map(swap => (
+            <div
+              key={swap.rfqId}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+              style={{ background: "var(--muted)" }}
+            >
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-mono text-slate-200">
+                  <span className="text-amber-400">{swap.inAmount.toFixed(4)} {swap.fromToken}</span>
+                  <span className="text-slate-500 mx-1">→</span>
+                  <span className="text-cyan-400">{swap.outAmount.toFixed(4)} {swap.toToken}</span>
+                </div>
+                <div className="text-[9px] text-slate-600">
+                  {swap.route === 'p2p' ? 'IntercomSwap P2P' : `DEX (${swap.dexRoute || 'Jupiter'})`}
+                </div>
               </div>
-              <div className="text-[9px] text-slate-600">{swap.protocol} · {swap.peer}</div>
+              <div className="text-[10px] text-slate-600 flex-shrink-0">{timeAgo(swap.timestamp)}</div>
             </div>
-            <div className="text-[10px] text-slate-600 flex-shrink-0">{swap.time}</div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -428,7 +467,7 @@ function ChainStatsBar() {
     ETH: { price: 2000, change: 0 },
     SOL: { price: 87, change: 0 },
   });
-  const [source, setSource] = useState<'live' | 'mock'>('mock');
+  const [source, setSource] = useState<'live' | 'fallback'>('fallback');
 
   useEffect(() => {
     // Fetch real prices from AFOS backend
@@ -441,7 +480,7 @@ function ChainStatsBar() {
             SOL: { price: priceData.SOL?.usd ?? 87, change: priceData.SOL?.change24h ?? 0 },
           });
           setSource('live');
-      } catch { /* keep current prices */ }
+      } catch { /* keep fallback prices */ }
     };
     fetchPrices();
     const interval = setInterval(fetchPrices, 30000); // refresh every 30s
@@ -449,9 +488,9 @@ function ChainStatsBar() {
   }, []);
 
   const stats = [
-    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Bitcoin" },
-    { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "Binance Live" : "Ethereum" },
-    { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "Jupiter Live" : "Solana" },
+    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Bitcoin (fallback)" },
+    { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "Binance Live" : "Ethereum (fallback)" },
+    { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "Jupiter Live" : "Solana (fallback)" },
   ];
 
   return (
@@ -1026,9 +1065,7 @@ function loadAutopostTasks(): AutopostTask[] {
     const raw = localStorage.getItem(AUTOPOST_STORAGE_KEY);
     if (raw) return JSON.parse(raw) as AutopostTask[];
   } catch { /* ignore */ }
-  return [
-    { id: "task_1", direction: "buy_btc", amount: "0.001", feeBpsCap: "30", refundWindowMin: "20", refundWindowMax: "40", expiry: "+5m", interval: "10s", repeatCount: "6", channel: "0000intercomswapbtcusdt", active: false, executedCount: 3, lastRun: "2m ago" },
-  ];
+  return [];
 }
 
 function AutopostTab() {
@@ -1311,7 +1348,7 @@ export default function Swaps() {
   const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
   const [agentMode, setAgentMode] = useState(true);
-  const [selectedPeer, setSelectedPeer] = useState<typeof MOCK_PEERS[0] | null>(null);
+  const [selectedPeer, setSelectedPeer] = useState<LivePeer | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live quote from backend
@@ -1320,6 +1357,11 @@ export default function Swaps() {
   const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live token prices from backend
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  // Live P2P peers from SSE + getAgentStatus
+  const [livePeers, setLivePeers] = useState<LivePeer[]>([]);
+  const [activePeerCount, setActivePeerCount] = useState(0);
+  // Last completed RFQ ID for progress tracker
+  const [lastRfqId, setLastRfqId] = useState<string | undefined>(undefined);
 
   // Fetch live prices on mount
   useEffect(() => {
@@ -1334,6 +1376,50 @@ export default function Swaps() {
     fetchPrices();
     const interval = setInterval(fetchPrices, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Fetch live peers from getAgentStatus + SSE events
+  useEffect(() => {
+    const fetchPeers = async () => {
+      try {
+        const status = await getAgentStatus();
+        setActivePeerCount(status.activePeers || 0);
+      } catch { /* keep previous */ }
+    };
+    fetchPeers();
+    const interval = setInterval(fetchPeers, 30000);
+
+    // Listen for SSE peer events
+    const unsubConnect = onSSEEvent('peer_connected', (data: unknown) => {
+      const d = data as { peer_id?: string; alias?: string; latency?: number; pairs?: string[]; reputation?: number };
+      if (!d.peer_id) return;
+      const peer: LivePeer = {
+        id: d.peer_id,
+        alias: d.alias || d.peer_id.slice(0, 10),
+        latency: d.latency || 0,
+        pairs: d.pairs || [],
+        online: true,
+        reputation: d.reputation || 99,
+      };
+      setLivePeers(prev => {
+        const existing = prev.filter(p => p.id !== peer.id);
+        return [...existing, peer];
+      });
+      setActivePeerCount(prev => prev + 1);
+    });
+
+    const unsubDisconnect = onSSEEvent('peer_disconnected', (data: unknown) => {
+      const d = data as { peer_id?: string };
+      if (!d.peer_id) return;
+      setLivePeers(prev => prev.map(p => p.id === d.peer_id ? { ...p, online: false } : p));
+      setActivePeerCount(prev => Math.max(0, prev - 1));
+    });
+
+    return () => {
+      clearInterval(interval);
+      unsubConnect();
+      unsubDisconnect();
+    };
   }, []);
 
   // Fetch live quote when pair/amount changes (debounced 800ms)
@@ -1783,7 +1869,7 @@ export default function Swaps() {
                     <div>
                       <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-1.5">Preferred Peer</div>
                       <div className="grid grid-cols-2 gap-1.5">
-                        {MOCK_PEERS.filter(p => p.online).slice(0, 4).map(peer => (
+                        {livePeers.filter((p: LivePeer) => p.online).slice(0, 4).map((peer: LivePeer) => (
                           <button
                             key={peer.id}
                             onClick={() => setSelectedPeer(selectedPeer?.id === peer.id ? null : peer)}
@@ -1868,7 +1954,7 @@ export default function Swaps() {
         {/* Right: Info Panels — shown below swap card on mobile, side panel on xl */}
         <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
           <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
-          <PeerPanel fromToken={fromToken} toToken={toToken} />
+          <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
           <RecentSwaps />
 
           {/* Protocol Info */}
