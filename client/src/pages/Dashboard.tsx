@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
-  ChevronRight, CheckCircle2, Clock,
+  ChevronLeft, ChevronRight, CheckCircle2, Clock,
   TrendingUp, TrendingDown, Send,
   Network, Radio, Moon, Sun, Cpu, Wallet, X, Terminal,
   QrCode, ArrowUpRight, ArrowDownLeft, Copy, Check,
@@ -416,6 +416,22 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
     "show balances",
   ];
 
+  // Chip slider state: show CHIPS_PER_SLIDE at a time, auto-advance
+  const CHIPS_PER_SLIDE = 3;
+  const totalSlides = Math.ceil(QUICK_CHIPS.length / CHIPS_PER_SLIDE);
+  const [chipSlide, setChipSlide] = useState(0);
+  const [chipPaused, setChipPaused] = useState(false);
+
+  useEffect(() => {
+    if (chipPaused || messages.length > 2) return;
+    const t = setInterval(() => {
+      setChipSlide(s => (s + 1) % totalSlides);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [chipPaused, messages.length, totalSlides]);
+
+  const visibleChips = QUICK_CHIPS.slice(chipSlide * CHIPS_PER_SLIDE, chipSlide * CHIPS_PER_SLIDE + CHIPS_PER_SLIDE);
+
   return (
     <div className="rounded-2xl border border-cyan-500/15 bg-card flex flex-col" style={{ height: 340 }}>
       {/* Header */}
@@ -545,19 +561,69 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick chips — only show when few messages */}
+      {/* Quick chips — auto-cycling slider, only when few messages */}
       {messages.length <= 2 && (
-        <div className="px-3 pb-1.5 flex gap-1.5 overflow-x-auto scrollbar-hide shrink-0">
-          {QUICK_CHIPS.map(chip => (
+        <div
+          className="px-3 pb-1.5 shrink-0"
+          onMouseEnter={() => setChipPaused(true)}
+          onMouseLeave={() => setChipPaused(false)}
+          onTouchStart={() => setChipPaused(true)}
+          onTouchEnd={() => setChipPaused(false)}
+        >
+          {/* Chip row with prev/next arrows */}
+          <div className="flex items-center gap-1.5">
+            {/* Prev */}
             <button
-              key={chip}
-              onClick={() => handleSend(chip)}
-              className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all hover:opacity-80 whitespace-nowrap"
-              style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+              onClick={() => { setChipSlide(s => (s - 1 + totalSlides) % totalSlides); setChipPaused(true); }}
+              className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all hover:opacity-80 active:scale-90"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              aria-label="Previous chips"
             >
-              {chip}
+              <ChevronLeft className="w-3 h-3 text-muted-foreground" />
             </button>
-          ))}
+
+            {/* Visible chips — animated slide */}
+            <div className="flex-1 flex gap-1.5 overflow-hidden">
+              {visibleChips.map((chip, i) => (
+                <button
+                  key={`${chipSlide}-${i}`}
+                  onClick={() => handleSend(chip)}
+                  className="flex-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all hover:opacity-80 active:scale-95 whitespace-nowrap text-center truncate"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)", animationDuration: "0.2s" }}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+
+            {/* Next */}
+            <button
+              onClick={() => { setChipSlide(s => (s + 1) % totalSlides); setChipPaused(true); }}
+              className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all hover:opacity-80 active:scale-90"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              aria-label="Next chips"
+            >
+              <ChevronRight className="w-3 h-3 text-muted-foreground" />
+            </button>
+          </div>
+
+          {/* Dot indicators */}
+          <div className="flex items-center justify-center gap-1 mt-1.5">
+            {Array.from({ length: totalSlides }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => { setChipSlide(i); setChipPaused(true); }}
+                className="rounded-full transition-all"
+                style={{
+                  width: i === chipSlide ? "14px" : "5px",
+                  height: "5px",
+                  background: i === chipSlide ? "var(--cyan-500, #06b6d4)" : "var(--border)",
+                  opacity: i === chipSlide ? 1 : 0.5,
+                }}
+                aria-label={`Chip page ${i + 1}`}
+              />
+            ))}
+          </div>
         </div>
       )}
 
