@@ -221,12 +221,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       onClick={handleSolanaConnect}
                     />
 
-                    {/* MetaMask — also supports Solana via Wallet Standard */}
+                    {/* MetaMask — multi-chain: SOL + ETH + BTC */}
                     <WalletButton
                       icon={METAMASK_ICON}
                       name="MetaMask"
-                      desc="Supports Solana via Wallet Standard (v13.5+)"
-                      chains={["ethereum", "solana"]}
+                      desc="Native BTC · ETH · Multichain"
+                      chains={["solana", "ethereum", "bitcoin"]}
                       bg="rgba(246,133,27,0.08)"
                       border="rgba(246,133,27,0.2)"
                       onClick={handleSolanaConnect}
@@ -266,12 +266,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       onClick={connectPhantomMultiChain}
                     />
 
-                    {/* MetaMask — Ethereum only */}
+                    {/* MetaMask — multi-chain: SOL + ETH + BTC */}
                     <WalletButton
                       icon={METAMASK_ICON}
                       name="MetaMask"
-                      desc="Most popular Ethereum wallet"
-                      chains={["ethereum", "solana"]}
+                      desc="Native BTC · ETH · Multichain"
+                      chains={["solana", "ethereum", "bitcoin"]}
                       bg="rgba(246,133,27,0.1)"
                       border="rgba(246,133,27,0.25)"
                       loading={ethConnecting}
