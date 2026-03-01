@@ -15,7 +15,7 @@ import {
   QrCode, ArrowUpRight, ArrowDownLeft, Copy, Check,
   Shield, AlertTriangle, Loader2, ExternalLink,
   BarChart3, Users, Globe, Gauge, Play, RefreshCw,
-  Sparkles, Eye, CircleDot, ArrowRight
+  Sparkles, Eye, CircleDot, ArrowRight, Menu
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "../contexts/ThemeContext";
@@ -130,28 +130,136 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
   );
 }
 
-// ── Mobile Bottom Tab Bar ──────────────────────────────────────────────────
-function MobileTabBar({ navItems, activePage, setActivePage }: {
+// ── Mobile Sidebar Drawer ──────────────────────────────────────────────────
+function MobileSidebarDrawer({
+  navItems, activePage, setActivePage, open, onClose, onOpenWallet, connected, shortAddress,
+}: {
   navItems: { id: NavPage; icon: React.ElementType; label: string }[];
   activePage: NavPage;
   setActivePage: (p: NavPage) => void;
+  open: boolean;
+  onClose: () => void;
+  onOpenWallet: () => void;
+  connected: boolean;
+  shortAddress?: string;
 }) {
+  // Swipe-to-close: track touch start X
+  const touchStartX = useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+  };
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx < -60) onClose(); // swipe left to close
+    touchStartX.current = null;
+  };
+
+  const handleNav = (id: NavPage) => {
+    setActivePage(id);
+    onClose();
+  };
+
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-xl border-t border-border flex items-center justify-around px-2 py-2 safe-area-pb">
-      {navItems.map(item => {
-        const Icon = item.icon;
-        const active = activePage === item.id;
-        return (
-          <button key={item.id} onClick={() => setActivePage(item.id)}
-            className={`flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all ${
-              active ? "text-cyan-400" : "text-muted-foreground"
-            }`}>
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium">{item.label}</span>
-          </button>
-        );
-      })}
-    </nav>
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            key="drawer-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="lg:hidden fixed inset-0 z-40"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}
+            onClick={onClose}
+          />
+          {/* Drawer panel */}
+          <motion.aside
+            key="drawer-panel"
+            initial={{ x: "-100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "-100%" }}
+            transition={{ type: "spring", stiffness: 380, damping: 36, mass: 0.8 }}
+            className="lg:hidden fixed top-0 left-0 bottom-0 z-50 w-72 flex flex-col"
+            style={{ background: "var(--background)", borderRight: "1px solid var(--border)", boxShadow: "8px 0 40px rgba(0,0,0,0.35)" }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+          >
+            {/* Header */}
+            <div className="h-14 flex items-center justify-between px-4 border-b border-border shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
+                  <Zap className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-sm font-bold text-foreground tracking-wide">AFOS</span>
+              </div>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                style={{ background: "var(--muted)" }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Nav items */}
+            <nav className="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto">
+              {navItems.map(item => {
+                const Icon = item.icon;
+                const active = activePage === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleNav(item.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all text-left ${
+                      active
+                        ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
+                    }`}
+                  >
+                    <Icon className="w-4.5 h-4.5 shrink-0" />
+                    <span className="text-sm font-medium">{item.label}</span>
+                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Footer: wallet + agent status */}
+            <div className="p-3 border-t border-border space-y-2 shrink-0">
+              <button
+                onClick={() => { onClose(); onOpenWallet(); }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all"
+                style={connected
+                  ? { background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }
+                  : { background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.25)" }
+                }
+              >
+                {connected ? (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <span className="text-xs font-semibold text-emerald-400 flex-1 truncate">{shortAddress}</span>
+                    <span className="text-[10px] text-muted-foreground">connected</span>
+                  </>
+                ) : (
+                  <>
+                    <Wallet className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="text-xs font-semibold text-blue-400">Connect Wallet</span>
+                  </>
+                )}
+              </button>
+              <div className="flex items-center gap-2 px-3 py-1.5">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+                <span className="text-xs text-muted-foreground font-mono">agent online</span>
+              </div>
+            </div>
+          </motion.aside>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -1584,6 +1692,20 @@ export default function Dashboard() {
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  // Swipe-right from left edge to open drawer
+  const swipeTouchStartX = useRef<number | null>(null);
+  const handleGlobalTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches[0].clientX < 24) swipeTouchStartX.current = e.touches[0].clientX;
+    else swipeTouchStartX.current = null;
+  };
+  const handleGlobalTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (swipeTouchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - swipeTouchStartX.current;
+    if (dx > 60) setMobileDrawerOpen(true);
+    swipeTouchStartX.current = null;
+  };
 
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
@@ -1608,7 +1730,12 @@ export default function Dashboard() {
   const subPage = renderSubPage();
 
   return (
-    <div className="flex h-screen bg-background font-sans" style={{ overflow: "hidden" }}>
+    <div
+      className="flex h-screen bg-background font-sans"
+      style={{ overflow: "hidden" }}
+      onTouchStart={handleGlobalTouchStart}
+      onTouchEnd={handleGlobalTouchEnd}
+    >
       <div className="relative z-10 flex-shrink-0" style={{ overflow: "visible" }}>
         <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
       </div>
@@ -1617,9 +1744,14 @@ export default function Dashboard() {
         {/* Topbar */}
         <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0 bg-background/80 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:gap-3">
-            <div className="lg:hidden w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center">
-              <Zap className="w-3.5 h-3.5 text-white" />
-            </div>
+            {/* Mobile: hamburger to open drawer */}
+            <button
+              className="lg:hidden w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors active:scale-95"
+              onClick={() => setMobileDrawerOpen(true)}
+              aria-label="Open navigation"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-sm text-muted-foreground font-mono hidden sm:block">openclaw-agent</span>
             <span className="text-muted-foreground/40 hidden sm:block">·</span>
@@ -1666,11 +1798,11 @@ export default function Dashboard() {
 
         {/* Content */}
         {subPage ? (
-          <main className="flex-1 overflow-auto pb-16 lg:pb-0">{subPage}</main>
+          <main className="flex-1 overflow-auto">{subPage}</main>
         ) : (
           /* ── OVERVIEW ── */
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto pb-20 lg:pb-0">
+            <div className="flex-1 overflow-auto">
 
               {/* ── DESKTOP: 2-column layout ── */}
               <div className="hidden lg:grid grid-cols-12 gap-5 p-5 h-full" style={{ minHeight: 0 }}>
@@ -1693,7 +1825,7 @@ export default function Dashboard() {
               </div>
 
               {/* ── MOBILE: optimized single-column layout ── */}
-              <div className="lg:hidden flex flex-col gap-3 p-3 pb-24">
+              <div className="lg:hidden flex flex-col gap-3 p-3 pb-6">
                 {/* 1. Hero: portfolio + agent status merged */}
                 <MobileHeroBanner onNavigateToTerminal={() => setActivePage("terminal")} />
 
@@ -1723,7 +1855,16 @@ export default function Dashboard() {
         )}
       </div>
 
-      <MobileTabBar navItems={navItems} activePage={activePage} setActivePage={setActivePage} />
+      <MobileSidebarDrawer
+        navItems={navItems}
+        activePage={activePage}
+        setActivePage={setActivePage}
+        open={mobileDrawerOpen}
+        onClose={() => setMobileDrawerOpen(false)}
+        onOpenWallet={() => setShowWalletModal(true)}
+        connected={connected}
+        shortAddress={shortAddress ?? undefined}
+      />
       {walletModal && <WalletModal modal={walletModal} onClose={() => setWalletModal(null)} />}
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
     </div>

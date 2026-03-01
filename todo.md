@@ -98,3 +98,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Clean up ChatPage header — show only agent name + status + connected wallet indicator
 - [x] Wallet hint is now a subtle info bar, no duplicate button
 - [ ] More breathing room in chat messages
+
+## Mobile Navigation — Sidebar Drawer
+
+- [x] Remove MobileTabBar (bottom tab bar) from Dashboard.tsx
+- [x] Add hamburger menu button to mobile header
+- [x] Build MobileSidebarDrawer component (slide-over from left, swipe-right to open, tap outside to close)
+- [x] Match drawer content to desktop sidebar (logo, nav items, agent status, connect button)
+- [x] Add swipe-right gesture to open drawer
+- [x] Remove bottom padding from content area (was needed for tab bar)
