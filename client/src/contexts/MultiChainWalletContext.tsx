@@ -109,6 +109,23 @@ async function fetchEthPriceUsd(): Promise<number> {
   return 0;
 }
 
+// Fetch confirmed BTC balance in BTC from Mempool.space
+async function fetchBtcBalanceFromMempool(address: string): Promise<{ btc: string; sats: number }> {
+  try {
+    const res = await fetch(`https://mempool.space/api/address/${address}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const sats: number =
+      (data.chain_stats?.funded_txo_sum ?? 0) -
+      (data.chain_stats?.spent_txo_sum ?? 0);
+    const btc = (sats / 1e8).toFixed(8);
+    return { btc, sats };
+  } catch (err) {
+    console.warn("[Mempool] BTC balance fetch failed:", err);
+    return { btc: "0.00000000", sats: 0 };
+  }
+}
+
 async function fetchBtcPriceUsd(): Promise<number> {
   try {
     const res = await fetch("/api/afos/api/prices");
@@ -215,21 +232,25 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         if (!paymentAddr) throw new Error("No payment address returned");
 
         const address = paymentAddr.address;
-        const priceUsd = await fetchBtcPriceUsd();
+        // Fetch BTC balance from Mempool.space and USD price in parallel
+        const [{ btc: btcBalance, sats }, priceUsd] = await Promise.all([
+          fetchBtcBalanceFromMempool(address),
+          fetchBtcPriceUsd(),
+        ]);
+        const balanceUsd = (sats / 1e8) * priceUsd;
 
-        // Xverse doesn't expose balance directly via sats-connect — show 0 until we add RPC query
         setBitcoin({
           chain: "bitcoin",
           walletName: "Xverse",
           address,
           shortAddress: shortAddr(address),
-          balance: "—",
-          balanceUsd: 0,
+          balance: btcBalance,
+          balanceUsd,
           symbol: "BTC",
           connected: true,
           connecting: false,
         });
-        toast.success("Xverse connected", { description: shortAddr(address) });
+        toast.success("Xverse connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
       } else if (response.status === "error") {
         const errMsg = (response as { status: string; error?: { message?: string } }).error?.message || "Unknown error";
         if (!errMsg.includes("cancel") && !errMsg.includes("reject")) {
@@ -255,21 +276,37 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     try {
       const address = await window.tracnetwork.requestAccount();
       const rawBalance = await window.tracnetwork.getBalance();
-      // TNK balance is returned as integer string in smallest unit — treat as whole units for now
-      const balance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+      // TNK balance is returned as integer string in smallest unit
+      const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+
+      // Tap Wallet uses the same underlying Bitcoin key — fetch BTC balance from Mempool.space
+      // The address returned by requestAccount() is a trac1... Bech32m address (P2TR)
+      // which is a valid Bitcoin address on mainnet
+      const [{ btc: btcBalance, sats }, btcPriceUsd] = await Promise.all([
+        fetchBtcBalanceFromMempool(address),
+        fetchBtcPriceUsd(),
+      ]);
+      const btcBalanceUsd = (sats / 1e8) * btcPriceUsd;
+
+      // Show BTC balance as primary, TNK as secondary in the balance field
+      const displayBalance = sats > 0
+        ? `${btcBalance} BTC / ${tnkBalance} TNK`
+        : `${tnkBalance} TNK`;
 
       setBitcoin({
         chain: "bitcoin",
         walletName: "Tap Wallet",
         address,
         shortAddress: shortAddr(address),
-        balance,
-        balanceUsd: 0, // TNK has no reliable USD price feed yet
-        symbol: "TNK",
+        balance: displayBalance,
+        balanceUsd: btcBalanceUsd,
+        symbol: sats > 0 ? "BTC" : "TNK",
         connected: true,
         connecting: false,
       });
-      toast.success("Tap Wallet connected", { description: shortAddr(address) });
+      toast.success("Tap Wallet connected", {
+        description: `${shortAddr(address)} · ${btcBalance} BTC · ${tnkBalance} TNK`,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("cancel") && !msg.includes("reject")) {

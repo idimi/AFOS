@@ -181,3 +181,6 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Update swap routing: IntercomSwap primary for ALL chains; Jupiter fallback for Solana; 1inch fallback for Ethereum
 - [ ] Update Wallets panel to show ETH and BTC balances when connected
 - [ ] Update swap UI to show IntercomSwap as the route with fallback indicators
+
+## Mempool.space BTC Balance Fetch
+- [x] Fetch real on-chain BTC balance from Mempool.space for Xverse (BTC) and Tap Wallet (BTC+TNK) after connection
