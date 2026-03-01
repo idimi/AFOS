@@ -18,7 +18,7 @@ interface Section {
 }
 
 const SECTIONS: Section[] = [
-  { id: "openclaw", label: "OpenClaw Agent", icon: Bot, color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/5" },
+  { id: "openclaw", label: "AFOS Agent", icon: Bot, color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/5" },
   { id: "intercomswap", label: "IntercomSwap Node", icon: Network, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
   { id: "lnd", label: "Bitcoin Lightning (LND)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
   { id: "solana", label: "Solana Wallet", icon: Wallet, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },

@@ -43,7 +43,7 @@ interface Channel {
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 
 const PEERS: Peer[] = [
-  { id: "self", alias: "You (openclaw-agent)", region: "Local", lat: 0.5, lng: 0.5, latency: 0, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL", "ETH/USDC"], online: true, reputation: 100, channels: 4, liquidity: 0.142, version: "1.2.0" },
+  { id: "self", alias: "You (AFOS Agent)", region: "Local", lat: 0.5, lng: 0.5, latency: 0, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL", "ETH/USDC"], online: true, reputation: 100, channels: 4, liquidity: 0.142, version: "1.2.0" },
   { id: "p1", alias: "GammaLN", region: "US-East", lat: 0.18, lng: 0.38, latency: 8, volume24h: 231000, pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8, channels: 7, liquidity: 0.85, version: "1.2.0" },
   { id: "p2", alias: "AlphaNode", region: "EU-West", lat: 0.42, lng: 0.22, latency: 12, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL"], online: true, reputation: 99.2, channels: 5, liquidity: 0.42, version: "1.1.9" },
   { id: "p3", alias: "BetaSwap", region: "AP-South", lat: 0.78, lng: 0.30, latency: 34, volume24h: 89000, pairs: ["ETH/USDC", "ETH/SOL"], online: true, reputation: 97.8, channels: 3, liquidity: 0.21, version: "1.2.0" },

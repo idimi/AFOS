@@ -638,7 +638,7 @@ export default function SwapHistory() {
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Executed By</div>
                           <span className={`text-xs font-semibold ${swap.agentExecuted ? "text-cyan-400" : "text-muted-foreground"}`}>
-                            {swap.agentExecuted ? "🤖 OpenClaw Agent" : "👤 Manual"}
+                            {swap.agentExecuted ? "🤖 AFOS Agent" : "👤 Manual"}
                           </span>
                         </div>
                         <div>

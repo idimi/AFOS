@@ -331,7 +331,7 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-foreground">OpenClaw Agent</h3>
+              <h3 className="text-sm font-bold text-foreground">AFOS Agent</h3>
               <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
                 agentStatus === 'ACTIVE' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
                 agentStatus === 'INITIALIZING' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
@@ -1758,7 +1758,7 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </button>
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm text-muted-foreground font-mono hidden sm:block">openclaw-agent</span>
+            <span className="text-sm text-muted-foreground font-mono hidden sm:block">AFOS Agent</span>
             <span className="text-muted-foreground/40 hidden sm:block">·</span>
             <span className="text-xs text-cyan-400/70 font-mono">intercomswap@mainnet</span>
           </div>

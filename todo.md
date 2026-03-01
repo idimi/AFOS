@@ -114,3 +114,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove duplicate Agent Chat from QuickActions grid (hero card handles it); replaced with History
 - [x] Add compact agent status indicator (uptime pill) inside the hero card
 - [x] Improve overall mobile Overview hierarchy: Chat first, then metrics, then market data
+
+## Branding — Rename openclaw-agent to AFOS Agent
+
+- [x] Replace all visible "openclaw-agent" in header with "AFOS Agent"
+- [x] Replace all visible "OpenClaw Agent" text in dashboard with "AFOS Agent"
+- [x] Renamed in Dashboard.tsx (header + sidebar agent card), SwapHistory.tsx (Executed By field), AgentSettings.tsx (settings section label), NetworkPage.tsx (self node alias)
