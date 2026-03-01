@@ -1072,38 +1072,62 @@ function WalletsCard() {
     return () => clearInterval(t);
   }, []);
 
-  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string }> = {
-    SOL: { color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/8" },
-    USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
-    BTC: { color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
-    ETH: { color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
-    TNK: { color: "text-orange-400", border: "border-orange-500/20", bg: "bg-orange-500/8" },
+  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string; chain: string; chainColor: string }> = {
+    SOL:  { color: "text-purple-400",  border: "border-purple-500/20",  bg: "bg-purple-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
+    USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8", chain: "Solana",   chainColor: "text-purple-300" },
+    USDC: { color: "text-blue-300",    border: "border-blue-400/20",    bg: "bg-blue-400/8",    chain: "Solana",   chainColor: "text-purple-300" },
+    BTC:  { color: "text-amber-400",   border: "border-amber-500/20",   bg: "bg-amber-500/8",   chain: "Bitcoin",  chainColor: "text-amber-300" },
+    ETH:  { color: "text-blue-400",    border: "border-blue-500/20",    bg: "bg-blue-500/8",    chain: "Ethereum", chainColor: "text-blue-300" },
+    TNK:  { color: "text-orange-400",  border: "border-orange-500/20",  bg: "bg-orange-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
   };
 
-  // Merge on-chain Solana wallets with connected ETH/BTC wallets
-  const wallets = [
-    ...walletData.map(w => ({
-      asset: w.asset,
-      network: w.network,
-      balance: w.balance,
-      usd: w.usd,
-      ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8" }),
-    })),
-    ...(ethereum?.connected ? [{
-      asset: ethereum.symbol,
-      network: `Ethereum · ${ethereum.shortAddress}`,
-      balance: ethereum.balance,
-      usd: ethereum.balanceUsd > 0 ? `$${ethereum.balanceUsd.toFixed(2)}` : "",
-      ...(ASSET_STYLE["ETH"]),
-    }] : []),
-    ...(bitcoin?.connected ? [{
-      asset: bitcoin.symbol,
-      network: `Bitcoin · ${bitcoin.shortAddress}`,
-      balance: bitcoin.balance,
-      usd: bitcoin.balanceUsd > 0 ? `$${bitcoin.balanceUsd.toFixed(2)}` : "",
-      ...(ASSET_STYLE[bitcoin.symbol] ?? ASSET_STYLE["BTC"]),
-    }] : []),
+  // Chain dot colors
+  const CHAIN_DOT: Record<string, string> = {
+    Solana: "bg-purple-400",
+    Ethereum: "bg-blue-400",
+    Bitcoin: "bg-amber-400",
+  };
+
+  // All supported assets — always shown, live data merged in when available
+  const ALL_ASSETS = [
+    { asset: "SOL",  network: "Solana",   defaultBalance: "0.000000", defaultUsd: "$0" },
+    { asset: "USDT", network: "Solana",   defaultBalance: "0.00",     defaultUsd: "$0" },
+    { asset: "USDC", network: "Solana",   defaultBalance: "0.00",     defaultUsd: "$0" },
+    { asset: "ETH",  network: "Ethereum", defaultBalance: "0.000000", defaultUsd: "$0" },
+    { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",     defaultUsd: "$0" },
+    { asset: "BTC",  network: "Bitcoin",  defaultBalance: "0.00000000", defaultUsd: "$0" },
   ];
+
+  // Build wallet rows: live data takes priority, fall back to placeholder
+  const wallets = ALL_ASSETS.map(def => {
+    // Try to find live data from backend (Solana assets)
+    const live = walletData.find(w => w.asset === def.asset && w.network.toLowerCase().includes(def.network.toLowerCase()));
+    // Try connected ETH wallet
+    const isEthAsset = def.network === "Ethereum" && def.asset === "ETH" && ethereum?.connected;
+    // Try connected BTC wallet
+    const isBtcAsset = def.network === "Bitcoin" && def.asset === "BTC" && bitcoin?.connected;
+
+    const style = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: def.network, chainColor: "text-cyan-300" };
+
+    if (live) {
+      return { asset: def.asset, network: live.network, balance: live.balance, usd: live.usd, connected: true, ...style };
+    } else if (isEthAsset) {
+      return { asset: "ETH", network: `Ethereum · ${ethereum!.shortAddress}`, balance: ethereum!.balance, usd: ethereum!.balanceUsd > 0 ? `$${ethereum!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
+    } else if (isBtcAsset) {
+      return { asset: "BTC", network: `Bitcoin · ${bitcoin!.shortAddress}`, balance: bitcoin!.balance, usd: bitcoin!.balanceUsd > 0 ? `$${bitcoin!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
+    } else {
+      return { asset: def.asset, network: def.network, balance: def.defaultBalance, usd: def.defaultUsd, connected: false, ...style };
+    }
+  });
+
+  // Also append any extra live assets not in ALL_ASSETS (e.g. TNK)
+  walletData.forEach(w => {
+    const alreadyIncluded = ALL_ASSETS.some(a => a.asset === w.asset && w.network.toLowerCase().includes(a.network.toLowerCase()));
+    if (!alreadyIncluded) {
+      const style = ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: w.network, chainColor: "text-cyan-300" };
+      wallets.push({ asset: w.asset, network: w.network, balance: w.balance, usd: w.usd, connected: true, ...style });
+    }
+  });
 
   return (
     <>
@@ -1114,35 +1138,52 @@ function WalletsCard() {
             <Wallet className="w-4 h-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">Wallets</h3>
           </div>
+          <span className="text-[10px] text-muted-foreground font-mono">{wallets.filter(w => w.connected).length}/{wallets.length} active</span>
         </div>
-        <div className="space-y-2">
-          {wallets.map(w => (
-            <div key={w.asset} className={`flex items-center gap-3 p-2.5 rounded-xl border ${w.border} ${w.bg}`}>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold font-mono ${w.color} bg-background/50 border border-border shrink-0`}>
+        {/* Scrollable wallet list — max 3.5 rows visible, scroll for more */}
+        <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: 232 }}>
+          {wallets.map((w, i) => (
+            <div
+              key={`${w.asset}-${w.network}-${i}`}
+              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-opacity duration-200 ${w.border} ${w.bg} ${!w.connected ? "opacity-45" : ""}`}
+            >
+              {/* Asset icon */}
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono ${w.color} bg-background/50 border border-border shrink-0`}>
                 {w.asset}
               </div>
+              {/* Balance + network */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <p className={`text-sm font-mono font-semibold ${w.color}`}>{w.balance}</p>
+                  <p className={`text-sm font-mono font-semibold ${w.connected ? w.color : "text-muted-foreground"}`}>{w.balance}</p>
                   <span className="text-[10px] text-muted-foreground">{w.usd}</span>
                 </div>
-                <p className="text-[10px] text-muted-foreground">{w.network}</p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${CHAIN_DOT[w.chain] ?? "bg-cyan-400"}`} />
+                  <p className={`text-[10px] font-mono ${w.chainColor}`}>{w.network}</p>
+                </div>
               </div>
+              {/* Actions — only show when connected */}
               <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => setModal({ asset: w.asset, network: w.network, mode: "receive" })}
-                  title="Receive"
-                  className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
-                  style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                  <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
-                </button>
-                <button
-                  onClick={() => setModal({ asset: w.asset, network: w.network, mode: "send" })}
-                  title="Send"
-                  className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
-                  style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
-                  <ArrowUpRight className="w-3 h-3 text-red-400" />
-                </button>
+                {w.connected ? (
+                  <>
+                    <button
+                      onClick={() => setModal({ asset: w.asset, network: w.network, mode: "receive" })}
+                      title="Receive"
+                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+                      style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
+                      <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
+                    </button>
+                    <button
+                      onClick={() => setModal({ asset: w.asset, network: w.network, mode: "send" })}
+                      title="Send"
+                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
+                      <ArrowUpRight className="w-3 h-3 text-red-400" />
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-[9px] font-mono text-muted-foreground px-1.5 py-0.5 rounded-full" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>not connected</span>
+                )}
               </div>
             </div>
           ))}
