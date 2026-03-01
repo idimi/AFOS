@@ -348,7 +348,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       chains={["bitcoin"]}
                       customChips={[
                         { label: "BTC", color: "#F7931A" },
-                        { label: "TNK", color: "#1a1a1a" },
+                        { label: "TNK (Trac Network)", color: "#1a1a1a" },
                       ]}
                       bg="rgba(255,153,0,0.08)"
                       border="rgba(255,153,0,0.2)"
