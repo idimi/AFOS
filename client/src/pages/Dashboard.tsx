@@ -651,6 +651,56 @@ const TV_SYMBOLS: Record<string, string> = {
   "SOL/USDT": "BINANCE:SOLUSDT",
 };
 
+// TradingView Advanced Chart widget — renders via injected script tag so
+// the interval/theme/symbol config is fully respected on every render.
+function TradingViewChart({
+  symbol, interval, theme, height
+}: { symbol: string; interval: string; theme: string; height: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetId = `tv_${symbol.replace(/[^a-z0-9]/gi, "_")}_${interval}_${theme}`;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // Clear previous widget
+    container.innerHTML = "";
+    const widgetDiv = document.createElement("div");
+    widgetDiv.className = "tradingview-widget-container__widget";
+    widgetDiv.style.height = `${height}px`;
+    widgetDiv.style.width = "100%";
+    container.appendChild(widgetDiv);
+
+    const script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      autosize: false,
+      width: "100%",
+      height: height,
+      symbol: symbol,
+      interval: interval,
+      timezone: "Etc/UTC",
+      theme: theme,
+      style: "3",
+      locale: "en",
+      withdateranges: true,
+      range: "ALL",
+      hide_side_toolbar: false,
+      hide_top_toolbar: false,
+      allow_symbol_change: false,
+      save_image: false,
+      calendar: false,
+      hide_volume: false,
+      support_host: "https://www.tradingview.com",
+    });
+    container.appendChild(script);
+    return () => { container.innerHTML = ""; };
+  }, [symbol, interval, theme, height, widgetId]);
+
+  return <div ref={containerRef} className="tradingview-widget-container" style={{ height: `${height}px`, width: "100%" }} />;
+}
+
 function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
@@ -807,16 +857,13 @@ function MarketTicker() {
               </button>
             </div>
 
-            {/* TradingView iframe */}
+            {/* TradingView Advanced Chart */}
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <iframe
-                key={`${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
-                width="100%"
-                height="520"
-                frameBorder="0"
-                scrolling="no"
-                style={{ display: "block", background: "#000" }}
+              <TradingViewChart
+                symbol={TV_SYMBOLS[activePair]}
+                interval={interval}
+                theme={tvTheme}
+                height={520}
               />
             </div>
           </motion.div>
@@ -1305,14 +1352,11 @@ function MobileMarketCard() {
               </button>
             </div>
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <iframe
-                key={`mob-${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
-                width="100%"
-                height="340"
-                frameBorder="0"
-                scrolling="no"
-                style={{ display: "block" }}
+              <TradingViewChart
+                symbol={TV_SYMBOLS[activePair]}
+                interval={interval}
+                theme={tvTheme}
+                height={340}
               />
             </div>
           </motion.div>
