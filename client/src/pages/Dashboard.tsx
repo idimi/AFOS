@@ -1176,7 +1176,7 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
   return (
     <div className="rounded-2xl border border-border bg-card overflow-hidden flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Agent Insights</h3>
@@ -1190,14 +1190,14 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+      <div className="flex-1 overflow-hidden px-4 py-3 space-y-3 min-h-0">
         {/* Decision breakdown */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Decision Breakdown</span>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Decision Breakdown</span>
             <span className="text-[10px] font-mono text-muted-foreground">{total} total</span>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-mono text-cyan-400/70 w-24 shrink-0">MONITOR</span>
               <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
@@ -1224,20 +1224,20 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
 
         {/* Confidence + Swaps row */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted/30 border border-border">
             <div>
               <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Avg Confidence</div>
-              <div className="text-xl font-bold text-foreground">{avgConfidence}%</div>
+              <div className="text-lg font-bold text-foreground">{avgConfidence}%</div>
             </div>
-            <div className="flex items-end gap-0.5 h-8">
+            <div className="flex items-end gap-0.5 h-7">
               {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
                 <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
               ))}
             </div>
           </div>
-          <div className="flex flex-col justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+          <div className="flex flex-col justify-center p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
             <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Swaps Executed</div>
-            <div className="text-xl font-bold text-emerald-400">{swapsExecuted}</div>
+            <div className="text-lg font-bold text-emerald-400">{swapsExecuted}</div>
             <div className="text-[9px] text-muted-foreground mt-0.5">on-chain</div>
           </div>
         </div>
@@ -1245,8 +1245,8 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
         {/* Last meaningful event */}
         {lastEvent && (
           <div>
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Last Event</div>
-            <div className="p-3 rounded-xl bg-muted/20 border border-border">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Last Event</div>
+            <div className="p-2.5 rounded-xl bg-muted/20 border border-border">
               <div className="flex items-start gap-2">
                 <span className="text-[9px] font-mono text-muted-foreground/50 shrink-0 mt-0.5 tabular-nums">{lastEvent.ts.slice(0, 8)}</span>
                 <span className={`text-[11px] font-mono leading-snug ${eventLevelColor(lastEvent.level)}`}>
