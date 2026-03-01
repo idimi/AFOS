@@ -217,3 +217,12 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Tap Wallet Badge Uniformity
 
 - [x] Add BTC (orange) + TNK (black) pill chips to Tap Wallet (no badge), matching Phantom/MetaMask chip style
+
+## TNK Chip Dark Mode Fix
+
+- [x] Fix TNK chip color on Tap Wallet: uses CSS foreground variable (white in dark mode, dark in light mode) via themeText:true flag
+
+## Wallet Chip Uniformity
+
+- [x] Add ETH chip to Coinbase Wallet (Ethereum tab) — replace plain text description
+- [x] Add SOL chip to Solflare (Solana tab) — replace plain text description

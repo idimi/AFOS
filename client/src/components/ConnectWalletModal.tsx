@@ -228,6 +228,9 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       name="Solflare"
                       desc="Native Solana wallet"
                       chains={["solana"]}
+                      customChips={[
+                        { label: "SOL", color: "#9945FF" },
+                      ]}
                       bg="rgba(255,239,70,0.08)"
                       border="rgba(255,239,70,0.2)"
                       onClick={handleSolanaConnect}
@@ -286,6 +289,9 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       name="Coinbase Wallet"
                       desc="Easy self-custody by Coinbase"
                       chains={["ethereum"]}
+                      customChips={[
+                        { label: "ETH", color: "#627EEA" },
+                      ]}
                       bg="rgba(0,82,255,0.08)"
                       border="rgba(0,82,255,0.2)"
                       loading={ethConnecting}
@@ -348,7 +354,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       chains={["bitcoin"]}
                       customChips={[
                         { label: "BTC", color: "#F7931A" },
-                        { label: "TNK (Trac Network)", color: "#1a1a1a" },
+                        { label: "TNK (Trac Network)", color: "#888888", themeText: true },
                       ]}
                       bg="rgba(255,153,0,0.08)"
                       border="rgba(255,153,0,0.2)"
@@ -431,8 +437,9 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
   onClick: () => void; loading?: boolean;
   /** Optional accent color for the Multi-chain badge (defaults to first chain color) */
   accentColor?: string;
-  /** Optional custom chip labels+colors — overrides the chains-derived chips (no badge shown) */
-  customChips?: { label: string; color: string }[];
+  /** Optional custom chip labels+colors — overrides the chains-derived chips (no badge shown).
+   *  Set themeText:true to use CSS foreground color instead of the hex (for dark/light-aware chips). */
+  customChips?: { label: string; color: string; themeText?: boolean }[];
 }) {
   const isMultiChain = chains.length > 1;
   const badgeColor = accentColor ?? CHAIN_DOTS[chains[0]];
@@ -465,8 +472,9 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
         {showCustomChips ? (
           <div className="flex items-center gap-1 mt-0.5">
             {customChips!.map(chip => (
-              <span key={chip.label} className="text-[9px] font-medium px-1 py-0.5 rounded"
-                style={{ background: `${chip.color}18`, color: chip.color }}>
+              <span key={chip.label}
+                className={`text-[9px] font-medium px-1 py-0.5 rounded${chip.themeText ? " text-foreground" : ""}`}
+                style={{ background: `${chip.color}22`, ...(chip.themeText ? {} : { color: chip.color }) }}>
                 {chip.label}
               </span>
             ))}
