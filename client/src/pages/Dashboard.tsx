@@ -651,19 +651,19 @@ const TV_SYMBOLS: Record<string, string> = {
   "SOL/USDT": "BINANCE:SOLUSDT",
 };
 
-// TradingView Advanced Chart widget — renders via injected script tag so
-// the interval/theme/symbol config is fully respected on every render.
-function TradingViewChart({
+// TradingView Advanced Chart widget — uses a keyed inner component so
+// the entire DOM node is destroyed and recreated whenever interval/symbol/theme changes,
+// forcing the TradingView script to reinitialise with the correct config.
+function TradingViewChartInner({
   symbol, interval, theme, height
 }: { symbol: string; interval: string; theme: string; height: number }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const widgetId = `tv_${symbol.replace(/[^a-z0-9]/gi, "_")}_${interval}_${theme}`;
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    // Clear previous widget
     container.innerHTML = "";
+
     const widgetDiv = document.createElement("div");
     widgetDiv.className = "tradingview-widget-container__widget";
     widgetDiv.style.height = `${height}px`;
@@ -696,9 +696,17 @@ function TradingViewChart({
     });
     container.appendChild(script);
     return () => { container.innerHTML = ""; };
-  }, [symbol, interval, theme, height, widgetId]);
+  }, []);
 
   return <div ref={containerRef} className="tradingview-widget-container" style={{ height: `${height}px`, width: "100%" }} />;
+}
+
+// Wrapper that forces full remount via key whenever any prop changes
+function TradingViewChart({
+  symbol, interval, theme, height
+}: { symbol: string; interval: string; theme: string; height: number }) {
+  const key = `${symbol}-${interval}-${theme}-${height}`;
+  return <TradingViewChartInner key={key} symbol={symbol} interval={interval} theme={theme} height={height} />;
 }
 
 function MarketTicker() {
