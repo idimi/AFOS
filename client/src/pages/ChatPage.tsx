@@ -476,8 +476,8 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Wallet status */}
-        {connected ? (
+        {/* Wallet status — read-only indicator, no connect button (header has it) */}
+        {connected && (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
             style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -489,37 +489,22 @@ export default function ChatPage() {
               <span className="text-[10px] font-bold text-foreground ml-1">${totalUsd.toFixed(2)}</span>
             )}
           </div>
-        ) : (
-          <button
-            onClick={() => setVisible(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
-            style={{ background: "rgba(153,69,255,0.15)", border: "1px solid rgba(153,69,255,0.3)", color: "#9945FF" }}>
-            <Wallet className="w-3.5 h-3.5" />
-            Connect Wallet
-          </button>
         )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Wallet banner if not connected */}
+        {/* Subtle hint when not connected — no button, header has the connect action */}
         {!connected && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-xl px-4 py-3 flex items-center gap-3"
-            style={{ background: "rgba(153,69,255,0.08)", border: "1px solid rgba(153,69,255,0.2)" }}>
-            <Wallet className="w-4 h-4 shrink-0" style={{ color: "#9945FF" }} />
-            <div className="flex-1">
-              <p className="text-xs font-semibold text-foreground">Connect your wallet to execute swaps</p>
-              <p className="text-[10px] text-muted-foreground">You can still get quotes without connecting</p>
-            </div>
-            <button
-              onClick={() => setVisible(true)}
-              className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all shrink-0"
-              style={{ background: "rgba(153,69,255,0.2)", color: "#9945FF", border: "1px solid rgba(153,69,255,0.3)" }}>
-              Connect
-            </button>
+            className="rounded-xl px-4 py-3 flex items-center gap-2.5"
+            style={{ background: "rgba(153,69,255,0.06)", border: "1px solid rgba(153,69,255,0.15)" }}>
+            <Wallet className="w-3.5 h-3.5 shrink-0" style={{ color: "#9945FF" }} />
+            <p className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">Wallet not connected.</span> Use the Connect button above to execute swaps. You can still get quotes.
+            </p>
           </motion.div>
         )}
 

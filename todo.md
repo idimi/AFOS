@@ -89,3 +89,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Show wallet address + balance in chat header
 - [x] Handle edge cases: unknown tokens, insufficient balance, slippage warnings
 - [x] Add transaction history in chat (show Solscan links after execution)
+
+## UX Polish — Chat Page Cleanup
+
+- [x] Remove duplicate wallet connect banner from ChatPage (keep only header button)
+- [x] Remove wallet connect button from ChatPage header (already in Dashboard topbar)
+- [x] Use real Phantom and Solflare logos in wallet connect modal (from wallet adapter packages)
+- [x] Clean up ChatPage header — show only agent name + status + connected wallet indicator
+- [x] Wallet hint is now a subtle info bar, no duplicate button
+- [ ] More breathing room in chat messages
