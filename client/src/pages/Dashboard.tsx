@@ -5,7 +5,7 @@
  * Mobile: Single column, prioritized order
  */
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Zap, ArrowLeftRight, Activity, Settings,
@@ -30,6 +30,7 @@ import AgentSettings from "./AgentSettings";
 import NetworkPage from "./NetworkPage";
 import TerminalPage from "./TerminalPage";
 import ChatPage from "./ChatPage";
+import { trpc } from "@/lib/trpc";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "network" | "settings" | "terminal";
 
@@ -263,7 +264,185 @@ function MobileSidebarDrawer({
   );
 }
 
-// ── Agent Status Card ──────────────────────────────────────────────────────
+// ── Mini Chat Widget (replaces Agent Status Card on Overview) ─────────────────
+interface MiniChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+}
+
+function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
+  const { publicKey, balances } = useWallet();
+  const [messages, setMessages] = useState<MiniChatMessage[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      content: "Hi! I'm AFOS. Try: *swap 1 USDT to SOL* or *what's the SOL price?*",
+      timestamp: Date.now(),
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const sendMessage = trpc.chat.sendMessage.useMutation();
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const addMessage = useCallback((msg: Omit<MiniChatMessage, "id" | "timestamp">) => {
+    setMessages(prev => [...prev, {
+      ...msg,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      timestamp: Date.now(),
+    }]);
+  }, []);
+
+  const handleSend = useCallback(async (text?: string) => {
+    const messageText = (text ?? input).trim();
+    if (!messageText || isTyping) return;
+    setInput("");
+    addMessage({ role: "user", content: messageText });
+    setIsTyping(true);
+    try {
+      const history = messages
+        .slice(-8)
+        .map(m => ({ role: m.role, content: m.content }));
+      const result = await sendMessage.mutateAsync({
+        message: messageText,
+        history,
+        walletAddress: publicKey?.toString(),
+        walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
+      });
+      addMessage({ role: "assistant", content: result.content });
+    } catch {
+      addMessage({ role: "assistant", content: "Sorry, something went wrong. Please try again." });
+    } finally {
+      setIsTyping(false);
+    }
+  }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
+
+  const QUICK_CHIPS = ["swap 1 USDT to SOL", "SOL price?", "show balances"];
+
+  return (
+    <div className="rounded-2xl border border-cyan-500/15 bg-card flex flex-col" style={{ height: 340 }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center relative">
+            <Bot className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-card" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-foreground leading-none">AFOS Agent</p>
+            <p className="text-[10px] text-muted-foreground font-mono">gemini-2.5-flash-lite</p>
+          </div>
+        </div>
+        <button
+          onClick={onOpenFullChat}
+          className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-lg hover:bg-cyan-500/10 font-mono"
+        >
+          Full chat →
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0">
+        {messages.map(msg => (
+          <div key={msg.id} className={`flex gap-2 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+            {msg.role === "assistant" && (
+              <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.2), rgba(139,92,246,0.2))", border: "1px solid rgba(6,182,212,0.3)" }}>
+                <Bot className="w-3 h-3 text-cyan-400" />
+              </div>
+            )}
+            <div
+              className={`px-3 py-2 rounded-xl text-xs leading-relaxed max-w-[80%] ${
+                msg.role === "user" ? "rounded-tr-sm" : "rounded-tl-sm"
+              }`}
+              style={{
+                background: msg.role === "user"
+                  ? "linear-gradient(135deg, rgba(6,182,212,0.18), rgba(139,92,246,0.18))"
+                  : "var(--muted)",
+                border: msg.role === "user"
+                  ? "1px solid rgba(6,182,212,0.25)"
+                  : "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {isTyping && (
+          <div className="flex gap-2">
+            <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.2), rgba(139,92,246,0.2))", border: "1px solid rgba(6,182,212,0.3)" }}>
+              <Bot className="w-3 h-3 text-cyan-400" />
+            </div>
+            <div className="px-3 py-2 rounded-xl rounded-tl-sm flex items-center gap-1"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Quick chips — only show when few messages */}
+      {messages.length <= 2 && (
+        <div className="px-3 pb-1.5 flex gap-1.5 overflow-x-auto scrollbar-hide shrink-0">
+          {QUICK_CHIPS.map(chip => (
+            <button
+              key={chip}
+              onClick={() => handleSend(chip)}
+              className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all hover:opacity-80 whitespace-nowrap"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="px-3 pb-3 pt-1 shrink-0 border-t border-border">
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 rounded-xl flex items-center gap-2 px-3 py-2"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <Sparkles className="w-3 h-3 text-muted-foreground shrink-0" />
+            <input
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+              placeholder="swap 1 USDT to SOL…"
+              disabled={isTyping}
+              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+            />
+          </div>
+          <button
+            onClick={() => handleSend()}
+            disabled={!input.trim() || isTyping}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0"
+            style={{
+              background: input.trim() && !isTyping ? "linear-gradient(135deg, #06b6d4, #8b5cf6)" : "var(--muted)",
+              opacity: input.trim() && !isTyping ? 1 : 0.5,
+            }}
+          >
+            {isTyping ? <Loader2 className="w-3 h-3 text-foreground animate-spin" /> : <Send className="w-3 h-3 text-white" />}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Agent Status Card (kept for mobile use) ────────────────────────────────
 function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
   const [uptime, setUptime] = useState(0);
   const [currentTask, setCurrentTask] = useState("Connecting to agent...");
@@ -271,7 +450,6 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
   const [skillsLoaded, setSkillsLoaded] = useState(0);
   const [activePeers, setActivePeers] = useState(0);
 
-  // Fetch real agent status from backend
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -289,7 +467,6 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
     return () => clearInterval(t);
   }, []);
 
-  // Subscribe to real-time agent decisions via SSE
   useEffect(() => {
     const unsub = onSSEEvent('agent_decision', (data: unknown) => {
       const d = data as { action: string; reasoning: string };
@@ -308,7 +485,6 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
     return () => { unsub(); unsubPeer(); unsubPeerD(); unsubInit(); };
   }, []);
 
-  // Real uptime from backend
   useEffect(() => {
     const interval = setInterval(() => setUptime(u => u + 1), 1000);
     return () => clearInterval(interval);
@@ -348,24 +524,15 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
           Terminal →
         </button>
       </div>
-
-      {/* Current task */}
       <div className="rounded-xl bg-muted/40 border border-border p-3 mb-3">
         <div className="flex items-center gap-2 mb-1.5">
           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
           <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Current Task</span>
         </div>
-        <motion.p
-          key={currentTask}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-sm text-foreground font-mono"
-        >
+        <motion.p key={currentTask} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-sm text-foreground font-mono">
           {currentTask}
         </motion.p>
       </div>
-
-      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
           <p className="text-xs font-bold font-mono text-foreground">{formatUptime(uptime)}</p>
@@ -1997,9 +2164,9 @@ export default function Dashboard() {
               {/* ── DESKTOP: 2-column layout ── */}
               <div className="hidden lg:grid grid-cols-12 gap-5 p-5 h-full" style={{ minHeight: 0 }}>
 
-                {/* LEFT col — Agent Status + Metrics + Quick Actions + Market (with charts) */}
+                {/* LEFT col — Mini Chat + Metrics + Quick Actions + Market (with charts) */}
                 <div className="col-span-7 flex flex-col gap-4 min-h-0">
-                  <AgentStatusCard onNavigateToTerminal={() => setActivePage("terminal")} />
+                  <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} />
                   <MetricsRow />
                   <QuickActions onNavigate={setActivePage} />
                   <MarketTicker />

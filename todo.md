@@ -151,3 +151,6 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Timeframe Toolbar Fix
 - [x] Replace iframe embed with TradingView Advanced Chart widget so interval prop actually controls the chart timeframe (desktop + mobile)
+
+## Mini Chat Widget on Overview
+- [x] Replace Agent Status card on Overview with embedded mini Agent Chat widget (shared chat state with ChatPage)
