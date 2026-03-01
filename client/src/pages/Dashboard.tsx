@@ -1795,6 +1795,49 @@ function MobileHeroBanner({ onNavigateToTerminal, onNavigateToChat }: {
   );
 }
 
+// ── Mobile Portfolio Strip (compact total across all chains) ─────────────
+function MobilePortfolioStrip() {
+  const { totalUsd: solanaTotalUsd, connected: solanaConnected } = useWallet();
+  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
+
+  const totalUsd = useMemo(() => {
+    let total = 0;
+    if (solanaConnected) total += solanaTotalUsd;
+    if (ethereum?.connected) total += ethereum.balanceUsd + erc20Balances.usdc + erc20Balances.usdt;
+    if (bitcoin?.connected) total += bitcoin.balanceUsd;
+    return total;
+  }, [solanaTotalUsd, solanaConnected, ethereum, bitcoin, erc20Balances]);
+
+  const connectedChains = [
+    solanaConnected ? "SOL" : null,
+    ethereum?.connected ? "ETH" : null,
+    bitcoin?.connected ? "BTC" : null,
+  ].filter(Boolean);
+
+  const anyConnected = connectedChains.length > 0;
+
+  return (
+    <div className="flex items-center justify-between px-4 py-3 rounded-2xl border border-border bg-card">
+      <div>
+        <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Total Portfolio</p>
+        <p className="text-xl font-bold font-mono text-foreground">
+          {anyConnected
+            ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : <span className="text-muted-foreground">$0.00</span>
+          }
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">
+          {anyConnected ? `Live · ${connectedChains.join(" + ")} connected` : "Connect a wallet to see your balance"}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="text-[10px] font-mono text-emerald-400">live</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Mobile Metric Strip (horizontal scroll) ───────────────────────────────
 function MobileMetricStrip() {
   const [metrics, setMetrics] = useState({
@@ -1852,9 +1895,10 @@ function MobileMetricStrip() {
   );
 }
 
-// ── Mobile Wallets Strip (horizontal scroll chips) ────────────────────────
+// ── Mobile Wallets Strip (horizontal scroll chips — all 7 assets) ─────────
 function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: string, network: string, mode: "send" | "receive") => void }) {
   const [walletData, setWalletData] = useState<WalletAsset[]>([]);
+  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -1868,20 +1912,55 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
     return () => clearInterval(t);
   }, []);
 
-  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string }> = {
-    SOL: { color: "text-purple-400", border: "border-purple-500/25", bg: "bg-purple-500/8" },
-    USDT: { color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8" },
-    BTC: { color: "text-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/8" },
-    ETH: { color: "text-blue-400", border: "border-blue-500/25", bg: "bg-blue-500/8" },
+  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string; chainDot: string }> = {
+    SOL:  { color: "text-purple-400",  border: "border-purple-500/25",  bg: "bg-purple-500/8",  chainDot: "bg-purple-400" },
+    USDT: { color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8", chainDot: "bg-purple-400" },
+    USDC: { color: "text-blue-300",    border: "border-blue-400/25",    bg: "bg-blue-400/8",    chainDot: "bg-purple-400" },
+    BTC:  { color: "text-amber-400",   border: "border-amber-500/25",   bg: "bg-amber-500/8",   chainDot: "bg-amber-400" },
+    ETH:  { color: "text-blue-400",    border: "border-blue-500/25",    bg: "bg-blue-500/8",    chainDot: "bg-blue-400" },
   };
 
-  const wallets = walletData.map(w => ({
-    asset: w.asset,
-    network: w.network,
-    balance: w.balance,
-    usd: w.usd,
-    ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/25", bg: "bg-cyan-500/8" }),
-  }));
+  // All 7 supported assets — always shown, live data merged in when available
+  const ALL_ASSETS = [
+    { asset: "SOL",  network: "Solana",   defaultBalance: "0.000000",   defaultUsd: "$0",  chainLabel: "SOL" },
+    { asset: "USDT", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "SOL" },
+    { asset: "USDC", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "SOL" },
+    { asset: "ETH",  network: "Ethereum", defaultBalance: "0.000000",   defaultUsd: "$0",  chainLabel: "ETH" },
+    { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "ETH" },
+    { asset: "USDC", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "ETH" },
+    { asset: "BTC",  network: "Bitcoin",  defaultBalance: "0.00000000", defaultUsd: "$0",  chainLabel: "BTC" },
+  ];
+
+  const wallets = ALL_ASSETS.map(def => {
+    const live = walletData.find(w => w.asset === def.asset && w.network.toLowerCase().includes(def.network.toLowerCase()));
+    const isEthNative = def.network === "Ethereum" && def.asset === "ETH" && ethereum?.connected;
+    const isEthUsdt   = def.network === "Ethereum" && def.asset === "USDT" && ethereum?.connected;
+    const isEthUsdc   = def.network === "Ethereum" && def.asset === "USDC" && ethereum?.connected;
+    const isBtcAsset  = def.network === "Bitcoin"  && def.asset === "BTC"  && bitcoin?.connected;
+
+    const baseStyle = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/25", bg: "bg-cyan-500/8", chainDot: "bg-cyan-400" };
+    // Override chainDot for Ethereum rows
+    const chainDot = def.network === "Ethereum" ? "bg-blue-400" : def.network === "Bitcoin" ? "bg-amber-400" : "bg-purple-400";
+    const style = { ...baseStyle, chainDot };
+
+    if (live) {
+      return { asset: def.asset, network: def.network, balance: live.balance, usd: live.usd, connected: true, chainLabel: def.chainLabel, ...style };
+    } else if (isEthNative) {
+      return { asset: "ETH", network: "Ethereum", balance: ethereum!.balance, usd: ethereum!.balanceUsd > 0 ? `$${ethereum!.balanceUsd.toFixed(2)}` : "$0", connected: true, chainLabel: "ETH", ...style };
+    } else if (isEthUsdt) {
+      const bal = erc20Balances.usdt;
+      return { asset: "USDT", network: "Ethereum", balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, chainLabel: "ETH", ...style };
+    } else if (isEthUsdc) {
+      const bal = erc20Balances.usdc;
+      return { asset: "USDC", network: "Ethereum", balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, chainLabel: "ETH", ...style };
+    } else if (isBtcAsset) {
+      return { asset: "BTC", network: "Bitcoin", balance: bitcoin!.balance, usd: bitcoin!.balanceUsd > 0 ? `$${bitcoin!.balanceUsd.toFixed(2)}` : "$0", connected: true, chainLabel: "BTC", ...style };
+    } else {
+      return { asset: def.asset, network: def.network, balance: def.defaultBalance, usd: def.defaultUsd, connected: false, chainLabel: def.chainLabel, ...style };
+    }
+  });
+
+  const activeCount = wallets.filter(w => w.connected).length;
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
@@ -1890,36 +1969,44 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
           <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">Wallets</span>
         </div>
-        <span className="text-[10px] text-muted-foreground font-mono">non-custodial</span>
+        <span className="text-[10px] text-muted-foreground font-mono">{activeCount}/{wallets.length} active</span>
       </div>
       <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
-        {wallets.map(w => (
+        {wallets.map((w, i) => (
           <div
-            key={w.asset}
-            className={`rounded-xl border ${w.border} ${w.bg} p-3 shrink-0 w-[120px]`}
+            key={`${w.asset}-${w.network}-${i}`}
+            className={`rounded-xl border ${w.border} ${w.bg} p-3 shrink-0 w-[120px] transition-opacity duration-200 ${!w.connected ? "opacity-45" : ""}`}
           >
-            <div className="flex items-center justify-between mb-2">
+            {/* Header: asset name + chain dot */}
+            <div className="flex items-center justify-between mb-1.5">
               <span className={`text-xs font-bold font-mono ${w.color}`}>{w.asset}</span>
-              <span className="text-[9px] text-muted-foreground font-mono">{w.network.slice(0, 3)}</span>
+              <div className="flex items-center gap-1">
+                <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${w.chainDot}`} />
+                <span className="text-[8px] text-muted-foreground font-mono">{w.chainLabel}</span>
+              </div>
             </div>
-            <p className={`text-sm font-mono font-bold ${w.color} mb-0.5`}>{w.balance}</p>
+            <p className={`text-sm font-mono font-bold ${w.connected ? w.color : "text-muted-foreground"} mb-0.5 truncate`}>{w.balance}</p>
             <p className="text-[9px] text-muted-foreground mb-2.5">{w.usd}</p>
-            <div className="flex gap-1.5">
-              <button
-                onClick={() => onOpenWalletModal(w.asset, w.network, "receive")}
-                className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
-                style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}
-              >
-                <ArrowDownLeft className="w-2.5 h-2.5" />
-              </button>
-              <button
-                onClick={() => onOpenWalletModal(w.asset, w.network, "send")}
-                className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
-                style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
-              >
-                <ArrowUpRight className="w-2.5 h-2.5" />
-              </button>
-            </div>
+            {w.connected ? (
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => onOpenWalletModal(w.asset, w.network, "receive")}
+                  className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
+                  style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}
+                >
+                  <ArrowDownLeft className="w-2.5 h-2.5" />
+                </button>
+                <button
+                  onClick={() => onOpenWalletModal(w.asset, w.network, "send")}
+                  className="flex-1 flex items-center justify-center py-1 rounded-md text-[9px] font-semibold transition-all active:scale-95"
+                  style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#f87171" }}
+                >
+                  <ArrowUpRight className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="text-[8px] font-mono text-muted-foreground text-center py-1 rounded-md" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>not connected</div>
+            )}
           </div>
         ))}
       </div>
@@ -2458,25 +2545,28 @@ export default function Dashboard() {
 
               {/* ── MOBILE: optimized single-column layout ── */}
               <div className="lg:hidden flex flex-col gap-3 p-3 pb-6">
-                {/* 1. Hero: portfolio + agent status merged */}
-                <MobileHeroBanner onNavigateToTerminal={() => setActivePage("terminal")} onNavigateToChat={() => setActivePage("chat")} />
+                {/* 1. Portfolio strip — live total across all chains */}
+                <MobilePortfolioStrip />
 
-                {/* 2. Metrics: horizontal scroll strip */}
+                {/* 2. Mini Chat Widget — full feature parity with desktop */}
+                <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} />
+
+                {/* 3. Metrics: horizontal scroll strip */}
                 <MobileMetricStrip />
 
-                {/* 3. Quick actions: 2×2 grid with large tap targets */}
+                {/* 4. Quick actions: 2×2 grid with large tap targets */}
                 <QuickActions onNavigate={setActivePage} />
 
-                {/* 4. Market chart: compact with 260px chart height */}
+                {/* 5. Market chart: compact with 260px chart height */}
                 <MobileMarketCard />
 
-                {/* 5. Wallets: horizontal scroll chips */}
-                 <MobileWalletStrip onOpenWalletModal={(asset, network, mode) => setWalletModal({ asset, network, mode })} />
+                {/* 6. Wallets: horizontal scroll chips — all 7 assets */}
+                <MobileWalletStrip onOpenWalletModal={(asset, network, mode) => setWalletModal({ asset, network, mode })} />
 
-                {/* 6. Recent swaps: compact 3-item list */}
+                {/* 7. Recent swaps: compact 3-item list */}
                 <MobileRecentSwaps onViewAll={() => setActivePage("activity")} />
 
-                {/* 7. Agent activity: compact 5-line feed */}
+                {/* 8. Agent activity: compact 5-line feed */}
                 <MobileAgentActivity onNavigateToTerminal={() => setActivePage("terminal")} />
               </div>
             </div>

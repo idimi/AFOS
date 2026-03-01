@@ -189,3 +189,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add 60s polling for BTC balance refresh in MultiChainWalletContext
 - [x] Add real logos for MetaMask, Coinbase Wallet, Xverse, Tap Wallet in ConnectWalletModal (CDN hosted)
 - [x] Extend chat agent intent parser to detect ETH and BTC swap requests (routes via IntercomSwap)
+
+## Mobile Layout Parity
+
+- [x] Rewrite MobileWalletStrip to show all 7 assets using ALL_ASSETS registry + MultiChainWalletContext + WalletContext (same data sources as desktop WalletsCard)
+- [x] Replace MobileHeroBanner with embedded MiniChatWidget (mobile-optimized height ~360px) + compact portfolio strip above
+- [x] Update mobile PortfolioCard to show live total across all chains (now uses MobilePortfolioStrip with same useMemo as desktop PortfolioCard)
+- [x] Ensure quick chips render properly on mobile within MiniChatWidget (MiniChatWidget includes QUICK_CHIPS already)
