@@ -914,20 +914,33 @@ function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
 
 // ── Portfolio Card ─────────────────────────────────────────────────────────
 function PortfolioCard() {
-  const [totalUsd, setTotalUsd] = useState<number | null>(null);
-  const [change24h] = useState<number | null>(null);
+  // Solana balances (SOL + USDT/SOL + USDC/SOL)
+  const { totalUsd: solanaTotalUsd, connected: solanaConnected } = useWallet();
+  // Ethereum native + ERC-20 (USDT/ETH + USDC/ETH)
+  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
 
-  useEffect(() => {
-    const fetchTotal = async () => {
-      try {
-        const data = await getWallet();
-        setTotalUsd(data.totalUsd);
-      } catch { /* keep null */ }
-    };
-    fetchTotal();
-    const t = setInterval(fetchTotal, 30000);
-    return () => clearInterval(t);
-  }, []);
+  // Compute live total across all chains
+  const totalUsd = useMemo(() => {
+    let total = 0;
+    // Solana: SOL + USDT/SOL + USDC/SOL
+    if (solanaConnected) total += solanaTotalUsd;
+    // Ethereum: native ETH
+    if (ethereum?.connected) total += ethereum.balanceUsd;
+    // Ethereum: ERC-20 USDC + USDT (both pegged $1)
+    if (ethereum?.connected) total += erc20Balances.usdc + erc20Balances.usdt;
+    // Bitcoin
+    if (bitcoin?.connected) total += bitcoin.balanceUsd;
+    return total;
+  }, [solanaTotalUsd, solanaConnected, ethereum, bitcoin, erc20Balances]);
+
+  // Count how many chains have connected wallets
+  const connectedChains = [
+    solanaConnected ? "SOL" : null,
+    ethereum?.connected ? "ETH" : null,
+    bitcoin?.connected ? "BTC" : null,
+  ].filter(Boolean);
+
+  const anyConnected = connectedChains.length > 0;
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -937,16 +950,17 @@ function PortfolioCard() {
       </div>
       <div className="flex items-end gap-3 mb-1">
         <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
-          {totalUsd !== null ? `$${totalUsd.toLocaleString()}` : <span className="text-muted-foreground text-xl">Loading...</span>}
+          {anyConnected
+            ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : <span className="text-muted-foreground text-xl">$0.00</span>
+          }
         </p>
-        {change24h !== null && (
-          <div className={`flex items-center gap-1 text-sm font-mono mb-1 ${change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {change24h >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-            {change24h >= 0 ? "+" : ""}{change24h}%
-          </div>
-        )}
       </div>
-      <p className="text-xs text-muted-foreground">{totalUsd !== null ? 'Agent treasury balance' : 'Fetching on-chain balance...'}</p>
+      <p className="text-xs text-muted-foreground">
+        {anyConnected
+          ? `Live · ${connectedChains.join(" + ")} connected`
+          : "Connect a wallet to see your balance"}
+      </p>
     </div>
   );
 }
