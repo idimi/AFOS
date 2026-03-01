@@ -1119,6 +1119,26 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
     return counts;
   }, [entries]);
 
+  // Count swaps executed from real entries
+  const swapsExecuted = useMemo(() => {
+    return entries.filter(e =>
+      e.message.toLowerCase().includes("swap executed") ||
+      e.message.toLowerCase().includes("swap complete") ||
+      e.message.toLowerCase().includes("swap confirmed") ||
+      (e.level === "success" && e.message.includes("→"))
+    ).length;
+  }, [entries]);
+
+  // Parse swap display: "1 USDT → 0.0058 SOL" from message
+  const parseSwapMessage = (msg: string): string => {
+    // Match patterns like "1 USDT → 0.0058 SOL" or "Swap: 1 USDT to SOL"
+    const arrowMatch = msg.match(/(\d+\.?\d*\s*\w+)\s*[→>]\s*(\d+\.?\d*\s*\w+)/);
+    if (arrowMatch) return `${arrowMatch[1]} → ${arrowMatch[2]}`;
+    const toMatch = msg.match(/(\d+\.?\d*\s*\w+)\s+to\s+(\w+)/i);
+    if (toMatch) return `${toMatch[1]} → ${toMatch[2]}`;
+    return msg.length > 80 ? msg.slice(0, 80) + "…" : msg;
+  };
+
   // Last 5 confidence scores
   const confidenceTrend = useMemo(() => {
     return entries
@@ -1202,16 +1222,23 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
           </div>
         </div>
 
-        {/* Confidence score */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
-          <div>
-            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Avg Confidence</div>
-            <div className="text-xl font-bold text-foreground">{avgConfidence}%</div>
+        {/* Confidence + Swaps row */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border">
+            <div>
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Avg Confidence</div>
+              <div className="text-xl font-bold text-foreground">{avgConfidence}%</div>
+            </div>
+            <div className="flex items-end gap-0.5 h-8">
+              {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
+                <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
+              ))}
+            </div>
           </div>
-          <div className="flex items-end gap-0.5 h-8">
-            {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
-              <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
-            ))}
+          <div className="flex flex-col justify-center p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Swaps Executed</div>
+            <div className="text-xl font-bold text-emerald-400">{swapsExecuted}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">on-chain</div>
           </div>
         </div>
 
@@ -1223,7 +1250,7 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
               <div className="flex items-start gap-2">
                 <span className="text-[9px] font-mono text-muted-foreground/50 shrink-0 mt-0.5 tabular-nums">{lastEvent.ts.slice(0, 8)}</span>
                 <span className={`text-[11px] font-mono leading-snug ${eventLevelColor(lastEvent.level)}`}>
-                  {lastEvent.message.length > 80 ? lastEvent.message.slice(0, 80) + "…" : lastEvent.message}
+                  {parseSwapMessage(lastEvent.message)}
                 </span>
               </div>
             </div>
@@ -1561,6 +1588,23 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
     return counts;
   }, [entries]);
 
+  const swapsExecuted = useMemo(() => {
+    return entries.filter(e =>
+      e.message.toLowerCase().includes("swap executed") ||
+      e.message.toLowerCase().includes("swap complete") ||
+      e.message.toLowerCase().includes("swap confirmed") ||
+      (e.level === "success" && e.message.includes("→"))
+    ).length;
+  }, [entries]);
+
+  const parseSwapMessage = (msg: string): string => {
+    const arrowMatch = msg.match(/(\d+\.?\d*\s*\w+)\s*[→>]\s*(\d+\.?\d*\s*\w+)/);
+    if (arrowMatch) return `${arrowMatch[1]} → ${arrowMatch[2]}`;
+    const toMatch = msg.match(/(\d+\.?\d*\s*\w+)\s+to\s+(\w+)/i);
+    if (toMatch) return `${toMatch[1]} → ${toMatch[2]}`;
+    return msg.length > 60 ? msg.slice(0, 60) + "…" : msg;
+  };
+
   const confidenceTrend = useMemo(() => {
     return entries
       .filter(e => e.message.startsWith("Agent decision:"))
@@ -1625,9 +1669,9 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
           </div>
         </div>
 
-        {/* Confidence + last event */}
-        <div className="flex gap-2">
-          <div className="flex-1 p-2.5 rounded-xl bg-muted/30 border border-border">
+        {/* Confidence + Swaps + last event */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2.5 rounded-xl bg-muted/30 border border-border">
             <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Confidence</div>
             <div className="text-lg font-bold text-foreground">{avgConfidence}%</div>
             <div className="flex items-end gap-0.5 h-4 mt-1">
@@ -1636,15 +1680,20 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
               ))}
             </div>
           </div>
-          {lastEvent && (
-            <div className="flex-1 p-2.5 rounded-xl bg-muted/20 border border-border overflow-hidden">
-              <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Last Event</div>
-              <div className="text-[9px] font-mono text-cyan-300 leading-snug line-clamp-3">
-                {lastEvent.message.slice(0, 60)}{lastEvent.message.length > 60 ? "…" : ""}
-              </div>
-            </div>
-          )}
+          <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Swaps Executed</div>
+            <div className="text-lg font-bold text-emerald-400">{swapsExecuted}</div>
+            <div className="text-[9px] text-muted-foreground mt-0.5">on-chain</div>
+          </div>
         </div>
+        {lastEvent && (
+          <div className="p-2.5 rounded-xl bg-muted/20 border border-border overflow-hidden">
+            <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Last Event</div>
+            <div className="text-[9px] font-mono text-cyan-300 leading-snug line-clamp-2">
+              {parseSwapMessage(lastEvent.message)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1809,7 +1858,7 @@ function MobileMarketCard() {
 // ── Stack Health Strip ─────────────────────────────────────────────────────
 function StackHealthStrip() {
   const services = [
-    { name: "OpenClaw", status: "live", color: "bg-emerald-400" },
+    { name: "AFOS Agent", status: "live", color: "bg-emerald-400" },
     { name: "IntercomSwap", status: "live", color: "bg-emerald-400" },
     { name: "Bitcoin LN", status: "live", color: "bg-emerald-400" },
     { name: "Solana", status: "live", color: "bg-emerald-400" },

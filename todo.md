@@ -138,3 +138,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Agent Insights: confidence score trend (last 5 decisions, mini bar chart)
 - [x] Agent Insights: Full log link still accessible for power users
 - [x] Renamed AgentThoughtStream to AgentInsights consistently across desktop and mobile
+
+## Branding + Agent Insights Polish
+
+- [x] Rename "OpenClaw" in STACK strip to "AFOS Agent"
+- [x] Add Swaps Executed counter to Agent Insights widget (desktop + mobile)
+- [x] Improve Last Event display: parse swap token amounts and show "1 USDT → 0.0058 SOL" format
