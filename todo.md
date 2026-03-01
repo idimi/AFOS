@@ -200,3 +200,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Quick Chip Slider UX
 
 - [x] Replace horizontal scroll chips in MiniChatWidget with auto-cycling slider (carousel) — shows 3 chips at a time, auto-advances every 3s, prev/next arrows, dot indicators, pauses on hover/touch
+
+## Agent Insights Card Fix
+
+- [x] Make Agent Insights card content area vertically scrollable so Last Event is not clipped (desktop + mobile)

@@ -1681,7 +1681,7 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden px-4 py-3 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0 scrollbar-thin">
         {/* Decision breakdown */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -2227,7 +2227,7 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
         </button>
       </div>
 
-      <div className="px-4 py-3 space-y-3">
+      <div className="px-4 py-3 space-y-3 overflow-y-auto max-h-72 scrollbar-thin">
         {/* Decision breakdown */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -2267,7 +2267,7 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
         {lastEvent && (
           <div className="p-2.5 rounded-xl bg-muted/20 border border-border overflow-hidden">
             <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Last Event</div>
-            <div className="text-[9px] font-mono text-cyan-300 leading-snug line-clamp-2">
+            <div className="text-[9px] font-mono text-cyan-300 leading-snug">
               {parseSwapMessage(lastEvent.message)}
             </div>
           </div>
