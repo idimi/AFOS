@@ -107,3 +107,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Match drawer content to desktop sidebar (logo, nav items, agent status, connect button)
 - [x] Add swipe-right gesture to open drawer
 - [x] Remove bottom padding from content area (was needed for tab bar)
+
+## Overview UX — Agent Chat as Hero
+
+- [x] Replace OpenClaw Agent status card in MobileHeroBanner with Agent Chat CTA hero card
+- [x] Remove duplicate Agent Chat from QuickActions grid (hero card handles it); replaced with History
+- [x] Add compact agent status indicator (uptime pill) inside the hero card
+- [x] Improve overall mobile Overview hierarchy: Chat first, then metrics, then market data

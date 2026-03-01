@@ -570,8 +570,8 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
 function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
   const haptic = useHaptic();
   const actions = [
-    { label: "Agent Chat", icon: Bot, page: "chat" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
     { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
+    { label: "History", icon: Activity, page: "activity" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
     { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
     { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
   ];
@@ -1159,12 +1159,15 @@ function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: ()
   );
 }
 
-// ── Mobile Hero Banner (portfolio + agent status merged) ────────────────────
-function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
+// ── Mobile Hero Banner — Agent Chat as primary CTA ────────────────────
+function MobileHeroBanner({ onNavigateToTerminal, onNavigateToChat }: {
+  onNavigateToTerminal: () => void;
+  onNavigateToChat: () => void;
+}) {
   const [uptime, setUptime] = useState(0);
-  const [currentTask, setCurrentTask] = useState("Connecting to agent...");
-  const [activePeers, setActivePeers] = useState(0);
+  const [currentTask, setCurrentTask] = useState("Monitoring IntercomSwap DHT topic");
   const [walletTotal, setWalletTotal] = useState<number | null>(null);
+  const haptic = useHaptic();
 
   useEffect(() => {
     const t = setInterval(() => setUptime(u => u + 1), 1000);
@@ -1175,11 +1178,8 @@ function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () =
     const fetchStatus = async () => {
       try {
         const status = await getAgentStatus();
-        setActivePeers(status.activePeers);
         if (status.lastDecision?.reasoning) {
           setCurrentTask(status.lastDecision.reasoning.slice(0, 80));
-        } else {
-          setCurrentTask('Monitoring IntercomSwap DHT topic');
         }
       } catch { /* keep */ }
     };
@@ -1198,7 +1198,7 @@ function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () =
     fetchWallet();
     const t = setInterval(fetchWallet, 30000);
     return () => clearInterval(t);
-  }, []);;
+  }, []);
 
   const fmtUptime = (s: number) => {
     const h = Math.floor(s / 3600);
@@ -1208,56 +1208,61 @@ function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () =
   };
 
   return (
-    <div className="rounded-2xl border border-cyan-500/20 bg-card overflow-hidden">
-      {/* Portfolio row */}
-      <div className="px-4 pt-4 pb-3 border-b border-border/50">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Total Portfolio</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-foreground">
-                {walletTotal !== null ? `$${walletTotal.toLocaleString()}` : '...'}
-              </span>
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] text-muted-foreground font-mono">non-custodial</p>
-            <p className="text-[10px] text-muted-foreground font-mono">4 chains</p>
-          </div>
+    <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid rgba(6,182,212,0.2)" }}>
+
+      {/* Portfolio strip — compact top row */}
+      <div className="flex items-center justify-between px-4 pt-3.5 pb-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div>
+          <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Total Portfolio</p>
+          <span className="text-xl font-bold font-mono text-foreground">
+            {walletTotal !== null ? `$${walletTotal.toLocaleString()}` : <span className="text-muted-foreground text-base">$—</span>}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[10px] font-mono text-emerald-400">{fmtUptime(uptime)}</span>
         </div>
       </div>
 
-      {/* Agent row */}
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center relative shrink-0">
-            <Bot className="w-4 h-4 text-cyan-400" />
-            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border-2 border-card" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <span className="text-xs font-bold text-foreground">OpenClaw Agent</span>
-              <span className="text-[9px] font-mono px-1 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">ACTIVE</span>
-            </div>
-            <motion.p
-              key={currentTask}
-              initial={{ opacity: 0, y: 3 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-[10px] text-muted-foreground font-mono truncate"
-            >
-              {currentTask}
-            </motion.p>
-          </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <span className="text-[10px] font-mono text-cyan-400">{fmtUptime(uptime)}</span>
-            <button
-              onClick={onNavigateToTerminal}
-              className="text-[9px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono px-1.5 py-0.5 rounded hover:bg-cyan-500/10"
-            >
-              Terminal →
-            </button>
-          </div>
+      {/* Agent Chat — PRIMARY CTA */}
+      <button
+        onClick={() => { haptic.tap(); onNavigateToChat(); }}
+        className="w-full px-4 py-4 flex items-center gap-3.5 transition-all active:scale-[0.98] hover:bg-cyan-500/5 group"
+      >
+        {/* Agent avatar */}
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 relative"
+          style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.2), rgba(139,92,246,0.2))", border: "1px solid rgba(6,182,212,0.3)" }}>
+          <Bot className="w-5 h-5 text-cyan-400" />
+          <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border-2" style={{ borderColor: "var(--card)" }} />
         </div>
+
+        <div className="flex-1 min-w-0 text-left">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-sm font-bold text-foreground">Chat with AFOS Agent</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono font-semibold" style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>LIVE</span>
+          </div>
+          <motion.p
+            key={currentTask}
+            initial={{ opacity: 0, y: 2 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-[11px] text-muted-foreground truncate"
+          >
+            {currentTask}
+          </motion.p>
+        </div>
+
+        {/* Arrow */}
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all group-hover:translate-x-0.5"
+          style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.25)" }}>
+          <ArrowRight className="w-4 h-4 text-cyan-400" />
+        </div>
+      </button>
+
+      {/* Prompt hint */}
+      <div className="px-4 pb-3.5">
+        <p className="text-[10px] text-muted-foreground">
+          Try: <span className="text-cyan-400/80 font-mono">"swap 1 USDT to SOL"</span> · <span className="text-cyan-400/80 font-mono">"what's the SOL price?"</span>
+        </p>
       </div>
     </div>
   );
@@ -1827,7 +1832,7 @@ export default function Dashboard() {
               {/* ── MOBILE: optimized single-column layout ── */}
               <div className="lg:hidden flex flex-col gap-3 p-3 pb-6">
                 {/* 1. Hero: portfolio + agent status merged */}
-                <MobileHeroBanner onNavigateToTerminal={() => setActivePage("terminal")} />
+                <MobileHeroBanner onNavigateToTerminal={() => setActivePage("terminal")} onNavigateToChat={() => setActivePage("chat")} />
 
                 {/* 2. Metrics: horizontal scroll strip */}
                 <MobileMetricStrip />
