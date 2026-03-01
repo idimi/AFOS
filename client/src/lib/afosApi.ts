@@ -1,8 +1,13 @@
 /**
- * AFOS API Service v2
+ * AFOS API Service v3 — Multi-Chain
  * All requests go through the Manus Express server proxy at /api/afos/*
  * The proxy forwards them server-side to http://141.253.123.101:4000
  * This avoids the browser mixed-content block (HTTPS frontend → HTTP Oracle VM)
+ *
+ * Supported assets:
+ *   Solana:   SOL, USDT (SPL), USDC (SPL)
+ *   Ethereum: ETH, USDT (ERC-20), USDC (ERC-20)
+ *   Bitcoin:  BTC
  */
 
 // Use relative URL so it works on both dev (localhost:3000) and production (manus.space)
@@ -19,6 +24,41 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
   }
 }
 
+// ─── Chain / Asset constants ──────────────────────────────────────────────────
+
+export type SupportedChain = 'solana' | 'ethereum' | 'bitcoin';
+
+export interface AssetDefinition {
+  symbol: string;
+  chain: SupportedChain;
+  /** Human-readable chain label */
+  chainLabel: string;
+  /** Contract / mint address — null for native assets */
+  address: string | null;
+  decimals: number;
+  /** Whether this is a stablecoin pegged to $1.00 */
+  isStable: boolean;
+}
+
+/** Canonical multi-chain asset registry */
+export const ASSET_REGISTRY: AssetDefinition[] = [
+  { symbol: 'SOL',       chain: 'solana',   chainLabel: 'Solana',   address: null,                                         decimals: 9,  isStable: false },
+  { symbol: 'USDT',      chain: 'solana',   chainLabel: 'Solana',   address: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6,  isStable: true  },
+  { symbol: 'USDC',      chain: 'solana',   chainLabel: 'Solana',   address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6,  isStable: true  },
+  { symbol: 'ETH',       chain: 'ethereum', chainLabel: 'Ethereum', address: null,                                         decimals: 18, isStable: false },
+  { symbol: 'USDT',      chain: 'ethereum', chainLabel: 'Ethereum', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6,  isStable: true  },
+  { symbol: 'USDC',      chain: 'ethereum', chainLabel: 'Ethereum', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6,  isStable: true  },
+  { symbol: 'BTC',       chain: 'bitcoin',  chainLabel: 'Bitcoin',  address: null,                                         decimals: 8,  isStable: false  },
+];
+
+/** Look up an asset definition by symbol + chain */
+export function getAssetDef(symbol: string, chain: SupportedChain): AssetDefinition | undefined {
+  return ASSET_REGISTRY.find(a => a.symbol === symbol && a.chain === chain);
+}
+
+/** All unique symbols across all chains */
+export const ALL_SYMBOLS = Array.from(new Set(ASSET_REGISTRY.map(a => a.symbol)));
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TokenPrice {
@@ -29,7 +69,9 @@ export interface TokenPrice {
 
 export interface SwapQuote {
   fromToken: string;
+  fromChain: SupportedChain;
   toToken: string;
+  toChain: SupportedChain;
   inAmount: number;
   outAmount: number;
   rate: number;
@@ -44,7 +86,9 @@ export interface RfqResult {
   rfqId: string;
   route: 'p2p' | 'dex';
   fromToken: string;
+  fromChain?: SupportedChain;
   toToken: string;
+  toChain?: SupportedChain;
   inAmount: number;
   outAmount: number;
   rate: number;
@@ -80,11 +124,19 @@ export interface BackendStats {
   activePeers: number;
   uptimeMs: number;
   pendingRfqs: number;
+  /** Per-chain volume breakdown (may be absent on older Oracle VM versions) */
+  byChain?: {
+    solana?: { volumeUsd: number; swaps: number };
+    ethereum?: { volumeUsd: number; swaps: number };
+    bitcoin?: { volumeUsd: number; swaps: number };
+  };
 }
 
 export interface WalletAsset {
   asset: string;
+  /** e.g. "Solana", "Ethereum · 0x1234...abcd", "Bitcoin" */
   network: string;
+  chain: SupportedChain;
   balance: string;
   usd: string;
   address: string | null;
@@ -167,7 +219,9 @@ function connectSSE() {
     for (const type of eventTypes) {
       sseSource.addEventListener(type, (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data);
+          const raw = JSON.parse(e.data);
+          // Normalise prices SSE event — always include USDC and USDT at $1.00
+          const data = type === 'prices' ? normalisePricesEvent(raw) : raw;
           const handlers = sseHandlers.get(type);
           if (handlers) handlers.forEach(h => h(data));
         } catch (_) {}
@@ -176,6 +230,16 @@ function connectSSE() {
   } catch (_) {
     sseConnected = false;
   }
+}
+
+/** Ensure USDC and USDT are always present in prices SSE events */
+function normalisePricesEvent(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const event = raw as Record<string, unknown>;
+  const prices = (event.prices ?? {}) as Record<string, unknown>;
+  if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
+  if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
+  return { ...event, prices };
 }
 
 export function onSSEEvent(event: SSEEventType, handler: SSEHandler): () => void {
@@ -197,6 +261,11 @@ export function isSSEConnected(): boolean {
 
 // ─── REST API ─────────────────────────────────────────────────────────────────
 
+/**
+ * GET /api/prices
+ * Returns prices for all 7 supported assets.
+ * USDC and USDT are always $1.00 (stablecoins) — injected if Oracle VM omits them.
+ */
 export async function getPrices(): Promise<Record<string, TokenPrice>> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -208,44 +277,81 @@ export async function getPrices(): Promise<Record<string, TokenPrice>> {
   return prices;
 }
 
+/**
+ * GET /api/quote
+ * Fetch a swap quote from the Oracle VM.
+ * Includes fromChain/toChain for multi-chain routing context.
+ */
 export async function getSwapQuote(
   from: string,
   to: string,
-  amount: string
+  amount: string,
+  fromChain?: SupportedChain,
+  toChain?: SupportedChain
 ): Promise<SwapQuote> {
   const params = new URLSearchParams({ from, to, amount });
+  if (fromChain) params.set('fromChain', fromChain);
+  if (toChain) params.set('toChain', toChain);
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/quote?${params}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   if (!data.success) throw new Error(data.error);
-  return data.quote;
+  return {
+    ...data.quote,
+    fromChain: data.quote.fromChain ?? fromChain ?? 'solana',
+    toChain: data.quote.toChain ?? toChain ?? 'solana',
+  };
 }
 
+/**
+ * POST /api/rfq
+ * Submit a Request-for-Quote to the P2P network.
+ * Now includes fromChain/toChain for cross-chain routing.
+ */
 export async function submitRfq(
   fromToken: string,
   toToken: string,
-  amount: number
+  amount: number,
+  fromChain: SupportedChain = 'solana',
+  toChain: SupportedChain = 'solana'
 ): Promise<{ success: boolean; result: RfqResult }> {
   const res = await fetchWithTimeout(
     `${BACKEND_URL}/api/rfq`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromToken, toToken, amount }),
+      body: JSON.stringify({ fromToken, toToken, amount, fromChain, toChain }),
     },
     20000
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  return {
+    ...data,
+    result: {
+      ...data.result,
+      fromChain: data.result?.fromChain ?? fromChain,
+      toChain: data.result?.toChain ?? toChain,
+    },
+  };
 }
 
-export async function executeSwap(rfqId: string, walletAddress?: string): Promise<unknown> {
+/**
+ * POST /api/swap/execute
+ * Execute a confirmed swap.
+ * Passes chain context and wallet address per chain.
+ */
+export async function executeSwap(
+  rfqId: string,
+  walletAddress?: string,
+  chain?: SupportedChain
+): Promise<unknown> {
   const res = await fetchWithTimeout(
     `${BACKEND_URL}/api/swap/execute`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rfqId, walletAddress }),
+      body: JSON.stringify({ rfqId, walletAddress, chain: chain ?? 'solana' }),
     },
     15000
   );
@@ -253,6 +359,9 @@ export async function executeSwap(rfqId: string, walletAddress?: string): Promis
   return res.json();
 }
 
+/**
+ * GET /api/agent/status
+ */
 export async function getAgentStatus(): Promise<AgentStatus> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/agent/status`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -260,6 +369,9 @@ export async function getAgentStatus(): Promise<AgentStatus> {
   return data;
 }
 
+/**
+ * GET /api/agent/log
+ */
 export async function getAgentLog(): Promise<AgentLogEntry[]> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/agent/log`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -267,6 +379,10 @@ export async function getAgentLog(): Promise<AgentLogEntry[]> {
   return data.log || [];
 }
 
+/**
+ * GET /api/stats
+ * Returns aggregate stats + per-chain breakdown if available.
+ */
 export async function getStats(): Promise<BackendStats> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/stats`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -274,20 +390,56 @@ export async function getStats(): Promise<BackendStats> {
   return data.stats;
 }
 
+/**
+ * GET /api/swaps
+ * Returns pending and completed swaps.
+ * Normalises each swap to include chain context.
+ */
 export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: RfqResult[] }> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/swaps`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return { pending: data.pending || [], completed: data.completed || [] };
+  const normalise = (swaps: RfqResult[]): RfqResult[] =>
+    swaps.map(s => ({
+      ...s,
+      fromChain: s.fromChain ?? inferChain(s.fromToken),
+      toChain: s.toChain ?? inferChain(s.toToken),
+    }));
+  return {
+    pending: normalise(data.pending || []),
+    completed: normalise(data.completed || []),
+  };
 }
 
+/**
+ * GET /api/wallet
+ * Returns Oracle VM node wallet balances (Solana assets).
+ * Normalises each asset to include chain field.
+ */
 export async function getWallet(): Promise<WalletData> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/wallet`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data;
+  const wallets: WalletAsset[] = (data.wallets || []).map((w: WalletAsset) => ({
+    ...w,
+    chain: w.chain ?? inferChain(w.asset),
+  }));
+  return { ...data, wallets };
 }
 
 export function getBackendUrl(): string {
   return BACKEND_URL;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Infer the most likely chain for a given token symbol.
+ * Used to normalise legacy Oracle VM responses that omit chain context.
+ */
+export function inferChain(symbol: string): SupportedChain {
+  const upper = symbol?.toUpperCase();
+  if (upper === 'ETH') return 'ethereum';
+  if (upper === 'BTC') return 'bitcoin';
+  return 'solana'; // SOL, USDT, USDC default to Solana
 }

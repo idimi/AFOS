@@ -266,9 +266,13 @@ function MobileSidebarDrawer({
 }
 
 // ── Mini Chat Widget (replaces Agent Status Card on Overview) ─────────────────
+type SupportedChain = "solana" | "ethereum" | "bitcoin";
+
 interface QuoteData {
   fromToken: string;
+  fromChain?: SupportedChain;
   toToken: string;
+  toChain?: SupportedChain;
   fromAmount: number;
   toAmount: number;
   fromAmountUsd: number;
@@ -280,6 +284,12 @@ interface QuoteData {
   route: string;
   quoteResponse: unknown;
 }
+
+const CHAIN_BADGE: Record<SupportedChain, { label: string; color: string }> = {
+  solana:   { label: "SOL",  color: "#9945FF" },
+  ethereum: { label: "ETH",  color: "#627EEA" },
+  bitcoin:  { label: "BTC",  color: "#F7931A" },
+};
 
 interface MiniChatMessage {
   id: string;
@@ -321,6 +331,19 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
 
   const handleConfirmSwap = useCallback(async (quoteData: QuoteData) => {
+    const fromChain = quoteData.fromChain ?? "solana";
+
+    // Non-Solana swaps route through IntercomSwap — redirect user to Swaps page
+    if (fromChain !== "solana" || (quoteData.toChain && quoteData.toChain !== "solana")) {
+      addMessage({
+        role: "assistant",
+        content: `This ${fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} swap routes via IntercomSwap. Head to the **Swaps** page with your ${fromChain === "ethereum" ? "MetaMask" : "Bitcoin"} wallet connected to confirm.`,
+        type: "text",
+      });
+      return;
+    }
+
+    // Solana swap via Jupiter + Phantom
     if (!publicKey) {
       addMessage({ role: "assistant", content: "Please connect your Solana wallet first to execute swaps.", type: "error" });
       return;
@@ -435,12 +458,22 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
                     <p className="text-[9px] text-muted-foreground mb-0.5">You pay</p>
                     <p className="text-sm font-bold font-mono text-foreground">{msg.quoteData.fromAmount} {msg.quoteData.fromToken}</p>
                     <p className="text-[9px] text-muted-foreground">${msg.quoteData.fromAmountUsd.toFixed(2)}</p>
+                    {msg.quoteData.fromChain && (
+                      <span className="inline-block mt-1 text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: CHAIN_BADGE[msg.quoteData.fromChain].color + "22", color: CHAIN_BADGE[msg.quoteData.fromChain].color, border: `1px solid ${CHAIN_BADGE[msg.quoteData.fromChain].color}44` }}>
+                        {CHAIN_BADGE[msg.quoteData.fromChain].label}
+                      </span>
+                    )}
                   </div>
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
                     <p className="text-[9px] text-muted-foreground mb-0.5">You receive</p>
                     <p className="text-sm font-bold font-mono text-emerald-400">{msg.quoteData.toAmount.toFixed(6)} {msg.quoteData.toToken}</p>
                     <p className="text-[9px] text-muted-foreground">${msg.quoteData.toAmountUsd.toFixed(2)}</p>
+                    {msg.quoteData.toChain && (
+                      <span className="inline-block mt-1 text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: CHAIN_BADGE[msg.quoteData.toChain].color + "22", color: CHAIN_BADGE[msg.quoteData.toChain].color, border: `1px solid ${CHAIN_BADGE[msg.quoteData.toChain].color}44` }}>
+                        {CHAIN_BADGE[msg.quoteData.toChain].label}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {/* Fee row */}
@@ -459,7 +492,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
                     style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
                   >
                     {buildSwapTx.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    {buildSwapTx.isPending ? "Building tx…" : `Confirm Swap`}
+                    {buildSwapTx.isPending ? "Building tx…" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via IntercomSwap`}
                   </button>
                 </div>
               </div>
