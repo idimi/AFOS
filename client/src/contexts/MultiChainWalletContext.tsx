@@ -2,8 +2,15 @@
  * MultiChainWalletContext
  * Manages wallet connections for three chains:
  *   - Solana: via @solana/wallet-adapter-react (Phantom, Solflare)
- *   - Ethereum: via EIP-1193 window.ethereum (MetaMask, Coinbase Wallet)
- *   - Bitcoin: via sats-connect (Xverse) + window.tracnetwork (Tap Wallet)
+ *   - Ethereum: via EIP-1193 window.ethereum or window.phantom.ethereum (MetaMask, Coinbase, Phantom)
+ *   - Bitcoin: via sats-connect (Xverse), window.tracnetwork (Tap Wallet), or window.phantom.bitcoin (Phantom)
+ *
+ * Phantom is a multi-chain wallet: connecting it once unlocks Solana, Ethereum, and Bitcoin simultaneously.
+ * MetaMask → Ethereum only.
+ * Coinbase Wallet → Ethereum only.
+ * Xverse → Bitcoin only.
+ * Tap Wallet → Bitcoin + TNK only.
+ * Solflare → Solana only (handled by @solana/wallet-adapter).
  */
 
 import React, {
@@ -20,6 +27,8 @@ import { request as satsRequest, AddressPurpose } from "sats-connect";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Chain = "solana" | "ethereum" | "bitcoin";
+export type EthProviderType = "metamask" | "coinbase" | "phantom";
+export type BtcProviderType = "xverse" | "tap" | "phantom";
 
 export interface ChainWallet {
   chain: Chain;
@@ -31,6 +40,8 @@ export interface ChainWallet {
   symbol: string;        // SOL / ETH / BTC / TNK
   connected: boolean;
   connecting: boolean;
+  /** Whether this connection came from Phantom multi-chain */
+  isPhantom?: boolean;
 }
 
 export interface EthErc20Balances {
@@ -38,16 +49,36 @@ export interface EthErc20Balances {
   usdt: number;   // USDT balance in human units (6 decimals)
 }
 
+/** Phantom multi-chain connection state */
+export interface PhantomMultiChainState {
+  /** Whether Phantom is connected across all available chains */
+  connected: boolean;
+  /** Which chains Phantom successfully connected */
+  chains: Chain[];
+  /** Phantom's Solana address (if connected) */
+  solanaAddress?: string;
+  /** Phantom's Ethereum address (if connected) */
+  ethereumAddress?: string;
+  /** Phantom's Bitcoin payment address (if connected) */
+  bitcoinAddress?: string;
+}
+
 interface MultiChainWalletContextValue {
   ethereum: ChainWallet | null;
   bitcoin: ChainWallet | null;
   erc20Balances: EthErc20Balances;
-  connectEthereum: (provider: "metamask" | "coinbase") => Promise<void>;
-  connectBitcoin: (provider: "xverse" | "tap") => Promise<void>;
+  /** Phantom multi-chain state — non-null when Phantom is connected */
+  phantomMultiChain: PhantomMultiChainState | null;
+  connectEthereum: (provider: EthProviderType) => Promise<void>;
+  connectBitcoin: (provider: BtcProviderType) => Promise<void>;
+  /** Connect Phantom across all supported chains at once */
+  connectPhantomMultiChain: () => Promise<void>;
   disconnectEthereum: () => void;
   disconnectBitcoin: () => void;
+  disconnectPhantom: () => void;
   ethConnecting: boolean;
   btcConnecting: boolean;
+  phantomConnecting: boolean;
 }
 
 const MultiChainWalletContext = createContext<MultiChainWalletContextValue | null>(null);
@@ -65,13 +96,11 @@ const ERC20_CONTRACTS = {
 } as const;
 
 // ERC-20 balanceOf(address) selector = keccak256("balanceOf(address)")[0:4] = 0x70a08231
-// Encode call data: selector + address padded to 32 bytes
 function encodeBalanceOf(address: string): string {
   const addr = address.toLowerCase().replace("0x", "").padStart(64, "0");
   return `0x70a08231${addr}`;
 }
 
-// Fetch ERC-20 token balance for a given wallet address using eth_call
 async function fetchErc20Balance(
   provider: EthProvider,
   tokenAddress: string,
@@ -105,7 +134,6 @@ interface EthProvider {
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
 }
 
-// Use a separate variable to avoid TS2717 conflict with @particle-network/auth which declares window.ethereum as any
 type EthWindowProvider = EthProvider;
 
 declare global {
@@ -117,22 +145,37 @@ declare global {
       getBalance: () => Promise<string>;
       getNetwork: () => Promise<string>;
     };
+    phantom?: {
+      solana?: {
+        isPhantom?: boolean;
+        connect: (opts?: { onlyIfTrusted?: boolean }) => Promise<{ publicKey: { toString(): string } }>;
+        disconnect: () => Promise<void>;
+        publicKey?: { toString(): string };
+      };
+      ethereum?: EthProvider & { isPhantom?: boolean };
+      bitcoin?: {
+        isPhantom?: boolean;
+        requestAccounts: () => Promise<{ address: string; addressType: string; publicKey: string; purpose: string }[]>;
+        signPSBT: (psbt: Uint8Array, opts?: unknown) => Promise<Uint8Array>;
+      };
+    };
   }
 }
 
-// Pick the right provider from window.ethereum (handles multi-wallet injection)
-function getEthProvider(type: "metamask" | "coinbase"): EthProvider | null {
+// Pick the right EIP-1193 provider from window.ethereum (handles multi-wallet injection)
+function getEthProvider(type: EthProviderType): EthProvider | null {
+  // Phantom has its own ethereum provider
+  if (type === "phantom") {
+    return window.phantom?.ethereum ?? null;
+  }
   const eth = window.ethereum as EthWindowProvider | undefined;
   if (!eth) return null;
-  // Some browsers inject multiple providers under .providers array
   if (eth.providers) {
     if (type === "metamask") return eth.providers.find((p: EthProvider) => p.isMetaMask && !p.isCoinbaseWallet) ?? null;
     if (type === "coinbase") return eth.providers.find((p: EthProvider) => p.isCoinbaseWallet) ?? null;
   }
-  // Single provider
   if (type === "metamask" && eth.isMetaMask) return eth;
   if (type === "coinbase" && eth.isCoinbaseWallet) return eth;
-  // Fallback: return whatever is there
   return eth;
 }
 
@@ -147,7 +190,6 @@ async function fetchEthPriceUsd(): Promise<number> {
   return 0;
 }
 
-// Fetch confirmed BTC balance in BTC from Mempool.space
 async function fetchBtcBalanceFromMempool(address: string): Promise<{ btc: string; sats: number }> {
   try {
     const res = await fetch(`https://mempool.space/api/address/${address}`);
@@ -181,12 +223,175 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const [ethereum, setEthereum] = useState<ChainWallet | null>(null);
   const [bitcoin, setBitcoin] = useState<ChainWallet | null>(null);
   const [erc20Balances, setErc20Balances] = useState<EthErc20Balances>({ usdc: 0, usdt: 0 });
+  const [phantomMultiChain, setPhantomMultiChain] = useState<PhantomMultiChainState | null>(null);
   const [ethConnecting, setEthConnecting] = useState(false);
   const [btcConnecting, setBtcConnecting] = useState(false);
+  const [phantomConnecting, setPhantomConnecting] = useState(false);
 
-  // ── Ethereum ──────────────────────────────────────────────────────────────
+  // ── Phantom Multi-Chain Connect ───────────────────────────────────────────
+  // Phantom exposes window.phantom.solana, window.phantom.ethereum, window.phantom.bitcoin
+  // We connect all three simultaneously and populate ethereum + bitcoin state
 
-  const connectEthereum = useCallback(async (providerType: "metamask" | "coinbase") => {
+  const connectPhantomMultiChain = useCallback(async () => {
+    const ph = window.phantom;
+    if (!ph) {
+      toast.error("Phantom not detected", {
+        description: "Please install the Phantom browser extension.",
+        action: { label: "Install", onClick: () => window.open("https://phantom.app/download", "_blank") },
+      });
+      return;
+    }
+
+    setPhantomConnecting(true);
+    const connectedChains: Chain[] = [];
+    let solanaAddress: string | undefined;
+    let ethereumAddress: string | undefined;
+    let bitcoinAddress: string | undefined;
+
+    try {
+      // ── Solana via Phantom ──
+      if (ph.solana?.isPhantom) {
+        try {
+          const resp = await ph.solana.connect();
+          solanaAddress = resp.publicKey.toString();
+          connectedChains.push("solana");
+        } catch (e) {
+          console.warn("[Phantom] Solana connect failed:", e);
+        }
+      }
+
+      // ── Ethereum via Phantom ──
+      if (ph.ethereum) {
+        try {
+          const accounts = await ph.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+          if (accounts?.length) {
+            ethereumAddress = accounts[0];
+            connectedChains.push("ethereum");
+
+            // Fetch ETH balance + ERC-20 balances
+            const [balanceHex, priceUsd, usdcBal, usdtBal] = await Promise.all([
+              ph.ethereum.request({ method: "eth_getBalance", params: [ethereumAddress, "latest"] }) as Promise<string>,
+              fetchEthPriceUsd(),
+              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDC, ethereumAddress, 6),
+              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDT, ethereumAddress, 6),
+            ]);
+
+            const balanceEth = parseInt(balanceHex, 16) / 1e18;
+            setErc20Balances({ usdc: usdcBal, usdt: usdtBal });
+            setEthereum({
+              chain: "ethereum",
+              walletName: "Phantom",
+              address: ethereumAddress,
+              shortAddress: shortAddr(ethereumAddress),
+              balance: balanceEth.toFixed(4),
+              balanceUsd: balanceEth * priceUsd,
+              symbol: "ETH",
+              connected: true,
+              connecting: false,
+              isPhantom: true,
+            });
+
+            // Listen for account changes
+            ph.ethereum.on?.("accountsChanged", (accs: unknown) => {
+              const newAccs = accs as string[];
+              if (!newAccs?.length) {
+                disconnectPhantom();
+              } else {
+                setEthereum(prev => prev ? { ...prev, address: newAccs[0], shortAddress: shortAddr(newAccs[0]) } : null);
+              }
+            });
+          }
+        } catch (e) {
+          console.warn("[Phantom] Ethereum connect failed:", e);
+        }
+      }
+
+      // ── Bitcoin via Phantom ──
+      if (ph.bitcoin?.isPhantom) {
+        try {
+          const btcAccounts = await ph.bitcoin.requestAccounts();
+          // Prefer payment (p2wpkh / p2tr) address
+          const paymentAcc = btcAccounts.find(a => a.purpose === "payment" || a.addressType === "p2wpkh" || a.addressType === "p2tr")
+            ?? btcAccounts[0];
+
+          if (paymentAcc) {
+            bitcoinAddress = paymentAcc.address;
+            connectedChains.push("bitcoin");
+
+            const [{ btc, sats }, priceUsd] = await Promise.all([
+              fetchBtcBalanceFromMempool(bitcoinAddress),
+              fetchBtcPriceUsd(),
+            ]);
+
+            setBitcoin({
+              chain: "bitcoin",
+              walletName: "Phantom",
+              address: bitcoinAddress,
+              shortAddress: shortAddr(bitcoinAddress),
+              balance: btc,
+              balanceUsd: (sats / 1e8) * priceUsd,
+              symbol: "BTC",
+              connected: true,
+              connecting: false,
+              isPhantom: true,
+            });
+          }
+        } catch (e) {
+          console.warn("[Phantom] Bitcoin connect failed:", e);
+        }
+      }
+
+      if (connectedChains.length === 0) {
+        toast.error("Phantom connection failed", { description: "No chains could be connected." });
+        return;
+      }
+
+      setPhantomMultiChain({
+        connected: true,
+        chains: connectedChains,
+        solanaAddress,
+        ethereumAddress,
+        bitcoinAddress,
+      });
+
+      const chainLabels = connectedChains.map(c => c.charAt(0).toUpperCase() + c.slice(1)).join(" + ");
+      toast.success(`Phantom connected — ${chainLabels}`, {
+        description: solanaAddress ? shortAddr(solanaAddress) : shortAddr(ethereumAddress ?? ""),
+      });
+
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("rejected") && !msg.includes("denied")) {
+        toast.error("Phantom connection failed", { description: msg });
+      }
+    } finally {
+      setPhantomConnecting(false);
+    }
+  }, []);
+
+  const disconnectPhantom = useCallback(() => {
+    // Disconnect Phantom Solana
+    window.phantom?.solana?.disconnect().catch(() => {});
+    // Clear ETH + BTC state that came from Phantom
+    setEthereum(prev => prev?.isPhantom ? null : prev);
+    setBitcoin(prev => prev?.isPhantom ? null : prev);
+    setErc20Balances(prev => {
+      // Only clear if ETH was from Phantom
+      return { usdc: 0, usdt: 0 };
+    });
+    setPhantomMultiChain(null);
+    toast.info("Phantom disconnected from all chains");
+  }, []);
+
+  // ── Ethereum (non-Phantom) ────────────────────────────────────────────────
+
+  const connectEthereum = useCallback(async (providerType: EthProviderType) => {
+    // Route Phantom to the multi-chain connector
+    if (providerType === "phantom") {
+      await connectPhantomMultiChain();
+      return;
+    }
+
     setEthConnecting(true);
     try {
       const provider = getEthProvider(providerType);
@@ -205,17 +410,13 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       if (!accounts?.length) throw new Error("No accounts returned");
 
       const address = accounts[0];
-
-      // Get ETH balance (returns hex wei)
       const balanceHex = await provider.request({
         method: "eth_getBalance",
         params: [address, "latest"],
       }) as string;
       const balanceEth = parseInt(balanceHex, 16) / 1e18;
-
       const priceUsd = await fetchEthPriceUsd();
 
-      // Fetch ERC-20 USDC + USDT balances in parallel
       const [usdcBalance, usdtBalance] = await Promise.all([
         fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, address, 6),
         fetchErc20Balance(provider, ERC20_CONTRACTS.USDT, address, 6),
@@ -233,11 +434,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         symbol: "ETH",
         connected: true,
         connecting: false,
+        isPhantom: false,
       });
 
       toast.success(`${walletName} connected`, { description: shortAddr(address) });
 
-      // Listen for account changes
       provider.on?.("accountsChanged", (accs: unknown) => {
         const newAccs = accs as string[];
         if (!newAccs?.length) {
@@ -255,13 +456,18 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     } finally {
       setEthConnecting(false);
     }
-  }, []);
+  }, [connectPhantomMultiChain]);
 
   const disconnectEthereum = useCallback(() => {
     setEthereum(null);
     setErc20Balances({ usdc: 0, usdt: 0 });
-    toast.info("Ethereum wallet disconnected");
-  }, []);
+    if (phantomMultiChain) {
+      // If Phantom was connected, disconnect all Phantom chains
+      disconnectPhantom();
+    } else {
+      toast.info("Ethereum wallet disconnected");
+    }
+  }, [phantomMultiChain, disconnectPhantom]);
 
   // ── Bitcoin / Xverse ──────────────────────────────────────────────────────
 
@@ -279,7 +485,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         if (!paymentAddr) throw new Error("No payment address returned");
 
         const address = paymentAddr.address;
-        // Fetch BTC balance from Mempool.space and USD price in parallel
         const [{ btc: btcBalance, sats }, priceUsd] = await Promise.all([
           fetchBtcBalanceFromMempool(address),
           fetchBtcPriceUsd(),
@@ -296,10 +501,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           symbol: "BTC",
           connected: true,
           connecting: false,
+          isPhantom: false,
         });
         toast.success("Xverse connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
       } else if (response.status === "error") {
-        const errMsg = (response as { status: string; error?: { message?: string } }).error?.message || "Unknown error";
+        const errMsg = (response as unknown as { error?: { message?: string } }).error?.message ?? "Unknown error";
         if (!errMsg.includes("cancel") && !errMsg.includes("reject")) {
           toast.error("Xverse connection failed", { description: errMsg });
         }
@@ -323,19 +529,14 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     try {
       const address = await window.tracnetwork.requestAccount();
       const rawBalance = await window.tracnetwork.getBalance();
-      // TNK balance is returned as integer string in smallest unit
       const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
 
-      // Tap Wallet uses the same underlying Bitcoin key — fetch BTC balance from Mempool.space
-      // The address returned by requestAccount() is a trac1... Bech32m address (P2TR)
-      // which is a valid Bitcoin address on mainnet
       const [{ btc: btcBalance, sats }, btcPriceUsd] = await Promise.all([
         fetchBtcBalanceFromMempool(address),
         fetchBtcPriceUsd(),
       ]);
       const btcBalanceUsd = (sats / 1e8) * btcPriceUsd;
 
-      // Show BTC balance as primary, TNK as secondary in the balance field
       const displayBalance = sats > 0
         ? `${btcBalance} BTC / ${tnkBalance} TNK`
         : `${tnkBalance} TNK`;
@@ -350,6 +551,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         symbol: sats > 0 ? "BTC" : "TNK",
         connected: true,
         connecting: false,
+        isPhantom: false,
       });
       toast.success("Tap Wallet connected", {
         description: `${shortAddr(address)} · ${btcBalance} BTC · ${tnkBalance} TNK`,
@@ -362,7 +564,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, []);
 
-  const connectBitcoin = useCallback(async (provider: "xverse" | "tap") => {
+  const connectBitcoin = useCallback(async (provider: BtcProviderType) => {
+    // Route Phantom to the multi-chain connector
+    if (provider === "phantom") {
+      await connectPhantomMultiChain();
+      return;
+    }
     setBtcConnecting(true);
     try {
       if (provider === "xverse") await connectXverse();
@@ -370,19 +577,24 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     } finally {
       setBtcConnecting(false);
     }
-  }, [connectXverse, connectTapWallet]);
+  }, [connectXverse, connectTapWallet, connectPhantomMultiChain]);
 
   const disconnectBitcoin = useCallback(() => {
-    setBitcoin(null);
-    toast.info("Bitcoin wallet disconnected");
-  }, []);
+    if (bitcoin?.isPhantom) {
+      disconnectPhantom();
+    } else {
+      setBitcoin(null);
+      toast.info("Bitcoin wallet disconnected");
+    }
+  }, [bitcoin, disconnectPhantom]);
 
   // ── Auto-refresh ERC-20 balances every 60 seconds ───────────────────────────
   useEffect(() => {
     if (!ethereum?.connected || !ethereum.address) return;
 
     const refreshErc20 = async () => {
-      const provider = window.ethereum as EthProvider | undefined;
+      // Use Phantom's ethereum provider if connected via Phantom, else window.ethereum
+      const provider = (ethereum.isPhantom ? window.phantom?.ethereum : window.ethereum) as EthProvider | undefined;
       if (!provider) return;
       const [usdc, usdt] = await Promise.all([
         fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, ethereum.address, 6),
@@ -393,7 +605,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
     const interval = setInterval(refreshErc20, 60_000);
     return () => clearInterval(interval);
-  }, [ethereum?.connected, ethereum?.address]);
+  }, [ethereum?.connected, ethereum?.address, ethereum?.isPhantom]);
 
   // ── Auto-refresh BTC balance every 60 seconds ─────────────────────────────
   useEffect(() => {
@@ -409,7 +621,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
         setBitcoin(prev => {
           if (!prev) return null;
-          // For Tap Wallet, preserve the TNK part of the display balance
           const isTapWallet = prev.walletName === "Tap Wallet";
           const tnkPart = isTapWallet && prev.balance.includes("TNK")
             ? prev.balance.split(" / ")[1] ?? ""
@@ -421,11 +632,10 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             ...prev,
             balance: newBalance,
             balanceUsd,
-            symbol: sats > 0 ? "BTC" : prev.symbol,
           };
         });
-      } catch {
-        // Silently ignore refresh errors — stale balance is fine
+      } catch (err) {
+        console.warn("[BTC refresh] Failed:", err);
       }
     };
 
@@ -438,12 +648,16 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       ethereum,
       bitcoin,
       erc20Balances,
+      phantomMultiChain,
       connectEthereum,
       connectBitcoin,
+      connectPhantomMultiChain,
       disconnectEthereum,
       disconnectBitcoin,
+      disconnectPhantom,
       ethConnecting,
       btcConnecting,
+      phantomConnecting,
     }}>
       {children}
     </MultiChainWalletContext.Provider>
