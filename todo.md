@@ -144,3 +144,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Rename "OpenClaw" in STACK strip to "AFOS Agent"
 - [x] Add Swaps Executed counter to Agent Insights widget (desktop + mobile)
 - [x] Improve Last Event display: parse swap token amounts and show "1 USDT → 0.0058 SOL" format
+
+## Desktop Chart Iframe Height Fix
+- [x] Reduce TradingView chart iframe height on desktop from 520px to 360px (chart controls now fully visible)
+- [x] Mobile chart height untouched
