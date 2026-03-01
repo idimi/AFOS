@@ -1076,6 +1076,7 @@ function WalletsCard() {
     SOL:  { color: "text-purple-400",  border: "border-purple-500/20",  bg: "bg-purple-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
     USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8", chain: "Solana",   chainColor: "text-purple-300" },
     USDC: { color: "text-blue-300",    border: "border-blue-400/20",    bg: "bg-blue-400/8",    chain: "Solana",   chainColor: "text-purple-300" },
+    // USDC on Ethereum uses same token style but Ethereum chain — handled per-row via def.network
     BTC:  { color: "text-amber-400",   border: "border-amber-500/20",   bg: "bg-amber-500/8",   chain: "Bitcoin",  chainColor: "text-amber-300" },
     ETH:  { color: "text-blue-400",    border: "border-blue-500/20",    bg: "bg-blue-500/8",    chain: "Ethereum", chainColor: "text-blue-300" },
     TNK:  { color: "text-orange-400",  border: "border-orange-500/20",  bg: "bg-orange-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
@@ -1090,11 +1091,12 @@ function WalletsCard() {
 
   // All supported assets — always shown, live data merged in when available
   const ALL_ASSETS = [
-    { asset: "SOL",  network: "Solana",   defaultBalance: "0.000000", defaultUsd: "$0" },
-    { asset: "USDT", network: "Solana",   defaultBalance: "0.00",     defaultUsd: "$0" },
-    { asset: "USDC", network: "Solana",   defaultBalance: "0.00",     defaultUsd: "$0" },
-    { asset: "ETH",  network: "Ethereum", defaultBalance: "0.000000", defaultUsd: "$0" },
-    { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",     defaultUsd: "$0" },
+    { asset: "SOL",  network: "Solana",   defaultBalance: "0.000000",   defaultUsd: "$0" },
+    { asset: "USDT", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0" },
+    { asset: "USDC", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0" },
+    { asset: "ETH",  network: "Ethereum", defaultBalance: "0.000000",   defaultUsd: "$0" },
+    { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0" },
+    { asset: "USDC", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0" },
     { asset: "BTC",  network: "Bitcoin",  defaultBalance: "0.00000000", defaultUsd: "$0" },
   ];
 
@@ -1107,7 +1109,12 @@ function WalletsCard() {
     // Try connected BTC wallet
     const isBtcAsset = def.network === "Bitcoin" && def.asset === "BTC" && bitcoin?.connected;
 
-    const style = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: def.network, chainColor: "text-cyan-300" };
+    const baseStyle = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: def.network, chainColor: "text-cyan-300" };
+    // Override chain badge to match the actual network of this row (e.g. USDC on Ethereum vs Solana)
+    const chainOverride = def.network === "Ethereum" ? { chain: "Ethereum", chainColor: "text-blue-300" }
+      : def.network === "Bitcoin" ? { chain: "Bitcoin", chainColor: "text-amber-300" }
+      : { chain: "Solana", chainColor: "text-purple-300" };
+    const style = { ...baseStyle, ...chainOverride };
 
     if (live) {
       return { asset: def.asset, network: live.network, balance: live.balance, usd: live.usd, connected: true, ...style };
