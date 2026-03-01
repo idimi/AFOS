@@ -1091,7 +1091,7 @@ function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
   const [walletData, setWalletData] = useState<WalletAsset[]>([]);
   const [walletLoading, setWalletLoading] = useState(true);
-  const { ethereum, bitcoin } = useMultiChainWallet();
+  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -1137,8 +1137,12 @@ function WalletsCard() {
   const wallets = ALL_ASSETS.map(def => {
     // Try to find live data from backend (Solana assets)
     const live = walletData.find(w => w.asset === def.asset && w.network.toLowerCase().includes(def.network.toLowerCase()));
-    // Try connected ETH wallet
-    const isEthAsset = def.network === "Ethereum" && def.asset === "ETH" && ethereum?.connected;
+    // Try connected ETH wallet (native ETH)
+    const isEthNative = def.network === "Ethereum" && def.asset === "ETH" && ethereum?.connected;
+    // Try ERC-20 USDT on Ethereum
+    const isEthUsdt = def.network === "Ethereum" && def.asset === "USDT" && ethereum?.connected;
+    // Try ERC-20 USDC on Ethereum
+    const isEthUsdc = def.network === "Ethereum" && def.asset === "USDC" && ethereum?.connected;
     // Try connected BTC wallet
     const isBtcAsset = def.network === "Bitcoin" && def.asset === "BTC" && bitcoin?.connected;
 
@@ -1148,11 +1152,18 @@ function WalletsCard() {
       : def.network === "Bitcoin" ? { chain: "Bitcoin", chainColor: "text-amber-300" }
       : { chain: "Solana", chainColor: "text-purple-300" };
     const style = { ...baseStyle, ...chainOverride };
+    const ethNetworkLabel = `Ethereum · ${ethereum?.shortAddress ?? ""}`;
 
     if (live) {
       return { asset: def.asset, network: live.network, balance: live.balance, usd: live.usd, connected: true, ...style };
-    } else if (isEthAsset) {
-      return { asset: "ETH", network: `Ethereum · ${ethereum!.shortAddress}`, balance: ethereum!.balance, usd: ethereum!.balanceUsd > 0 ? `$${ethereum!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
+    } else if (isEthNative) {
+      return { asset: "ETH", network: ethNetworkLabel, balance: ethereum!.balance, usd: ethereum!.balanceUsd > 0 ? `$${ethereum!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
+    } else if (isEthUsdt) {
+      const bal = erc20Balances.usdt;
+      return { asset: "USDT", network: ethNetworkLabel, balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, ...style };
+    } else if (isEthUsdc) {
+      const bal = erc20Balances.usdc;
+      return { asset: "USDC", network: ethNetworkLabel, balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, ...style };
     } else if (isBtcAsset) {
       return { asset: "BTC", network: `Bitcoin · ${bitcoin!.shortAddress}`, balance: bitcoin!.balance, usd: bitcoin!.balanceUsd > 0 ? `$${bitcoin!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
     } else {

@@ -33,9 +33,15 @@ export interface ChainWallet {
   connecting: boolean;
 }
 
+export interface EthErc20Balances {
+  usdc: number;   // USDC balance in human units (6 decimals)
+  usdt: number;   // USDT balance in human units (6 decimals)
+}
+
 interface MultiChainWalletContextValue {
   ethereum: ChainWallet | null;
   bitcoin: ChainWallet | null;
+  erc20Balances: EthErc20Balances;
   connectEthereum: (provider: "metamask" | "coinbase") => Promise<void>;
   connectBitcoin: (provider: "xverse" | "tap") => Promise<void>;
   disconnectEthereum: () => void;
@@ -50,6 +56,38 @@ export function useMultiChainWallet() {
   const ctx = useContext(MultiChainWalletContext);
   if (!ctx) throw new Error("useMultiChainWallet must be inside MultiChainWalletProvider");
   return ctx;
+}
+
+// ─── ERC-20 contract addresses (Ethereum mainnet) ────────────────────────────
+const ERC20_CONTRACTS = {
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+} as const;
+
+// ERC-20 balanceOf(address) selector = keccak256("balanceOf(address)")[0:4] = 0x70a08231
+// Encode call data: selector + address padded to 32 bytes
+function encodeBalanceOf(address: string): string {
+  const addr = address.toLowerCase().replace("0x", "").padStart(64, "0");
+  return `0x70a08231${addr}`;
+}
+
+// Fetch ERC-20 token balance for a given wallet address using eth_call
+async function fetchErc20Balance(
+  provider: EthProvider,
+  tokenAddress: string,
+  walletAddress: string,
+  decimals: number
+): Promise<number> {
+  try {
+    const result = await provider.request({
+      method: "eth_call",
+      params: [{ to: tokenAddress, data: encodeBalanceOf(walletAddress) }, "latest"],
+    }) as string;
+    if (!result || result === "0x") return 0;
+    return parseInt(result, 16) / Math.pow(10, decimals);
+  } catch {
+    return 0;
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -142,6 +180,7 @@ async function fetchBtcPriceUsd(): Promise<number> {
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
   const [ethereum, setEthereum] = useState<ChainWallet | null>(null);
   const [bitcoin, setBitcoin] = useState<ChainWallet | null>(null);
+  const [erc20Balances, setErc20Balances] = useState<EthErc20Balances>({ usdc: 0, usdt: 0 });
   const [ethConnecting, setEthConnecting] = useState(false);
   const [btcConnecting, setBtcConnecting] = useState(false);
 
@@ -175,6 +214,13 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const balanceEth = parseInt(balanceHex, 16) / 1e18;
 
       const priceUsd = await fetchEthPriceUsd();
+
+      // Fetch ERC-20 USDC + USDT balances in parallel
+      const [usdcBalance, usdtBalance] = await Promise.all([
+        fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, address, 6),
+        fetchErc20Balance(provider, ERC20_CONTRACTS.USDT, address, 6),
+      ]);
+      setErc20Balances({ usdc: usdcBalance, usdt: usdtBalance });
 
       const walletName = providerType === "metamask" ? "MetaMask" : "Coinbase Wallet";
       setEthereum({
@@ -213,6 +259,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
   const disconnectEthereum = useCallback(() => {
     setEthereum(null);
+    setErc20Balances({ usdc: 0, usdt: 0 });
     toast.info("Ethereum wallet disconnected");
   }, []);
 
@@ -330,6 +377,24 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     toast.info("Bitcoin wallet disconnected");
   }, []);
 
+  // ── Auto-refresh ERC-20 balances every 60 seconds ───────────────────────────
+  useEffect(() => {
+    if (!ethereum?.connected || !ethereum.address) return;
+
+    const refreshErc20 = async () => {
+      const provider = window.ethereum as EthProvider | undefined;
+      if (!provider) return;
+      const [usdc, usdt] = await Promise.all([
+        fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, ethereum.address, 6),
+        fetchErc20Balance(provider, ERC20_CONTRACTS.USDT, ethereum.address, 6),
+      ]);
+      setErc20Balances({ usdc, usdt });
+    };
+
+    const interval = setInterval(refreshErc20, 60_000);
+    return () => clearInterval(interval);
+  }, [ethereum?.connected, ethereum?.address]);
+
   // ── Auto-refresh BTC balance every 60 seconds ─────────────────────────────
   useEffect(() => {
     if (!bitcoin?.connected || !bitcoin.address) return;
@@ -372,6 +437,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     <MultiChainWalletContext.Provider value={{
       ethereum,
       bitcoin,
+      erc20Balances,
       connectEthereum,
       connectBitcoin,
       disconnectEthereum,
