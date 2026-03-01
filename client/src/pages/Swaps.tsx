@@ -12,7 +12,7 @@ import {
   ArrowDownUp, Zap, Shield, Clock, ChevronDown,
   RefreshCw, AlertCircle, CheckCircle2, Loader2,
   Radio, Network, TrendingUp, TrendingDown,
-  Bot, Cpu, Lock, Unlock, ExternalLink, Copy,
+  Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
   Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge
 } from "lucide-react";
@@ -553,44 +553,7 @@ function ChainStatsBar() {
   );
 }
 
-// ─── Agent Mode Toggle ────────────────────────────────────────────────────────
-
-function AgentModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl transition-all w-full"
-      style={{
-        background: enabled ? "rgba(59,130,246,0.15)" : "var(--muted)",
-        border: `1px solid ${enabled ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
-      }}
-    >
-      <div
-        className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-        style={{ background: enabled ? "rgba(59,130,246,0.2)" : "var(--muted)" }}
-      >
-        {enabled ? <Bot className="w-4 h-4 text-cyan-400" /> : <Cpu className="w-4 h-4 text-slate-500" />}
-      </div>
-      <div className="flex-1 text-left">
-        <div className={`text-xs font-semibold ${enabled ? "text-cyan-300" : "text-slate-400"}`}>
-          {enabled ? "Agent Mode Active" : "Agent Mode Off"}
-        </div>
-        <div className="text-[10px] text-slate-600">
-          {enabled ? "OpenClaw executing swaps autonomously" : "Manual swap execution"}
-        </div>
-      </div>
-      <div
-        className="w-9 h-5 rounded-full relative transition-all flex-shrink-0"
-        style={{ background: enabled ? "#3b82f6" : "var(--muted)" }}
-      >
-        <div
-          className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all duration-300"
-          style={{ left: enabled ? "calc(100% - 18px)" : "2px" }}
-        />
-      </div>
-    </button>
-  );
-}
+// AgentModeToggle removed — was purely cosmetic (no separate execution path)
 
 // ─── Live Order Book ─────────────────────────────────────────────────────────
 
@@ -1446,7 +1409,6 @@ export default function Swaps() {
   const [refundWindowMax, setRefundWindowMax] = useState("40");
   const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
-  const [agentMode, setAgentMode] = useState(true);
   const [selectedPeer, setSelectedPeer] = useState<LivePeer | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1765,9 +1727,6 @@ export default function Swaps() {
         {/* Left: Swap Interface — full width on mobile, max-w centered */}
         <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
 
-          {/* Agent Mode */}
-          <AgentModeToggle enabled={agentMode} onToggle={() => setAgentMode(!agentMode)} />
-
           {/* Swap Card */}
           <div
             className="rounded-2xl p-4 sm:p-5"
@@ -2082,17 +2041,13 @@ export default function Swaps() {
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  {agentMode ? <Bot className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
-                  {agentMode ? "Execute via Agent" : "Swap Now"}
+                  <Zap className="w-4 h-4" />
+                  Swap Now
                 </span>
               )}
             </button>
 
-            {agentMode && swapPhase === "idle" && (
-              <p className="text-center text-[10px] text-slate-600 mt-2">
-                OpenClaw will execute this swap autonomously via IntercomSwap P2P
-              </p>
-            )}
+
           </div>
 
           {/* Swap Progress */}

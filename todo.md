@@ -266,3 +266,8 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Swap Page — UI Bug Fixes
 
 - [x] Fix token selector scroll arrows overflowing into the amount input field
+
+## Swap Page — Agent Mode Toggle
+
+- [x] Audit Agent Mode toggle: confirmed purely cosmetic (no separate execution path)
+- [x] Removed AgentModeToggle component — execution is always via submitRfq + executeSwap regardless of toggle state
