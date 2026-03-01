@@ -21,6 +21,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
+import { getPrices, getSwapQuote, submitRfq, type QuoteResponse } from "../lib/afosApi";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -423,24 +424,36 @@ function RecentSwaps() {
 
 function ChainStatsBar() {
   const [prices, setPrices] = useState({
-    BTC: 43418, ETH: 2998, SOL: 150
+    BTC: { price: 67000, change: 0 },
+    ETH: { price: 2000, change: 0 },
+    SOL: { price: 87, change: 0 },
   });
+  const [source, setSource] = useState<'live' | 'mock'>('mock');
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setPrices(prev => ({
-        BTC: Math.round(prev.BTC + (Math.random() - 0.5) * 120),
-        ETH: Math.round(prev.ETH + (Math.random() - 0.5) * 30),
-        SOL: Math.round((prev.SOL + (Math.random() - 0.5) * 2) * 100) / 100,
-      }));
-    }, 4000);
+    // Fetch real prices from AFOS backend
+    const fetchPrices = async () => {
+      try {
+        const data = await getPrices();
+        if (data.success) {
+          setPrices({
+            BTC: { price: data.prices.BTC?.usd ?? 67000, change: data.prices.BTC?.change24h ?? 0 },
+            ETH: { price: data.prices.ETH?.usd ?? 2000, change: data.prices.ETH?.change24h ?? 0 },
+            SOL: { price: data.prices.SOL?.usd ?? 87, change: data.prices.SOL?.change24h ?? 0 },
+          });
+          setSource(data.source === 'mock' ? 'mock' : 'live');
+        }
+      } catch { /* keep current prices */ }
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 30000); // refresh every 30s
     return () => clearInterval(interval);
   }, []);
 
   const stats = [
-    { symbol: "BTC", price: prices.BTC, change: +2.4, color: "#f7931a", icon: "₿", network: "Lightning" },
-    { symbol: "ETH", price: prices.ETH, change: +1.1, color: "#627eea", icon: "Ξ", network: "Ethereum" },
-    { symbol: "SOL", price: prices.SOL, change: -0.8, color: "#9945ff", icon: "◎", network: "Solana" },
+    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Lightning" },
+    { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "Binance Live" : "Ethereum" },
+    { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "Jupiter Live" : "Solana" },
   ];
 
   return (
@@ -1301,18 +1314,68 @@ export default function Swaps() {
   const [selectedPeer, setSelectedPeer] = useState<typeof MOCK_PEERS[0] | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Live quote from backend
+  const [liveQuote, setLiveQuote] = useState<QuoteResponse | null>(null);
+  const [quoteFetching, setQuoteFetching] = useState(false);
+  const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Live token prices from backend
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
-  // Derived values
+  // Fetch live prices on mount
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const data = await getPrices();
+        if (data.success) {
+          const priceMap: Record<string, number> = {};
+          Object.entries(data.prices).forEach(([sym, p]) => { priceMap[sym] = p.usd; });
+          setLivePrices(priceMap);
+        }
+      } catch { /* keep static prices */ }
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch live quote when pair/amount changes (debounced 800ms)
+  useEffect(() => {
+    if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current);
+    const amt = parseFloat(fromAmount);
+    const solPairs = ['SOL', 'USDT', 'USDC'];
+    if (amt > 0 && solPairs.includes(fromToken.symbol) && solPairs.includes(toToken.symbol)) {
+      quoteTimerRef.current = setTimeout(async () => {
+        setQuoteFetching(true);
+        try {
+          const q = await getSwapQuote(fromToken.symbol, toToken.symbol, fromAmount, slippage);
+          if (q?.success) setLiveQuote(q);
+        } catch { /* keep previous quote */ } finally {
+          setQuoteFetching(false);
+        }
+      }, 800);
+    } else {
+      setLiveQuote(null);
+    }
+    return () => { if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromToken.symbol, toToken.symbol, fromAmount, slippage]);
+
+  // Derived values — use live prices when available
   const fromTokenData = TOKENS.find(t => t.symbol === fromToken.symbol) || TOKENS[0];
   const toTokenData = TOKENS.find(t => t.symbol === toToken.symbol) || TOKENS[3];
+  const fromPrice = livePrices[fromToken.symbol] || fromTokenData.usdPrice;
+  const toPrice = livePrices[toToken.symbol] || toTokenData.usdPrice;
 
-  const rate = toTokenData.usdPrice > 0 ? fromTokenData.usdPrice / toTokenData.usdPrice : 0;
-  const toAmount = (parseFloat(fromAmount || "0") * rate).toFixed(toTokenData.usdPrice >= 1 ? 2 : 6);
-  const fromUsd = (parseFloat(fromAmount || "0") * fromTokenData.usdPrice).toFixed(2);
-  const toUsd = (parseFloat(toAmount) * toTokenData.usdPrice).toFixed(2);
+  const rate = toPrice > 0 ? fromPrice / toPrice : 0;
+  const toAmount = liveQuote?.quote?.outputAmount != null
+    ? liveQuote.quote.outputAmount.toFixed(toPrice >= 1 ? 4 : 6)
+    : (parseFloat(fromAmount || "0") * rate).toFixed(toPrice >= 1 ? 2 : 6);
+  const fromUsd = (parseFloat(fromAmount || "0") * fromPrice).toFixed(2);
+  const toUsd = (parseFloat(toAmount) * toPrice).toFixed(2);
 
-  const platformFee = (parseFloat(fromUsd) * 0.005).toFixed(2);
-  const tradeFee = (parseFloat(fromUsd) * 0.003).toFixed(2);
+  const platformFeePct = liveQuote?.quote?.platformFee?.percentage ?? 0.2;
+  const platformFee = (parseFloat(fromUsd) * platformFeePct / 100).toFixed(2);
+  const tradeFee = (parseFloat(fromUsd) * 0.001).toFixed(2);
   const totalFee = (parseFloat(platformFee) + parseFloat(tradeFee)).toFixed(2);
 
   const swapPair = SWAP_PAIRS.find(p =>
@@ -1325,28 +1388,31 @@ export default function Swaps() {
     setFromToken(toToken);
     setToToken(temp);
     setFromAmount(toAmount);
+    setLiveQuote(null);
   };
 
-  const runSwapAnimation = useCallback(() => {
+  const haptic = useHaptic();
+
+  const runSwapAnimation = useCallback((finalToAmount?: string, routeDesc?: string) => {
     const phases: SwapPhase[] = ["rfq", "negotiating", "locking", "settling", "complete"];
     const delays = [0, 1800, 3500, 5500, 7500];
+    const displayTo = finalToAmount ?? toAmount;
 
     phases.forEach((phase, i) => {
       phaseTimerRef.current = setTimeout(() => {
         setSwapPhase(phase);
         if (phase === "complete") {
           haptic.success();
-          toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${toAmount} ${toToken.symbol}`, {
-            description: "Atomic settlement confirmed on-chain",
+          toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${displayTo} ${toToken.symbol}`, {
+            description: routeDesc ?? "Atomic settlement confirmed on-chain",
           });
         }
       }, delays[i]);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromAmount, fromToken.symbol, toAmount, toToken.symbol]);
 
-  const haptic = useHaptic();
-
-  const handleSwap = () => {
+  const handleSwap = async () => {
     if (parseFloat(fromAmount) <= 0) {
       haptic.error();
       toast.error("Enter a valid amount");
@@ -1354,8 +1420,32 @@ export default function Swaps() {
     }
     if (swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error") return;
     haptic.tap();
-    setSwapPhase("idle");
-    setTimeout(runSwapAnimation, 100);
+    setSwapPhase("rfq");
+
+    try {
+      const walletAddr = primaryWallet?.address;
+      const result = await submitRfq(fromToken.symbol, toToken.symbol, fromAmount, walletAddr);
+      if (result?.success) {
+        const finalOut = result.quote?.outputAmount != null
+          ? Number(result.quote.outputAmount).toFixed(4)
+          : toAmount;
+        setSwapPhase("negotiating");
+        setTimeout(() => setSwapPhase("locking"), 800);
+        setTimeout(() => setSwapPhase("settling"), 1800);
+        setTimeout(() => {
+          setSwapPhase("complete");
+          haptic.success();
+          const route = result.p2pTimeout ? "DEX fallback (Jupiter)" : "P2P IntercomSwap";
+          toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${finalOut} ${toToken.symbol}`, {
+            description: `${route} · 0.2% platform fee collected`,
+          });
+        }, 2800);
+      } else {
+        runSwapAnimation();
+      }
+    } catch {
+      runSwapAnimation();
+    }
   };
 
   const handleReset = () => {
@@ -1538,12 +1628,23 @@ export default function Swaps() {
 
             {/* Output Amount */}
             <div className="mt-3 px-4 py-3 rounded-xl"
-              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              style={{ background: "var(--muted)", border: `1px solid ${liveQuote ? 'rgba(16,185,129,0.3)' : 'var(--border)'}` }}>
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold font-mono text-foreground">{toAmount}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold font-mono text-foreground">{toAmount}</span>
+                  {quoteFetching && <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />}
+                  {liveQuote && !quoteFetching && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
+                      LIVE
+                    </span>
+                  )}
+                </div>
                 <div className="text-right">
                   <div className="text-xs text-slate-500">≈ ${parseFloat(toUsd).toLocaleString()}</div>
-                  <div className="text-[10px] text-slate-600">1 {fromToken.symbol} = {rate.toFixed(4)} {toToken.symbol}</div>
+                  <div className="text-[10px] text-slate-600">
+                    {liveQuote ? `via ${liveQuote.quote.route.slice(0,2).join(' → ')}` : `1 ${fromToken.symbol} = ${rate.toFixed(4)} ${toToken.symbol}`}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1552,13 +1653,21 @@ export default function Swaps() {
             <div className="mt-4 px-4 py-3 rounded-xl space-y-1.5"
               style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
               <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500">Platform fee (0.5%)</span>
+                <span className="text-slate-500">Platform fee ({platformFeePct}%)</span>
                 <span className="font-mono text-slate-400">${platformFee}</span>
               </div>
               <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500">Trade fee (0.3%)</span>
+                <span className="text-slate-500">DEX/network fee (~0.1%)</span>
                 <span className="font-mono text-slate-400">${tradeFee}</span>
               </div>
+              {liveQuote && (
+                <div className="flex justify-between text-[11px]">
+                  <span className="text-slate-500">Price impact</span>
+                  <span className={`font-mono ${liveQuote.quote.priceImpact > 1 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {(liveQuote.quote.priceImpact * 100).toFixed(4)}%
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between text-[11px] pt-1 border-t border-border">
                 <span className="text-slate-400 font-semibold">Total fees</span>
                 <span className="font-mono text-amber-400 font-semibold">${totalFee}</span>

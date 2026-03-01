@@ -23,6 +23,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
+import { getPrices, getPlatformStats } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -251,32 +252,38 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
   );
 }
 
-// ── Key Metrics Row ────────────────────────────────────────────────────────
+// ── Key Metrics Row ──────────────────────────────────────────────────────────
 function MetricsRow() {
   const [metrics, setMetrics] = useState({
-    volume24h: 142800,
-    feesEarned: 428.40,
-    successRate: 98.7,
-    activePeers: 3,
+    volume24h: 2840000,
+    feesEarned: 5680,
+    p2pRatio: 9.95,
+    activePeers: 7,
   });
 
-  // Simulate slight metric changes
   useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        volume24h: prev.volume24h + (Math.random() - 0.4) * 200,
-        feesEarned: prev.feesEarned + Math.random() * 0.5,
-        successRate: Math.min(100, Math.max(95, prev.successRate + (Math.random() - 0.5) * 0.1)),
-        activePeers: Math.random() > 0.9 ? (prev.activePeers === 3 ? 4 : 3) : prev.activePeers,
-      }));
-    }, 5000);
+    const fetchStats = async () => {
+      try {
+        const data = await getPlatformStats();
+        if (data.success) {
+          setMetrics({
+            volume24h: data.stats.totalVolume,
+            feesEarned: data.stats.totalFees,
+            p2pRatio: data.stats.p2pRatio * 100,
+            activePeers: data.stats.activePeers,
+          });
+        }
+      } catch { /* keep current metrics */ }
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
   }, []);
 
   const cards = [
     {
-      label: "24h Volume",
-      value: `$${(metrics.volume24h / 1000).toFixed(1)}K`,
+      label: "Total Volume",
+      value: `$${(metrics.volume24h / 1000000).toFixed(2)}M`,
       change: "+3.2%",
       positive: true,
       icon: BarChart3,
@@ -285,8 +292,8 @@ function MetricsRow() {
       border: "border-cyan-500/15",
     },
     {
-      label: "Fees Earned",
-      value: `$${metrics.feesEarned.toFixed(2)}`,
+      label: "Fees Collected",
+      value: `$${metrics.feesEarned.toLocaleString()}`,
       change: "+12.4%",
       positive: true,
       icon: TrendingUp,
@@ -295,11 +302,11 @@ function MetricsRow() {
       border: "border-emerald-500/15",
     },
     {
-      label: "Success Rate",
-      value: `${metrics.successRate.toFixed(1)}%`,
-      change: "0.0%",
+      label: "P2P Ratio",
+      value: `${metrics.p2pRatio.toFixed(1)}%`,
+      change: "live",
       positive: true,
-      icon: Shield,
+      icon: Radio,
       color: "text-violet-400",
       bg: "bg-violet-500/8",
       border: "border-violet-500/15",
@@ -307,7 +314,7 @@ function MetricsRow() {
     {
       label: "Active Peers",
       value: String(metrics.activePeers),
-      change: "stable",
+      change: "online",
       positive: true,
       icon: Users,
       color: "text-amber-400",
@@ -713,10 +720,11 @@ function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
   const [prices, setPrices] = useState({
-    BTC: { price: 96420, change: +3.2 },
-    ETH: { price: 2680, change: +0.8 },
-    SOL: { price: 142.80, change: -1.1 },
+    BTC: { price: 67090, change: 0 },
+    ETH: { price: 2000, change: 0 },
+    SOL: { price: 87.2, change: 0 },
   });
+  const [priceSource, setPriceSource] = useState<'live' | 'mock'>('mock');
   // Open BTC/USDT chart by default on desktop
   const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
   const [interval, setIntervalTF] = useState("5"); // TradingView interval — default 5m
@@ -731,13 +739,21 @@ function MarketTicker() {
   ];
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setPrices(prev => ({
-        BTC: { price: prev.BTC.price + (Math.random() - 0.5) * 50, change: prev.BTC.change + (Math.random() - 0.5) * 0.1 },
-        ETH: { price: prev.ETH.price + (Math.random() - 0.5) * 5, change: prev.ETH.change + (Math.random() - 0.5) * 0.1 },
-        SOL: { price: prev.SOL.price + (Math.random() - 0.5) * 0.5, change: prev.SOL.change + (Math.random() - 0.5) * 0.1 },
-      }));
-    }, 4000);
+    const fetchLivePrices = async () => {
+      try {
+        const data = await getPrices();
+        if (data.success) {
+          setPrices({
+            BTC: { price: data.prices.BTC?.usd ?? 67090, change: data.prices.BTC?.change24h ?? 0 },
+            ETH: { price: data.prices.ETH?.usd ?? 2000, change: data.prices.ETH?.change24h ?? 0 },
+            SOL: { price: data.prices.SOL?.usd ?? 87.2, change: data.prices.SOL?.change24h ?? 0 },
+          });
+          setPriceSource(data.source === 'mock' ? 'mock' : 'live');
+        }
+      } catch { /* keep current prices */ }
+    };
+    fetchLivePrices();
+    const timer = setInterval(fetchLivePrices, 30000);
     return () => clearInterval(timer);
   }, []);
 
@@ -759,7 +775,9 @@ function MarketTicker() {
         <div className="flex items-center gap-2">
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Market</h3>
-          <span className="text-[10px] text-muted-foreground font-mono">IntercomSwap rates</span>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {priceSource === 'live' ? 'Binance · Jupiter live' : 'IntercomSwap rates'}
+          </span>
         </div>
         {activePair ? (
           <button
@@ -1039,28 +1057,37 @@ function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () =
 // ── Mobile Metric Strip (horizontal scroll) ───────────────────────────────
 function MobileMetricStrip() {
   const [metrics, setMetrics] = useState({
-    volume24h: 142800,
-    feesEarned: 428.40,
+    volume24h: 2840000,
+    feesEarned: 5680,
     successRate: 98.7,
-    activePeers: 3,
+    activePeers: 7,
+    p2pRatio: 9.95,
   });
   useEffect(() => {
-    const t = setInterval(() => {
-      setMetrics(prev => ({
-        volume24h: prev.volume24h + (Math.random() - 0.4) * 200,
-        feesEarned: prev.feesEarned + Math.random() * 0.5,
-        successRate: Math.min(100, Math.max(95, prev.successRate + (Math.random() - 0.5) * 0.1)),
-        activePeers: Math.random() > 0.9 ? (prev.activePeers === 3 ? 4 : 3) : prev.activePeers,
-      }));
-    }, 5000);
+    const fetchStats = async () => {
+      try {
+        const data = await getPlatformStats();
+        if (data.success) {
+          setMetrics({
+            volume24h: data.stats.totalVolume,
+            feesEarned: data.stats.totalFees,
+            successRate: 98.7,
+            activePeers: data.stats.activePeers,
+            p2pRatio: data.stats.p2pRatio * 100,
+          });
+        }
+      } catch { /* keep current metrics */ }
+    };
+    fetchStats();
+    const t = setInterval(fetchStats, 60000);
     return () => clearInterval(t);
   }, []);
 
   const cards = [
-    { label: "24h Volume", value: `$${(metrics.volume24h / 1000).toFixed(1)}K`, change: "+3.2%", icon: BarChart3, color: "text-cyan-400", bg: "bg-cyan-500/8", border: "border-cyan-500/20" },
-    { label: "Fees Earned", value: `$${metrics.feesEarned.toFixed(2)}`, change: "+12.4%", icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
-    { label: "Success Rate", value: `${metrics.successRate.toFixed(1)}%`, change: "0.0%", icon: Shield, color: "text-violet-400", bg: "bg-violet-500/8", border: "border-violet-500/20" },
-    { label: "Active Peers", value: String(metrics.activePeers), change: "stable", icon: Users, color: "text-amber-400", bg: "bg-amber-500/8", border: "border-amber-500/20" },
+    { label: "Total Volume", value: `$${(metrics.volume24h / 1000000).toFixed(2)}M`, change: "+3.2%", icon: BarChart3, color: "text-cyan-400", bg: "bg-cyan-500/8", border: "border-cyan-500/20" },
+    { label: "Fees Collected", value: `$${metrics.feesEarned.toLocaleString()}`, change: "+12.4%", icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
+    { label: "P2P Ratio", value: `${metrics.p2pRatio.toFixed(1)}%`, change: "live", icon: Radio, color: "text-violet-400", bg: "bg-violet-500/8", border: "border-violet-500/20" },
+    { label: "Active Peers", value: String(metrics.activePeers), change: "online", icon: Users, color: "text-amber-400", bg: "bg-amber-500/8", border: "border-amber-500/20" },
   ];
 
   return (
