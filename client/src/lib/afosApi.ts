@@ -82,6 +82,22 @@ export interface BackendStats {
   pendingRfqs: number;
 }
 
+export interface WalletAsset {
+  asset: string;
+  network: string;
+  balance: string;
+  usd: string;
+  address: string | null;
+  live: boolean;
+}
+
+export interface WalletData {
+  wallets: WalletAsset[];
+  totalUsd: number;
+  note?: string;
+  nodeKey: string | null;
+}
+
 export interface AgentStatus {
   status: string;
   p2pNodeKey: string | null;
@@ -259,6 +275,13 @@ export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: Rfq
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
   return { pending: data.pending || [], completed: data.completed || [] };
+}
+
+export async function getWallet(): Promise<WalletData> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/wallet`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return data;
 }
 
 export function getBackendUrl(): string {

@@ -23,7 +23,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { getPrices, getStats } from "../lib/afosApi";
+import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -157,34 +157,53 @@ function MobileTabBar({ navItems, activePage, setActivePage }: {
 // ── Agent Status Card ──────────────────────────────────────────────────────
 function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
   const [uptime, setUptime] = useState(0);
-  const [currentTask, setCurrentTask] = useState("Monitoring rendezvous channel");
-  const [taskCycle, setTaskCycle] = useState(0);
+  const [currentTask, setCurrentTask] = useState("Connecting to agent...");
+  const [agentStatus, setAgentStatus] = useState<'ACTIVE' | 'INITIALIZING' | 'OFFLINE'>('INITIALIZING');
+  const [skillsLoaded, setSkillsLoaded] = useState(0);
+  const [activePeers, setActivePeers] = useState(0);
 
-  const TASKS = useMemo(() => [
-    "Monitoring rendezvous channel",
-    "Scanning for RFQ opportunities",
-    "Rebalancing LN channel liquidity",
-    "Checking escrow PDA states",
-    "Heartbeat ping to 3 peers",
-    "Evaluating best BTC/USDT rate",
-    "Idle — awaiting instructions",
-  ], []);
+  // Fetch real agent status from backend
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const status = await getAgentStatus();
+        setAgentStatus(status.status === 'active' ? 'ACTIVE' : 'INITIALIZING');
+        setActivePeers(status.activePeers);
+        setSkillsLoaded(status.stats?.totalSwaps !== undefined ? 3 : 0);
+        if (status.lastDecision?.reasoning) {
+          setCurrentTask(status.lastDecision.reasoning.slice(0, 80));
+        }
+      } catch { /* keep current */ }
+    };
+    fetchStatus();
+    const t = setInterval(fetchStatus, 30000);
+    return () => clearInterval(t);
+  }, []);
 
+  // Subscribe to real-time agent decisions via SSE
+  useEffect(() => {
+    const unsub = onSSEEvent('agent_decision', (data: unknown) => {
+      const d = data as { action: string; reasoning: string };
+      if (d?.reasoning) setCurrentTask(d.reasoning.slice(0, 80));
+      setAgentStatus('ACTIVE');
+    });
+    const unsubPeer = onSSEEvent('peer_connected', () => setActivePeers(p => p + 1));
+    const unsubPeerD = onSSEEvent('peer_disconnected', () => setActivePeers(p => Math.max(0, p - 1)));
+    const unsubInit = onSSEEvent('init', (data: unknown) => {
+      const d = data as { activePeers?: number; lastDecision?: { reasoning?: string } };
+      if (d?.activePeers !== undefined) setActivePeers(d.activePeers);
+      if (d?.lastDecision?.reasoning) setCurrentTask(d.lastDecision.reasoning.slice(0, 80));
+      setAgentStatus('ACTIVE');
+      setSkillsLoaded(3);
+    });
+    return () => { unsub(); unsubPeer(); unsubPeerD(); unsubInit(); };
+  }, []);
+
+  // Real uptime from backend
   useEffect(() => {
     const interval = setInterval(() => setUptime(u => u + 1), 1000);
     return () => clearInterval(interval);
   }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTaskCycle(c => {
-        const next = (c + 1) % TASKS.length;
-        setCurrentTask(TASKS[next]);
-        return next;
-      });
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [TASKS]);
 
   const formatUptime = (s: number) => {
     const h = Math.floor(s / 3600);
@@ -204,9 +223,13 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm font-bold text-foreground">OpenClaw Agent</h3>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">ACTIVE</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full border ${
+                agentStatus === 'ACTIVE' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                agentStatus === 'INITIALIZING' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                'bg-red-500/10 border-red-500/20 text-red-400'
+              }`}>{agentStatus}</span>
             </div>
-            <p className="text-xs text-muted-foreground font-mono">gpt-4o-mini · intercomswap@mainnet</p>
+            <p className="text-xs text-muted-foreground font-mono">gemini-2.5-flash-lite · intercomswap@mainnet</p>
           </div>
         </div>
         <button
@@ -240,12 +263,12 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
           <p className="text-[9px] text-muted-foreground mt-0.5">Uptime</p>
         </div>
         <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
-          <p className="text-xs font-bold font-mono text-foreground">3</p>
+          <p className="text-xs font-bold font-mono text-foreground">{skillsLoaded > 0 ? skillsLoaded : '—'}</p>
           <p className="text-[9px] text-muted-foreground mt-0.5">Skills loaded</p>
         </div>
         <div className="rounded-lg bg-muted/30 border border-border p-2.5 text-center">
-          <p className="text-xs font-bold font-mono text-emerald-400">Healthy</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">LND / SOL / ETH</p>
+          <p className="text-xs font-bold font-mono text-emerald-400">{activePeers}</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">Active Peers</p>
         </div>
       </div>
     </div>
@@ -344,13 +367,37 @@ function MetricsRow() {
 
 // ── Recent Swaps Card ──────────────────────────────────────────────────────
 function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
-  const RECENT_SWAPS = useMemo(() => [
-    { id: "sw-001", from: "BTC", to: "USDT", fromAmt: "0.012", toAmt: "1,157.04", status: "complete" as const, time: "2m ago", protocol: "Lightning ↔ Solana" },
-    { id: "sw-002", from: "ETH", to: "USDT", fromAmt: "0.5", toAmt: "1,602.50", status: "complete" as const, time: "8m ago", protocol: "EVM HTLC" },
-    { id: "sw-003", from: "SOL", to: "USDT", fromAmt: "15.0", toAmt: "2,142.00", status: "complete" as const, time: "14m ago", protocol: "Solana SPL" },
-    { id: "sw-004", from: "BTC", to: "SOL", fromAmt: "0.005", toAmt: "2.56", status: "pending" as const, time: "18m ago", protocol: "Lightning ↔ Solana" },
-    { id: "sw-005", from: "BTC", to: "USDT", fromAmt: "0.001", toAmt: "96.42", status: "complete" as const, time: "25m ago", protocol: "Lightning ↔ Solana" },
-  ], []);
+  const [allSwaps, setAllSwaps] = useState<{ pending: RfqResult[]; completed: RfqResult[] }>({ pending: [], completed: [] });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSwaps = async () => {
+      try {
+        const data = await getSwaps();
+        setAllSwaps(data);
+      } catch { /* keep empty */ } finally { setLoading(false); }
+    };
+    fetchSwaps();
+    const t = setInterval(fetchSwaps, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Merge pending + completed, sort by timestamp desc, take top 5
+  const combined = [...allSwaps.pending, ...allSwaps.completed]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 5);
+
+  // Map RfqResult to display format
+  const RECENT_SWAPS = combined.map(s => ({
+    id: s.rfqId,
+    from: s.fromToken,
+    to: s.toToken,
+    fromAmt: s.inAmount.toFixed(4),
+    toAmt: s.outAmount.toFixed(4),
+    status: allSwaps.pending.some(p => p.rfqId === s.rfqId) ? 'pending' as const : 'complete' as const,
+    time: new Date(s.timestamp).toLocaleTimeString(),
+    protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `Jupiter DEX`,
+  }));
 
   const STATUS_STYLE = {
     complete: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10" },
@@ -374,6 +421,14 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
       </div>
 
       <div className="flex-1 overflow-auto space-y-1.5 min-h-0">
+        {loading && <div className="flex items-center justify-center py-8"><div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-400 rounded-full animate-spin" /></div>}
+        {!loading && RECENT_SWAPS.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <Radio className="w-8 h-8 text-muted-foreground/30 mb-2" />
+            <p className="text-xs text-muted-foreground font-mono">No swaps yet</p>
+            <p className="text-[10px] text-muted-foreground/60 font-mono mt-0.5">Waiting for P2P peers or user-initiated swaps</p>
+          </div>
+        )}
         {RECENT_SWAPS.map(swap => {
           const statusCfg = STATUS_STYLE[swap.status];
           const StatusIcon = statusCfg.icon;
@@ -433,8 +488,20 @@ function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
 
 // ── Portfolio Card ─────────────────────────────────────────────────────────
 function PortfolioCard() {
-  const [totalUsd] = useState(18136);
-  const [change24h] = useState(+2.4);
+  const [totalUsd, setTotalUsd] = useState<number | null>(null);
+  const [change24h] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchTotal = async () => {
+      try {
+        const data = await getWallet();
+        setTotalUsd(data.totalUsd);
+      } catch { /* keep null */ }
+    };
+    fetchTotal();
+    const t = setInterval(fetchTotal, 30000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -444,14 +511,16 @@ function PortfolioCard() {
       </div>
       <div className="flex items-end gap-3 mb-1">
         <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
-          ${totalUsd.toLocaleString()}
+          {totalUsd !== null ? `$${totalUsd.toLocaleString()}` : <span className="text-muted-foreground text-xl">Loading...</span>}
         </p>
-        <div className={`flex items-center gap-1 text-sm font-mono mb-1 ${change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {change24h >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-          {change24h >= 0 ? "+" : ""}{change24h}%
-        </div>
+        {change24h !== null && (
+          <div className={`flex items-center gap-1 text-sm font-mono mb-1 ${change24h >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {change24h >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+            {change24h >= 0 ? "+" : ""}{change24h}%
+          </div>
+        )}
       </div>
-      <p className="text-xs text-muted-foreground">24h change across all chains</p>
+      <p className="text-xs text-muted-foreground">{totalUsd !== null ? 'Agent treasury balance' : 'Fetching on-chain balance...'}</p>
     </div>
   );
 }
@@ -594,13 +663,35 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
 // ── Wallets Card (compact) ─────────────────────────────────────────────────
 function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
+  const [walletData, setWalletData] = useState<WalletAsset[]>([]);
+  const [walletLoading, setWalletLoading] = useState(true);
 
-  const wallets = [
-    { asset: "BTC", network: "Lightning", balance: "0.14200000", usd: "$13,691", color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
-    { asset: "USDT", network: "Solana", balance: "1,240.50", usd: "$1,240", color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
-    { asset: "SOL", network: "Solana", balance: "12.840", usd: "$1,833", color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/8" },
-    { asset: "ETH", network: "Ethereum", balance: "0.5120", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
-  ];
+  useEffect(() => {
+    const fetchWallet = async () => {
+      try {
+        const data = await getWallet();
+        setWalletData(data.wallets);
+      } catch { /* keep empty */ } finally { setWalletLoading(false); }
+    };
+    fetchWallet();
+    const t = setInterval(fetchWallet, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string }> = {
+    SOL: { color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/8" },
+    USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
+    BTC: { color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
+    ETH: { color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
+  };
+
+  const wallets = walletData.map(w => ({
+    asset: w.asset,
+    network: w.network,
+    balance: w.balance,
+    usd: w.usd,
+    ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8" }),
+  }));
 
   return (
     <>
@@ -962,29 +1053,43 @@ function AgentThoughtStream({ onNavigateToTerminal }: { onNavigateToTerminal: ()
 // ── Mobile Hero Banner (portfolio + agent status merged) ────────────────────
 function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () => void }) {
   const [uptime, setUptime] = useState(0);
-  const [currentTask, setCurrentTask] = useState("Monitoring rendezvous channel");
-  const TASKS = useMemo(() => [
-    "Monitoring rendezvous channel",
-    "Scanning for RFQ opportunities",
-    "Rebalancing LN channel liquidity",
-    "Heartbeat ping to 3 peers",
-    "Evaluating best BTC/USDT rate",
-    "Idle — awaiting instructions",
-  ], []);
+  const [currentTask, setCurrentTask] = useState("Connecting to agent...");
+  const [activePeers, setActivePeers] = useState(0);
+  const [walletTotal, setWalletTotal] = useState<number | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setUptime(u => u + 1), 1000);
     return () => clearInterval(t);
   }, []);
+
   useEffect(() => {
-    const t = setInterval(() => {
-      setCurrentTask(prev => {
-        const idx = TASKS.indexOf(prev);
-        return TASKS[(idx + 1) % TASKS.length];
-      });
-    }, 8000);
+    const fetchStatus = async () => {
+      try {
+        const status = await getAgentStatus();
+        setActivePeers(status.activePeers);
+        if (status.lastDecision?.reasoning) {
+          setCurrentTask(status.lastDecision.reasoning.slice(0, 80));
+        } else {
+          setCurrentTask('Monitoring IntercomSwap DHT topic');
+        }
+      } catch { /* keep */ }
+    };
+    fetchStatus();
+    const t = setInterval(fetchStatus, 30000);
     return () => clearInterval(t);
-  }, [TASKS]);
+  }, []);
+
+  useEffect(() => {
+    const fetchWallet = async () => {
+      try {
+        const data = await getWallet();
+        setWalletTotal(data.totalUsd);
+      } catch { /* keep */ }
+    };
+    fetchWallet();
+    const t = setInterval(fetchWallet, 30000);
+    return () => clearInterval(t);
+  }, []);;
 
   const fmtUptime = (s: number) => {
     const h = Math.floor(s / 3600);
@@ -1001,9 +1106,8 @@ function MobileHeroBanner({ onNavigateToTerminal }: { onNavigateToTerminal: () =
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-0.5">Total Portfolio</p>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold font-mono text-foreground">$18,136</span>
-              <span className="text-sm font-mono text-emerald-400 flex items-center gap-0.5">
-                <TrendingUp className="w-3 h-3" />+2.4%
+              <span className="text-2xl font-bold font-mono text-foreground">
+                {walletTotal !== null ? `$${walletTotal.toLocaleString()}` : '...'}
               </span>
             </div>
           </div>
@@ -1109,12 +1213,34 @@ function MobileMetricStrip() {
 
 // ── Mobile Wallets Strip (horizontal scroll chips) ────────────────────────
 function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: string, network: string, mode: "send" | "receive") => void }) {
-  const wallets = [
-    { asset: "BTC", network: "Lightning", balance: "0.142", usd: "$13,691", color: "text-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/8" },
-    { asset: "USDT", network: "Solana", balance: "1,240", usd: "$1,240", color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8" },
-    { asset: "SOL", network: "Solana", balance: "12.84", usd: "$1,833", color: "text-purple-400", border: "border-purple-500/25", bg: "bg-purple-500/8" },
-    { asset: "ETH", network: "Ethereum", balance: "0.512", usd: "$1,372", color: "text-blue-400", border: "border-blue-500/25", bg: "bg-blue-500/8" },
-  ];
+  const [walletData, setWalletData] = useState<WalletAsset[]>([]);
+
+  useEffect(() => {
+    const fetchWallet = async () => {
+      try {
+        const data = await getWallet();
+        setWalletData(data.wallets);
+      } catch { /* keep empty */ }
+    };
+    fetchWallet();
+    const t = setInterval(fetchWallet, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string }> = {
+    SOL: { color: "text-purple-400", border: "border-purple-500/25", bg: "bg-purple-500/8" },
+    USDT: { color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8" },
+    BTC: { color: "text-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/8" },
+    ETH: { color: "text-blue-400", border: "border-blue-500/25", bg: "bg-blue-500/8" },
+  };
+
+  const wallets = walletData.map(w => ({
+    asset: w.asset,
+    network: w.network,
+    balance: w.balance,
+    usd: w.usd,
+    ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/25", bg: "bg-cyan-500/8" }),
+  }));
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
@@ -1162,12 +1288,30 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
 
 // ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────
 function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
-  const SWAPS = useMemo(() => [
-    { id: "s1", from: "BTC", to: "USDT", fromAmt: "0.012", toAmt: "1,157.04", status: "complete" as const, time: "2m ago", protocol: "Lightning ↔ Solana" },
-    { id: "s2", from: "ETH", to: "USDT", fromAmt: "0.5", toAmt: "1,602.50", status: "complete" as const, time: "8m ago", protocol: "EVM HTLC" },
-    { id: "s3", from: "SOL", to: "USDT", fromAmt: "15.0", toAmt: "2,142.00", status: "complete" as const, time: "14m ago", protocol: "Solana SPL" },
-    { id: "s4", from: "BTC", to: "SOL", fromAmt: "0.005", toAmt: "2.56", status: "pending" as const, time: "18m ago", protocol: "Lightning ↔ Solana" },
-  ], []);
+  const [rawSwaps, setRawSwaps] = useState<RfqResult[]>([]);
+
+  useEffect(() => {
+    const fetchSwaps = async () => {
+      try {
+        const data = await getSwaps();
+        setRawSwaps([...data.completed, ...data.pending]);
+      } catch { /* keep empty */ }
+    };
+    fetchSwaps();
+    const t = setInterval(fetchSwaps, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const SWAPS = rawSwaps.map(s => ({
+    id: s.rfqId,
+    from: s.fromToken,
+    to: s.toToken,
+    fromAmt: s.inAmount.toString(),
+    toAmt: s.outAmount.toFixed(4),
+    status: 'complete' as 'complete' | 'pending' | 'failed',
+    time: new Date(s.timestamp).toLocaleTimeString(),
+    protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `DEX: ${s.dexRoute}`,
+  }));
 
   const STATUS_STYLE = {
     complete: { icon: CheckCircle2, color: "text-emerald-400", dot: "bg-emerald-400" },
