@@ -23,7 +23,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { getPrices, getPlatformStats } from "../lib/afosApi";
+import { getPrices, getStats } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -264,15 +264,13 @@ function MetricsRow() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await getPlatformStats();
-        if (data.success) {
+        const stats = await getStats();
           setMetrics({
-            volume24h: data.stats.totalVolume,
-            feesEarned: data.stats.totalFees,
-            p2pRatio: data.stats.p2pRatio * 100,
-            activePeers: data.stats.activePeers,
+            volume24h: stats.totalVolumeUsd,
+            feesEarned: stats.totalFeesUsd,
+            p2pRatio: stats.p2pRatio * 100,
+            activePeers: stats.activePeers,
           });
-        }
       } catch { /* keep current metrics */ }
     };
     fetchStats();
@@ -741,15 +739,13 @@ function MarketTicker() {
   useEffect(() => {
     const fetchLivePrices = async () => {
       try {
-        const data = await getPrices();
-        if (data.success) {
+        const priceData = await getPrices();
           setPrices({
-            BTC: { price: data.prices.BTC?.usd ?? 67090, change: data.prices.BTC?.change24h ?? 0 },
-            ETH: { price: data.prices.ETH?.usd ?? 2000, change: data.prices.ETH?.change24h ?? 0 },
-            SOL: { price: data.prices.SOL?.usd ?? 87.2, change: data.prices.SOL?.change24h ?? 0 },
+            BTC: { price: priceData.BTC?.usd ?? 67090, change: priceData.BTC?.change24h ?? 0 },
+            ETH: { price: priceData.ETH?.usd ?? 2000, change: priceData.ETH?.change24h ?? 0 },
+            SOL: { price: priceData.SOL?.usd ?? 87.2, change: priceData.SOL?.change24h ?? 0 },
           });
-          setPriceSource(data.source === 'mock' ? 'mock' : 'live');
-        }
+          setPriceSource('live');
       } catch { /* keep current prices */ }
     };
     fetchLivePrices();
@@ -1066,16 +1062,14 @@ function MobileMetricStrip() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const data = await getPlatformStats();
-        if (data.success) {
+        const stats = await getStats();
           setMetrics({
-            volume24h: data.stats.totalVolume,
-            feesEarned: data.stats.totalFees,
+            volume24h: stats.totalVolumeUsd,
+            feesEarned: stats.totalFeesUsd,
             successRate: 98.7,
-            activePeers: data.stats.activePeers,
-            p2pRatio: data.stats.p2pRatio * 100,
+            activePeers: stats.activePeers,
+            p2pRatio: stats.p2pRatio * 100,
           });
-        }
       } catch { /* keep current metrics */ }
     };
     fetchStats();

@@ -21,7 +21,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useWallet } from "../contexts/WalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
-import { getPrices, getSwapQuote, submitRfq, type QuoteResponse } from "../lib/afosApi";
+import { getPrices, getSwapQuote, submitRfq, onSSEEvent, type SwapQuote, type RfqResult } from "../lib/afosApi";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -434,15 +434,13 @@ function ChainStatsBar() {
     // Fetch real prices from AFOS backend
     const fetchPrices = async () => {
       try {
-        const data = await getPrices();
-        if (data.success) {
+        const priceData = await getPrices();
           setPrices({
-            BTC: { price: data.prices.BTC?.usd ?? 67000, change: data.prices.BTC?.change24h ?? 0 },
-            ETH: { price: data.prices.ETH?.usd ?? 2000, change: data.prices.ETH?.change24h ?? 0 },
-            SOL: { price: data.prices.SOL?.usd ?? 87, change: data.prices.SOL?.change24h ?? 0 },
+            BTC: { price: priceData.BTC?.usd ?? 67000, change: priceData.BTC?.change24h ?? 0 },
+            ETH: { price: priceData.ETH?.usd ?? 2000, change: priceData.ETH?.change24h ?? 0 },
+            SOL: { price: priceData.SOL?.usd ?? 87, change: priceData.SOL?.change24h ?? 0 },
           });
-          setSource(data.source === 'mock' ? 'mock' : 'live');
-        }
+          setSource('live');
       } catch { /* keep current prices */ }
     };
     fetchPrices();
@@ -1315,7 +1313,7 @@ export default function Swaps() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live quote from backend
-  const [liveQuote, setLiveQuote] = useState<QuoteResponse | null>(null);
+  const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
   const [quoteFetching, setQuoteFetching] = useState(false);
   const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live token prices from backend
@@ -1325,12 +1323,10 @@ export default function Swaps() {
   useEffect(() => {
     const fetchPrices = async () => {
       try {
-        const data = await getPrices();
-        if (data.success) {
+        const prices = await getPrices();
           const priceMap: Record<string, number> = {};
-          Object.entries(data.prices).forEach(([sym, p]) => { priceMap[sym] = p.usd; });
+          Object.entries(prices).forEach(([sym, p]) => { priceMap[sym] = p.usd; });
           setLivePrices(priceMap);
-        }
       } catch { /* keep static prices */ }
     };
     fetchPrices();
@@ -1347,8 +1343,8 @@ export default function Swaps() {
       quoteTimerRef.current = setTimeout(async () => {
         setQuoteFetching(true);
         try {
-          const q = await getSwapQuote(fromToken.symbol, toToken.symbol, fromAmount, slippage);
-          if (q?.success) setLiveQuote(q);
+          const q = await getSwapQuote(fromToken.symbol, toToken.symbol, fromAmount);
+          if (q) setLiveQuote(q);
         } catch { /* keep previous quote */ } finally {
           setQuoteFetching(false);
         }
@@ -1367,13 +1363,13 @@ export default function Swaps() {
   const toPrice = livePrices[toToken.symbol] || toTokenData.usdPrice;
 
   const rate = toPrice > 0 ? fromPrice / toPrice : 0;
-  const toAmount = liveQuote?.quote?.outputAmount != null
-    ? liveQuote.quote.outputAmount.toFixed(toPrice >= 1 ? 4 : 6)
+  const toAmount = liveQuote?.outAmount != null
+    ? liveQuote.outAmount.toFixed(toPrice >= 1 ? 4 : 6)
     : (parseFloat(fromAmount || "0") * rate).toFixed(toPrice >= 1 ? 2 : 6);
   const fromUsd = (parseFloat(fromAmount || "0") * fromPrice).toFixed(2);
   const toUsd = (parseFloat(toAmount) * toPrice).toFixed(2);
 
-  const platformFeePct = liveQuote?.quote?.platformFee?.percentage ?? 0.2;
+  const platformFeePct = liveQuote ? (liveQuote.platformFeeBps / 100) : 0.2;
   const platformFee = (parseFloat(fromUsd) * platformFeePct / 100).toFixed(2);
   const tradeFee = (parseFloat(fromUsd) * 0.001).toFixed(2);
   const totalFee = (parseFloat(platformFee) + parseFloat(tradeFee)).toFixed(2);
@@ -1423,11 +1419,11 @@ export default function Swaps() {
     setSwapPhase("rfq");
 
     try {
-      const walletAddr = primaryWallet?.address;
-      const result = await submitRfq(fromToken.symbol, toToken.symbol, fromAmount, walletAddr);
+      const result = await submitRfq(fromToken.symbol, toToken.symbol, parseFloat(fromAmount));
       if (result?.success) {
-        const finalOut = result.quote?.outputAmount != null
-          ? Number(result.quote.outputAmount).toFixed(4)
+        const rfqResult: RfqResult = result.result;
+        const finalOut = rfqResult.outAmount != null
+          ? Number(rfqResult.outAmount).toFixed(4)
           : toAmount;
         setSwapPhase("negotiating");
         setTimeout(() => setSwapPhase("locking"), 800);
@@ -1435,7 +1431,7 @@ export default function Swaps() {
         setTimeout(() => {
           setSwapPhase("complete");
           haptic.success();
-          const route = result.p2pTimeout ? "DEX fallback (Jupiter)" : "P2P IntercomSwap";
+          const route = rfqResult.route === 'p2p' ? `P2P IntercomSwap (${rfqResult.p2pQuotes} quotes)` : `DEX fallback (${rfqResult.dexRoute || 'Jupiter'})`;
           toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${finalOut} ${toToken.symbol}`, {
             description: `${route} · 0.2% platform fee collected`,
           });
@@ -1643,7 +1639,7 @@ export default function Swaps() {
                 <div className="text-right">
                   <div className="text-xs text-slate-500">≈ ${parseFloat(toUsd).toLocaleString()}</div>
                   <div className="text-[10px] text-slate-600">
-                    {liveQuote ? `via ${liveQuote.quote.route.slice(0,2).join(' → ')}` : `1 ${fromToken.symbol} = ${rate.toFixed(4)} ${toToken.symbol}`}
+                    {liveQuote ? `via ${liveQuote.route}` : `1 ${fromToken.symbol} = ${rate.toFixed(4)} ${toToken.symbol}`}
                   </div>
                 </div>
               </div>
@@ -1663,8 +1659,8 @@ export default function Swaps() {
               {liveQuote && (
                 <div className="flex justify-between text-[11px]">
                   <span className="text-slate-500">Price impact</span>
-                  <span className={`font-mono ${liveQuote.quote.priceImpact > 1 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {(liveQuote.quote.priceImpact * 100).toFixed(4)}%
+                  <span className={`font-mono ${liveQuote.priceImpact > 1 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {(liveQuote.priceImpact * 100).toFixed(4)}%
                   </span>
                 </div>
               )}
