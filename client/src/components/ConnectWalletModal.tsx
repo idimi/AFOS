@@ -210,6 +210,18 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       onClick={connectPhantomMultiChain}
                     />
 
+                    {/* MetaMask — multi-chain: SOL + ETH + BTC (second position) */}
+                    <WalletButton
+                      icon={METAMASK_ICON}
+                      name="MetaMask"
+                      desc="Native BTC · ETH · SOL · Multichain"
+                      chains={["solana", "ethereum", "bitcoin"]}
+                      accentColor="#F6851B"
+                      bg="rgba(246,133,27,0.08)"
+                      border="rgba(246,133,27,0.2)"
+                      onClick={handleSolanaConnect}
+                    />
+
                     {/* Solflare — Solana only */}
                     <WalletButton
                       icon={SOLFLARE_ICON}
@@ -218,17 +230,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       chains={["solana"]}
                       bg="rgba(255,239,70,0.08)"
                       border="rgba(255,239,70,0.2)"
-                      onClick={handleSolanaConnect}
-                    />
-
-                    {/* MetaMask — multi-chain: SOL + ETH + BTC */}
-                    <WalletButton
-                      icon={METAMASK_ICON}
-                      name="MetaMask"
-                      desc="Native BTC · ETH · SOL · Multichain"
-                      chains={["solana", "ethereum", "bitcoin"]}
-                      bg="rgba(246,133,27,0.08)"
-                      border="rgba(246,133,27,0.2)"
                       onClick={handleSolanaConnect}
                     />
 
@@ -272,6 +273,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       name="MetaMask"
                       desc="Native BTC · ETH · SOL · Multichain"
                       chains={["solana", "ethereum", "bitcoin"]}
+                      accentColor="#F6851B"
                       bg="rgba(246,133,27,0.1)"
                       border="rgba(246,133,27,0.25)"
                       loading={ethConnecting}
@@ -330,7 +332,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       icon={METAMASK_ICON}
                       name="MetaMask"
                       desc="Native BTC · ETH · SOL · Multichain"
-                      chains={["bitcoin", "ethereum"]}
+                      chains={["solana", "ethereum", "bitcoin"]}
+                      accentColor="#F6851B"
                       bg="rgba(247,147,26,0.08)"
                       border="rgba(247,147,26,0.2)"
                       loading={btcConnecting}
@@ -417,12 +420,16 @@ function PhantomMultiChainButton({ loading, onClick }: { loading: boolean; onCli
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading }: {
+function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, accentColor }: {
   icon: string; name: string; desc: string;
   chains: ChainTab[];
   bg: string; border: string;
   onClick: () => void; loading?: boolean;
+  /** Optional accent color for the Multi-chain badge (defaults to first chain color) */
+  accentColor?: string;
 }) {
+  const isMultiChain = chains.length > 1;
+  const badgeColor = accentColor ?? CHAIN_DOTS[chains[0]];
   return (
     <button
       onClick={onClick}
@@ -434,17 +441,28 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading }
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-bold text-foreground">{name}</p>
-          {/* Show chain dots if wallet supports multiple chains */}
-          {chains.length > 1 && (
-            <div className="flex items-center gap-0.5">
-              {chains.map(c => (
-                <span key={c} className="w-1.5 h-1.5 rounded-full inline-block"
-                  style={{ background: CHAIN_DOTS[c] }} title={c} />
-              ))}
-            </div>
+          {/* Multi-chain badge — same style as Phantom */}
+          {isMultiChain && (
+            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+              style={{ background: `${badgeColor}22`, color: badgeColor }}>
+              <Globe className="w-2.5 h-2.5" />
+              Multi-chain
+            </span>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">{desc}</p>
+        {/* Chain pill chips for multi-chain, plain desc for single-chain */}
+        {isMultiChain ? (
+          <div className="flex items-center gap-1 mt-0.5">
+            {chains.map(c => (
+              <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded"
+                style={{ background: `${CHAIN_DOTS[c]}18`, color: CHAIN_DOTS[c] }}>
+                {c === "solana" ? "SOL" : c === "ethereum" ? "ETH" : "BTC"}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[11px] text-muted-foreground mt-0.5">{desc}</p>
+        )}
       </div>
       {loading ? (
         <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
