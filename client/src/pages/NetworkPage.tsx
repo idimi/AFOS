@@ -44,7 +44,7 @@ interface Channel {
 
 const PEERS: Peer[] = [
   { id: "self", alias: "You (AFOS Agent)", region: "Local", lat: 0.5, lng: 0.5, latency: 0, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL", "ETH/USDC"], online: true, reputation: 100, channels: 4, liquidity: 0.142, version: "1.2.0" },
-  { id: "p1", alias: "GammaLN", region: "US-East", lat: 0.18, lng: 0.38, latency: 8, volume24h: 231000, pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8, channels: 7, liquidity: 0.85, version: "1.2.0" },
+  { id: "p1", alias: "GammaNode", region: "US-East", lat: 0.18, lng: 0.38, latency: 8, volume24h: 231000, pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8, channels: 7, liquidity: 0.85, version: "1.2.0" },
   { id: "p2", alias: "AlphaNode", region: "EU-West", lat: 0.42, lng: 0.22, latency: 12, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL"], online: true, reputation: 99.2, channels: 5, liquidity: 0.42, version: "1.1.9" },
   { id: "p3", alias: "BetaSwap", region: "AP-South", lat: 0.78, lng: 0.30, latency: 34, volume24h: 89000, pairs: ["ETH/USDC", "ETH/SOL"], online: true, reputation: 97.8, channels: 3, liquidity: 0.21, version: "1.2.0" },
   { id: "p4", alias: "DeltaNode", region: "US-West", lat: 0.14, lng: 0.65, latency: 67, volume24h: 45000, pairs: ["SOL/USDT"], online: true, reputation: 95.1, channels: 2, liquidity: 0.09, version: "1.1.8" },
@@ -461,7 +461,7 @@ interface LNChannel {
 
 const INITIAL_LN_CHANNELS: LNChannel[] = [
   { id: "ch_1", peer: "AlphaNode", pubkey: "02a3b4c5d6e7f8...", localBal: 0.05, remoteBal: 0.03, capacity: 0.08, status: "active", feePpm: 100 },
-  { id: "ch_2", peer: "GammaLN", pubkey: "03b4c5d6e7f8a9...", localBal: 0.12, remoteBal: 0.08, capacity: 0.20, status: "active", feePpm: 150 },
+  { id: "ch_2", peer: "GammaNode", pubkey: "03b4c5d6e7f8a9...", localBal: 0.12, remoteBal: 0.08, capacity: 0.20, status: "active", feePpm: 150 },
   { id: "ch_3", peer: "IotaSwap", pubkey: "04c5d6e7f8a9b0...", localBal: 0.02, remoteBal: 0.06, capacity: 0.08, status: "inactive", feePpm: 200 },
   { id: "ch_4", peer: "ZetaHub", pubkey: "05d6e7f8a9b0c1...", localBal: 0.08, remoteBal: 0.02, capacity: 0.10, status: "pending", feePpm: 80 },
 ];
@@ -479,7 +479,7 @@ export default function NetworkPage() {
   const [inviteCode, setInviteCode] = useState("");
   const [invites, setInvites] = useState<{code: string; peer: string; created: Date; used: boolean}[]>([
     { code: "AFOS-7X3K-SWAP", peer: "AlphaNode", created: new Date(Date.now() - 86400000), used: true },
-    { code: "AFOS-9M2P-SWAP", peer: "GammaLN", created: new Date(Date.now() - 3600000), used: false },
+    { code: "AFOS-9M2P-SWAP", peer: "GammaNode", created: new Date(Date.now() - 3600000), used: false },
   ]);
 
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
@@ -492,13 +492,13 @@ export default function NetworkPage() {
   // Simulate live network activity
   useEffect(() => {
     const activities = [
-      { msg: "New RFQ offer: GammaLN → 0.05 BTC/USDT", peers: ["self", "p1"] },
+      { msg: "New RFQ offer: GammaNode → 0.05 BTC/USDT", peers: ["self", "p1"] },
       { msg: "Channel rebalanced: AlphaNode ↔ IotaSwap", peers: ["p2", "p9"] },
       { msg: "Swap settled: BetaSwap ↔ ZetaHub (0.02 ETH/SOL)", peers: ["p3", "p6"] },
       { msg: "Peer probe: DeltaNode latency 67ms", peers: ["p4"] },
       { msg: "New peer joined: ThetaRelay (AF-South)", peers: ["p8"] },
       { msg: "Heartbeat: 10/11 peers alive", peers: ["self"] },
-      { msg: "HTLC escrow locked: GammaLN → 0.001 BTC", peers: ["p1", "self"] },
+      { msg: "HTLC escrow locked: GammaNode → 0.001 BTC", peers: ["p1", "self"] },
       { msg: "Quote accepted: IotaSwap → 0.003 BTC/USDT", peers: ["p9", "self"] },
     ];
     const interval = setInterval(() => {
@@ -913,7 +913,7 @@ export default function NetworkPage() {
                 { label: "Channel", value: "0000intercomswapbtcusdt" },
                 { label: "Protocol", value: "IntercomSwap DHT" },
                 { label: "Escrow", value: "Solana Mainnet" },
-                { label: "Settlement", value: "Lightning + HTLC" },
+                { label: "Settlement", value: "IntercomSwap + HTLC" },
               ].map(item => (
                 <div key={item.label} className="flex justify-between">
                   <span className="text-[10px] text-muted-foreground">{item.label}</span>

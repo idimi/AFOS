@@ -68,7 +68,7 @@ const BOOT_ENTRIES: TerminalEntry[] = [
   {
     id: "boot-2", ts: "00:00:00.088", level: "success",
     message: "AFOS Agent ready — model: gemini-2.5-flash, skills: 3 loaded", tool: "afos:init",
-    payload: { model: "gemini-2.5-flash", skills: ["intercomswap_rfq", "intercomswap_escrow", "intercomswap_ln"], version: "0.3.1" },
+    payload: { model: "gemini-2.5-flash", skills: ["intercomswap_rfq", "intercomswap_escrow", "intercomswap_btc"], version: "0.3.1" },
   },
   {
     id: "boot-3", ts: "00:00:00.120", level: "info",
@@ -96,12 +96,12 @@ const BOOT_ENTRIES: TerminalEntry[] = [
   },
   {
     id: "boot-7", ts: "00:00:01.010", level: "info",
-    message: "LND node health check…", tool: "intercomswap_ln_getinfo",
+    message: "Bitcoin node health check…", tool: "intercomswap_btc_getinfo",
   },
   {
     id: "boot-8", ts: "00:00:01.180", level: "success",
-    message: "LND healthy — 4 channels, local: 0.142 BTC, remote: 0.089 BTC", tool: "intercomswap_ln_getinfo",
-    payload: { alias: "afos-lnd", num_active_channels: 4, local_balance_sat: 14200000, remote_balance_sat: 8900000, synced_to_chain: true, block_height: 882341 },
+    message: "Bitcoin node healthy — block height: 888,421, mempool: 12 txs", tool: "intercomswap_btc_getinfo",
+    payload: { network: "mainnet", block_height: 888421, mempool_txs: 12, synced: true, balance_sat: 14200000 },
   },
   {
     id: "boot-9", ts: "00:00:01.350", level: "success",

@@ -26,7 +26,7 @@ export interface OpenTrade {
 }
 
 const MOCK_OPEN_TRADES: OpenTrade[] = [
-  { id: "ot_1", direction: "buy_btc", fromSymbol: "USDT", toSymbol: "BTC", fromAmount: 432.50, toAmount: 0.00996, rate: 43418, feeBps: 12, peer: "GammaLN", htlcExpiry: "9m 42s", refundWindow: "20-40h", phase: "quote_received", receivedAt: new Date(Date.now() - 45000), expiresIn: 582 },
+  { id: "ot_1", direction: "buy_btc", fromSymbol: "USDT", toSymbol: "BTC", fromAmount: 432.50, toAmount: 0.00996, rate: 43418, feeBps: 12, peer: "GammaNode", htlcExpiry: "9m 42s", refundWindow: "20-40h", phase: "quote_received", receivedAt: new Date(Date.now() - 45000), expiresIn: 582 },
   { id: "ot_2", direction: "sell_btc", fromSymbol: "BTC", toSymbol: "USDT", fromAmount: 0.005, toAmount: 216.80, rate: 43360, feeBps: 18, peer: "AlphaNode", htlcExpiry: "14m 11s", refundWindow: "20-40h", phase: "htlc_locked", receivedAt: new Date(Date.now() - 120000), expiresIn: 851 },
   { id: "ot_3", direction: "buy_btc", fromSymbol: "USDT", toSymbol: "BTC", fromAmount: 100.00, toAmount: 0.00230, rate: 43478, feeBps: 8, peer: "IotaSwap", htlcExpiry: "2m 05s", refundWindow: "20-40h", phase: "rfq_sent", receivedAt: new Date(Date.now() - 12000), expiresIn: 125 },
 ];

@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AgentLogProvider } from "./contexts/AgentLogContext";
 import { WalletProvider } from "./contexts/WalletContext";
+import { MultiChainWalletProvider } from "./contexts/MultiChainWalletContext";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
@@ -32,12 +33,14 @@ function App() {
       <ThemeProvider defaultTheme="dark" switchable>
         <AgentLogProvider>
           <WalletProvider>
+            <MultiChainWalletProvider>
             <WalletModalProvider>
             <TooltipProvider>
               <Toaster />
               <Router />
             </TooltipProvider>
             </WalletModalProvider>
+            </MultiChainWalletProvider>
           </WalletProvider>
         </AgentLogProvider>
       </ThemeProvider>

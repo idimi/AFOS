@@ -22,6 +22,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
+import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
@@ -809,7 +810,7 @@ interface WalletModalState {
 }
 
 const MOCK_ADDRESSES: Record<string, string> = {
-  BTC: "lnbc1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdpl2pkx2ctnv5sxxmmwwd5kgetjypeh2ursdae8g6twvus8g6rfwvs8qun0dfjkxaqnp4q0n326hr8v9zprg8gsvezcch06gfaqqhde2aj730yg0durunfhv66",
+  BTC: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
   USDT: "7xKp9mNzQ3aBcDeFgHiJkLmNoPqRsTuVwXyZ2345678",
   SOL: "9WzDXwBbmkg8ZTbNMqUxvQRnL6iqChFynpXg3NqaFuAm",
   ETH: "0x742d35Cc6634C0532925a3b8D4C9E4F8B2A1d3E5",
@@ -830,10 +831,10 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
 
   const handleSend = () => {
     if (!amount) { toast.error("Enter an amount"); return; }
-    if (modal.asset === "BTC" && !invoice) { toast.error("Paste a Lightning invoice"); return; }
+    if (modal.asset === "BTC" && !invoice) { toast.error("Paste a Bitcoin address"); return; }
     toast.success(`${modal.asset} send initiated`, {
       description: modal.asset === "BTC"
-        ? `Paying LN invoice · ${amount} BTC`
+        ? `Sending ${amount} BTC on-chain`
         : `Sending ${amount} ${modal.asset} on ${modal.network}`,
     });
     onClose();
@@ -876,7 +877,7 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
               </div>
               <div className="rounded-xl p-3" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
                 <p className="text-[9px] text-muted-foreground mb-1">
-                  {modal.asset === "BTC" ? "Lightning Invoice" : `${modal.network} Address`}
+                  {modal.asset === "BTC" ? "Bitcoin Address" : `${modal.network} Address`}
                 </p>
                 <p className="text-[10px] font-mono text-foreground break-all leading-relaxed">{addr.slice(0, 60)}…</p>
               </div>
@@ -891,11 +892,11 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
             <div className="space-y-3">
               {modal.asset === "BTC" && (
                 <div>
-                  <label className="text-[10px] text-muted-foreground mb-1 block">Lightning Invoice</label>
+                  <label className="text-[10px] text-muted-foreground mb-1 block">Bitcoin Address</label>
                   <textarea
                     value={invoice}
                     onChange={e => setInvoice(e.target.value)}
-                    placeholder="lnbc…"
+                    placeholder="bc1q… or 1… or 3…"
                     rows={3}
                     className="w-full px-3 py-2 rounded-xl text-[10px] font-mono text-foreground placeholder:text-muted-foreground/50 outline-none resize-none"
                     style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
@@ -941,6 +942,7 @@ function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
   const [walletData, setWalletData] = useState<WalletAsset[]>([]);
   const [walletLoading, setWalletLoading] = useState(true);
+  const { ethereum, bitcoin } = useMultiChainWallet();
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -959,15 +961,33 @@ function WalletsCard() {
     USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8" },
     BTC: { color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/8" },
     ETH: { color: "text-blue-400", border: "border-blue-500/20", bg: "bg-blue-500/8" },
+    TNK: { color: "text-orange-400", border: "border-orange-500/20", bg: "bg-orange-500/8" },
   };
 
-  const wallets = walletData.map(w => ({
-    asset: w.asset,
-    network: w.network,
-    balance: w.balance,
-    usd: w.usd,
-    ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8" }),
-  }));
+  // Merge on-chain Solana wallets with connected ETH/BTC wallets
+  const wallets = [
+    ...walletData.map(w => ({
+      asset: w.asset,
+      network: w.network,
+      balance: w.balance,
+      usd: w.usd,
+      ...(ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8" }),
+    })),
+    ...(ethereum?.connected ? [{
+      asset: ethereum.symbol,
+      network: `Ethereum · ${ethereum.shortAddress}`,
+      balance: ethereum.balance,
+      usd: ethereum.balanceUsd > 0 ? `$${ethereum.balanceUsd.toFixed(2)}` : "",
+      ...(ASSET_STYLE["ETH"]),
+    }] : []),
+    ...(bitcoin?.connected ? [{
+      asset: bitcoin.symbol,
+      network: `Bitcoin · ${bitcoin.shortAddress}`,
+      balance: bitcoin.balance,
+      usd: bitcoin.balanceUsd > 0 ? `$${bitcoin.balanceUsd.toFixed(2)}` : "",
+      ...(ASSET_STYLE[bitcoin.symbol] ?? ASSET_STYLE["BTC"]),
+    }] : []),
+  ];
 
   return (
     <>
@@ -2020,7 +2040,7 @@ function StackHealthStrip() {
   const services = [
     { name: "AFOS Agent", status: "live", color: "bg-emerald-400" },
     { name: "IntercomSwap", status: "live", color: "bg-emerald-400" },
-    { name: "Bitcoin LN", status: "live", color: "bg-emerald-400" },
+    { name: "Bitcoin", status: "live", color: "bg-emerald-400" },
     { name: "Solana", status: "live", color: "bg-emerald-400" },
     { name: "Ethereum", status: "building", color: "bg-amber-400" },
   ];

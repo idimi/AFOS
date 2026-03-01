@@ -2,7 +2,7 @@
  * AFOS — Swaps Page
  * Design: Glassmorphism + Agentic Sci-Fi (dark navy-black, cyan-teal accents, gold financial values)
  * Protocol: IntercomSwap P2P atomic swap — RFQ → HTLC escrow → atomic settlement
- * Chains: Bitcoin (Lightning), Ethereum, Solana
+ * Chains: Bitcoin (on-chain), Ethereum, Solana
  * Fee structure: Platform 5% + Trade 10%, capped at 15% total
  */
 
@@ -30,13 +30,13 @@ const CHAINS = {
     id: "bitcoin",
     name: "Bitcoin",
     shortName: "BTC",
-    network: "Lightning Network",
+    network: "Bitcoin Network",
     color: "#f7931a",
     bgColor: "rgba(247,147,26,0.12)",
     borderColor: "rgba(247,147,26,0.3)",
     icon: "₿",
-    settlement: "~2s (Lightning)",
-    rpc: "LND mainnet",
+    settlement: "~10m (on-chain)",
+    rpc: "Bitcoin mainnet",
   },
   ethereum: {
     id: "ethereum",
@@ -76,12 +76,12 @@ const TOKENS = [
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
 
 const SWAP_PAIRS = [
-  { from: "BTC", to: "USDT", protocol: "Lightning ↔ Solana HTLC", native: true, fee: "0.5%", time: "~3s" },
-  { from: "BTC", to: "ETH", protocol: "Lightning ↔ EVM HTLC", native: false, fee: "0.8%", time: "~15s" },
+  { from: "BTC", to: "USDT", protocol: "IntercomSwap BTC↔USDT", native: true, fee: "0.5%", time: "~10m" },
+  { from: "BTC", to: "ETH", protocol: "IntercomSwap BTC↔ETH", native: false, fee: "0.8%", time: "~15m" },
   { from: "ETH", to: "SOL", protocol: "EVM ↔ Solana Bridge", native: false, fee: "0.6%", time: "~20s" },
   { from: "SOL", to: "USDT", protocol: "Solana SPL Swap", native: true, fee: "0.3%", time: "~1s" },
   { from: "ETH", to: "USDC", protocol: "EVM DEX Route", native: false, fee: "0.3%", time: "~12s" },
-  { from: "BTC", to: "SOL", protocol: "Lightning ↔ Solana HTLC", native: true, fee: "0.7%", time: "~4s" },
+  { from: "BTC", to: "SOL", protocol: "IntercomSwap BTC↔SOL", native: true, fee: "0.7%", time: "~10m" },
 ];
 
 // ─── Mock P2P Peers ───────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ const SWAP_PAIRS = [
 const MOCK_PEERS = [
   { id: "peer_0x4f2a", alias: "AlphaNode", latency: 12, volume: "$142k", pairs: ["BTC/USDT", "BTC/SOL"], online: true, reputation: 99.2 },
   { id: "peer_0x8c1e", alias: "BetaSwap", latency: 34, volume: "$89k", pairs: ["ETH/USDC", "ETH/SOL"], online: true, reputation: 97.8 },
-  { id: "peer_0x2d9b", alias: "GammaLN", latency: 8, volume: "$231k", pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8 },
+  { id: "peer_0x2d9b", alias: "GammaNode", latency: 8, volume: "$231k", pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8 },
   { id: "peer_0x7a3c", alias: "DeltaNode", latency: 67, volume: "$45k", pairs: ["SOL/USDT"], online: true, reputation: 95.1 },
   { id: "peer_0x1f6d", alias: "EpsilonPeer", latency: 21, volume: "$178k", pairs: ["BTC/USDT", "ETH/USDC"], online: false, reputation: 98.4 },
 ];
@@ -372,11 +372,11 @@ function PeerPanel({ fromToken, toToken }: { fromToken: typeof TOKENS[0]; toToke
 // ─── Recent Swaps ─────────────────────────────────────────────────────────────
 
 const RECENT_SWAPS = [
-  { from: "BTC", to: "USDT", fromAmt: "0.0023", toAmt: "100.00", status: "complete", time: "2m ago", peer: "GammaLN", protocol: "Lightning ↔ Solana" },
+  { from: "BTC", to: "USDT", fromAmt: "0.0023", toAmt: "100.00", status: "complete", time: "2m ago", peer: "GammaNode", protocol: "IntercomSwap" },
   { from: "ETH", to: "SOL", fromAmt: "0.12", toAmt: "24.01", status: "complete", time: "18m ago", peer: "BetaSwap", protocol: "EVM ↔ Solana" },
   { from: "SOL", to: "USDT", fromAmt: "5.0", toAmt: "750.00", status: "complete", time: "1h ago", peer: "AlphaNode", protocol: "Solana SPL" },
-  { from: "BTC", to: "ETH", fromAmt: "0.005", toAmt: "0.072", status: "failed", time: "3h ago", peer: "DeltaNode", protocol: "Lightning ↔ EVM" },
-  { from: "USDC", to: "SOL", fromAmt: "300.00", toAmt: "2.00", status: "complete", time: "5h ago", peer: "GammaLN", protocol: "EVM DEX" },
+  { from: "BTC", to: "ETH", fromAmt: "0.005", toAmt: "0.072", status: "failed", time: "3h ago", peer: "DeltaNode", protocol: "IntercomSwap" },
+  { from: "USDC", to: "SOL", fromAmt: "300.00", toAmt: "2.00", status: "complete", time: "5h ago", peer: "GammaNode", protocol: "IntercomSwap" },
 ];
 
 function RecentSwaps() {
@@ -449,7 +449,7 @@ function ChainStatsBar() {
   }, []);
 
   const stats = [
-    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Lightning" },
+    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Bitcoin" },
     { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "Binance Live" : "Ethereum" },
     { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "Jupiter Live" : "Solana" },
   ];
@@ -538,7 +538,7 @@ interface OrderBookEntry {
 }
 
 function generateOrders(fromSym: string, toSym: string, baseRate: number): OrderBookEntry[] {
-  const peers = ["GammaLN", "AlphaNode", "BetaSwap", "DeltaNode", "EpsilonPeer", "ZetaHub", "EtaNode"];
+  const peers = ["GammaNode", "AlphaNode", "BetaSwap", "DeltaNode", "EpsilonPeer", "ZetaHub", "EtaNode"];
   return Array.from({ length: 7 }, (_, i) => {
     const spread = (Math.random() - 0.5) * 0.02; // ±1% spread
     const rate = baseRate * (1 + spread);
@@ -774,7 +774,7 @@ function generateFeedMsg(): FeedMessage {
     cumulative += weights[i];
     if (r < cumulative) { kind = kinds[i]; break; }
   }
-  const peers = ["GammaLN", "AlphaNode", "BetaSwap", "DeltaNode", "IotaSwap", "ZetaHub"];
+  const peers = ["GammaNode", "AlphaNode", "BetaSwap", "DeltaNode", "IotaSwap", "ZetaHub"];
   const peer = peers[Math.floor(Math.random() * peers.length)];
   const channel = FEED_CHANNELS[Math.floor(Math.random() * FEED_CHANNELS.length)];
   const now = new Date();

@@ -162,3 +162,22 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add 30-second in-memory price cache to chat.ts to avoid CoinGecko rate limits
 - [x] Add ETH price? and BTC price? quick-action chips to MiniChatWidget
 - [x] Show price source in agent reply (e.g. "SOL is $84.11 (via CoinGecko, live)")
+
+## Multi-Chain Wallet Expansion
+- [ ] Research Tap Wallet API, Xverse Bitcoin wallet API, MetaMask/Coinbase EIP-1193
+- [ ] Update Connect Wallet modal: group wallets by chain (Solana / Ethereum / Bitcoin)
+- [ ] Implement Ethereum wallet connection (MetaMask + Coinbase Wallet via window.ethereum)
+- [ ] Add ETH balance to Wallets panel
+- [ ] Implement Bitcoin wallet connection (Xverse + Tap Wallet)
+- [ ] Add BTC balance to Wallets panel
+- [ ] Update agent chat to support ETH and BTC chain context in price/balance replies
+
+## Bitcoin Reference Fix
+- [ ] Replace all Lightning Network Bitcoin references with regular on-chain Bitcoin across the UI (status bar, IntercomSwap labels, swap descriptions)
+
+## IntercomSwap Primary Route + Multi-Chain Wallets
+- [ ] Replace all Lightning Network references in Swaps, SwapHistory, AgentSettings, NetworkPage, SwapPage, AgentLogContext
+- [ ] Redesign ConnectWalletModal with chain tabs: Solana (Phantom/Solflare), Ethereum (MetaMask/Coinbase), Bitcoin (Xverse/Tap Wallet)
+- [ ] Update swap routing: IntercomSwap primary for ALL chains; Jupiter fallback for Solana; 1inch fallback for Ethereum
+- [ ] Update Wallets panel to show ETH and BTC balances when connected
+- [ ] Update swap UI to show IntercomSwap as the route with fallback indicators

@@ -1,6 +1,6 @@
 /**
  * AFOS — Agent Settings Page
- * Configure OpenClaw agent, IntercomSwap node, LND, Solana wallet, and future MoonPay integration
+ * Configure OpenClaw agent, IntercomSwap node, Bitcoin, Solana wallet, and future MoonPay integration
  */
 
 import { useState } from "react";
@@ -20,7 +20,7 @@ interface Section {
 const SECTIONS: Section[] = [
   { id: "openclaw", label: "AFOS Agent", icon: Bot, color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/5" },
   { id: "intercomswap", label: "IntercomSwap Node", icon: Network, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
-  { id: "lnd", label: "Bitcoin Lightning (LND)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
+  { id: "lnd", label: "Bitcoin (on-chain)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
   { id: "solana", label: "Solana Wallet", icon: Wallet, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },
   { id: "worker", label: "Worker / Autopost", icon: Repeat, color: "text-violet-400", border: "border-violet-500/20", bg: "bg-violet-500/5" },
   { id: "moonpay", label: "MoonPay (Phase 2)", icon: Moon, color: "text-foreground/70", border: "border-border", bg: "bg-muted" },
@@ -145,8 +145,8 @@ export default function AgentSettings() {
     minSwapUsdt: "10",
     maxSwapUsdt: "1000",
     scBridgePort: "49222",
-    // LND
-    lndHost: "localhost:10009",
+    // Bitcoin
+    lndHost: "localhost:8332",
     lndMacaroon: "",
     lndTlsCert: "",
     // Solana
@@ -233,8 +233,8 @@ export default function AgentSettings() {
 
               {section.id === "lnd" && (
                 <div className="space-y-4">
-                  <Field label="LND Host:Port" value={settings.lndHost} onChange={set("lndHost")} mono placeholder="localhost:10009" />
-                  <Field label="Admin Macaroon (hex)" value={settings.lndMacaroon} onChange={set("lndMacaroon")} type="password" mono placeholder="0201036c6e64…" />
+                  <Field label="Bitcoin Node Host:Port" value={settings.lndHost} onChange={set("lndHost")} mono placeholder="localhost:8332" />
+                  <Field label="RPC Password" value={settings.lndMacaroon} onChange={set("lndMacaroon")} type="password" mono placeholder="rpcpassword" />
                   <Field label="TLS Cert Path" value={settings.lndTlsCert} onChange={set("lndTlsCert")} mono placeholder="/root/.lnd/tls.cert" />
                 </div>
               )}

@@ -22,7 +22,7 @@ const AFOS_FEE_BPS = 30; // 0.3%
 const TOKENS = [
   { symbol: "USDT", name: "Tether USD", chain: "Solana", icon: "💵", decimals: 6 },
   { symbol: "SOL", name: "Solana", chain: "Solana", icon: "◎", decimals: 9 },
-  { symbol: "BTC", name: "Bitcoin", chain: "Lightning", icon: "₿", decimals: 8 },
+  { symbol: "BTC", name: "Bitcoin", chain: "Bitcoin", icon: "₿", decimals: 8 },
   { symbol: "ETH", name: "Ethereum", chain: "Ethereum", icon: "Ξ", decimals: 18 },
 ];
 
@@ -96,7 +96,7 @@ export default function SwapPage() {
   const [fromToken, setFromToken] = useState("USDT");
   const [toToken, setToToken] = useState("BTC");
   const [fromAmount, setFromAmount] = useState("");
-  const [lightningAddress, setLightningAddress] = useState("");
+  const [bitcoinAddress, setBitcoinAddress] = useState("");
   const [swapStep, setSwapStep] = useState<SwapStep>("idle");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -108,15 +108,15 @@ export default function SwapPage() {
   const feeUsd = fromToken === "USDT" ? feeAmount : feeAmount * (MOCK_RATES[`${fromToken}→USDT`] ?? 0);
   const toAmountAfterFee = toAmountRaw * (1 - AFOS_FEE_BPS / 10000);
 
-  const needsLightningAddress = toToken === "BTC";
+  const needsBitcoinAddress = toToken === "BTC";
   const isConnected = connectedWallets.length > 0;
 
   const canSwap = useMemo(() => {
     if (!isConnected) return false;
     if (!fromAmount || fromAmountNum <= 0) return false;
-    if (needsLightningAddress && !lightningAddress.trim()) return false;
+    if (needsBitcoinAddress && !bitcoinAddress.trim()) return false;
     return true;
-  }, [isConnected, fromAmount, fromAmountNum, needsLightningAddress, lightningAddress]);
+  }, [isConnected, fromAmount, fromAmountNum, needsBitcoinAddress, bitcoinAddress]);
 
   const handleFlip = () => {
     setFromToken(toToken);
@@ -130,13 +130,22 @@ export default function SwapPage() {
     await new Promise(r => setTimeout(r, 1200));
     setSwapStep("executing");
 
-    // Simulate pipeline steps
+    // Simulate pipeline steps — IntercomSwap primary, Jupiter/1inch fallback
+    const isBtcPair = fromToken === "BTC" || toToken === "BTC";
+    const isEthPair = fromToken === "ETH" || toToken === "ETH";
+    const fallbackRoute = isEthPair ? "1inch" : "Jupiter";
     const steps = [
       "Parsing swap intent…",
-      "Broadcasting RFQ to IntercomSwap channel…",
-      "Peer negotiation — best quote selected…",
-      "Locking HTLC escrow on Solana…",
-      "Settling via Lightning Network…",
+      "Broadcasting RFQ to IntercomSwap P2P network…",
+      isBtcPair || isEthPair
+        ? "Peer negotiation — IntercomSwap quote selected…"
+        : `Peer negotiation — IntercomSwap quote selected (${fallbackRoute} fallback ready)…`,
+      "Locking atomic escrow…",
+      isBtcPair
+        ? "Settling via Bitcoin on-chain…"
+        : isEthPair
+        ? "Settling via Ethereum…"
+        : "Settling via Solana…",
     ];
     for (const step of steps) {
       toast.info(step, { duration: 1800 });
@@ -354,9 +363,9 @@ export default function SwapPage() {
                   )}
                 </div>
 
-                {/* Lightning address (if receiving BTC) */}
+                {/* Bitcoin address (if receiving BTC) */}
                 <AnimatePresence>
-                  {needsLightningAddress && (
+                  {needsBitcoinAddress && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
@@ -366,16 +375,16 @@ export default function SwapPage() {
                         style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)" }}>
                         <div className="flex items-center gap-1.5">
                           <Zap className="w-3.5 h-3.5 text-amber-400" />
-                          <p className="text-[11px] font-semibold text-amber-400">Lightning Receive Address</p>
+                          <p className="text-[11px] font-semibold text-amber-400">Bitcoin Receive Address</p>
                         </div>
                         <input
-                          value={lightningAddress}
-                          onChange={e => setLightningAddress(e.target.value)}
-                          placeholder="user@wallet.io or lnbc..."
+                          value={bitcoinAddress}
+                          onChange={e => setBitcoinAddress(e.target.value)}
+                          placeholder="bc1q… or 1… or 3…"
                           className="w-full bg-transparent text-xs font-mono text-foreground outline-none placeholder:text-muted-foreground/50"
                         />
                         <p className="text-[10px] text-muted-foreground">
-                          Use any Lightning wallet: Strike, Wallet of Satoshi, Phoenix, etc.
+                          Use any Bitcoin wallet: Xverse, Tap Wallet, etc.
                         </p>
                       </div>
                     </motion.div>
@@ -417,7 +426,7 @@ export default function SwapPage() {
                               {[
                                 ["Protocol fee", `${AFOS_FEE_BPS / 100}%`, "AFOS network fee"],
                                 ["Network fee", "~$0.01", "Solana transaction"],
-                                ["Settlement", "~$0.00", "Lightning (free)"],
+                                ["Settlement", "~$0.00", "On-chain fee"],
                                 ["Slippage", "0.1%", "Max price impact"],
                               ].map(([label, value, desc]) => (
                                 <div key={label} className="flex items-center justify-between">
@@ -464,8 +473,8 @@ export default function SwapPage() {
                       </div>
                     ) : !fromAmount ? (
                       "Enter an amount"
-                    ) : needsLightningAddress && !lightningAddress ? (
-                      "Enter Lightning address"
+                    ) : needsBitcoinAddress && !bitcoinAddress ? (
+                      "Enter Bitcoin address"
                     ) : (
                       <div className="flex items-center justify-center gap-2">
                         <Zap className="w-4 h-4" />

@@ -62,7 +62,7 @@ const MOCK_REVENUE = {
 
 const MOCK_NODE_STATUS = [
   { name: "IntercomSwap Node", status: "live", uptime: "99.8%", peers: 12 },
-  { name: "Lightning Node (LND)", status: "live", uptime: "99.5%", channels: 8 },
+  { name: "Bitcoin Node", status: "live", uptime: "99.5%", channels: 8 },
   { name: "Solana RPC", status: "live", uptime: "100%", latency: "42ms" },
   { name: "Ethereum RPC", status: "degraded", uptime: "97.2%", latency: "180ms" },
 ];
@@ -623,7 +623,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <p className="text-xs font-semibold text-foreground">LP Reserve Balances</p>
               {[
-                { label: "BTC (Lightning)", value: `${lpConfig.btcReserve} BTC`, usd: `$${(lpConfig.btcReserve * 96420).toLocaleString()}`, color: "#f59e0b", pct: (lpConfig.btcReserve / 1.0) * 100 },
+                { label: "BTC (on-chain)", value: `${lpConfig.btcReserve} BTC`, usd: `$${(lpConfig.btcReserve * 96420).toLocaleString()}`, color: "#f59e0b", pct: (lpConfig.btcReserve / 1.0) * 100 },
                 { label: "USDT (Solana)", value: `${lpConfig.usdtReserve.toLocaleString()} USDT`, usd: `$${lpConfig.usdtReserve.toLocaleString()}`, color: "#10b981", pct: (lpConfig.usdtReserve / 100000) * 100 },
                 { label: "SOL (Gas)", value: `${lpConfig.solReserve} SOL`, usd: `$${(lpConfig.solReserve * 142.8).toFixed(0)}`, color: "#a78bfa", pct: (lpConfig.solReserve / 500) * 100 },
               ].map(r => (
