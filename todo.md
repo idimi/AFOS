@@ -271,3 +271,14 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Audit Agent Mode toggle: confirmed purely cosmetic (no separate execution path)
 - [x] Removed AgentModeToggle component — execution is always via submitRfq + executeSwap regardless of toggle state
+
+## Dashboard Footer — Live Status Bar
+
+- [x] Wire AFOS Agent indicator to getAgentStatus() — live if status=active or activePeers present
+- [x] Wire IntercomSwap indicator to isSSEConnected() — live if SSE stream is open
+- [x] Wire Bitcoin indicator to getPrices() — live if BTC price > 0
+- [x] Wire Solana indicator to getPrices() — live if SOL price > 0
+- [x] Wire Ethereum indicator to getPrices() — live if ETH price > 0
+- [x] Show live count of active services in "X/5 live" badge with color (green/amber/red)
+- [x] Hover tooltip shows latency (ms) for each service
+- [x] Poll every 30s + re-check IntercomSwap on SSE reconnect

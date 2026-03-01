@@ -24,7 +24,7 @@ import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, type RfqResult, type WalletAsset } from "../lib/afosApi";
+import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -2444,27 +2444,106 @@ function MobileMarketCard() {
 }
 
 // ── Stack Health Strip ─────────────────────────────────────────────────────
+type ServiceStatus = 'live' | 'degraded' | 'offline' | 'checking';
+
+interface ServiceState {
+  name: string;
+  status: ServiceStatus;
+  latency?: number; // ms
+}
+
+function statusColor(s: ServiceStatus): string {
+  if (s === 'live')     return 'bg-emerald-400';
+  if (s === 'degraded') return 'bg-amber-400';
+  if (s === 'offline')  return 'bg-red-500';
+  return 'bg-slate-500'; // checking
+}
+
+function statusTextColor(s: ServiceStatus): string {
+  if (s === 'live')     return 'text-emerald-400';
+  if (s === 'degraded') return 'text-amber-400';
+  if (s === 'offline')  return 'text-red-400';
+  return 'text-slate-500';
+}
+
 function StackHealthStrip() {
-  const services = [
-    { name: "AFOS Agent", status: "live", color: "bg-emerald-400" },
-    { name: "IntercomSwap", status: "live", color: "bg-emerald-400" },
-    { name: "Bitcoin", status: "live", color: "bg-emerald-400" },
-    { name: "Solana", status: "live", color: "bg-emerald-400" },
-    { name: "Ethereum", status: "building", color: "bg-amber-400" },
-  ];
+  const [services, setServices] = useState<ServiceState[]>([
+    { name: 'AFOS Agent',    status: 'checking' },
+    { name: 'IntercomSwap', status: 'checking' },
+    { name: 'Bitcoin',      status: 'checking' },
+    { name: 'Solana',       status: 'checking' },
+    { name: 'Ethereum',     status: 'checking' },
+  ]);
+
+  const updateService = useCallback((name: string, status: ServiceStatus, latency?: number) => {
+    setServices(prev => prev.map(s => s.name === name ? { ...s, status, latency } : s));
+  }, []);
+
+  const checkAll = useCallback(async () => {
+    const t0 = Date.now();
+
+    // 1. AFOS Agent — getAgentStatus()
+    try {
+      const agentStatus = await getAgentStatus();
+      const lat = Date.now() - t0;
+      const isActive = agentStatus?.status === 'active' || agentStatus?.activePeers != null;
+      updateService('AFOS Agent', isActive ? 'live' : 'degraded', lat);
+    } catch {
+      updateService('AFOS Agent', 'offline');
+    }
+
+    // 2. IntercomSwap — SSE connection state
+    updateService('IntercomSwap', isSSEConnected() ? 'live' : 'degraded');
+
+    // 3–5. Bitcoin / Solana / Ethereum — check via getPrices()
+    try {
+      const t1 = Date.now();
+      const prices = await getPrices();
+      const lat = Date.now() - t1;
+      const hasBtc = prices['BTC']?.usd != null && prices['BTC'].usd > 0;
+      const hasSol = prices['SOL']?.usd != null && prices['SOL'].usd > 0;
+      const hasEth = prices['ETH']?.usd != null && prices['ETH'].usd > 0;
+      updateService('Bitcoin',  hasBtc ? 'live' : 'degraded', lat);
+      updateService('Solana',   hasSol ? 'live' : 'degraded', lat);
+      updateService('Ethereum', hasEth ? 'live' : 'degraded', lat);
+    } catch {
+      updateService('Bitcoin',  'offline');
+      updateService('Solana',   'offline');
+      updateService('Ethereum', 'offline');
+    }
+  }, [updateService]);
+
+  // Initial check + poll every 30s + react to SSE connection changes
+  useEffect(() => {
+    checkAll();
+    const interval = setInterval(checkAll, 30_000);
+    // Also re-check IntercomSwap status whenever SSE reconnects
+    const unsubInit = onSSEEvent('init', () => {
+      updateService('IntercomSwap', 'live');
+    });
+    return () => {
+      clearInterval(interval);
+      unsubInit();
+    };
+  }, [checkAll, updateService]);
+
+  const liveCount = services.filter(s => s.status === 'live').length;
+  const totalCount = services.length;
+  const allLive = liveCount === totalCount;
+  const countColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
 
   return (
     <div className="flex items-center gap-3 px-5 py-2.5 border-t border-border bg-muted/20 shrink-0">
       <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">Stack</span>
-      <div className="flex items-center gap-3 flex-1">
+      <div className="flex items-center gap-3 flex-1 flex-wrap">
         {services.map(s => (
-          <div key={s.name} className="flex items-center gap-1.5">
-            <div className={`w-1.5 h-1.5 rounded-full ${s.color} ${s.status === "live" ? "animate-pulse" : ""}`} />
-            <span className="text-[10px] text-muted-foreground font-mono">{s.name}</span>
+          <div key={s.name} className="flex items-center gap-1.5" title={s.latency != null ? `${s.latency}ms` : s.status}>
+            <div className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`} />
+            <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>{s.name}</span>
           </div>
         ))}
       </div>
-      <span className="text-[10px] text-emerald-400 font-mono">4/5 live</span>
+      <span className={`text-[10px] font-mono ${countColor}`}>{liveCount}/{totalCount} live</span>
     </div>
   );
 }
