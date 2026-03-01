@@ -1086,7 +1086,7 @@ function MarketTicker() {
                 key={`${activePair}-${interval}-${tvTheme}`}
                 src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
                 width="100%"
-                height="360"
+                height="420"
                 frameBorder="0"
                 scrolling="no"
                 style={{ display: "block", background: "#000" }}
