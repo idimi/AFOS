@@ -661,7 +661,7 @@ function MarketTicker() {
   });
   // Open BTC/USDT chart by default on desktop
   const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
-  const [interval, setIntervalTF] = useState("240"); // TradingView interval — default 4h
+  const [interval, setIntervalTF] = useState("30"); // TradingView interval — default 30m
 
   const TF_OPTIONS = [
     { label: "1m", value: "1" },
@@ -1179,7 +1179,7 @@ function MobileMarketCard() {
     SOL: { price: 142.80, change: -1.1 },
   });
   const [activePair, setActivePair] = useState<string | null>(null);
-  const [interval, setIntervalTF] = useState("240"); // default 4h
+  const [interval, setIntervalTF] = useState("30"); // default 30m
 
   useEffect(() => {
     const t = setInterval(() => {
