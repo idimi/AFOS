@@ -120,3 +120,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace all visible "openclaw-agent" in header with "AFOS Agent"
 - [x] Replace all visible "OpenClaw Agent" text in dashboard with "AFOS Agent"
 - [x] Renamed in Dashboard.tsx (header + sidebar agent card), SwapHistory.tsx (Executed By field), AgentSettings.tsx (settings section label), NetworkPage.tsx (self node alias)
+
+## Agent Activity — Wire to Live SSE Stream
+
+- [x] Found MobileAgentActivity uses useAgentLog() hook — same as Terminal
+- [x] Found AgentLogContext was using a mock LIVE_POOL cycling random fake entries every 3.8s
+- [x] Rewrote AgentLogContext to load real /api/agent/log history on mount
+- [x] Wired real SSE events: agent_decision, agent_log, p2p_rfq, swap_executed, peer_connected, peer_disconnected
+- [x] Removed all "openclaw" references from boot entries and live pool (now "afos:init", "afos:ready", "afos:decision")
