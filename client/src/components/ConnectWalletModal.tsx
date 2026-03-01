@@ -225,7 +225,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                     <WalletButton
                       icon={METAMASK_ICON}
                       name="MetaMask"
-                      desc="Native BTC · ETH · Multichain"
+                      desc="Native BTC · ETH · SOL · Multichain"
                       chains={["solana", "ethereum", "bitcoin"]}
                       bg="rgba(246,133,27,0.08)"
                       border="rgba(246,133,27,0.2)"
@@ -270,7 +270,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                     <WalletButton
                       icon={METAMASK_ICON}
                       name="MetaMask"
-                      desc="Native BTC · ETH · Multichain"
+                      desc="Native BTC · ETH · SOL · Multichain"
                       chains={["solana", "ethereum", "bitcoin"]}
                       bg="rgba(246,133,27,0.1)"
                       border="rgba(246,133,27,0.25)"
@@ -329,7 +329,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                     <WalletButton
                       icon={METAMASK_ICON}
                       name="MetaMask"
-                      desc="Native BTC · ETH · Multichain"
+                      desc="Native BTC · ETH · SOL · Multichain"
                       chains={["bitcoin", "ethereum"]}
                       bg="rgba(247,147,26,0.08)"
                       border="rgba(247,147,26,0.2)"
