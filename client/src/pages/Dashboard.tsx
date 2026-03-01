@@ -521,19 +521,25 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
       )}
 
       {/* Input */}
-      <div className="px-3 pb-3 pt-1 shrink-0 border-t border-border">
+      <div className="px-3 pb-3 pt-1.5 shrink-0 border-t border-border">
         <div className="flex gap-2 items-center">
-          <div className="flex-1 rounded-xl flex items-center gap-2 px-3 py-2"
-            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-            <Sparkles className="w-3 h-3 text-muted-foreground shrink-0" />
+          <div
+            className="flex-1 rounded-xl flex items-center gap-2 px-3 py-2.5 transition-all duration-150"
+            style={{
+              background: "color-mix(in srgb, var(--foreground) 6%, var(--background))",
+              border: "1.5px solid color-mix(in srgb, var(--foreground) 18%, transparent)",
+            }}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             <input
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder="swap 1 USDT to SOL…"
+              placeholder="Ask AFOS — e.g. swap 1 USDT to SOL"
               disabled={isTyping}
-              className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+              className="flex-1 bg-transparent text-xs text-foreground outline-none"
+              style={{ color: "var(--foreground)", caretColor: "#06b6d4" }}
             />
           </div>
           <button
