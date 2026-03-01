@@ -428,8 +428,17 @@ function RecentSwaps() {
       } catch { /* keep previous */ } finally { setLoading(false); }
     };
     fetchSwaps();
+    // Poll every 30s as baseline
     const t = setInterval(fetchSwaps, 30000);
-    return () => clearInterval(t);
+    // Also refresh immediately when a swap_executed SSE event arrives
+    const unsubExec = onSSEEvent('swap_executed', () => { fetchSwaps(); });
+    // And on rfq_result (some backends emit this instead)
+    const unsubRfq = onSSEEvent('rfq_result', () => { fetchSwaps(); });
+    return () => {
+      clearInterval(t);
+      unsubExec();
+      unsubRfq();
+    };
   }, []);
 
   return (
@@ -587,6 +596,7 @@ function AgentModeToggle({ enabled, onToggle }: { enabled: boolean; onToggle: ()
 
 interface OrderBookEntry {
   id: string;
+  rfqId?: string; // real P2P quote rfqId (from SSE p2p_quote event)
   peer: string;
   fromSymbol: string;
   toSymbol: string;
@@ -665,6 +675,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       const usdValue = fromAmount * (fromToken.usdPrice || baseRate);
       const entry: OrderBookEntry = {
         id: d.rfqId ?? `sse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        rfqId: d.rfqId, // preserve real rfqId for direct peer targeting
         peer: d.peer ?? d.peerId ?? "P2P Peer",
         fromSymbol: qFrom,
         toSymbol: qTo,
@@ -1599,12 +1610,15 @@ export default function Swaps() {
 
     try {
       // Step 1: Submit RFQ to get best route + quote
+      // If user accepted a specific P2P quote, pass the peer's rfqId for direct targeting
+      const preferredPeerId = selectedPeer?.id;
       const result = await submitRfq(
         fromToken.symbol,
         toToken.symbol,
         parseFloat(fromAmount),
         fromToken.chain as import("../lib/afosApi").SupportedChain,
         toToken.chain as import("../lib/afosApi").SupportedChain,
+        preferredPeerId,
       );
 
       if (result?.success) {
@@ -1660,9 +1674,28 @@ export default function Swaps() {
 
   const handleAcceptOrder = (order: OrderBookEntry) => {
     haptic.tap();
+    // Pre-fill the swap form with the accepted quote
     setFromAmount(order.fromAmount.toString());
+    // If this is a real P2P quote (has rfqId), set it as the preferred peer
+    if (order.rfqId) {
+      // Build a synthetic LivePeer from the order so the Preferred Peer UI shows it
+      const syntheticPeer: LivePeer = {
+        id: order.rfqId,
+        alias: order.peer,
+        latency: order.latency,
+        pairs: [`${order.fromSymbol}/${order.toSymbol}`],
+        online: true,
+        reputation: order.reputation,
+      };
+      setSelectedPeer(syntheticPeer);
+      // Also add to livePeers if not already present
+      setLivePeers(prev => prev.some(p => p.id === order.rfqId) ? prev : [syntheticPeer, ...prev]);
+      setShowAdvanced(true); // open Advanced so user sees the selected peer
+    }
     toast.success(`Quote accepted from ${order.peer}`, {
-      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}`,
+      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}${
+        order.rfqId ? ` · Targeting peer directly` : ''
+      }`,
     });
   };
 
@@ -1688,7 +1721,9 @@ export default function Swaps() {
           <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
             style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
             <Users className="w-3 h-3 text-cyan-400" />
-            <span className="text-[10px] font-mono text-cyan-400">142</span>
+            <span className="text-[10px] font-mono text-cyan-400">
+              {activePeerCount > 0 ? activePeerCount : <span className="text-slate-500">—</span>}
+            </span>
           </div>
         </div>
       </div>

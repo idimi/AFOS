@@ -256,3 +256,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Live Feed tab: maps SSE event types (p2p_rfq, p2p_quote, swap_executed, peer_connected, etc.) to FeedMsgKind
 - [x] Live Feed tab: falls back to simulation after 5s if no real SSE events arrive; shows "SSE Live" vs "Simulated" label
 - [x] Live Feed tab: starts empty (no pre-seeded mock messages); simulation only activates on fallback
+
+## Swap Page — Live Peer Count, History Refresh, Order Quote Persistence
+
+- [x] Wire hardcoded "142" peer count in Swap tab header to real activePeerCount from getAgentStatus()
+- [x] Add swap_executed SSE subscription to RecentSwaps to refresh history live after each settlement
+- [x] Persist accepted order-book quote: pre-fill swap form with peer's rfqId as preferredPeer when "Accept" is clicked

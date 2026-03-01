@@ -313,14 +313,15 @@ export async function submitRfq(
   toToken: string,
   amount: number,
   fromChain: SupportedChain = 'solana',
-  toChain: SupportedChain = 'solana'
+  toChain: SupportedChain = 'solana',
+  preferredPeer?: string // optional: rfqId of a specific P2P peer to target directly
 ): Promise<{ success: boolean; result: RfqResult }> {
   const res = await fetchWithTimeout(
     `${BACKEND_URL}/api/rfq`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fromToken, toToken, amount, fromChain, toChain }),
+      body: JSON.stringify({ fromToken, toToken, amount, fromChain, toChain, preferredPeer }),
     },
     20000
   );
