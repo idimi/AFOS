@@ -346,6 +346,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       name="Tap Wallet"
                       desc="BTC + TNK (Trac Network)"
                       chains={["bitcoin"]}
+                      customChips={[
+                        { label: "BTC", color: "#F7931A" },
+                        { label: "TNK", color: "#1a1a1a" },
+                      ]}
                       bg="rgba(255,153,0,0.08)"
                       border="rgba(255,153,0,0.2)"
                       loading={btcConnecting}
@@ -420,16 +424,23 @@ function PhantomMultiChainButton({ loading, onClick }: { loading: boolean; onCli
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, accentColor }: {
+function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, accentColor, customChips }: {
   icon: string; name: string; desc: string;
   chains: ChainTab[];
   bg: string; border: string;
   onClick: () => void; loading?: boolean;
   /** Optional accent color for the Multi-chain badge (defaults to first chain color) */
   accentColor?: string;
+  /** Optional custom chip labels+colors — overrides the chains-derived chips (no badge shown) */
+  customChips?: { label: string; color: string }[];
 }) {
   const isMultiChain = chains.length > 1;
   const badgeColor = accentColor ?? CHAIN_DOTS[chains[0]];
+  // Determine what to show below the name:
+  // 1. customChips — explicit chips, no badge (e.g. Tap Wallet: BTC + TNK)
+  // 2. isMultiChain — standard chain chips with Multi-chain badge
+  // 3. fallback — plain description text
+  const showCustomChips = customChips && customChips.length > 0;
   return (
     <button
       onClick={onClick}
@@ -441,8 +452,8 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="text-sm font-bold text-foreground">{name}</p>
-          {/* Multi-chain badge — same style as Phantom */}
-          {isMultiChain && (
+          {/* Multi-chain badge — only for standard multi-chain wallets, NOT for customChips wallets */}
+          {isMultiChain && !showCustomChips && (
             <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold"
               style={{ background: `${badgeColor}22`, color: badgeColor }}>
               <Globe className="w-2.5 h-2.5" />
@@ -450,8 +461,17 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
             </span>
           )}
         </div>
-        {/* Chain pill chips for multi-chain, plain desc for single-chain */}
-        {isMultiChain ? (
+        {/* Chip row: custom chips > standard chain chips > plain desc */}
+        {showCustomChips ? (
+          <div className="flex items-center gap-1 mt-0.5">
+            {customChips!.map(chip => (
+              <span key={chip.label} className="text-[9px] font-medium px-1 py-0.5 rounded"
+                style={{ background: `${chip.color}18`, color: chip.color }}>
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        ) : isMultiChain ? (
           <div className="flex items-center gap-1 mt-0.5">
             {chains.map(c => (
               <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded"

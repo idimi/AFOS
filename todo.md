@@ -213,3 +213,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fetch BTC balance from Mempool.space after MetaMask BTC connection
 - [x] Update BtcProviderType: "metamask" | "tap" | "phantom" (removed "xverse")
 - [x] Remove sats-connect import (no longer needed)
+
+## Tap Wallet Badge Uniformity
+
+- [x] Add BTC (orange) + TNK (black) pill chips to Tap Wallet (no badge), matching Phantom/MetaMask chip style
