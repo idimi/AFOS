@@ -74,3 +74,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Create AgentThoughtStream mini-feed
 - [ ] Remove pipeline state from Dashboard (keep in AgentLogContext for Terminal)
 - [ ] Responsive mobile layout — single column, prioritized order
+
+## Conversational Swap Agent (Real Product)
+
+### Goal: User connects wallet → chats with AI agent → agent executes swaps on-chain
+
+- [x] Add Phantom wallet adapter provider to App.tsx (already installed)
+- [x] Create WalletConnectButton component (connect/disconnect, show address)
+- [x] Build backend `/api/chat` tRPC endpoint — Gemini parses intent, fetches Jupiter quote, returns structured response
+- [x] Create ChatPage.tsx — conversational interface with message thread
+- [x] Build SwapConfirmCard component — shows quote details inline in chat with Confirm/Cancel
+- [x] Wire Jupiter tx signing: deserialize tx, send to Phantom, submit to Solana RPC
+- [x] Add Chat nav item to sidebar
+- [x] Show wallet address + balance in chat header
+- [x] Handle edge cases: unknown tokens, insufficient balance, slippage warnings
+- [x] Add transaction history in chat (show Solscan links after execution)

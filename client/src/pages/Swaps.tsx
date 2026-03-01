@@ -1297,7 +1297,9 @@ function AutopostTab() {
 
 export default function Swaps() {
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
-  const { connectedWallets, primaryWallet } = useWallet();
+  const { connected, shortAddress } = useWallet();
+  const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
+  const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [fromToken, setFromToken] = useState(TOKENS[0]); // BTC
   const [toToken, setToToken] = useState(TOKENS[3]);     // USDT

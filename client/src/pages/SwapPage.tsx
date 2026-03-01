@@ -87,7 +87,10 @@ function TokenSelector({
 
 // ─── Main SwapPage ────────────────────────────────────────────────────────────
 export default function SwapPage() {
-  const { connectedWallets, primaryWallet, totalPortfolioUsd } = useWallet();
+  const { connected, shortAddress, balances, totalUsd } = useWallet();
+  const connectedWallets = connected ? [{ name: 'Phantom', shortAddress, chain: 'solana' }] : [];
+  const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
+  const totalPortfolioUsd = totalUsd;
   const [showConnectModal, setShowConnectModal] = useState(false);
 
   const [fromToken, setFromToken] = useState("USDT");
@@ -206,10 +209,10 @@ export default function SwapPage() {
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   <div>
                     <p className="text-xs font-semibold text-foreground">
-                      {connectedWallets.map(w => w.name).join(" + ")}
+                      {connected ? 'Phantom' : ''}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
-                      {connectedWallets.map(w => w.shortAddress).join(" · ")}
+                      {shortAddress || ''}
                     </p>
                   </div>
                 </div>

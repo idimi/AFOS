@@ -1,63 +1,32 @@
 /**
- * ConnectWalletModal — Multi-chain wallet connection modal
- * Design: Dark glass card, chain tabs, wallet grid
+ * ConnectWalletModal — Real Solana wallet connection via @solana/wallet-adapter-react
+ * Supports: Phantom, Solflare
+ * Uses the WalletModalProvider from @solana/wallet-adapter-react-ui
  */
 
-import { useState } from "react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useWallet } from "@/contexts/WalletContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Wallet, CheckCircle2, Loader2, ChevronRight } from "lucide-react";
-import { useWallet, WalletChain } from "@/contexts/WalletContext";
+import { X, Wallet, CheckCircle2, ExternalLink } from "lucide-react";
 
 interface ConnectWalletModalProps {
   open: boolean;
   onClose: () => void;
 }
 
-const CHAINS: { id: WalletChain; label: string; color: string }[] = [
-  { id: "solana", label: "Solana", color: "#9945FF" },
-  { id: "evm", label: "Ethereum", color: "#627EEA" },
-  { id: "bitcoin", label: "Bitcoin", color: "#F7931A" },
-];
-
-const WALLETS_BY_CHAIN: Record<WalletChain, { name: string; description: string; popular?: boolean }[]> = {
-  solana: [
-    { name: "Phantom", description: "Most popular Solana wallet", popular: true },
-    { name: "Backpack", description: "Multi-chain xNFT wallet" },
-    { name: "Solflare", description: "Native Solana wallet" },
-  ],
-  evm: [
-    { name: "MetaMask", description: "Most popular EVM wallet", popular: true },
-    { name: "Coinbase Wallet", description: "Coinbase self-custody wallet" },
-  ],
-  bitcoin: [
-    { name: "Xverse", description: "Bitcoin & Ordinals wallet", popular: true },
-    { name: "TAP Wallet", description: "Bitcoin, Ordinals & TAP Protocol" },
-  ],
-};
-
-const WALLET_ICONS: Record<string, string> = {
-  Phantom: "👻",
-  Backpack: "🎒",
-  Solflare: "🌟",
-  MetaMask: "🦊",
-  "Coinbase Wallet": "🔵",
-  Xverse: "₿",
-  "TAP Wallet": "🔷",
-};
-
 export default function ConnectWalletModal({ open, onClose }: ConnectWalletModalProps) {
-  const { connectWallet, connectedWallets, disconnectWallet, isConnecting } = useWallet();
-  const [activeChain, setActiveChain] = useState<WalletChain>("solana");
-  const [connecting, setConnecting] = useState<string | null>(null);
+  const { connected, walletName, shortAddress, balances, totalUsd, disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
 
-  const handleConnect = async (walletName: string) => {
-    setConnecting(walletName);
-    await connectWallet(walletName, activeChain);
-    setConnecting(null);
+  const handleConnect = () => {
+    onClose();
+    setVisible(true);
   };
 
-  const isChainConnected = (chain: WalletChain) => connectedWallets.some(w => w.chain === chain);
-  const connectedOnChain = connectedWallets.find(w => w.chain === activeChain);
+  const handleDisconnect = async () => {
+    await disconnect();
+    onClose();
+  };
 
   return (
     <AnimatePresence>
@@ -75,7 +44,7 @@ export default function ConnectWalletModal({ open, onClose }: ConnectWalletModal
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 16 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="w-full max-w-md rounded-2xl overflow-hidden"
+            className="w-full max-w-sm rounded-2xl overflow-hidden"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
             {/* Header */}
@@ -83,15 +52,13 @@ export default function ConnectWalletModal({ open, onClose }: ConnectWalletModal
               style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-                  style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)" }}>
-                  <Wallet className="w-4 h-4 text-blue-400" />
+                  style={{ background: "rgba(153,69,255,0.15)", border: "1px solid rgba(153,69,255,0.3)" }}>
+                  <Wallet className="w-4 h-4" style={{ color: "#9945FF" }} />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-foreground">Connect Wallet</p>
+                  <p className="text-sm font-bold text-foreground">Solana Wallet</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {connectedWallets.length > 0
-                      ? `${connectedWallets.length} wallet${connectedWallets.length > 1 ? "s" : ""} connected`
-                      : "Choose your wallet to get started"}
+                    {connected ? "Connected" : "Connect to swap tokens"}
                   </p>
                 </div>
               </div>
@@ -102,104 +69,106 @@ export default function ConnectWalletModal({ open, onClose }: ConnectWalletModal
               </button>
             </div>
 
-            {/* Chain tabs */}
-            <div className="flex gap-1 p-3" style={{ borderBottom: "1px solid var(--border)" }}>
-              {CHAINS.map(chain => (
-                <button key={chain.id}
-                  onClick={() => setActiveChain(chain.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all relative"
-                  style={{
-                    background: activeChain === chain.id ? `${chain.color}18` : "transparent",
-                    border: `1px solid ${activeChain === chain.id ? `${chain.color}40` : "transparent"}`,
-                    color: activeChain === chain.id ? chain.color : "var(--muted-foreground)",
-                  }}>
-                  {chain.label}
-                  {isChainConnected(chain.id) && (
-                    <span className="w-1.5 h-1.5 rounded-full absolute top-1.5 right-1.5"
-                      style={{ background: chain.color }} />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            {/* Connected state for this chain */}
-            {connectedOnChain && (
-              <div className="mx-4 mt-3 px-4 py-3 rounded-xl flex items-center justify-between"
-                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <div>
-                    <p className="text-xs font-semibold text-emerald-400">{connectedOnChain.name} connected</p>
-                    <p className="text-[10px] font-mono text-muted-foreground">{connectedOnChain.address}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => disconnectWallet(activeChain)}
-                  className="text-[10px] font-semibold px-2.5 py-1 rounded-lg transition-colors text-red-400 hover:text-red-300"
-                  style={{ background: "rgba(239,68,68,0.1)" }}>
-                  Disconnect
-                </button>
-              </div>
-            )}
-
-            {/* Wallet list */}
-            <div className="p-4 space-y-2">
-              {WALLETS_BY_CHAIN[activeChain].map(wallet => {
-                const isConnected = connectedOnChain?.name === wallet.name;
-                const isLoading = connecting === wallet.name;
-                return (
-                  <motion.button
-                    key={wallet.name}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => !isConnected && !isLoading && handleConnect(wallet.name)}
-                    disabled={isLoading || isConnecting}
-                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all text-left"
-                    style={{
-                      background: isConnected ? "rgba(16,185,129,0.08)" : "var(--muted)",
-                      border: `1px solid ${isConnected ? "rgba(16,185,129,0.25)" : "var(--border)"}`,
-                      opacity: isConnecting && !isLoading ? 0.5 : 1,
-                      cursor: isConnected ? "default" : "pointer",
-                    }}>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0"
-                      style={{ background: "var(--card)" }}>
-                      {WALLET_ICONS[wallet.name]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-foreground">{wallet.name}</p>
-                        {wallet.popular && !isConnected && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                            style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}>
-                            POPULAR
-                          </span>
-                        )}
-                        {isConnected && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                            style={{ background: "rgba(16,185,129,0.15)", color: "#10b981" }}>
-                            CONNECTED
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">{wallet.description}</p>
-                    </div>
-                    {isLoading ? (
-                      <Loader2 className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
-                    ) : isConnected ? (
+            <div className="p-5 space-y-4">
+              {connected ? (
+                <>
+                  {/* Connected state */}
+                  <div className="rounded-xl p-4 space-y-3"
+                    style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                    <div className="flex items-center gap-2.5">
                       <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
+                      <div>
+                        <p className="text-xs font-semibold text-emerald-400">{walletName} connected</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{shortAddress}</p>
+                      </div>
+                      <a
+                        href={`https://solscan.io/account/${shortAddress?.replace("...", "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
 
-            {/* Footer */}
-            <div className="px-5 pb-4 pt-1">
-              <p className="text-[10px] text-muted-foreground text-center">
-                By connecting, you agree to AFOS Terms of Service. AFOS never holds your private keys.
-              </p>
+                  {/* Balances */}
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Balances</p>
+                    {balances.map(b => (
+                      <div key={b.symbol} className="flex items-center justify-between px-3 py-2.5 rounded-xl"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                            style={{
+                              background: b.symbol === "SOL" ? "rgba(153,69,255,0.2)" : "rgba(38,161,123,0.2)",
+                              color: b.symbol === "SOL" ? "#9945FF" : "#26a17b",
+                            }}>
+                            {b.symbol[0]}
+                          </div>
+                          <span className="text-sm font-semibold text-foreground">{b.symbol}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-mono text-foreground">{b.amount}</p>
+                          <p className="text-[10px] text-muted-foreground">${b.usdValue.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="text-xs text-muted-foreground">Total</span>
+                      <span className="text-sm font-bold text-foreground">${totalUsd.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleDisconnect}
+                    className="w-full py-2.5 rounded-xl text-xs font-semibold transition-all text-red-400 hover:text-red-300"
+                    style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    Disconnect Wallet
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Not connected */}
+                  <p className="text-sm text-muted-foreground text-center py-2">
+                    Connect your Solana wallet to swap tokens with AFOS.
+                  </p>
+
+                  <div className="space-y-2">
+                    {[
+                      { name: "Phantom", icon: "👻", desc: "Most popular Solana wallet" },
+                      { name: "Solflare", icon: "🌟", desc: "Native Solana wallet" },
+                    ].map(w => (
+                      <button
+                        key={w.name}
+                        onClick={handleConnect}
+                        className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all text-left hover:opacity-90"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                      >
+                        <span className="text-2xl">{w.icon}</span>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{w.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{w.desc}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={handleConnect}
+                    className="w-full py-3 rounded-xl text-sm font-bold transition-all"
+                    style={{
+                      background: "linear-gradient(135deg, #9945FF, #14F195)",
+                      color: "white",
+                    }}>
+                    Connect Wallet
+                  </button>
+
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    AFOS never holds your private keys. All swaps are self-custodial.
+                  </p>
+                </>
+              )}
             </div>
           </motion.div>
         </motion.div>

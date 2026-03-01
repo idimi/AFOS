@@ -1,39 +1,59 @@
 /**
- * WalletContext — Multi-chain wallet connection context
- * Design: Dark terminal aesthetic, AFOS brand
- * Supports: Solana (Phantom, Backpack, Solflare), EVM (MetaMask), Bitcoin (Xverse, TAP Wallet)
+ * WalletContext — Real Solana wallet integration via @solana/wallet-adapter-react
+ * Supports: Phantom, Solflare, Backpack
+ * Fetches real on-chain balances from Solana RPC via AFOS backend proxy
  */
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  ReactNode,
+} from "react";
 import { toast } from "sonner";
+import {
+  ConnectionProvider,
+  WalletProvider as SolanaWalletProvider,
+  useWallet as useSolanaWallet,
+  useConnection,
+} from "@solana/wallet-adapter-react";
+import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import {
+  PhantomWalletAdapter,
+  SolflareWalletAdapter,
+} from "@solana/wallet-adapter-wallets";
+import { clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { useMemo } from "react";
 
-export type WalletChain = "solana" | "evm" | "bitcoin";
-
-export interface ConnectedWallet {
-  chain: WalletChain;
-  name: string;
-  address: string;
-  shortAddress: string;
-  icon: string;
-  balances: WalletBalance[];
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WalletBalance {
   symbol: string;
   amount: string;
   usdValue: number;
-  chain: WalletChain;
   decimals: number;
+  mint?: string;
 }
 
 interface WalletContextValue {
-  connectedWallets: ConnectedWallet[];
-  isConnecting: boolean;
-  connectWallet: (walletName: string, chain: WalletChain) => Promise<void>;
-  disconnectWallet: (chain: WalletChain) => void;
-  disconnectAll: () => void;
-  totalPortfolioUsd: number;
-  primaryWallet: ConnectedWallet | null;
+  // Solana wallet state
+  connected: boolean;
+  connecting: boolean;
+  publicKey: PublicKey | null;
+  walletName: string | null;
+  shortAddress: string | null;
+  balances: WalletBalance[];
+  totalUsd: number;
+  balancesLoading: boolean;
+  // Actions
+  connect: () => void;
+  disconnect: () => void;
+  refreshBalances: () => Promise<void>;
+  // For signing Jupiter transactions
+  signTransaction: ((tx: unknown) => Promise<unknown>) | null;
+  sendTransaction: ((tx: unknown, connection: unknown) => Promise<string>) | null;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -44,130 +64,178 @@ export function useWallet() {
   return ctx;
 }
 
-// Simulated wallet detection — in production these would call window.phantom, window.ethereum, etc.
-const WALLET_CONFIGS: Record<string, { chain: WalletChain; icon: string; mockAddress: string }> = {
-  Phantom: {
-    chain: "solana",
-    icon: "https://phantom.app/img/phantom-logo.svg",
-    mockAddress: "7xKp...9mNz",
-  },
-  Backpack: {
-    chain: "solana",
-    icon: "https://backpack.app/favicon.ico",
-    mockAddress: "3f8a...c12d",
-  },
-  Solflare: {
-    chain: "solana",
-    icon: "https://solflare.com/favicon.ico",
-    mockAddress: "9Qr2...4kLp",
-  },
-  MetaMask: {
-    chain: "evm",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/3/36/MetaMask_Fox.svg",
-    mockAddress: "0x1a2b...3c4d",
-  },
-  "Coinbase Wallet": {
-    chain: "evm",
-    icon: "https://www.coinbase.com/favicon.ico",
-    mockAddress: "0x9f8e...7d6c",
-  },
-  Xverse: {
-    chain: "bitcoin",
-    icon: "https://www.xverse.app/favicon.ico",
-    mockAddress: "bc1q...x7k2",
-  },
-  "TAP Wallet": {
-    chain: "bitcoin",
-    icon: "https://trac.network/favicon.ico",
-    mockAddress: "bc1p...m3n8",
-  },
-};
+// ─── USDT mint on Solana mainnet ──────────────────────────────────────────────
+const USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+const SOL_DECIMALS = 9;
 
-const MOCK_BALANCES: Record<WalletChain, WalletBalance[]> = {
-  solana: [
-    { symbol: "USDT", amount: "1,240.50", usdValue: 1240.5, chain: "solana", decimals: 6 },
-    { symbol: "SOL", amount: "12.840", usdValue: 2568.0, chain: "solana", decimals: 9 },
-  ],
-  evm: [
-    { symbol: "ETH", amount: "0.5120", usdValue: 1638.4, chain: "evm", decimals: 18 },
-    { symbol: "USDT", amount: "850.00", usdValue: 850.0, chain: "evm", decimals: 6 },
-  ],
-  bitcoin: [
-    { symbol: "BTC", amount: "0.14200000", usdValue: 13691.0, chain: "bitcoin", decimals: 8 },
-  ],
-};
+// ─── Inner provider that uses Solana wallet adapter hooks ─────────────────────
+function WalletInner({ children }: { children: ReactNode }) {
+  const {
+    connected,
+    connecting,
+    publicKey,
+    wallet,
+    connect: solanaConnect,
+    disconnect: solanaDisconnect,
+    signTransaction,
+    sendTransaction,
+  } = useSolanaWallet();
+  const { connection } = useConnection();
 
-export function WalletProvider({ children }: { children: ReactNode }) {
-  const [connectedWallets, setConnectedWallets] = useState<ConnectedWallet[]>([]);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [balances, setBalances] = useState<WalletBalance[]>([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [prices, setPrices] = useState<{ SOL: number; USDT: number }>({ SOL: 0, USDT: 1 });
 
-  const connectWallet = useCallback(async (walletName: string, chain: WalletChain) => {
-    setIsConnecting(true);
+  // Fetch prices from AFOS backend
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const res = await fetch("/api/afos/api/prices");
+        if (res.ok) {
+          const data = await res.json();
+          const p = data.prices || {};
+          setPrices({
+            SOL: p.SOL?.usd || p.sol?.usd || 0,
+            USDT: 1,
+          });
+        }
+      } catch (_) {}
+    };
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchBalances = useCallback(async () => {
+    if (!publicKey || !connected) {
+      setBalances([]);
+      return;
+    }
+    setBalancesLoading(true);
     try {
-      // Simulate connection delay
-      await new Promise(r => setTimeout(r, 900));
+      const newBalances: WalletBalance[] = [];
 
-      const config = WALLET_CONFIGS[walletName];
-      if (!config) throw new Error("Unknown wallet");
+      // SOL balance
+      const lamports = await connection.getBalance(publicKey);
+      const solAmount = lamports / LAMPORTS_PER_SOL;
+      newBalances.push({
+        symbol: "SOL",
+        amount: solAmount.toFixed(4),
+        usdValue: solAmount * prices.SOL,
+        decimals: SOL_DECIMALS,
+      });
 
-      // Check if already connected on this chain
-      const existing = connectedWallets.find(w => w.chain === chain);
-      if (existing) {
-        toast.info(`${chain} wallet already connected`, { description: `Disconnect ${existing.name} first` });
-        return;
+      // USDT balance (SPL token)
+      try {
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+          mint: new PublicKey(USDT_MINT),
+        });
+        if (tokenAccounts.value.length > 0) {
+          const info = tokenAccounts.value[0].account.data.parsed.info;
+          const usdtAmount = info.tokenAmount.uiAmount || 0;
+          newBalances.push({
+            symbol: "USDT",
+            amount: usdtAmount.toFixed(2),
+            usdValue: usdtAmount,
+            decimals: 6,
+            mint: USDT_MINT,
+          });
+        } else {
+          newBalances.push({
+            symbol: "USDT",
+            amount: "0.00",
+            usdValue: 0,
+            decimals: 6,
+            mint: USDT_MINT,
+          });
+        }
+      } catch (_) {
+        newBalances.push({ symbol: "USDT", amount: "0.00", usdValue: 0, decimals: 6, mint: USDT_MINT });
       }
 
-      const wallet: ConnectedWallet = {
-        chain,
-        name: walletName,
-        address: config.mockAddress,
-        shortAddress: config.mockAddress,
-        icon: config.icon,
-        balances: MOCK_BALANCES[chain],
-      };
-
-      setConnectedWallets(prev => [...prev, wallet]);
-      toast.success(`${walletName} connected`, {
-        description: `${config.mockAddress} · ${chain.toUpperCase()}`,
-      });
+      setBalances(newBalances);
     } catch (err) {
-      toast.error("Connection failed", { description: String(err) });
+      console.error("[WalletContext] Failed to fetch balances:", err);
+      toast.error("Could not fetch wallet balances");
     } finally {
-      setIsConnecting(false);
+      setBalancesLoading(false);
     }
-  }, [connectedWallets]);
+  }, [publicKey, connected, connection, prices.SOL]);
 
-  const disconnectWallet = useCallback((chain: WalletChain) => {
-    setConnectedWallets(prev => {
-      const wallet = prev.find(w => w.chain === chain);
-      if (wallet) toast.info(`${wallet.name} disconnected`);
-      return prev.filter(w => w.chain !== chain);
-    });
-  }, []);
+  // Fetch balances when wallet connects or prices update
+  useEffect(() => {
+    if (connected && publicKey) {
+      fetchBalances();
+    } else {
+      setBalances([]);
+    }
+  }, [connected, publicKey, fetchBalances]);
 
-  const disconnectAll = useCallback(() => {
-    setConnectedWallets([]);
-    toast.info("All wallets disconnected");
-  }, []);
+  const connect = useCallback(async () => {
+    try {
+      await solanaConnect();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("User rejected")) {
+        toast.error("Wallet connection failed", { description: msg });
+      }
+    }
+  }, [solanaConnect]);
 
-  const totalPortfolioUsd = connectedWallets.reduce(
-    (sum, w) => sum + w.balances.reduce((s, b) => s + b.usdValue, 0),
-    0
-  );
+  const disconnect = useCallback(async () => {
+    await solanaDisconnect();
+    setBalances([]);
+    toast.info("Wallet disconnected");
+  }, [solanaDisconnect]);
 
-  const primaryWallet = connectedWallets.find(w => w.chain === "solana") ?? connectedWallets[0] ?? null;
+  const shortAddress = publicKey
+    ? `${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`
+    : null;
+
+  const totalUsd = balances.reduce((sum, b) => sum + b.usdValue, 0);
 
   return (
-    <WalletContext.Provider value={{
-      connectedWallets,
-      isConnecting,
-      connectWallet,
-      disconnectWallet,
-      disconnectAll,
-      totalPortfolioUsd,
-      primaryWallet,
-    }}>
+    <WalletContext.Provider
+      value={{
+        connected,
+        connecting,
+        publicKey,
+        walletName: wallet?.adapter.name || null,
+        shortAddress,
+        balances,
+        totalUsd,
+        balancesLoading,
+        connect,
+        disconnect,
+        refreshBalances: fetchBalances,
+        signTransaction: signTransaction as ((tx: unknown) => Promise<unknown>) | null,
+        sendTransaction: sendTransaction as ((tx: unknown, connection: unknown) => Promise<string>) | null,
+      }}
+    >
       {children}
     </WalletContext.Provider>
+  );
+}
+
+// ─── Public WalletProvider ─────────────────────────────────────────────────────
+export function WalletProvider({ children }: { children: ReactNode }) {
+  const network = WalletAdapterNetwork.Mainnet;
+  // Use Solana mainnet RPC — via AFOS backend or public endpoint
+  const endpoint = useMemo(() => "https://api.mainnet-beta.solana.com", []);
+
+  const wallets = useMemo(
+    () => [
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+    ],
+    []
+  );
+
+  return (
+    <ConnectionProvider endpoint={endpoint}>
+      <SolanaWalletProvider wallets={wallets} autoConnect>
+        <WalletInner>{children}</WalletInner>
+      </SolanaWalletProvider>
+    </ConnectionProvider>
   );
 }

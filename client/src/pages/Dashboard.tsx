@@ -29,8 +29,9 @@ import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
 import NetworkPage from "./NetworkPage";
 import TerminalPage from "./TerminalPage";
+import ChatPage from "./ChatPage";
 
-type NavPage = "dashboard" | "swaps" | "activity" | "network" | "settings" | "terminal";
+type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "network" | "settings" | "terminal";
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
@@ -461,8 +462,8 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
 function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
   const haptic = useHaptic();
   const actions = [
-    { label: "Open Terminal", icon: Terminal, page: "terminal" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-    { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
+    { label: "Agent Chat", icon: Bot, page: "chat" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
+    { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
     { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
     { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
   ];
@@ -1578,7 +1579,7 @@ function StackHealthStrip() {
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
-  const { connectedWallets, primaryWallet } = useWallet();
+  const { connected, shortAddress } = useWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
@@ -1586,6 +1587,7 @@ export default function Dashboard() {
 
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
+    { id: "chat" as NavPage, icon: Bot, label: "Agent Chat" },
     { id: "terminal" as NavPage, icon: Terminal, label: "Terminal" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
@@ -1594,6 +1596,7 @@ export default function Dashboard() {
   ];
 
   const renderSubPage = () => {
+    if (activePage === "chat") return <ChatPage />;
     if (activePage === "swaps") return <Swaps />;
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
@@ -1628,13 +1631,13 @@ export default function Dashboard() {
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
               <span className="text-xs text-violet-300 font-mono">3 peers</span>
             </div>
-            {connectedWallets.length > 0 ? (
+            {connected ? (
               <button
                 onClick={() => setShowWalletModal(true)}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
                 style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {primaryWallet?.shortAddress}
+                {shortAddress}
               </button>
             ) : (
               <button
