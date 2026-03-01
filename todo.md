@@ -241,3 +241,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] ChainStatsBar: removed mock/live toggle, shows "Binance Live" or "(fallback)" labels
 - [x] SwapProgressTracker: replaced Math.random() tx hash with real rfqId
 - [x] SwapPage.tsx: fully production-ready with real getPrices/getSwapQuote/submitRfq/executeSwap/getSwaps
+
+## Swap Page — Full Production Wiring (SSE + executeSwap)
+
+- [x] Live Order Book: replaced generateOrders() simulation with real SSE p2p_quote event subscriptions
+- [x] Live Order Book: falls back to buildFallbackOrders() (seeded from live prices) after 3s if no real quotes arrive
+- [x] Live Order Book: header/footer shows "SSE Live" (green) vs "Fallback" (amber) data source indicator
+- [x] Live Order Book: empty state shows spinner while waiting for first P2P quotes
+- [x] Swap execution: handleSwap now calls executeSwap() after submitRfq() to settle on-chain
+- [x] Swap execution: real txHash captured from executeSwap() response (txHash/tx/txid fields)
+- [x] SwapProgressTracker: shows real txHash with copy button and chain explorer link (Solscan/Etherscan/Mempool.space)
+- [x] SwapProgressTracker: falls back to rfqId display if executeSwap() fails (e.g. no wallet keys on backend)
+- [x] Live Feed tab: replaced WebSocket connection logic with onSSEEvent() subscriptions for all P2P event types
+- [x] Live Feed tab: maps SSE event types (p2p_rfq, p2p_quote, swap_executed, peer_connected, etc.) to FeedMsgKind
+- [x] Live Feed tab: falls back to simulation after 5s if no real SSE events arrive; shows "SSE Live" vs "Simulated" label
+- [x] Live Feed tab: starts empty (no pre-seeded mock messages); simulation only activates on fallback
