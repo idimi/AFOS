@@ -1,14 +1,13 @@
 /**
  * AFOS API Service v2
- * Connects the frontend to the AFOS backend on Oracle VM
- *
- * Backend: http://141.253.123.101:4000
- * - All data is LIVE — no mock fallbacks
- * - SSE stream for real-time agent events
+ * All requests go through the Manus Express server proxy at /api/afos/*
+ * The proxy forwards them server-side to http://141.253.123.101:4000
+ * This avoids the browser mixed-content block (HTTPS frontend → HTTP Oracle VM)
  */
 
-export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://141.253.123.101:4000';
-const TIMEOUT_MS = 10000;
+// Use relative URL so it works on both dev (localhost:3000) and production (manus.space)
+export const BACKEND_URL = '/api/afos';
+const TIMEOUT_MS = 12000;
 
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -93,6 +92,7 @@ export interface AgentStatus {
 }
 
 // ─── SSE Stream ───────────────────────────────────────────────────────────────
+// SSE uses the same proxy path: /api/afos/api/stream
 
 export type SSEEventType =
   | 'init'
@@ -122,6 +122,7 @@ function connectSSE() {
   }
 
   try {
+    // SSE through the proxy — same origin, no mixed-content issue
     sseSource = new EventSource(`${BACKEND_URL}/api/stream`);
 
     sseSource.onopen = () => {

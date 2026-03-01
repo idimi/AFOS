@@ -9,8 +9,8 @@ import { WalletProvider } from "./contexts/WalletContext";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
 import AdminPanel from "./pages/AdminPanel";
-
 function Router() {
+  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Dashboard} />
