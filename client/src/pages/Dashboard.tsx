@@ -719,10 +719,11 @@ function MarketTicker() {
   });
   // Open BTC/USDT chart by default on desktop
   const [activePair, setActivePair] = useState<string | null>("BTC/USDT");
-  const [interval, setIntervalTF] = useState("30"); // TradingView interval — default 30m
+  const [interval, setIntervalTF] = useState("5"); // TradingView interval — default 5m
 
   const TF_OPTIONS = [
     { label: "1m", value: "1" },
+    { label: "5m", value: "5" },
     { label: "30m", value: "30" },
     { label: "1h", value: "60" },
     { label: "4h", value: "240" },
@@ -865,13 +866,16 @@ function MarketTicker() {
               </button>
             </div>
 
-            {/* TradingView Advanced Chart */}
+            {/* TradingView iframe */}
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <TradingViewChart
-                symbol={TV_SYMBOLS[activePair]}
-                interval={interval}
-                theme={tvTheme}
-                height={520}
+              <iframe
+                key={`${activePair}-${interval}-${tvTheme}`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
+                width="100%"
+                height="520"
+                frameBorder="0"
+                scrolling="no"
+                style={{ display: "block", background: "#000" }}
               />
             </div>
           </motion.div>
@@ -1234,7 +1238,7 @@ function MobileMarketCard() {
     SOL: { price: 142.80, change: -1.1 },
   });
   const [activePair, setActivePair] = useState<string | null>(null);
-  const [interval, setIntervalTF] = useState("30"); // default 30m
+  const [interval, setIntervalTF] = useState("5"); // default 5m
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1255,6 +1259,8 @@ function MobileMarketCard() {
 
   const TF_OPTIONS = [
     { label: "1m", value: "1" },
+    { label: "5m", value: "5" },
+    { label: "30m", value: "30" },
     { label: "1h", value: "60" },
     { label: "4h", value: "240" },
     { label: "1D", value: "D" },
@@ -1360,11 +1366,14 @@ function MobileMarketCard() {
               </button>
             </div>
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <TradingViewChart
-                symbol={TV_SYMBOLS[activePair]}
-                interval={interval}
-                theme={tvTheme}
-                height={340}
+              <iframe
+                key={`mob-${activePair}-${interval}-${tvTheme}`}
+                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
+                width="100%"
+                height="340"
+                frameBorder="0"
+                scrolling="no"
+                style={{ display: "block" }}
               />
             </div>
           </motion.div>
