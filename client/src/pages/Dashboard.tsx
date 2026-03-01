@@ -1080,16 +1080,13 @@ function MarketTicker() {
               </button>
             </div>
 
-            {/* TradingView iframe */}
+            {/* TradingView Advanced Chart widget */}
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <iframe
-                key={`${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=tv_${activePair.replace("/","")}_${interval}_${tvTheme}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
-                width="100%"
-                height="300"
-                frameBorder="0"
-                scrolling="no"
-                style={{ display: "block", background: "#000" }}
+              <TradingViewChart
+                symbol={TV_SYMBOLS[activePair]}
+                interval={interval}
+                theme={tvTheme}
+                height={300}
               />
             </div>
           </motion.div>
@@ -1837,14 +1834,11 @@ function MobileMarketCard() {
               </button>
             </div>
             <div className="mx-3 mb-3 rounded-xl overflow-hidden" style={{ border: `1px solid rgba(6,182,212,0.18)` }}>
-              <iframe
-                key={`mob-${activePair}-${interval}-${tvTheme}`}
-                src={`https://www.tradingview.com/widgetembed/?frameElementId=mob_tv_${activePair.replace("/","")}_${interval}&symbol=${TV_SYMBOLS[activePair]}&interval=${interval}&hidesidetoolbar=0&hidetoptoolbar=0&symboledit=0&saveimage=0&studies=[]&theme=${tvTheme}&style=3&timezone=Etc%2FUTC&locale=en&range=ALL`}
-                width="100%"
-                height="340"
-                frameBorder="0"
-                scrolling="no"
-                style={{ display: "block" }}
+              <TradingViewChart
+                symbol={TV_SYMBOLS[activePair]}
+                interval={interval}
+                theme={tvTheme}
+                height={340}
               />
             </div>
           </motion.div>

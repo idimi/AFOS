@@ -148,3 +148,6 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Desktop Chart Iframe Height Fix
 - [x] Reduce TradingView chart iframe height on desktop from 520px to 360px (chart controls now fully visible)
 - [x] Mobile chart height untouched
+
+## Timeframe Toolbar Fix
+- [x] Replace iframe embed with TradingView Advanced Chart widget so interval prop actually controls the chart timeframe (desktop + mobile)
