@@ -324,7 +324,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
     }
   }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
 
-  const QUICK_CHIPS = ["swap 1 USDT to SOL", "SOL price?", "show balances"];
+  const QUICK_CHIPS = ["swap 1 USDT to SOL", "SOL price?", "ETH price?", "BTC price?", "show balances"];
 
   return (
     <div className="rounded-2xl border border-cyan-500/15 bg-card flex flex-col" style={{ height: 340 }}>

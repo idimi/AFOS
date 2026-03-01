@@ -100,6 +100,15 @@ async function getJupiterSwapTx(
 }
 
 // ─── Price fetching ──────────────────────────────────────────────────────────
+// 30-second in-memory cache to avoid CoinGecko free-tier rate limits
+interface PriceCache {
+  prices: Record<string, number>;
+  source: string;
+  fetchedAt: number;
+}
+let priceCache: PriceCache | null = null;
+const PRICE_CACHE_TTL_MS = 30_000; // 30 seconds
+
 // CoinGecko is the primary source — works from the server without geo-restrictions
 async function getTokenPricesFromCoinGecko(): Promise<Record<string, number> | null> {
   try {
@@ -146,24 +155,36 @@ async function getTokenPricesFromBinance(): Promise<Record<string, number> | nul
   }
 }
 
-async function getTokenPrices(): Promise<Record<string, number>> {
+async function getTokenPricesWithSource(): Promise<{ prices: Record<string, number>; source: string }> {
+  // Return cached prices if still fresh
+  if (priceCache && Date.now() - priceCache.fetchedAt < PRICE_CACHE_TTL_MS) {
+    return { prices: priceCache.prices, source: priceCache.source + " (cached)" };
+  }
+
   // Primary: CoinGecko (confirmed working from server)
   const cgPrices = await getTokenPricesFromCoinGecko();
   if (cgPrices) {
     console.log(`[Chat] Prices from CoinGecko: SOL=$${cgPrices.SOL}`);
-    return cgPrices;
+    priceCache = { prices: cgPrices, source: "CoinGecko", fetchedAt: Date.now() };
+    return { prices: cgPrices, source: "CoinGecko" };
   }
 
   // Fallback: Binance (may be geo-blocked)
   const binancePrices = await getTokenPricesFromBinance();
   if (binancePrices) {
     console.log(`[Chat] Prices from Binance: SOL=$${binancePrices.SOL}`);
-    return binancePrices;
+    priceCache = { prices: binancePrices, source: "Binance", fetchedAt: Date.now() };
+    return { prices: binancePrices, source: "Binance" };
   }
 
   // Final hardcoded fallback — approximate current values
   console.warn("[Chat] All price APIs failed, using approximate fallback prices");
-  return { SOL: 85, ETH: 1970, BTC: 66000, USDT: 1, USDC: 1 };
+  const fallback = { SOL: 85, ETH: 1970, BTC: 66000, USDT: 1, USDC: 1 };
+  return { prices: fallback, source: "approximate (APIs unavailable)" };
+}
+
+async function getTokenPrices(): Promise<Record<string, number>> {
+  return (await getTokenPricesWithSource()).prices;
 }
 
 // ─── Intent parsing ────────────────────────────────────────────────────────────
@@ -181,11 +202,12 @@ async function parseIntent(
   message: string,
   conversationHistory: { role: "user" | "assistant"; content: string }[],
   prices: Record<string, number>,
-  walletBalances?: { symbol: string; amount: string }[]
+  walletBalances?: { symbol: string; amount: string }[],
+  priceSource?: string
 ): Promise<SwapIntent> {
   const systemPrompt = `You are AFOS, an autonomous financial agent that helps users swap crypto tokens on Solana.
 Supported tokens: SOL, USDT, USDC (on Solana).
-Current prices: ${JSON.stringify(prices)}
+Current live prices (source: ${priceSource ?? "live"}): ${JSON.stringify(prices)}
 ${walletBalances ? `User wallet balances: ${JSON.stringify(walletBalances)}` : ""}
 
 Parse the user's message and return a JSON object with this exact schema:
@@ -204,7 +226,7 @@ Rules:
 - "swap 1 USDT to SOL" → fromToken: USDT, toToken: SOL, amount: 1, amountToken: USDT
 - "convert 0.5 SOL to USDT" → fromToken: SOL, toToken: USDT, amount: 0.5, amountToken: SOL
 - "swap all my SOL to USDT" → fromToken: SOL, toToken: USDT, isMax: true
-- For price checks: type: "price_check", reply with current price info
+- For price checks: type: "price_check", reply with the current price AND cite the source, e.g. "SOL is $84.11 (via ${priceSource ?? "live"}, live)"
 - For balance checks: type: "balance_check", reply with balance info
 - For general questions: type: "general", provide a helpful reply about AFOS
 - Only use SOL, USDT, USDC as tokens (those are the only ones supported on Solana via Jupiter)
@@ -295,11 +317,11 @@ export const chatRouter = router({
     .mutation(async ({ input }) => {
       const { message, history, walletAddress, walletBalances } = input;
 
-      // Fetch current prices
-      const prices = await getTokenPrices();
+      // Fetch current prices (with 30s cache)
+      const { prices, source: priceSource } = await getTokenPricesWithSource();
 
       // Parse intent
-      const intent = await parseIntent(message, history, prices, walletBalances);
+      const intent = await parseIntent(message, history, prices, walletBalances, priceSource);
 
       // Handle non-swap intents
       if (intent.type !== "swap") {

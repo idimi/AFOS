@@ -157,3 +157,8 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Live Price Injection in Chat
 - [x] Fix chat agent to inject live prices from CoinGecko (primary) into system prompt — Binance was geo-blocked from server
+
+## Price Cache & UX Improvements
+- [x] Add 30-second in-memory price cache to chat.ts to avoid CoinGecko rate limits
+- [x] Add ETH price? and BTC price? quick-action chips to MiniChatWidget
+- [x] Show price source in agent reply (e.g. "SOL is $84.11 (via CoinGecko, live)")
