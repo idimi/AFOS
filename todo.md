@@ -389,3 +389,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Token dropdown: show chain label (Ethereum/Solana) next to each stablecoin
 - [x] TradingView chart: sync light/dark theme with app theme toggle
 - [x] Price impact warning: yellow/red banner in Buy panel when impact > 1%
+
+## Swaps Page — Compact & Centered Layout
+
+- [x] Constrain outer wrapper to max-w-[1280px] and center with mx-auto
+- [x] Tighten padding and gaps throughout the page (gap-3, space-y-3)
+- [x] Make the chart + swap card top row more proportional (360px right column)
+- [x] Compact the bottom panels (order book, peers, recent swaps)

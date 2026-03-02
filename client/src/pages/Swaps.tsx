@@ -644,7 +644,7 @@ function TradingViewChart({ fromToken, toToken, theme }: {
   }, [fromToken.symbol, toToken.symbol]);
 
   return (
-    <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--card)", border: "1px solid var(--border)", height: "100%", minHeight: 420 }}>
+    <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--card)", border: "1px solid var(--border)", height: 460 }}>
       {/* Chart header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
@@ -657,7 +657,7 @@ function TradingViewChart({ fromToken, toToken, theme }: {
         <span className="text-[10px] font-mono text-muted-foreground">{tvSymbol}</span>
       </div>
       {/* Widget container */}
-      <div ref={containerRef} className="tradingview-widget-container flex-1" style={{ minHeight: 380 }} />
+      <div ref={containerRef} className="tradingview-widget-container" style={{ height: 410, width: "100%" }} />
     </div>
   );
 }
@@ -1836,7 +1836,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5" style={{ background: "transparent" }}>
+      <div className="max-w-[1280px] mx-auto">
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
@@ -1863,7 +1864,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+      <div className="flex gap-1 mb-3 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
         {([
           { id: "swap", label: "Swap", icon: <ArrowDownUp className="w-3.5 h-3.5" /> },
           { id: "feed", label: "Live Feed", icon: <Rss className="w-3.5 h-3.5" /> },
@@ -1892,18 +1893,16 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {activeTab === "swap" && <>
 
       {/* ── Main 2-Column DEX Layout ─────────────────────────────────────── */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
 
         {/* ═══ LEFT COLUMN: Chart + Order Book ═══ */}
-        <div className="space-y-4 min-w-0">
+        <div className="space-y-3 min-w-0">
 
           {/* Price Ticker Bar */}
           <ChainStatsBar />
 
           {/* TradingView Chart */}
-          <div className="min-h-[460px]">
-            <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
-          </div>
+          <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
 
           {/* Live Order Book */}
           <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
@@ -1932,7 +1931,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
         </div>
 
         {/* ═══ RIGHT COLUMN: Swap Card + Peers + Recent Swaps ═══ */}
-        <div className="space-y-4">
+        <div className="space-y-3">
 
           {/* Swap Card */}
           <div
@@ -2402,6 +2401,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       </div>{/* end 2-column grid */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
+      </div>{/* end max-w wrapper */}
     </div>
   );
 }
