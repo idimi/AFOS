@@ -66,23 +66,32 @@ const CHAINS = {
 };
 
 const TOKENS = [
-  { symbol: "BTC", name: "Bitcoin", chain: "bitcoin", balance: 0.04821, usdPrice: 43418, icon: "₿", color: "#f7931a" },
-  { symbol: "ETH", name: "Ethereum", chain: "ethereum", balance: 0.812, usdPrice: 2998, icon: "Ξ", color: "#627eea" },
-  { symbol: "SOL", name: "Solana", chain: "solana", balance: 12.5, usdPrice: 150, icon: "◎", color: "#9945ff" },
-  { symbol: "USDT", name: "Tether (Solana)", chain: "solana", balance: 1240, usdPrice: 1, icon: "₮", color: "#26a17b" },
-  { symbol: "USDC", name: "USD Coin (ETH)", chain: "ethereum", balance: 890, usdPrice: 1, icon: "$", color: "#2775ca" },
-  { symbol: "WBTC", name: "Wrapped Bitcoin", chain: "ethereum", balance: 0.012, usdPrice: 43418, icon: "₿", color: "#f7931a" },
+  { symbol: "BTC",      name: "Bitcoin",          chain: "bitcoin",  balance: 0.04821, usdPrice: 43418, icon: "₿", color: "#f7931a", tvSymbol: "BITSTAMP:BTCUSD" },
+  { symbol: "ETH",      name: "Ethereum",          chain: "ethereum", balance: 0.812,   usdPrice: 2998,  icon: "Ξ", color: "#627eea", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "SOL",      name: "Solana",            chain: "solana",   balance: 12.5,    usdPrice: 150,   icon: "◎", color: "#9945ff", tvSymbol: "BINANCE:SOLUSD" },
+  { symbol: "USDT",     name: "Tether (Solana)",   chain: "solana",   balance: 1240,    usdPrice: 1,     icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:SOLUSD" },
+  { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 890,     usdPrice: 1,     icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 500,     usdPrice: 1,     icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 320,     usdPrice: 1,     icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
 
 const SWAP_PAIRS = [
-  { from: "BTC", to: "USDT", protocol: "IntercomSwap BTC↔USDT", native: true, fee: "0.5%", time: "~10m" },
-  { from: "BTC", to: "ETH", protocol: "IntercomSwap BTC↔ETH", native: false, fee: "0.8%", time: "~15m" },
-  { from: "ETH", to: "SOL", protocol: "EVM ↔ Solana Bridge", native: false, fee: "0.6%", time: "~20s" },
-  { from: "SOL", to: "USDT", protocol: "Solana SPL Swap", native: true, fee: "0.3%", time: "~1s" },
-  { from: "ETH", to: "USDC", protocol: "EVM DEX Route", native: false, fee: "0.3%", time: "~12s" },
-  { from: "BTC", to: "SOL", protocol: "IntercomSwap BTC↔SOL", native: true, fee: "0.7%", time: "~10m" },
+  { from: "BTC",      to: "USDT",     protocol: "IntercomSwap BTC↔USDT",    native: true,  fee: "0.5%", time: "~10m" },
+  { from: "BTC",      to: "USDT-ETH", protocol: "IntercomSwap BTC↔USDT",    native: true,  fee: "0.5%", time: "~10m" },
+  { from: "BTC",      to: "ETH",      protocol: "IntercomSwap BTC↔ETH",     native: true,  fee: "0.8%", time: "~12m" },
+  { from: "BTC",      to: "SOL",      protocol: "IntercomSwap BTC↔SOL",     native: true,  fee: "0.7%", time: "~10m" },
+  { from: "BTC",      to: "USDC",     protocol: "IntercomSwap BTC↔USDC",    native: true,  fee: "0.6%", time: "~10m" },
+  { from: "BTC",      to: "USDC-SOL", protocol: "IntercomSwap BTC↔USDC",    native: true,  fee: "0.6%", time: "~10m" },
+  { from: "ETH",      to: "SOL",      protocol: "IntercomSwap ETH↔SOL",     native: true,  fee: "0.6%", time: "~15s" },
+  { from: "ETH",      to: "USDT",     protocol: "IntercomSwap ETH↔USDT",    native: true,  fee: "0.4%", time: "~12s" },
+  { from: "ETH",      to: "USDC",     protocol: "IntercomSwap ETH↔USDC",    native: true,  fee: "0.3%", time: "~12s" },
+  { from: "SOL",      to: "USDT",     protocol: "Jupiter / IntercomSwap",    native: true,  fee: "0.3%", time: "~1s" },
+  { from: "SOL",      to: "USDC",     protocol: "Jupiter / IntercomSwap",    native: true,  fee: "0.3%", time: "~1s" },
+  { from: "SOL",      to: "USDC-SOL", protocol: "Jupiter SPL Swap",          native: true,  fee: "0.3%", time: "~1s" },
+  { from: "USDT",     to: "USDC",     protocol: "Jupiter SPL Swap",          native: true,  fee: "0.1%", time: "~1s" },
+  { from: "USDT-ETH", to: "USDC",     protocol: "1inch EVM Route",           native: false, fee: "0.1%", time: "~12s" },
 ];
 
 // ─── Live P2P Peer type (populated from SSE / getAgentStatus) ────────────────
@@ -554,7 +563,103 @@ function ChainStatsBar() {
   );
 }
 
-// AgentModeToggle removed — was purely cosmetic (no separate execution path)
+// ─── TradingView Chart ───────────────────────────────────────────────────────
+
+function TradingViewChart({ fromToken, toToken, theme }: {
+  fromToken: typeof TOKENS[0];
+  toToken: typeof TOKENS[0];
+  theme?: "light" | "dark";
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const widgetRef = useRef<HTMLDivElement | null>(null);
+
+  // Derive the best TradingView symbol for this pair
+  const tvSymbol = useMemo(() => {
+    const from = fromToken.symbol.replace("-ETH", "").replace("-SOL", "");
+    const to = toToken.symbol.replace("-ETH", "").replace("-SOL", "");
+    // Stablecoin pairs — show the non-stable token vs USD
+    const stables = ["USDT", "USDC"];
+    if (stables.includes(from) && !stables.includes(to)) return `BINANCE:${to}USDT`;
+    if (stables.includes(to) && !stables.includes(from)) return `BINANCE:${from}USDT`;
+    if (stables.includes(from) && stables.includes(to)) return "BINANCE:BTCUSDT";
+    // Cross pairs
+    if (from === "BTC" && to === "ETH") return "BINANCE:ETHBTC";
+    if (from === "ETH" && to === "BTC") return "BINANCE:ETHBTC";
+    if (from === "BTC" && to === "SOL") return "BINANCE:SOLBTC";
+    if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
+    if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
+    if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
+    // Default: from token vs USD
+    return `BINANCE:${from}USDT`;
+  }, [fromToken.symbol, toToken.symbol]);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    // Remove previous widget
+    if (widgetRef.current) {
+      widgetRef.current.remove();
+      widgetRef.current = null;
+    }
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+    script.type = "text/javascript";
+    script.async = true;
+    const resolvedTheme = theme ?? (document.documentElement.classList.contains("dark") ? "dark" : "light");
+    script.innerHTML = JSON.stringify({
+      autosize: true,
+      symbol: tvSymbol,
+      interval: "60",
+      timezone: "Etc/UTC",
+      theme: resolvedTheme,
+      style: "1",
+      locale: "en",
+      enable_publishing: false,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      save_image: false,
+      calendar: false,
+      hide_volume: false,
+      support_host: "https://www.tradingview.com",
+    });
+    const wrapper = document.createElement("div");
+    wrapper.className = "tradingview-widget-container__widget";
+    wrapper.style.height = "100%";
+    wrapper.style.width = "100%";
+    containerRef.current.appendChild(wrapper);
+    containerRef.current.appendChild(script);
+    widgetRef.current = wrapper;
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
+      widgetRef.current = null;
+    };
+  }, [tvSymbol, theme]);
+
+  const pairLabel = useMemo(() => {
+    const from = fromToken.symbol.replace("-ETH", "").replace("-SOL", "");
+    const to = toToken.symbol.replace("-ETH", "").replace("-SOL", "");
+    return `${from}/${to}`;
+  }, [fromToken.symbol, toToken.symbol]);
+
+  return (
+    <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--card)", border: "1px solid var(--border)", height: "100%", minHeight: 420 }}>
+      {/* Chart header */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold font-mono text-foreground">{pairLabel}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+            style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#60a5fa" }}>
+            TradingView
+          </span>
+        </div>
+        <span className="text-[10px] font-mono text-muted-foreground">{tvSymbol}</span>
+      </div>
+      {/* Widget container */}
+      <div ref={containerRef} className="tradingview-widget-container flex-1" style={{ minHeight: 380 }} />
+    </div>
+  );
+}
 
 // ─── Live Order Book ─────────────────────────────────────────────────────────
 
@@ -1770,11 +1875,16 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {/* Chain Stats */}
       <ChainStatsBar />
 
-      {/* Main Layout — compact swap card centered, info panels below on mobile / side on xl */}
-      <div className="flex flex-col xl:flex-row gap-4 sm:gap-5 items-start">
+      {/* ── Top Row: Chart (left) + Swap Card (right) ─────────────────────── */}
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-5 items-start mb-4 sm:mb-5">
 
-        {/* Left: Compact Swap Card — Uniswap-style, max 480px */}
-        <div className="w-full xl:w-[480px] shrink-0 space-y-3">
+        {/* Left: TradingView Chart — takes remaining space */}
+        <div className="w-full lg:flex-1 min-h-[440px]">
+          <TradingViewChart fromToken={fromToken} toToken={toToken} />
+        </div>
+
+        {/* Right: Compact Swap Card — Uniswap-style, fixed 420px */}
+        <div className="w-full lg:w-[420px] shrink-0 space-y-3">
 
           {/* Swap Card */}
           <div
@@ -2209,38 +2319,40 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               txChain={lastTxChain}
             />
           )}
+        </div>{/* end swap card column */}
+
+      </div>{/* end top row */}
+
+      {/* ── Bottom Row: Order Book + Peers + Recent Swaps + Protocol Info ──── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+
+        {/* Order Book — spans 2 cols on lg */}
+        <div className="lg:col-span-2">
+          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
         </div>
 
-        {/* Right: Info Panels — shown below swap card on mobile, side panel on xl */}
-        <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
-          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
+        {/* Peers + Recent Swaps stacked */}
+        <div className="space-y-4">
           <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
           <RecentSwaps />
 
           {/* Protocol Info */}
-          <div
-            className="rounded-2xl p-4"
-            style={{
-              background: "var(--card)",
-              border: "1px solid var(--border)",
-            }}
-          >
+          <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Lock className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-semibold text-slate-300">HTLC Escrow</span>
             </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed">
+            <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
               Funds are locked in a Hash Time-Locked Contract on Solana. The swap settles atomically — either both legs complete or both refund. No counterparty risk.
             </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {[
                 { label: "Lock time", value: "10 min" },
                 { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
                 { label: "Escrow program", value: "Solana" },
                 { label: "Fee cap", value: `${feeBpsCap} bps` },
               ].map(item => (
-                <div key={item.label} className="px-2.5 py-2 rounded-lg"
-                  style={{ background: "var(--muted)" }}>
+                <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>
                   <div className="text-[9px] text-slate-600">{item.label}</div>
                   <div className="text-[11px] font-mono text-slate-300 mt-0.5">{item.value}</div>
                 </div>
@@ -2248,7 +2360,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             </div>
           </div>
         </div>
-      </div>
+
+      </div>{/* end bottom row */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
     </div>
