@@ -1872,19 +1872,49 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
 
       {/* Swap Tab */}
       {activeTab === "swap" && <>
-      {/* Chain Stats */}
-      <ChainStatsBar />
 
-      {/* ── Top Row: Chart (left) + Swap Card (right) ─────────────────────── */}
-      <div className="flex flex-col lg:flex-row gap-4 sm:gap-5 items-start mb-4 sm:mb-5">
+      {/* ── Main 2-Column DEX Layout ─────────────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-4">
 
-        {/* Left: TradingView Chart — takes remaining space */}
-        <div className="w-full lg:flex-1 min-h-[440px]">
-          <TradingViewChart fromToken={fromToken} toToken={toToken} />
+        {/* ═══ LEFT COLUMN: Chart + Order Book ═══ */}
+        <div className="space-y-4 min-w-0">
+
+          {/* Price Ticker Bar */}
+          <ChainStatsBar />
+
+          {/* TradingView Chart */}
+          <div className="min-h-[460px]">
+            <TradingViewChart fromToken={fromToken} toToken={toToken} />
+          </div>
+
+          {/* Live Order Book */}
+          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
+
+          {/* HTLC Protocol Info — compact horizontal */}
+          <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-semibold text-foreground">HTLC Escrow</span>
+              <span className="text-[10px] text-muted-foreground ml-auto">Atomic settlement — no counterparty risk</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { label: "Lock time", value: "10 min" },
+                { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
+                { label: "Escrow program", value: "Solana" },
+                { label: "Fee cap", value: `${feeBpsCap} bps` },
+              ].map(item => (
+                <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>
+                  <div className="text-[9px] text-muted-foreground">{item.label}</div>
+                  <div className="text-[11px] font-mono text-foreground mt-0.5">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Right: Compact Swap Card — Uniswap-style, fixed 420px */}
-        <div className="w-full lg:w-[420px] shrink-0 space-y-3">
+        {/* ═══ RIGHT COLUMN: Swap Card + Peers + Recent Swaps ═══ */}
+        <div className="space-y-4">
 
           {/* Swap Card */}
           <div
@@ -2319,49 +2349,16 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               txChain={lastTxChain}
             />
           )}
-        </div>{/* end swap card column */}
 
-      </div>{/* end top row */}
-
-      {/* ── Bottom Row: Order Book + Peers + Recent Swaps + Protocol Info ──── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
-
-        {/* Order Book — spans 2 cols on lg */}
-        <div className="lg:col-span-2">
-          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
-        </div>
-
-        {/* Peers + Recent Swaps stacked */}
-        <div className="space-y-4">
+          {/* P2P Peers */}
           <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
+
+          {/* Recent Swaps */}
           <RecentSwaps />
 
-          {/* Protocol Info */}
-          <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-semibold text-slate-300">HTLC Escrow</span>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-relaxed mb-3">
-              Funds are locked in a Hash Time-Locked Contract on Solana. The swap settles atomically — either both legs complete or both refund. No counterparty risk.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "Lock time", value: "10 min" },
-                { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
-                { label: "Escrow program", value: "Solana" },
-                { label: "Fee cap", value: `${feeBpsCap} bps` },
-              ].map(item => (
-                <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>
-                  <div className="text-[9px] text-slate-600">{item.label}</div>
-                  <div className="text-[11px] font-mono text-slate-300 mt-0.5">{item.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        </div>{/* end right column */}
 
-      </div>{/* end bottom row */}
+      </div>{/* end 2-column grid */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
     </div>
