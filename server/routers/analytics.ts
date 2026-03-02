@@ -1,0 +1,317 @@
+/**
+ * Analytics Router — Swap Analytics Dashboard Backend
+ *
+ * Provides DB-backed metrics for the swap analytics dashboard:
+ *   - Swap volume by chain (BTC / ETH / SOL)
+ *   - Average settlement time per route
+ *   - HTLC success / refund ratio
+ *   - Peer reputation leaderboard (P2P peers ranked by completed swaps)
+ *   - Recent swap history
+ *   - Route distribution (P2P vs aggregator)
+ */
+
+import { z } from "zod";
+import { publicProcedure, router } from "../_core/trpc";
+import { getDb } from "../db";
+import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
+import { eq, and, gte, sql, desc, count, avg } from "drizzle-orm";
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function sinceMs(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+// ─── Router ───────────────────────────────────────────────────────────────────
+
+export const analyticsRouter = router({
+  /**
+   * Overall swap volume metrics.
+   * Returns total volume (USD), swap count, and breakdown by chain for the given time window.
+   */
+  volumeByChain: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { byChain: [], totalSwaps: 0, totalUsd: 0, days: input.days };
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          fromChain: swapAnalytics.fromChain,
+          toChain:   swapAnalytics.toChain,
+          swapCount: count(swapAnalytics.id),
+          totalUsd:  sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .groupBy(swapAnalytics.fromChain, swapAnalytics.toChain);
+
+      // Aggregate by chain
+      const chainMap: Record<string, { swapCount: number; totalUsd: number }> = {};
+      for (const row of rows) {
+        const key = row.fromChain;
+        if (!chainMap[key]) chainMap[key] = { swapCount: 0, totalUsd: 0 };
+        chainMap[key].swapCount += Number(row.swapCount);
+        chainMap[key].totalUsd  += parseFloat(row.totalUsd ?? "0");
+      }
+
+      const chains = ["bitcoin", "ethereum", "solana"] as const;
+      const byChain = chains.map(chain => ({
+        chain,
+        swapCount: chainMap[chain]?.swapCount ?? 0,
+        totalUsd:  chainMap[chain]?.totalUsd  ?? 0,
+      }));
+
+      const totalSwaps = byChain.reduce((s, c) => s + c.swapCount, 0);
+      const totalUsd   = byChain.reduce((s, c) => s + c.totalUsd,  0);
+
+      return { byChain, totalSwaps, totalUsd, days: input.days };
+    }),
+
+  /**
+   * Average settlement time per route.
+   * Returns mean milliseconds from quote to settlement for each route type.
+   */
+  settlementTime: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          route:     swapAnalytics.route,
+          avgMs:     avg(swapAnalytics.settlementMs),
+          swapCount: count(swapAnalytics.id),
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .groupBy(swapAnalytics.route)
+        .orderBy(avg(swapAnalytics.settlementMs));
+
+      return rows.map(r => ({
+        route:     r.route,
+        avgMs:     Math.round(Number(r.avgMs) || 0),
+        swapCount: Number(r.swapCount),
+      }));
+    }),
+
+  /**
+   * HTLC success / refund ratio.
+   * Returns counts of completed, refunded, failed, and pending HTLCs.
+   */
+  htlcRatio: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { totals: {}, byChain: {}, total: 0, successRate: "0.0", refundRate: "0.0", days: input.days };
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          status:    htlcSwaps.status,
+          chain:     htlcSwaps.chain,
+          swapCount: count(htlcSwaps.id),
+        })
+        .from(htlcSwaps)
+        .where(gte(htlcSwaps.createdAt, since))
+        .groupBy(htlcSwaps.status, htlcSwaps.chain);
+
+      // Build status totals
+      const totals: Record<string, number> = {
+        pending:   0,
+        completed: 0,
+        refunded:  0,
+        expired:   0,
+      };
+      const byChain: Record<string, Record<string, number>> = {};
+
+      for (const row of rows) {
+        totals[row.status] = (totals[row.status] ?? 0) + Number(row.swapCount);
+        if (!byChain[row.chain]) byChain[row.chain] = {};
+        byChain[row.chain][row.status] = (byChain[row.chain][row.status] ?? 0) + Number(row.swapCount);
+      }
+
+      const total = Object.values(totals).reduce((a, b) => a + b, 0);
+      const successRate = total > 0 ? ((totals.completed / total) * 100).toFixed(1) : "0.0";
+      const refundRate  = total > 0 ? ((totals.refunded  / total) * 100).toFixed(1) : "0.0";
+
+      return { totals, byChain, total, successRate, refundRate, days: input.days };
+    }),
+
+  /**
+   * Peer reputation leaderboard.
+   * Ranks P2P peers by completed swap count and total volume.
+   */
+  peerLeaderboard: publicProcedure
+    .input(z.object({
+      days:  z.number().int().min(1).max(365).default(30),
+      limit: z.number().int().min(1).max(50).default(10),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          peerId:    swapAnalytics.peerId,
+          swapCount: count(swapAnalytics.id),
+          totalUsd:  sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+          avgMs:     avg(swapAnalytics.settlementMs),
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since),
+            sql`${swapAnalytics.peerId} IS NOT NULL`
+          )
+        )
+        .groupBy(swapAnalytics.peerId)
+        .orderBy(desc(count(swapAnalytics.id)))
+        .limit(input.limit);
+
+      return rows.map((r, i) => ({
+        rank:      i + 1,
+        peerId:    r.peerId ?? "unknown",
+        swapCount: Number(r.swapCount),
+        totalUsd:  parseFloat(r.totalUsd ?? "0"),
+        avgMs:     Math.round(Number(r.avgMs) || 0),
+      }));
+    }),
+
+  /**
+   * Route distribution.
+   * Returns swap counts and volume split by route type (P2P vs aggregators).
+   */
+  routeDistribution: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          route:     swapAnalytics.route,
+          swapCount: count(swapAnalytics.id),
+          totalUsd:  sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .groupBy(swapAnalytics.route)
+        .orderBy(desc(count(swapAnalytics.id)));
+
+      const total = rows.reduce((s, r) => s + Number(r.swapCount), 0);
+
+      return rows.map(r => ({
+        route:      r.route,
+        swapCount:  Number(r.swapCount),
+        totalUsd:   parseFloat(r.totalUsd ?? "0"),
+        percentage: total > 0 ? ((Number(r.swapCount) / total) * 100).toFixed(1) : "0.0",
+      }));
+    }),
+
+  /**
+   * Recent swap history.
+   * Returns the latest N completed swaps for the activity feed.
+   */
+  recentSwaps: publicProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(20) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+
+      const rows = await db
+        .select()
+        .from(swapAnalytics)
+        .orderBy(desc(swapAnalytics.createdAt))
+        .limit(input.limit);
+
+      return rows;
+    }),
+
+  /**
+   * Summary stats card — single object for the top-of-page KPI strip.
+   */
+  summary: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { totalSwaps: 0, totalUsd: 0, avgSettlementMs: 0, htlcSuccessRate: "0.0", htlcRefundRate: "0.0", p2pRatio: "0.0", days: input.days };
+      const since = sinceMs(input.days);
+
+      const [volumeRow] = await db
+        .select({
+          totalSwaps: count(swapAnalytics.id),
+          totalUsd:   sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+          avgMs:      avg(swapAnalytics.settlementMs),
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        );
+
+      const [htlcRow] = await db
+        .select({
+          total:     count(htlcSwaps.id),
+          completed: sql<string>`SUM(CASE WHEN ${htlcSwaps.status} = 'completed' THEN 1 ELSE 0 END)`,
+          refunded:  sql<string>`SUM(CASE WHEN ${htlcSwaps.status} = 'refunded' THEN 1 ELSE 0 END)`,
+        })
+        .from(htlcSwaps)
+        .where(gte(htlcSwaps.createdAt, since));
+
+      const [p2pRow] = await db
+        .select({
+          p2pCount: sql<string>`SUM(CASE WHEN ${swapAnalytics.route} LIKE '%P2P%' OR ${swapAnalytics.route} LIKE '%IntercomSwap%' THEN 1 ELSE 0 END)`,
+          total:    count(swapAnalytics.id),
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        );
+
+      const totalSwaps  = Number(volumeRow?.totalSwaps ?? 0);
+      const totalUsd    = parseFloat(volumeRow?.totalUsd ?? "0");
+      const avgMs       = Math.round(Number(volumeRow?.avgMs) || 0);
+      const htlcTotal   = Number(htlcRow?.total ?? 0);
+      const htlcSuccess = Number(htlcRow?.completed ?? 0);
+      const htlcRefund  = Number(htlcRow?.refunded  ?? 0);
+      const p2pCount    = Number(p2pRow?.p2pCount ?? 0);
+      const p2pTotal    = Number(p2pRow?.total ?? 0);
+
+      return {
+        totalSwaps,
+        totalUsd,
+        avgSettlementMs: avgMs,
+        htlcSuccessRate: htlcTotal > 0 ? ((htlcSuccess / htlcTotal) * 100).toFixed(1) : "0.0",
+        htlcRefundRate:  htlcTotal > 0 ? ((htlcRefund  / htlcTotal) * 100).toFixed(1) : "0.0",
+        p2pRatio:        p2pTotal  > 0 ? ((p2pCount    / p2pTotal)  * 100).toFixed(1) : "0.0",
+        days:            input.days,
+      };
+    }),
+});

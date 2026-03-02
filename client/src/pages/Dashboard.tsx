@@ -31,10 +31,11 @@ import AgentSettings from "./AgentSettings";
 import NetworkPage from "./NetworkPage";
 import TerminalPage from "./TerminalPage";
 import ChatPage from "./ChatPage";
+import SwapAnalytics from "./SwapAnalytics";
 import { trpc } from "@/lib/trpc";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "network" | "settings" | "terminal";
+type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
@@ -931,8 +932,8 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
     id: s.rfqId,
     from: s.fromToken,
     to: s.toToken,
-    fromAmt: s.inAmount.toFixed(4),
-    toAmt: s.outAmount.toFixed(4),
+    fromAmt: (s.inAmount ?? 0).toFixed(4),
+    toAmt: (s.outAmount ?? 0).toFixed(4),
     status: allSwaps.pending.some(p => p.rfqId === s.rfqId) ? 'pending' as const : 'complete' as const,
     time: new Date(s.timestamp).toLocaleTimeString(),
     protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `Jupiter DEX`,
@@ -2281,8 +2282,8 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
     id: s.rfqId,
     from: s.fromToken,
     to: s.toToken,
-    fromAmt: s.inAmount.toString(),
-    toAmt: s.outAmount.toFixed(4),
+    fromAmt: (s.inAmount ?? 0).toString(),
+    toAmt: (s.outAmount ?? 0).toFixed(4),
     status: 'complete' as 'complete' | 'pending' | 'failed',
     time: new Date(s.timestamp).toLocaleTimeString(),
     protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `DEX: ${s.dexRoute}`,
@@ -2819,6 +2820,7 @@ export default function Dashboard() {
     { id: "chat" as NavPage, icon: Bot, label: "Agent" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
+    { id: "analytics" as NavPage, icon: BarChart3, label: "Analytics" },
     { id: "network" as NavPage, icon: Network, label: "Network" },
     { id: "settings" as NavPage, icon: Settings, label: "Settings" },
     // Terminal is intentionally excluded from nav — accessible via "Full log →" link on Overview
@@ -2832,6 +2834,7 @@ export default function Dashboard() {
     }} />;
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
+    if (activePage === "analytics") return <SwapAnalytics />;
     if (activePage === "network") return <NetworkPage />;
     if (activePage === "terminal") return <TerminalPage />;
     return null;

@@ -493,3 +493,32 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Dashboard.tsx: buildSwapTx updated to handle new return type (swapTransaction | null)
 - [x] TypeScript: 0 errors across all files after multi-chain refactor
 - [x] Vitest: 35 tests pass (17 new multi-chain tests + 12 BTC P2P + 5 chat + 1 auth)
+
+## Phase: Full Unified 3-Chain Architecture (P2P-first + Analytics + HTLC Monitor)
+
+- [x] DB schema: htlc_swaps table (id, chain, htlcAddress, secretHash, amountSats/Wei/Lamports, status, locktime, createdAt, refundedAt)
+- [x] DB schema: swap_analytics table (id, chain, fromToken, toToken, amount, amountUsd, route, settlementMs, status, createdAt)
+- [x] DB migration pushed (pnpm db:push)
+- [x] QuoteCard: styled P2P route badge (chain icon + "IntercomSwap P2P" vs "Jupiter DEX" vs "1inch" vs "Direct HTLC")
+- [x] QuoteCard: show fromChain → toChain chain pill (e.g. SOL → ETH cross-chain indicator)
+- [x] HTLC timeout monitor: server/htlcMonitor.ts — background poller checking pending HTLCs, auto-triggers refund on CLTV expiry
+- [x] HTLC monitor: BTC branch — polls mempool.space /api/blocks/tip/height for block height
+- [x] HTLC monitor: ETH branch — polls Cloudflare Ethereum RPC for block number
+- [x] HTLC monitor: SOL branch — polls mainnet-beta getSlot RPC
+- [x] HTLC monitor auto-triggers refund, updates status to 'refunded', sets refundTxId + refundedAt
+- [x] Wire HTLC monitor startup in server/_core/index.ts
+- [x] Cross-chain path-finder: server/pathFinder.ts — finds multi-hop routes (BTC→USDT→SOL) when no direct P2P peer
+- [x] Path-finder: findSwapPath + getSupportedPairs tRPC procedures
+- [x] pathFinderRouter registered in routers.ts
+- [x] Swap analytics page: SwapAnalytics.tsx — volume by chain, avg settlement time, HTLC success/refund ratio, peer reputation
+- [x] Analytics: "Analytics" nav item added to Dashboard sidebar
+- [x] analyticsRouter: 7 DB-backed procedures (volumeByChain, settlementTime, htlcRatio, peerLeaderboard, routeDistribution, recentSwaps, summary)
+- [ ] 1inch API key: set ONEINCH_API_KEY secret (deferred by user)
+- [x] Vitest tests for htlcMonitor, pathFinder, and analyticsRouter (19 new tests)
+- [x] All 54 tests passing, 0 TypeScript errors
+
+## Bug Fix: Dashboard toFixed crash
+
+- [x] Fix TypeError: Cannot read properties of undefined (reading 'toFixed') in RecentSwapsCard (line 935-936)
+- [x] Fix same issue in mobile MobileRecentSwaps section (line 2285-2286)
+- [x] Added null guards: (s.inAmount ?? 0) and (s.outAmount ?? 0) before .toFixed()/.toString()

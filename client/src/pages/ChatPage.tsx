@@ -85,6 +85,91 @@ function TokenBadge({ symbol }: { symbol: string }) {
   );
 }
 
+// ─── Route Badge ────────────────────────────────────────────────────────────
+// Shows which execution route was selected: IntercomSwap P2P, Jupiter, 1inch, or Direct HTLC
+const ROUTE_STYLES: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
+  p2p: {
+    bg:     "rgba(20,241,149,0.12)",
+    text:   "#14F195",
+    border: "rgba(20,241,149,0.3)",
+    dot:    "#14F195",
+    label:  "IntercomSwap P2P",
+  },
+  jupiter: {
+    bg:     "rgba(153,69,255,0.12)",
+    text:   "#9945FF",
+    border: "rgba(153,69,255,0.3)",
+    dot:    "#9945FF",
+    label:  "Jupiter DEX",
+  },
+  oneinch: {
+    bg:     "rgba(98,126,234,0.12)",
+    text:   "#627EEA",
+    border: "rgba(98,126,234,0.3)",
+    dot:    "#627EEA",
+    label:  "1inch",
+  },
+  htlc: {
+    bg:     "rgba(247,147,26,0.12)",
+    text:   "#F7931A",
+    border: "rgba(247,147,26,0.3)",
+    dot:    "#F7931A",
+    label:  "Direct HTLC",
+  },
+  default: {
+    bg:     "rgba(100,100,100,0.12)",
+    text:   "#aaa",
+    border: "rgba(100,100,100,0.3)",
+    dot:    "#aaa",
+    label:  "Aggregator",
+  },
+};
+
+function getRouteStyle(route: string) {
+  const r = route.toLowerCase();
+  if (r.includes("p2p") || r.includes("intercomswap")) return ROUTE_STYLES.p2p;
+  if (r.includes("jupiter"))  return ROUTE_STYLES.jupiter;
+  if (r.includes("1inch"))    return ROUTE_STYLES.oneinch;
+  if (r.includes("htlc"))     return ROUTE_STYLES.htlc;
+  return ROUTE_STYLES.default;
+}
+
+function RouteBadge({ route }: { route: string }) {
+  const s = getRouteStyle(route);
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ background: s.bg, color: s.text, border: `1px solid ${s.border}` }}
+      title={route}
+    >
+      <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: s.dot }} />
+      {s.label}
+    </span>
+  );
+}
+
+// ─── Chain Pill ───────────────────────────────────────────────────────────────
+// Shows source → destination chain for cross-chain swaps
+const CHAIN_PILL_STYLES: Record<string, { color: string; label: string }> = {
+  solana:   { color: "#9945FF", label: "SOL" },
+  ethereum: { color: "#627EEA", label: "ETH" },
+  bitcoin:  { color: "#F7931A", label: "BTC" },
+};
+
+function ChainPill({ fromChain, toChain }: { fromChain?: string; toChain?: string }) {
+  if (!fromChain || !toChain || fromChain === toChain) return null;
+  const from = CHAIN_PILL_STYLES[fromChain] ?? { color: "#aaa", label: fromChain.toUpperCase() };
+  const to   = CHAIN_PILL_STYLES[toChain]   ?? { color: "#aaa", label: toChain.toUpperCase() };
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#ccc" }}>
+      <span style={{ color: from.color }}>{from.label}</span>
+      <span className="opacity-50">→</span>
+      <span style={{ color: to.color }}>{to.label}</span>
+    </span>
+  );
+}
+
 // ─── Quote Card ───────────────────────────────────────────────────────────────
 function QuoteCard({
   data,
@@ -109,11 +194,14 @@ function QuoteCard({
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
       {/* Header */}
-      <div className="px-4 py-3 flex items-center gap-2"
+      <div className="px-4 py-3 flex items-center gap-2 flex-wrap"
         style={{ borderBottom: "1px solid var(--border)", background: "rgba(6,182,212,0.05)" }}>
         <Zap className="w-4 h-4 text-cyan-400" />
         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Swap Quote</span>
-        <span className="ml-auto text-[10px] text-muted-foreground">{data.route}</span>
+        <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+          <ChainPill fromChain={data.fromChain} toChain={data.toChain} />
+          <RouteBadge route={data.route} />
+        </div>
       </div>
 
       {/* Swap summary */}

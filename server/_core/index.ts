@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { startHtlcMonitor } from "../htlcMonitor";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -82,6 +83,8 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
+    startHtlcMonitor();
   });
 }
 
