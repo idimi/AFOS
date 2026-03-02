@@ -14,7 +14,8 @@ import {
   Radio, Network, TrendingUp, TrendingDown,
   Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
-  Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge
+  Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge,
+  Bot, X as XIcon
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -1394,7 +1395,7 @@ function AutopostTab() {
 
 // ─── Main Swaps Page ──────────────────────────────────────────────────────────
 
-export default function Swaps() {
+export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefill?: string) => void } = {}) {
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const { connected, shortAddress } = useWallet();
   const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
@@ -1416,6 +1417,11 @@ export default function Swaps() {
   const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
   const [quoteFetching, setQuoteFetching] = useState(false);
   const quoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Quote expiry countdown (30s validity window)
+  const QUOTE_TTL = 30;
+  const [quoteTimestamp, setQuoteTimestamp] = useState<number | null>(null);
+  const [quoteSecondsLeft, setQuoteSecondsLeft] = useState<number>(QUOTE_TTL);
+  const quoteCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Live token prices from backend
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   // Live P2P peers from SSE + getAgentStatus
@@ -1495,7 +1501,11 @@ export default function Swaps() {
         setQuoteFetching(true);
         try {
           const q = await getSwapQuote(fromToken.symbol, toToken.symbol, fromAmount);
-          if (q) setLiveQuote(q);
+          if (q) {
+            setLiveQuote(q);
+            setQuoteTimestamp(Date.now());
+            setQuoteSecondsLeft(QUOTE_TTL);
+          }
         } catch { /* keep previous quote */ } finally {
           setQuoteFetching(false);
         }
@@ -1506,6 +1516,42 @@ export default function Swaps() {
     return () => { if (quoteTimerRef.current) clearTimeout(quoteTimerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromToken.symbol, toToken.symbol, fromAmount, slippage]);
+
+  // Quote expiry countdown — tick every second, auto-refresh at 0
+  useEffect(() => {
+    if (!quoteTimestamp || !liveQuote) {
+      if (quoteCountdownRef.current) clearInterval(quoteCountdownRef.current);
+      return;
+    }
+    if (quoteCountdownRef.current) clearInterval(quoteCountdownRef.current);
+    quoteCountdownRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - quoteTimestamp) / 1000);
+      const remaining = Math.max(0, QUOTE_TTL - elapsed);
+      setQuoteSecondsLeft(remaining);
+      if (remaining === 0) {
+        // Auto-refresh the quote
+        clearInterval(quoteCountdownRef.current!);
+        quoteCountdownRef.current = null;
+        const amt = parseFloat(fromAmount);
+        const solPairs = ['SOL', 'USDT', 'USDC'];
+        if (amt > 0 && solPairs.includes(fromToken.symbol) && solPairs.includes(toToken.symbol)) {
+          setQuoteFetching(true);
+          getSwapQuote(fromToken.symbol, toToken.symbol, fromAmount)
+            .then(q => {
+              if (q) {
+                setLiveQuote(q);
+                setQuoteTimestamp(Date.now());
+                setQuoteSecondsLeft(QUOTE_TTL);
+              }
+            })
+            .catch(() => {})
+            .finally(() => setQuoteFetching(false));
+        }
+      }
+    }, 1000);
+    return () => { if (quoteCountdownRef.current) clearInterval(quoteCountdownRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteTimestamp, liveQuote]);
 
   // Derived values — use live prices when available
   const fromTokenData = TOKENS.find(t => t.symbol === fromToken.symbol) || TOKENS[0];
@@ -1838,6 +1884,25 @@ export default function Swaps() {
                       LIVE
                     </span>
                   )}
+                  {liveQuote && !quoteFetching && quoteSecondsLeft > 0 && (
+                    <span
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded"
+                      style={{
+                        background: quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.15)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.15)' : 'rgba(100,116,139,0.15)',
+                        color: quoteSecondsLeft <= 5 ? '#f87171' : quoteSecondsLeft <= 10 ? '#fbbf24' : '#94a3b8',
+                        border: `1px solid ${quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.3)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.3)' : 'rgba(100,116,139,0.3)'}`,
+                      }}
+                    >
+                      <Timer className="w-2.5 h-2.5" />
+                      {quoteSecondsLeft}s
+                    </span>
+                  )}
+                  {liveQuote && quoteFetching && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
+                      Refreshing...
+                    </span>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-slate-500">≈ ${parseFloat(toUsd).toLocaleString()}</div>
@@ -2008,6 +2073,31 @@ export default function Swaps() {
               )}
             </AnimatePresence>
 
+            {/* Selected Peer Badge */}
+            {selectedPeer && swapPhase === "idle" && (
+              <div
+                className="mt-4 flex items-center justify-between px-3 py-2 rounded-xl"
+                style={{
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.25)',
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                  <span className="text-[11px] font-mono text-slate-400">Targeting peer</span>
+                  <span className="text-[11px] font-mono text-blue-300 font-semibold">{selectedPeer.alias}</span>
+                  <span className="text-[10px] text-slate-600">{selectedPeer.latency}ms · {selectedPeer.reputation}%</span>
+                </div>
+                <button
+                  onClick={() => setSelectedPeer(null)}
+                  className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                  title="Clear peer targeting"
+                >
+                  <XIcon className="w-3.5 h-3.5 text-slate-500 hover:text-slate-300" />
+                </button>
+              </div>
+            )}
+
             {/* Swap Button */}
             <button
               onClick={isSwapping ? undefined : swapPhase === "complete" ? handleReset : handleSwap}
@@ -2047,6 +2137,25 @@ export default function Swaps() {
               )}
             </button>
 
+            {/* Send to Agent */}
+            {onNavigateToChat && swapPhase === "idle" && parseFloat(fromAmount) > 0 && (
+              <button
+                onClick={() => {
+                  const msg = `swap ${fromAmount} ${fromToken.symbol} to ${toToken.symbol}`;
+                  sessionStorage.setItem('afos_chat_prefill', msg);
+                  onNavigateToChat(msg);
+                }}
+                className="mt-2 w-full py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all hover:bg-white/5 active:scale-[0.98] flex items-center justify-center gap-2"
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(100,116,139,0.3)',
+                  color: '#64748b',
+                }}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                Send to Agent Chat
+              </button>
+            )}
 
           </div>
 

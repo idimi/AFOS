@@ -282,3 +282,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Show live count of active services in "X/5 live" badge with color (green/amber/red)
 - [x] Hover tooltip shows latency (ms) for each service
 - [x] Poll every 30s + re-check IntercomSwap on SSE reconnect
+
+## Swap Page — UX Improvements (Round 3)
+
+- [x] Add quote expiry countdown ("Rate valid for 30s") with auto-refresh when expired — color shifts green→amber→red
+- [x] Add selected-peer badge above Swap button with alias and clear (×) button
+- [x] Add "Send to Agent" button that pre-fills chat with current swap params and navigates to Agent Chat
+- [x] Wire ChatPage to read sessionStorage prefill on mount and auto-focus input

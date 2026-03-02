@@ -2583,7 +2583,10 @@ export default function Dashboard() {
 
   const renderSubPage = () => {
     if (activePage === "chat") return <ChatPage />;
-    if (activePage === "swaps") return <Swaps />;
+    if (activePage === "swaps") return <Swaps onNavigateToChat={(prefill) => {
+      if (prefill) sessionStorage.setItem('afos_chat_prefill', prefill);
+      setActivePage("chat");
+    }} />;
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
     if (activePage === "network") return <NetworkPage />;

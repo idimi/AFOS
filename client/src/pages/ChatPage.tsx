@@ -326,6 +326,17 @@ export default function ChatPage() {
   const sendMessage = trpc.chat.sendMessage.useMutation();
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
 
+  // Read prefill from Swaps page "Send to Agent" button on mount
+  useEffect(() => {
+    const prefill = sessionStorage.getItem('afos_chat_prefill');
+    if (prefill) {
+      sessionStorage.removeItem('afos_chat_prefill');
+      setInput(prefill);
+      // Focus the input so user can immediately confirm or edit
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  }, []);
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
