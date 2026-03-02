@@ -2099,32 +2099,29 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               </div>
             )}
 
-            {/* Execution Mode Toggle */}
+            {/* Agent Mode Toggle */}
             {swapPhase === "idle" && onNavigateToChat && (
-              <div className="mt-5 flex items-center rounded-lg p-0.5" style={{ background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(100,116,139,0.2)' }}>
-                <button
-                  onClick={() => setExecMode('manual')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all ${
-                    execMode === 'manual'
-                      ? 'text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-400'
-                  }`}
-                  style={execMode === 'manual' ? { background: 'rgba(59,130,246,0.25)', boxShadow: '0 1px 4px rgba(59,130,246,0.2)' } : {}}
-                >
-                  <Zap className="w-3 h-3" />
-                  Manual
-                </button>
-                <button
-                  onClick={() => setExecMode('agent')}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all ${
-                    execMode === 'agent'
-                      ? 'text-white shadow-sm'
-                      : 'text-slate-500 hover:text-slate-400'
-                  }`}
-                  style={execMode === 'agent' ? { background: 'rgba(147,51,234,0.3)', boxShadow: '0 1px 4px rgba(147,51,234,0.2)' } : {}}
-                >
+              <div className="mt-5 flex items-center justify-between">
+                <span className="text-[11px] text-slate-500 flex items-center gap-1.5">
                   <Bot className="w-3 h-3" />
-                  Agent
+                  Agent mode
+                </span>
+                <button
+                  onClick={() => setExecMode(execMode === 'manual' ? 'agent' : 'manual')}
+                  className="relative w-9 h-5 rounded-full transition-colors duration-200 focus:outline-none"
+                  style={{
+                    background: execMode === 'agent'
+                      ? 'linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)'
+                      : 'rgba(100,116,139,0.3)',
+                  }}
+                  aria-label="Toggle agent mode"
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      transform: execMode === 'agent' ? 'translateX(16px)' : 'translateX(0)',
+                    }}
+                  />
                 </button>
               </div>
             )}
@@ -2144,9 +2141,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                 }
               }}
               disabled={isSwapping}
-              className={`${
-                swapPhase === "idle" && onNavigateToChat ? 'mt-2' : 'mt-5'
-              } w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden`}
+              className="mt-3 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
               style={{
                 background: swapPhase === "complete"
                   ? "rgba(16,185,129,0.2)"

@@ -297,3 +297,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Manual mode: button says "Swap Now" with Zap icon, blue bg — calls submitRfq → executeSwap
 - [x] Agent mode: button says "Send to Agent" with Bot icon, purple gradient bg — auto-sends swap command to chat
 - [x] Wire Agent mode to auto-send message via sessionStorage afos_chat_autosend flag + ChatPage handleSend on mount
+
+## Swap Button — Replace Segmented Control with Compact Toggle
+
+- [x] Replace full-width segmented Manual/Agent control with small toggle switch + label
