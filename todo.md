@@ -321,3 +321,9 @@ The Overview should be an **operator's command center** — a single glance tell
 ## ChatPage Footer — Update Powered By Text
 
 - [x] Change "Powered by Jupiter" to mention all three: IntercomSwap P2P · Jupiter · 1inch
+
+## Dashboard Header — Live Data
+
+- [x] Replace hardcoded "intercomswap@mainnet" with live agent/node identity from backend
+- [x] Replace hardcoded "0000intercomswapbtcusdt" with live active pair or last swap pair
+- [x] Replace hardcoded "3 peers" with live peer count from backend

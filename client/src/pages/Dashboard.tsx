@@ -2543,6 +2543,47 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
+  // ── Live header data ──────────────────────────────────────────────────────
+  const [headerPeers, setHeaderPeers] = useState<number | null>(null);
+  const [headerNodeKey, setHeaderNodeKey] = useState<string | null>(null);
+  const [headerLastPair, setHeaderLastPair] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHeaderData = async () => {
+      try {
+        const [status, swapData] = await Promise.allSettled([
+          getAgentStatus(),
+          getSwaps(),
+        ]);
+        if (status.status === 'fulfilled') {
+          setHeaderPeers(status.value.activePeers);
+          if (status.value.p2pNodeKey) {
+            const k = status.value.p2pNodeKey;
+            // Show first 6 + last 4 chars of the node key
+            setHeaderNodeKey(k.length > 12 ? `${k.slice(0, 6)}…${k.slice(-4)}` : k);
+          }
+        }
+        if (swapData.status === 'fulfilled') {
+          const all = [...swapData.value.pending, ...swapData.value.completed]
+            .sort((a, b) => b.timestamp - a.timestamp);
+          if (all.length > 0) {
+            setHeaderLastPair(`${all[0].fromToken}/${all[0].toToken}`);
+          }
+        }
+      } catch { /* keep defaults */ }
+    };
+    fetchHeaderData();
+    const t = setInterval(fetchHeaderData, 30000);
+    // Also update peer count from SSE
+    const unsubPeer = onSSEEvent('peer_connected', () => setHeaderPeers(p => (p ?? 0) + 1));
+    const unsubPeerD = onSSEEvent('peer_disconnected', () => setHeaderPeers(p => Math.max(0, (p ?? 0) - 1)));
+    const unsubInit = onSSEEvent('init', (data: unknown) => {
+      const d = data as { activePeers?: number };
+      if (d?.activePeers !== undefined) setHeaderPeers(d.activePeers);
+    });
+    return () => { clearInterval(t); unsubPeer(); unsubPeerD(); unsubInit(); };
+  }, []);
+
   // Swipe-right from left edge to open drawer
   const swipeTouchStartX = useRef<number | null>(null);
   const handleGlobalTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -2607,13 +2648,19 @@ export default function Dashboard() {
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-sm text-muted-foreground font-mono hidden sm:block">AFOS Agent</span>
             <span className="text-muted-foreground/40 hidden sm:block">·</span>
-            <span className="text-xs text-cyan-400/70 font-mono">intercomswap@mainnet</span>
+            <span className="text-xs text-cyan-400/70 font-mono">
+              {headerNodeKey ?? "intercomswap@mainnet"}
+            </span>
           </div>
           <div className="flex items-center gap-2 lg:gap-4">
-            <span className="text-xs text-muted-foreground font-mono hidden xl:block">0000intercomswapbtcusdt</span>
+            {headerLastPair && (
+              <span className="text-xs text-muted-foreground font-mono hidden xl:block">{headerLastPair}</span>
+            )}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20">
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
-              <span className="text-xs text-violet-300 font-mono">3 peers</span>
+              <span className="text-xs text-violet-300 font-mono">
+                {headerPeers !== null ? `${headerPeers} peer${headerPeers === 1 ? '' : 's'}` : '— peers'}
+              </span>
             </div>
             {connected ? (
               <button
