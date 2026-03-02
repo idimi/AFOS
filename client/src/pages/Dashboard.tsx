@@ -1161,156 +1161,298 @@ function WalletModal({ modal, onClose }: { modal: WalletModalState; onClose: () 
 }
 
 // ── Wallets Card (compact) ─────────────────────────────────────────────────
+// ── Shared wallet row style helpers ───────────────────────────────────────
+const WALLET_ASSET_STYLE: Record<string, { color: string; border: string; bg: string; chainColor: string }> = {
+  SOL:  { color: "text-purple-400",  border: "border-purple-500/20",  bg: "bg-purple-500/8",  chainColor: "text-purple-300" },
+  USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8", chainColor: "text-emerald-300" },
+  USDC: { color: "text-blue-300",    border: "border-blue-400/20",    bg: "bg-blue-400/8",    chainColor: "text-blue-300" },
+  ETH:  { color: "text-blue-400",    border: "border-blue-500/20",    bg: "bg-blue-500/8",    chainColor: "text-blue-300" },
+  BTC:  { color: "text-amber-400",   border: "border-amber-500/20",   bg: "bg-amber-500/8",   chainColor: "text-amber-300" },
+  TNK:  { color: "text-orange-400",  border: "border-orange-500/20",  bg: "bg-orange-500/8",  chainColor: "text-orange-300" },
+};
+const CHAIN_DOT_COLORS: Record<string, string> = {
+  Solana: "bg-purple-400",
+  Ethereum: "bg-blue-400",
+  Bitcoin: "bg-amber-400",
+};
+interface WalletRowData {
+  asset: string;
+  chain: string;         // "Solana" | "Ethereum" | "Bitcoin"
+  networkLabel: string;  // e.g. "Solana · abc1...xyz9"
+  balance: string;
+  usd: string;
+  connected: boolean;
+  color: string;
+  border: string;
+  bg: string;
+  chainColor: string;
+}
+function WalletRowItem({ row, onSend, onReceive }: {
+  row: WalletRowData;
+  onSend: () => void;
+  onReceive: () => void;
+}) {
+  return (
+    <div className={`flex items-center gap-2.5 p-2 rounded-xl border transition-all duration-200 ${
+      row.border} ${row.bg} ${!row.connected ? "opacity-40" : ""}`}>
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold font-mono ${
+        row.color} bg-background/50 border border-border shrink-0`}>
+        {row.asset}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <p className={`text-xs font-mono font-semibold ${
+            row.connected ? row.color : "text-muted-foreground"}`}>{row.balance}</p>
+          <span className="text-[10px] text-muted-foreground">{row.usd}</span>
+        </div>
+        <div className="flex items-center gap-1 mt-0.5">
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${CHAIN_DOT_COLORS[row.chain] ?? "bg-cyan-400"}`} />
+          <p className={`text-[10px] font-mono truncate ${row.chainColor}`}>{row.networkLabel}</p>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        {row.connected ? (
+          <>
+            <button onClick={onReceive} title="Receive"
+              className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+              style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
+              <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
+            </button>
+            <button onClick={onSend} title="Send"
+              className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
+              style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
+              <ArrowUpRight className="w-3 h-3 text-red-400" />
+            </button>
+          </>
+        ) : (
+          <span className="text-[9px] font-mono text-muted-foreground px-1.5 py-0.5 rounded-full"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>not connected</span>
+        )}
+      </div>
+    </div>
+  );
+}
 function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
-  const [walletData, setWalletData] = useState<WalletAsset[]>([]);
-  const [walletLoading, setWalletLoading] = useState(true);
-  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
+  const [nodeWalletData, setNodeWalletData] = useState<WalletAsset[]>([]);
+  const [nodeKey, setNodeKey] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"my" | "node">("my");
+  // Browser wallets
+  const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
+  const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
 
+  // Solana browser address — prefer Phantom multi-chain, fall back to WalletContext
+  const solBrowserAddr = phantomMultiChain?.solanaAddress
+    ? `${phantomMultiChain.solanaAddress.slice(0, 4)}...${phantomMultiChain.solanaAddress.slice(-4)}`
+    : solShortAddr;
+  const solBrowserConnected = solConnected || !!(phantomMultiChain?.chains.includes("solana"));
+
+  // Node wallet polling
   useEffect(() => {
-    const fetchWallet = async () => {
+    const fetchNode = async () => {
       try {
         const data = await getWallet();
-        setWalletData(data.wallets);
-      } catch { /* keep empty */ } finally { setWalletLoading(false); }
+        setNodeWalletData(data.wallets);
+        setNodeKey(data.nodeKey);
+      } catch { /* keep empty */ }
     };
-    fetchWallet();
-    const t = setInterval(fetchWallet, 30000);
+    fetchNode();
+    const t = setInterval(fetchNode, 30_000);
     return () => clearInterval(t);
   }, []);
 
-  const ASSET_STYLE: Record<string, { color: string; border: string; bg: string; chain: string; chainColor: string }> = {
-    SOL:  { color: "text-purple-400",  border: "border-purple-500/20",  bg: "bg-purple-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
-    USDT: { color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/8", chain: "Solana",   chainColor: "text-purple-300" },
-    USDC: { color: "text-blue-300",    border: "border-blue-400/20",    bg: "bg-blue-400/8",    chain: "Solana",   chainColor: "text-purple-300" },
-    // USDC on Ethereum uses same token style but Ethereum chain — handled per-row via def.network
-    BTC:  { color: "text-amber-400",   border: "border-amber-500/20",   bg: "bg-amber-500/8",   chain: "Bitcoin",  chainColor: "text-amber-300" },
-    ETH:  { color: "text-blue-400",    border: "border-blue-500/20",    bg: "bg-blue-500/8",    chain: "Ethereum", chainColor: "text-blue-300" },
-    TNK:  { color: "text-orange-400",  border: "border-orange-500/20",  bg: "bg-orange-500/8",  chain: "Solana",   chainColor: "text-purple-300" },
-  };
+  // ── Build "My Wallets" rows (browser) ─────────────────────────────────────
+  const solBal = (sym: string) => solBalances.find(b => b.symbol === sym);
+  const solAddr = solBrowserAddr ? `Solana · ${solBrowserAddr}` : "Solana";
+  const ethAddr = ethereum?.shortAddress ? `Ethereum · ${ethereum.shortAddress}` : "Ethereum";
+  const btcAddr = bitcoin?.shortAddress ? `Bitcoin · ${bitcoin.shortAddress}` : "Bitcoin";
 
-  // Chain dot colors
-  const CHAIN_DOT: Record<string, string> = {
-    Solana: "bg-purple-400",
-    Ethereum: "bg-blue-400",
-    Bitcoin: "bg-amber-400",
-  };
-
-  // All supported assets — always shown, live data merged in when available
-  const ALL_ASSETS = [
-    { asset: "SOL",  network: "Solana",   defaultBalance: "0.000000",   defaultUsd: "$0" },
-    { asset: "USDT", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0" },
-    { asset: "USDC", network: "Solana",   defaultBalance: "0.00",       defaultUsd: "$0" },
-    { asset: "ETH",  network: "Ethereum", defaultBalance: "0.000000",   defaultUsd: "$0" },
-    { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0" },
-    { asset: "USDC", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0" },
-    { asset: "BTC",  network: "Bitcoin",  defaultBalance: "0.00000000", defaultUsd: "$0" },
+  const myWallets: WalletRowData[] = [
+    // ── Solana ──
+    {
+      asset: "SOL", chain: "Solana", networkLabel: solAddr,
+      balance: solBrowserConnected ? (solBal("SOL")?.amount ?? "0.000000") : "0.000000",
+      usd: solBrowserConnected && solBal("SOL") ? `$${solBal("SOL")!.usdValue.toFixed(2)}` : "$0",
+      connected: solBrowserConnected,
+      ...WALLET_ASSET_STYLE["SOL"],
+    },
+    {
+      asset: "USDT", chain: "Solana", networkLabel: solAddr,
+      balance: solBrowserConnected ? (solBal("USDT")?.amount ?? "0.00") : "0.00",
+      usd: solBrowserConnected && solBal("USDT") ? `$${solBal("USDT")!.usdValue.toFixed(2)}` : "$0",
+      connected: solBrowserConnected,
+      ...WALLET_ASSET_STYLE["USDT"],
+    },
+    {
+      asset: "USDC", chain: "Solana", networkLabel: solAddr,
+      balance: solBrowserConnected ? (solBal("USDC")?.amount ?? "0.00") : "0.00",
+      usd: solBrowserConnected && solBal("USDC") ? `$${solBal("USDC")!.usdValue.toFixed(2)}` : "$0",
+      connected: solBrowserConnected,
+      ...WALLET_ASSET_STYLE["USDC"],
+    },
+    // ── Ethereum ──
+    {
+      asset: "ETH", chain: "Ethereum", networkLabel: ethAddr,
+      balance: ethereum?.connected ? ethereum.balance : "0.000000",
+      usd: ethereum?.connected && ethereum.balanceUsd > 0 ? `$${ethereum.balanceUsd.toFixed(2)}` : "$0",
+      connected: !!(ethereum?.connected),
+      ...WALLET_ASSET_STYLE["ETH"],
+    },
+    {
+      asset: "USDT", chain: "Ethereum", networkLabel: ethAddr,
+      balance: ethereum?.connected ? erc20Balances.usdt.toFixed(2) : "0.00",
+      usd: ethereum?.connected && erc20Balances.usdt > 0 ? `$${erc20Balances.usdt.toFixed(2)}` : "$0",
+      connected: !!(ethereum?.connected),
+      ...WALLET_ASSET_STYLE["USDT"], chainColor: "text-blue-300",
+    },
+    {
+      asset: "USDC", chain: "Ethereum", networkLabel: ethAddr,
+      balance: ethereum?.connected ? erc20Balances.usdc.toFixed(2) : "0.00",
+      usd: ethereum?.connected && erc20Balances.usdc > 0 ? `$${erc20Balances.usdc.toFixed(2)}` : "$0",
+      connected: !!(ethereum?.connected),
+      ...WALLET_ASSET_STYLE["USDC"], chainColor: "text-blue-300",
+    },
+    // ── Bitcoin ──
+    {
+      asset: "BTC", chain: "Bitcoin", networkLabel: btcAddr,
+      balance: bitcoin?.connected ? bitcoin.balance : "0.00000000",
+      usd: bitcoin?.connected && bitcoin.balanceUsd > 0 ? `$${bitcoin.balanceUsd.toFixed(2)}` : "$0",
+      connected: !!(bitcoin?.connected),
+      ...WALLET_ASSET_STYLE["BTC"],
+    },
   ];
 
-  // Build wallet rows: live data takes priority, fall back to placeholder
-  const wallets = ALL_ASSETS.map(def => {
-    // Try to find live data from backend (Solana assets)
-    const live = walletData.find(w => w.asset === def.asset && w.network.toLowerCase().includes(def.network.toLowerCase()));
-    // Try connected ETH wallet (native ETH)
-    const isEthNative = def.network === "Ethereum" && def.asset === "ETH" && ethereum?.connected;
-    // Try ERC-20 USDT on Ethereum
-    const isEthUsdt = def.network === "Ethereum" && def.asset === "USDT" && ethereum?.connected;
-    // Try ERC-20 USDC on Ethereum
-    const isEthUsdc = def.network === "Ethereum" && def.asset === "USDC" && ethereum?.connected;
-    // Try connected BTC wallet
-    const isBtcAsset = def.network === "Bitcoin" && def.asset === "BTC" && bitcoin?.connected;
+  // ── Build "AFOS Node Wallet" rows (server) ────────────────────────────────
+  // Short node key for display
+  const nodeShort = nodeKey ? `${nodeKey.slice(0, 4)}...${nodeKey.slice(-4)}` : null;
+  const nodeSolAddr = nodeShort ? `Solana · ${nodeShort}` : "Solana · not configured";
+  // Node wallet currently only has Solana assets from backend; ETH/BTC are placeholders
+  const findNode = (asset: string, chain: string) =>
+    nodeWalletData.find(w => w.asset === asset && w.network.toLowerCase().includes(chain.toLowerCase()));
 
-    const baseStyle = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: def.network, chainColor: "text-cyan-300" };
-    // Override chain badge to match the actual network of this row (e.g. USDC on Ethereum vs Solana)
-    const chainOverride = def.network === "Ethereum" ? { chain: "Ethereum", chainColor: "text-blue-300" }
-      : def.network === "Bitcoin" ? { chain: "Bitcoin", chainColor: "text-amber-300" }
-      : { chain: "Solana", chainColor: "text-purple-300" };
-    const style = { ...baseStyle, ...chainOverride };
-    const ethNetworkLabel = `Ethereum · ${ethereum?.shortAddress ?? ""}`;
+  const nodeSol  = findNode("SOL",  "solana");
+  const nodeUsdt = findNode("USDT", "solana");
+  const nodeUsdc = findNode("USDC", "solana");
+  const nodeEth  = findNode("ETH",  "ethereum");
+  const nodeEthUsdt = findNode("USDT", "ethereum");
+  const nodeEthUsdc = findNode("USDC", "ethereum");
+  const nodeBtc  = findNode("BTC",  "bitcoin");
 
-    if (live) {
-      return { asset: def.asset, network: live.network, balance: live.balance, usd: live.usd, connected: true, ...style };
-    } else if (isEthNative) {
-      return { asset: "ETH", network: ethNetworkLabel, balance: ethereum!.balance, usd: ethereum!.balanceUsd > 0 ? `$${ethereum!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
-    } else if (isEthUsdt) {
-      const bal = erc20Balances.usdt;
-      return { asset: "USDT", network: ethNetworkLabel, balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, ...style };
-    } else if (isEthUsdc) {
-      const bal = erc20Balances.usdc;
-      return { asset: "USDC", network: ethNetworkLabel, balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, ...style };
-    } else if (isBtcAsset) {
-      return { asset: "BTC", network: `Bitcoin · ${bitcoin!.shortAddress}`, balance: bitcoin!.balance, usd: bitcoin!.balanceUsd > 0 ? `$${bitcoin!.balanceUsd.toFixed(2)}` : "$0", connected: true, ...style };
-    } else {
-      return { asset: def.asset, network: def.network, balance: def.defaultBalance, usd: def.defaultUsd, connected: false, ...style };
-    }
-  });
+  const nodeWallets: WalletRowData[] = [
+    // ── Solana ──
+    {
+      asset: "SOL", chain: "Solana", networkLabel: nodeSolAddr,
+      balance: nodeSol?.balance ?? "0.000000",
+      usd: nodeSol?.usd ?? "$0",
+      connected: !!(nodeSol),
+      ...WALLET_ASSET_STYLE["SOL"],
+    },
+    {
+      asset: "USDT", chain: "Solana", networkLabel: nodeSolAddr,
+      balance: nodeUsdt?.balance ?? "0.00",
+      usd: nodeUsdt?.usd ?? "$0",
+      connected: !!(nodeUsdt),
+      ...WALLET_ASSET_STYLE["USDT"],
+    },
+    {
+      asset: "USDC", chain: "Solana", networkLabel: nodeSolAddr,
+      balance: nodeUsdc?.balance ?? "0.00",
+      usd: nodeUsdc?.usd ?? "$0",
+      connected: !!(nodeUsdc),
+      ...WALLET_ASSET_STYLE["USDC"],
+    },
+    // ── Ethereum (node) ──
+    {
+      asset: "ETH", chain: "Ethereum", networkLabel: "Ethereum · node",
+      balance: nodeEth?.balance ?? "0.000000",
+      usd: nodeEth?.usd ?? "$0",
+      connected: !!(nodeEth),
+      ...WALLET_ASSET_STYLE["ETH"],
+    },
+    {
+      asset: "USDT", chain: "Ethereum", networkLabel: "Ethereum · node",
+      balance: nodeEthUsdt?.balance ?? "0.00",
+      usd: nodeEthUsdt?.usd ?? "$0",
+      connected: !!(nodeEthUsdt),
+      ...WALLET_ASSET_STYLE["USDT"], chainColor: "text-blue-300",
+    },
+    {
+      asset: "USDC", chain: "Ethereum", networkLabel: "Ethereum · node",
+      balance: nodeEthUsdc?.balance ?? "0.00",
+      usd: nodeEthUsdc?.usd ?? "$0",
+      connected: !!(nodeEthUsdc),
+      ...WALLET_ASSET_STYLE["USDC"], chainColor: "text-blue-300",
+    },
+    // ── Bitcoin (node) ──
+    {
+      asset: "BTC", chain: "Bitcoin", networkLabel: "Bitcoin · node",
+      balance: nodeBtc?.balance ?? "0.00000000",
+      usd: nodeBtc?.usd ?? "$0",
+      connected: !!(nodeBtc),
+      ...WALLET_ASSET_STYLE["BTC"],
+    },
+  ];
 
-  // Also append any extra live assets not in ALL_ASSETS (e.g. TNK)
-  walletData.forEach(w => {
-    const alreadyIncluded = ALL_ASSETS.some(a => a.asset === w.asset && w.network.toLowerCase().includes(a.network.toLowerCase()));
-    if (!alreadyIncluded) {
-      const style = ASSET_STYLE[w.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/8", chain: w.network, chainColor: "text-cyan-300" };
-      wallets.push({ asset: w.asset, network: w.network, balance: w.balance, usd: w.usd, connected: true, ...style });
-    }
-  });
+  const activeRows = activeTab === "my" ? myWallets : nodeWallets;
+  const myConnected = myWallets.filter(w => w.connected).length;
+  const nodeConnected = nodeWallets.filter(w => w.connected).length;
 
   return (
     <>
       {modal && <WalletModal modal={modal} onClose={() => setModal(null)} />}
-      <div className="rounded-2xl border border-border bg-card p-5">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Wallet className="w-4 h-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold text-foreground">Wallets</h3>
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono">{wallets.filter(w => w.connected).length}/{wallets.length} active</span>
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {activeTab === "my" ? `${myConnected}/7` : `${nodeConnected}/7`} active
+          </span>
         </div>
-        {/* Scrollable wallet list — max 3.5 rows visible, scroll for more */}
-        <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: 232 }}>
-          {wallets.map((w, i) => (
-            <div
-              key={`${w.asset}-${w.network}-${i}`}
-              className={`flex items-center gap-3 p-2.5 rounded-xl border transition-opacity duration-200 ${w.border} ${w.bg} ${!w.connected ? "opacity-45" : ""}`}
-            >
-              {/* Asset icon */}
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono ${w.color} bg-background/50 border border-border shrink-0`}>
-                {w.asset}
-              </div>
-              {/* Balance + network */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className={`text-sm font-mono font-semibold ${w.connected ? w.color : "text-muted-foreground"}`}>{w.balance}</p>
-                  <span className="text-[10px] text-muted-foreground">{w.usd}</span>
-                </div>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${CHAIN_DOT[w.chain] ?? "bg-cyan-400"}`} />
-                  <p className={`text-[10px] font-mono ${w.chainColor}`}>{w.network}</p>
-                </div>
-              </div>
-              {/* Actions — only show when connected */}
-              <div className="flex items-center gap-1 shrink-0">
-                {w.connected ? (
-                  <>
-                    <button
-                      onClick={() => setModal({ asset: w.asset, network: w.network, mode: "receive" })}
-                      title="Receive"
-                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
-                      style={{ background: "rgba(16,185,129,0.10)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                      <ArrowDownLeft className="w-3 h-3 text-emerald-400" />
-                    </button>
-                    <button
-                      onClick={() => setModal({ asset: w.asset, network: w.network, mode: "send" })}
-                      title="Send"
-                      className="w-6 h-6 rounded-md flex items-center justify-center transition-all hover:scale-110"
-                      style={{ background: "rgba(239,68,68,0.10)", border: "1px solid rgba(239,68,68,0.25)" }}>
-                      <ArrowUpRight className="w-3 h-3 text-red-400" />
-                    </button>
-                  </>
-                ) : (
-                  <span className="text-[9px] font-mono text-muted-foreground px-1.5 py-0.5 rounded-full" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>not connected</span>
-                )}
-              </div>
-            </div>
+
+        {/* Tab switcher */}
+        <div className="flex gap-1 mb-3 p-0.5 rounded-xl" style={{ background: "var(--muted)" }}>
+          <button
+            onClick={() => setActiveTab("my")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+              activeTab === "my"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}>
+            <Shield className="w-3 h-3" />
+            My Wallets
+          </button>
+          <button
+            onClick={() => setActiveTab("node")}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
+              activeTab === "node"
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}>
+            <Cpu className="w-3 h-3" />
+            AFOS Agent
+          </button>
+        </div>
+
+        {/* Section description */}
+        <p className="text-[9px] text-muted-foreground mb-2 leading-relaxed">
+          {activeTab === "my"
+            ? "Your browser-connected wallets. You control the keys."
+            : `AFOS node hot wallet used for autonomous swaps.${nodeShort ? ` Node: ${nodeShort}` : " Configure AGENT_WALLET_ADDRESS to fund."}`
+          }
+        </p>
+
+        {/* Wallet rows */}
+        <div className="space-y-1.5 overflow-y-auto pr-0.5" style={{ maxHeight: 280 }}>
+          {activeRows.map((row, i) => (
+            <WalletRowItem
+              key={`${row.asset}-${row.chain}-${i}`}
+              row={row}
+              onReceive={() => setModal({ asset: row.asset, network: row.networkLabel, mode: "receive" })}
+              onSend={() => setModal({ asset: row.asset, network: row.networkLabel, mode: "send" })}
+            />
           ))}
         </div>
       </div>

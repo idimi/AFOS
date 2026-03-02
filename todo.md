@@ -343,3 +343,12 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Improve toast visual in light mode (custom rich toast with chain chips, address, green border)
 - [x] Add connected success animation overlay to ConnectWalletModal with auto-dismiss after 1.6s
+
+## Wallets Panel Redesign — Two-Section Split
+
+- [x] Split WalletsCard into "My Wallets" (browser) and "AFOS Node Wallet" (agent) sections
+- [x] My Wallets: SOL, USDT/SOL, USDC/SOL (from Phantom/Solflare via WalletContext), ETH, USDT/ETH, USDC/ETH (from MetaMask via MultiChainWalletContext), BTC (from MetaMask/Tap via MultiChainWalletContext)
+- [x] AFOS Node Wallet: SOL, USDT/SOL, USDC/SOL, ETH, USDT/ETH, USDC/ETH, BTC — all from backend /api/wallet, show node address for each chain
+- [x] Show node wallet address (from backend nodeKey/address field) inline for each asset
+- [x] Show "not connected" for browser wallets not yet connected, "no balance" for node assets not yet funded
+- [ ] Update mobile WalletStrip to match the same two-section structure
