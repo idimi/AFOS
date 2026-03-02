@@ -382,3 +382,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove WBTC from token list, add USDT/ETH and USDC/SOL
 - [x] Update SWAP_PAIRS to cover all 7 supported assets
 - [x] Add TradingView chart paired to selected token pair
+
+## Swaps Page — UX Polish Round 4
+
+- [x] Token dropdown: click-outside-to-close behavior
+- [x] Token dropdown: show chain label (Ethereum/Solana) next to each stablecoin
+- [x] TradingView chart: sync light/dark theme with app theme toggle
+- [x] Price impact warning: yellow/red banner in Buy panel when impact > 1%

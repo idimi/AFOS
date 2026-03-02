@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
 import { useWallet } from "../contexts/WalletContext";
+import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
 import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
@@ -1505,6 +1506,23 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
   const { connected, shortAddress } = useWallet();
+  const { theme: currentTheme } = useTheme();
+
+  // Click-outside-to-close for token dropdowns
+  const fromDropRef = useRef<HTMLDivElement>(null);
+  const toDropRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (fromDropRef.current && !fromDropRef.current.contains(e.target as Node)) {
+        setFromDropOpen(false);
+      }
+      if (toDropRef.current && !toDropRef.current.contains(e.target as Node)) {
+        setToDropOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
   const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -1884,7 +1902,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
 
           {/* TradingView Chart */}
           <div className="min-h-[460px]">
-            <TradingViewChart fromToken={fromToken} toToken={toToken} />
+            <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
           </div>
 
           {/* Live Order Book */}
@@ -1963,7 +1981,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   style={{ border: "none" }}
                 />
                 {/* Token pill */}
-                <div className="relative shrink-0">
+                <div className="relative shrink-0" ref={fromDropRef}>
                   <button
                     onClick={() => setFromDropOpen(v => !v)}
                     className="flex items-center gap-2 px-3 py-2 rounded-full transition-all hover:opacity-80"
@@ -1974,17 +1992,21 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                   {fromDropOpen && (
-                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[160px]"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[200px]"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
                       {TOKENS.filter(t => t.symbol !== toToken.symbol).map(token => (
                         <button key={token.symbol}
                           onClick={() => { setFromToken(token); setFromDropOpen(false); }}
                           className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
                           <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-foreground">{token.symbol}</div>
                             <div className="text-[10px] text-muted-foreground">{token.name}</div>
                           </div>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                            style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
+                            {CHAINS[token.chain as keyof typeof CHAINS].shortName}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -2037,7 +2059,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   )}
                 </div>
                 {/* Token pill */}
-                <div className="relative shrink-0">
+                <div className="relative shrink-0" ref={toDropRef}>
                   <button
                     onClick={() => setToDropOpen(v => !v)}
                     className="flex items-center gap-2 px-3 py-2 rounded-full transition-all hover:opacity-80"
@@ -2048,17 +2070,21 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                     <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
                   {toDropOpen && (
-                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[160px]"
-                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[200px]"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
                       {TOKENS.filter(t => t.symbol !== fromToken.symbol).map(token => (
                         <button key={token.symbol}
                           onClick={() => { setToToken(token); setToDropOpen(false); }}
                           className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
                           <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-foreground">{token.symbol}</div>
                             <div className="text-[10px] text-muted-foreground">{token.name}</div>
                           </div>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                            style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
+                            {CHAINS[token.chain as keyof typeof CHAINS].shortName}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -2071,6 +2097,21 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   {liveQuote ? `via ${liveQuote.route}` : `1 ${fromToken.symbol} ≈ ${rate.toFixed(4)} ${toToken.symbol}`}
                 </span>
               </div>
+              {/* Price Impact Warning */}
+              {liveQuote && liveQuote.priceImpact > 1 && (
+                <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium"
+                  style={{
+                    background: liveQuote.priceImpact > 5 ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+                    border: `1px solid ${liveQuote.priceImpact > 5 ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                    color: liveQuote.priceImpact > 5 ? '#ef4444' : '#f59e0b',
+                  }}>
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    Price impact: <strong>{liveQuote.priceImpact.toFixed(2)}%</strong>
+                    {liveQuote.priceImpact > 5 ? ' — High impact. Consider reducing trade size.' : ' — Moderate impact.'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Fee summary — single collapsed line, expandable */}
