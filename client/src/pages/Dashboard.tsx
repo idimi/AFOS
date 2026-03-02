@@ -115,19 +115,7 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="p-3 border-t border-border shrink-0">
-        <div className={`flex items-center gap-2.5 ${open ? "px-2" : "justify-center"}`}>
-          <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-          <AnimatePresence>
-            {open && (
-              <motion.span
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                className="text-xs text-muted-foreground whitespace-nowrap font-mono">agent online</motion.span>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
+
     </motion.aside>
   );
 }
@@ -253,10 +241,7 @@ function MobileSidebarDrawer({
                   </>
                 )}
               </button>
-              <div className="flex items-center gap-2 px-3 py-1.5">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
-                <span className="text-xs text-muted-foreground font-mono">agent online</span>
-              </div>
+
             </div>
           </motion.aside>
         </>
