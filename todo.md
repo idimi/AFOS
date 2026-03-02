@@ -301,3 +301,19 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Swap Button — Replace Segmented Control with Compact Toggle
 
 - [x] Replace full-width segmented Manual/Agent control with small toggle switch + label
+
+## Swap Wallet Connect Modal Fixes
+
+- [ ] Fix duplicate MetaMask in wallet connect modal
+- [ ] Fix chain label — should say FROM token's chain, not always "Solana"
+- [ ] Filter wallet list to show only chain-compatible or multi-chain wallets based on FROM token
+
+## ChatPage Wallet Connect Fix
+
+- [x] Replace Solana adapter modal with ConnectWalletModal in ChatPage for swap quote cards
+- [x] Pass correct defaultChain based on swap's FROM token (e.g., bitcoin for BTC→USDT)
+- [x] Fix duplicate MetaMask issue (Solana adapter modal shows MetaMask twice)
+
+## ChatPage — Fix TOKEN_CHAIN Multi-Chain Mapping
+
+- [ ] Fix TOKEN_CHAIN: USDT/USDC exist on both Ethereum and Solana — need chain context from quote, not just symbol

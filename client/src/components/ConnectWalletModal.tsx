@@ -18,7 +18,7 @@
  * Clicking Phantom on any tab connects all available chains simultaneously.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { useWallet } from "@/contexts/WalletContext";
@@ -61,6 +61,11 @@ interface ConnectWalletModalProps {
 
 export default function ConnectWalletModal({ open, onClose, defaultChain = "solana" }: ConnectWalletModalProps) {
   const [activeChain, setActiveChain] = useState<ChainTab>(defaultChain);
+
+  // Sync active tab when modal opens with a new defaultChain
+  useEffect(() => {
+    if (open) setActiveChain(defaultChain);
+  }, [open, defaultChain]);
 
   // Solana
   const { connected: solConnected, walletName: solWalletName, shortAddress: solShortAddr, balances, totalUsd, disconnect: solDisconnect } = useWallet();

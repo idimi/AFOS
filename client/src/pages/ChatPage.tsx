@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/contexts/WalletContext";
-import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -53,6 +53,13 @@ const SUGGESTIONS = [
   "swap 10 USDT to USDC",
 ];
 
+// ─── Token → Chain mapping ───────────────────────────────────────────────────
+const TOKEN_CHAIN: Record<string, "solana" | "ethereum" | "bitcoin"> = {
+  SOL: "solana", USDT: "solana", USDC: "solana",
+  BTC: "bitcoin",
+  ETH: "ethereum",
+};
+
 // ─── Token colors ─────────────────────────────────────────────────────────────
 const TOKEN_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   SOL: { bg: "rgba(153,69,255,0.15)", text: "#9945FF", border: "rgba(153,69,255,0.3)" },
@@ -78,14 +85,15 @@ function QuoteCard({
   onConfirm,
   onCancel,
   isExecuting,
+  onRequestConnect,
 }: {
   data: QuoteData;
   onConfirm: () => void;
   onCancel: () => void;
   isExecuting: boolean;
+  onRequestConnect: () => void;
 }) {
   const { connected } = useWallet();
-  const { setVisible } = useWalletModal();
 
   return (
     <motion.div
@@ -178,7 +186,7 @@ function QuoteCard({
           </button>
         ) : (
           <button
-            onClick={() => setVisible(true)}
+            onClick={onRequestConnect}
             className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
             style={{ background: "rgba(153,69,255,0.2)", border: "1px solid rgba(153,69,255,0.4)", color: "#9945FF" }}>
             <Wallet className="w-3.5 h-3.5" />
@@ -232,11 +240,13 @@ function MessageBubble({
   onConfirmSwap,
   onCancelSwap,
   executingId,
+  onRequestConnect,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
   onCancelSwap: (msgId: string) => void;
   executingId: string | null;
+  onRequestConnect: (fromToken: string) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -279,6 +289,7 @@ function MessageBubble({
               onConfirm={() => onConfirmSwap(msg.id, msg.quoteData!)}
               onCancel={() => onCancelSwap(msg.id)}
               isExecuting={executingId === msg.id}
+              onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken)}
             />
           </div>
         )}
@@ -306,7 +317,8 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
-  const { setVisible } = useWalletModal();
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "welcome",
@@ -409,9 +421,16 @@ export default function ChatPage() {
     }
   }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
 
+  // Open wallet modal for a specific chain based on the quote's FROM token
+  const openWalletForChain = useCallback((fromToken: string) => {
+    const chain = TOKEN_CHAIN[fromToken] || "solana";
+    setWalletModalChain(chain);
+    setShowWalletModal(true);
+  }, []);
+
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
     if (!connected || !publicKey) {
-      setVisible(true);
+      openWalletForChain(quoteData.fromToken);
       return;
     }
 
@@ -464,7 +483,7 @@ export default function ChatPage() {
     } finally {
       setExecutingId(null);
     }
-  }, [connected, publicKey, buildSwapTx, sendTransaction, addMessage, setVisible]);
+  }, [connected, publicKey, buildSwapTx, sendTransaction, addMessage, openWalletForChain]);
 
   const handleCancelSwap = useCallback((msgId: string) => {
     setCancelledIds(prev => { const next = new Set(prev); next.add(msgId); return next; });
@@ -538,6 +557,7 @@ export default function ChatPage() {
               onConfirmSwap={handleConfirmSwap}
               onCancelSwap={handleCancelSwap}
               executingId={executingId}
+              onRequestConnect={openWalletForChain}
             />
           ) : null
         ))}
@@ -621,6 +641,11 @@ export default function ChatPage() {
           AFOS never holds your keys · All swaps are self-custodial · Powered by Jupiter
         </p>
       </div>
+      <ConnectWalletModal
+        open={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        defaultChain={walletModalChain}
+      />
     </div>
   );
 }

@@ -2243,7 +2243,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
         </div>
       </div>
       </> }
-      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
     </div>
   );
 }
