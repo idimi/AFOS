@@ -7,6 +7,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { AgentLogProvider } from "./contexts/AgentLogContext";
 import { WalletProvider } from "./contexts/WalletContext";
 import { MultiChainWalletProvider } from "./contexts/MultiChainWalletContext";
+import { LightPeerProvider } from "./contexts/LightPeerContext";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
@@ -34,12 +35,14 @@ function App() {
         <AgentLogProvider>
           <WalletProvider>
             <MultiChainWalletProvider>
+            <LightPeerProvider>
             <WalletModalProvider>
             <TooltipProvider>
               <Toaster />
               <Router />
             </TooltipProvider>
             </WalletModalProvider>
+            </LightPeerProvider>
             </MultiChainWalletProvider>
           </WalletProvider>
         </AgentLogProvider>

@@ -409,3 +409,19 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Smooth AnimatePresence expand/collapse animation on detail panel
 - [x] Recent Swaps shows up to 8 entries (was 5), with count badge in header
 - [x] "Click row for details" hint in Recent Swaps header
+
+## Light Peer Registration — Browser Wallet as P2P Node (Mass Adoption)
+
+### Goal: Every wallet connection = a peer on the IntercomSwap network. No server required.
+
+- [x] Audit Oracle VM API for peer announce/heartbeat/quote endpoints
+- [x] Design LightPeerContext: wallet-derived peer identity (pubkey as node key), quote engine, HTLC signing
+- [x] Build LightPeerContext provider: auto-announce on wallet connect, heartbeat every 30s, handle incoming RFQs via SSE
+- [x] Build quote engine: calculate competitive quotes from live prices + user-set spread/slippage preferences
+- [x] Build LightPeerPanel UI component: peer status (online/offline), quote settings (spread, accepted pairs, min/max size), active incoming RFQs
+- [x] Add peer badge to Swaps page header showing "You are a peer" when light peer is active
+- [ ] Wire light peer into order book: show user's own quotes in the live order book
+- [x] Handle incoming RFQ: show notification/toast when someone wants to trade with you, allow accept/reject
+- [ ] In-browser HTLC signing: use connected wallet to sign HTLC lock transaction when accepting a trade
+- [x] Graceful disconnect: send peer_disconnected announcement when wallet disconnects or tab closes
+- [x] Persist peer preferences (spread, pairs, limits) in localStorage

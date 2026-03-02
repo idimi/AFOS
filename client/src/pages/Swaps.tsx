@@ -25,6 +25,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
 import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
+import LightPeerPanel from "../components/LightPeerPanel";
+import { useLightPeer } from "../contexts/LightPeerContext";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -1659,8 +1661,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [toDropOpen, setToDropOpen] = useState(false);
   const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
   const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
-  const { theme: currentTheme } = useTheme();
-
+   const { theme: currentTheme } = useTheme();
+  const lightPeer = useLightPeer();
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
   // Derived from connected wallets; falls back to TOKENS static values when disconnected.
   const liveBalances = useMemo<Record<string, number>>(() => {
@@ -2052,6 +2054,18 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               {activePeerCount > 0 ? activePeerCount : <span className="text-slate-500">—</span>}
             </span>
           </div>
+          {/* Light peer status badge */}
+          {lightPeer.isOnline && (
+            <div className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+              style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}>
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
+              </span>
+              <span className="text-[10px] font-mono text-cyan-400 hidden sm:inline">You (Light Peer)</span>
+              <span className="text-[10px] font-mono text-cyan-400 sm:hidden">LP</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -2589,6 +2603,9 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
 
           {/* P2P Peers */}
           <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
+
+          {/* Light Peer — browser wallet as P2P quoting peer */}
+          <LightPeerPanel />
 
           {/* Recent Swaps */}
           <RecentSwaps />
