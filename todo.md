@@ -369,3 +369,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fee summary collapsed into single line (expandable via Advanced settings toggle)
 - [x] Protocol chips as small rounded pills instead of large badges
 - [x] Right panel (order book, peers, recent swaps) flows beside card on xl, below on mobile
+
+## Swaps Page — Full Professional Redesign
+- [ ] Redesign entire Swaps page layout with cohesive professional DEX styling
+- [ ] Clean up TradingView chart — proper card with header showing pair name, styled border
+- [ ] Polish swap card — tighter spacing, better visual hierarchy, glass-morphism card
+- [ ] Redesign order book — cleaner table with proper header, alternating row colors
+- [ ] Redesign P2P peers and recent swaps — consistent card styling with the rest
+- [ ] Redesign HTLC escrow info — compact, integrated, not bolted-on
+- [ ] Improve overall spacing, shadows, borders, visual consistency
+- [ ] Make the whole page feel like one cohesive professional DEX product
