@@ -421,6 +421,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Build LightPeerPanel UI component: peer status (online/offline), quote settings (spread, accepted pairs, min/max size), active incoming RFQs
 - [x] Add peer badge to Swaps page header showing "You are a peer" when light peer is active
 - [ ] Wire light peer into order book: show user's own quotes in the live order book
+
+## Wallet Connection Toast — Unified Single Toast
+
+- [x] Remove duplicate toast.success from MultiChainWalletContext (Phantom + ETH + BTC)
+- [x] Upgrade WalletConnectedToast to show per-chain address rows (Solana / Ethereum / Bitcoin)
+- [x] Single rich toast card shows all connected wallet addresses when Phantom connects all chains
 - [x] Handle incoming RFQ: show notification/toast when someone wants to trade with you, allow accept/reject
 - [ ] In-browser HTLC signing: use connected wallet to sign HTLC lock transaction when accepting a trade
 - [x] Graceful disconnect: send peer_disconnected announcement when wallet disconnects or tab closes

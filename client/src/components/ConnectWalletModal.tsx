@@ -55,15 +55,17 @@ const CHAIN_DOTS: Record<ChainTab, string> = {
 
 // ─── Custom toast renderer for wallet connection ───────────────────────────────
 
+/** Per-chain address entry shown in the unified toast */
+type ChainAddress = { chain: ChainTab; address: string };
+
 function WalletConnectedToast({
   walletName,
-  chains,
-  address,
+  chainAddresses,
 }: {
   walletName: string;
-  chains: ChainTab[];
-  address: string;
+  chainAddresses: ChainAddress[];
 }) {
+  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin" };
   return (
     <div className="flex items-start gap-3">
       {/* Green check circle */}
@@ -77,35 +79,35 @@ function WalletConnectedToast({
         <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
           {walletName} connected
         </p>
-        {/* Chain chips */}
-        <div className="flex items-center gap-1 mt-1 flex-wrap">
-          {chains.map(c => (
-            <span
-              key={c}
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
-              style={{
-                background: `${CHAIN_DOTS[c]}22`,
-                color: CHAIN_DOTS[c],
-                border: `1px solid ${CHAIN_DOTS[c]}44`,
-              }}
-            >
-              {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
-            </span>
+        {/* Per-chain address rows */}
+        <div className="mt-1.5 flex flex-col gap-1">
+          {chainAddresses.map(({ chain, address }) => (
+            <div key={chain} className="flex items-center gap-1.5">
+              <span
+                className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                style={{
+                  background: `${CHAIN_DOTS[chain]}22`,
+                  color: CHAIN_DOTS[chain],
+                  border: `1px solid ${CHAIN_DOTS[chain]}44`,
+                }}
+              >
+                {CHAIN_LABELS[chain]}
+              </span>
+              {address && (
+                <span className="text-[11px] font-mono truncate" style={{ color: "var(--muted-foreground)" }}>
+                  {address}
+                </span>
+              )}
+            </div>
           ))}
         </div>
-        {/* Address */}
-        {address && (
-          <p className="text-[11px] font-mono mt-1" style={{ color: "var(--muted-foreground)" }}>
-            {address}
-          </p>
-        )}
       </div>
     </div>
   );
 }
 
-/** Fire a rich wallet-connected toast */
-export function showWalletConnectedToast(walletName: string, chains: ChainTab[], address: string) {
+/** Fire a rich wallet-connected toast — shows all connected chain addresses in one card */
+export function showWalletConnectedToast(walletName: string, chainAddresses: ChainAddress[]) {
   toast.custom(
     () => (
       <div
@@ -116,10 +118,10 @@ export function showWalletConnectedToast(walletName: string, chains: ChainTab[],
           boxShadow: "0 4px 24px rgba(16,185,129,0.12), 0 1px 4px rgba(0,0,0,0.08)",
         }}
       >
-        <WalletConnectedToast walletName={walletName} chains={chains} address={address} />
+        <WalletConnectedToast walletName={walletName} chainAddresses={chainAddresses} />
       </div>
     ),
-    { duration: 4000 }
+    { duration: 5000 }
   );
 }
 
@@ -159,12 +161,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
   /** Show the success overlay then auto-close the modal */
   const showSuccessAndClose = (
     walletName: string,
-    chains: ChainTab[],
-    address: string,
+    chainAddresses: { chain: ChainTab; address: string }[],
     accentColor: string
   ) => {
+    const chains = chainAddresses.map(ca => ca.chain);
+    const address = chainAddresses[0]?.address ?? "";
     setSuccessState({ walletName, chains, address, accentColor });
-    showWalletConnectedToast(walletName, chains, address);
+    showWalletConnectedToast(walletName, chainAddresses);
     dismissTimerRef.current = setTimeout(() => {
       setSuccessState(null);
       onClose();
@@ -194,12 +197,20 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     const isNowConnected = phantomMultiChain?.connected ?? false;
     prevPhantomRef.current = isNowConnected;
     if (!wasConnected && isNowConnected && open && !successState) {
-      const addr = phantomMultiChain?.solanaAddress
-        ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
-        : phantomMultiChain?.ethereumAddress
-        ? `${phantomMultiChain.ethereumAddress.slice(0, 6)}…${phantomMultiChain.ethereumAddress.slice(-4)}`
-        : "";
-      showSuccessAndClose("Phantom", (phantomMultiChain?.chains ?? []) as ChainTab[], addr, "#AB9FF2");
+      const chainAddresses: { chain: ChainTab; address: string }[] = [];
+      if (phantomMultiChain?.solanaAddress) {
+        const a = phantomMultiChain.solanaAddress;
+        chainAddresses.push({ chain: "solana", address: `${a.slice(0, 4)}…${a.slice(-4)}` });
+      }
+      if (phantomMultiChain?.ethereumAddress) {
+        const a = phantomMultiChain.ethereumAddress;
+        chainAddresses.push({ chain: "ethereum", address: `${a.slice(0, 6)}…${a.slice(-4)}` });
+      }
+      if (phantomMultiChain?.bitcoinAddress) {
+        const a = phantomMultiChain.bitcoinAddress;
+        chainAddresses.push({ chain: "bitcoin", address: `${a.slice(0, 6)}…${a.slice(-4)}` });
+      }
+      showSuccessAndClose("Phantom", chainAddresses, "#AB9FF2");
     }
   }, [phantomMultiChain?.connected, open]);
 
@@ -210,8 +221,11 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     const isNowConnected = ethereum?.connected ?? false;
     prevEthRef.current = isNowConnected;
     if (!wasConnected && isNowConnected && open && !successState) {
-      const addr = ethereum?.shortAddress ?? "";
-      showSuccessAndClose(ethereum?.walletName ?? "Ethereum Wallet", ["ethereum"], addr, "#627EEA");
+      showSuccessAndClose(
+        ethereum?.walletName ?? "Ethereum Wallet",
+        [{ chain: "ethereum", address: ethereum?.shortAddress ?? "" }],
+        "#627EEA"
+      );
     }
   }, [ethereum?.connected, open]);
 
@@ -222,8 +236,11 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     const isNowConnected = bitcoin?.connected ?? false;
     prevBtcRef.current = isNowConnected;
     if (!wasConnected && isNowConnected && open && !successState) {
-      const addr = bitcoin?.shortAddress ?? "";
-      showSuccessAndClose(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"], addr, "#F7931A");
+      showSuccessAndClose(
+        bitcoin?.walletName ?? "Bitcoin Wallet",
+        [{ chain: "bitcoin", address: bitcoin?.shortAddress ?? "" }],
+        "#F7931A"
+      );
     }
   }, [bitcoin?.connected, open]);
 

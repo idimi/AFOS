@@ -352,10 +352,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         bitcoinAddress,
       });
 
-      const chainLabels = connectedChains.map(c => c.charAt(0).toUpperCase() + c.slice(1)).join(" + ");
-      toast.success(`Phantom connected — ${chainLabels}`, {
-        description: solanaAddress ? shortAddr(solanaAddress) : shortAddr(ethereumAddress ?? ""),
-      });
+      // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -435,7 +432,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         isPhantom: false,
       });
 
-      toast.success(`${walletName} connected`, { description: shortAddr(address) });
+      // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
 
       provider.on?.("accountsChanged", (accs: unknown) => {
         const newAccs = accs as string[];
