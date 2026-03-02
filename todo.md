@@ -289,3 +289,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add selected-peer badge above Swap button with alias and clear (×) button
 - [x] Add "Send to Agent" button that pre-fills chat with current swap params and navigates to Agent Chat
 - [x] Wire ChatPage to read sessionStorage prefill on mount and auto-focus input
+
+## Swap Page — Unified Mode-Aware Button
+
+- [x] Replace two separate buttons (Swap Now + Send to Agent Chat) with single mode-aware button
+- [x] Add segmented Manual/Agent toggle above the swap button (blue for Manual, purple gradient for Agent)
+- [x] Manual mode: button says "Swap Now" with Zap icon, blue bg — calls submitRfq → executeSwap
+- [x] Agent mode: button says "Send to Agent" with Bot icon, purple gradient bg — auto-sends swap command to chat
+- [x] Wire Agent mode to auto-send message via sessionStorage afos_chat_autosend flag + ChatPage handleSend on mount

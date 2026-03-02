@@ -1429,6 +1429,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [activePeerCount, setActivePeerCount] = useState(0);
   // Last completed RFQ ID and tx hash for progress tracker
   const [lastRfqId, setLastRfqId] = useState<string | undefined>(undefined);
+  const [execMode, setExecMode] = useState<'manual' | 'agent'>('manual');
   const [lastTxHash, setLastTxHash] = useState<string | undefined>(undefined);
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
 
@@ -2098,11 +2099,54 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               </div>
             )}
 
-            {/* Swap Button */}
+            {/* Execution Mode Toggle */}
+            {swapPhase === "idle" && onNavigateToChat && (
+              <div className="mt-5 flex items-center rounded-lg p-0.5" style={{ background: 'rgba(30,41,59,0.5)', border: '1px solid rgba(100,116,139,0.2)' }}>
+                <button
+                  onClick={() => setExecMode('manual')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all ${
+                    execMode === 'manual'
+                      ? 'text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-400'
+                  }`}
+                  style={execMode === 'manual' ? { background: 'rgba(59,130,246,0.25)', boxShadow: '0 1px 4px rgba(59,130,246,0.2)' } : {}}
+                >
+                  <Zap className="w-3 h-3" />
+                  Manual
+                </button>
+                <button
+                  onClick={() => setExecMode('agent')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[11px] font-semibold tracking-wide transition-all ${
+                    execMode === 'agent'
+                      ? 'text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-400'
+                  }`}
+                  style={execMode === 'agent' ? { background: 'rgba(147,51,234,0.3)', boxShadow: '0 1px 4px rgba(147,51,234,0.2)' } : {}}
+                >
+                  <Bot className="w-3 h-3" />
+                  Agent
+                </button>
+              </div>
+            )}
+
+            {/* Unified Swap / Agent Button */}
             <button
-              onClick={isSwapping ? undefined : swapPhase === "complete" ? handleReset : handleSwap}
+              onClick={() => {
+                if (isSwapping) return;
+                if (swapPhase === "complete") { handleReset(); return; }
+                if (execMode === 'agent' && onNavigateToChat) {
+                  const msg = `swap ${fromAmount} ${fromToken.symbol} to ${toToken.symbol}`;
+                  sessionStorage.setItem('afos_chat_prefill', msg);
+                  sessionStorage.setItem('afos_chat_autosend', 'true');
+                  onNavigateToChat(msg);
+                } else {
+                  handleSwap();
+                }
+              }}
               disabled={isSwapping}
-              className="mt-5 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
+              className={`${
+                swapPhase === "idle" && onNavigateToChat ? 'mt-2' : 'mt-5'
+              } w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden`}
               style={{
                 background: swapPhase === "complete"
                   ? "rgba(16,185,129,0.2)"
@@ -2110,10 +2154,12 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                     ? "rgba(239,68,68,0.2)"
                     : isSwapping
                       ? "rgba(59,130,246,0.15)"
-                      : "#3b82f6",
-                border: `1px solid ${swapPhase === "complete" ? "rgba(16,185,129,0.4)" : "rgba(59,130,246,0.5)"}`,
+                      : execMode === 'agent'
+                        ? "linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%)"
+                        : "#3b82f6",
+                border: `1px solid ${swapPhase === "complete" ? "rgba(16,185,129,0.4)" : execMode === 'agent' ? "rgba(147,51,234,0.5)" : "rgba(59,130,246,0.5)"}`,
                 color: swapPhase === "complete" ? "#10b981" : "white",
-                boxShadow: isSwapping ? "none" : "0 4px 20px rgba(59,130,246,0.3)",
+                boxShadow: isSwapping ? "none" : execMode === 'agent' ? "0 4px 20px rgba(147,51,234,0.3)" : "0 4px 20px rgba(59,130,246,0.3)",
               }}
             >
               {isSwapping ? (
@@ -2129,6 +2175,11 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   <CheckCircle2 className="w-4 h-4" />
                   Swap Complete — New Swap
                 </span>
+              ) : execMode === 'agent' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Bot className="w-4 h-4" />
+                  Send to Agent
+                </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
                   <Zap className="w-4 h-4" />
@@ -2136,26 +2187,6 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                 </span>
               )}
             </button>
-
-            {/* Send to Agent */}
-            {onNavigateToChat && swapPhase === "idle" && parseFloat(fromAmount) > 0 && (
-              <button
-                onClick={() => {
-                  const msg = `swap ${fromAmount} ${fromToken.symbol} to ${toToken.symbol}`;
-                  sessionStorage.setItem('afos_chat_prefill', msg);
-                  onNavigateToChat(msg);
-                }}
-                className="mt-2 w-full py-2.5 rounded-xl text-xs font-semibold tracking-wide transition-all hover:bg-white/5 active:scale-[0.98] flex items-center justify-center gap-2"
-                style={{
-                  background: 'transparent',
-                  border: '1px solid rgba(100,116,139,0.3)',
-                  color: '#64748b',
-                }}
-              >
-                <Bot className="w-3.5 h-3.5" />
-                Send to Agent Chat
-              </button>
-            )}
 
           </div>
 

@@ -327,14 +327,24 @@ export default function ChatPage() {
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
 
   // Read prefill from Swaps page "Send to Agent" button on mount
+  // If afos_chat_autosend is set, auto-send the message immediately
+  const hasAutoSentRef = useRef(false);
   useEffect(() => {
     const prefill = sessionStorage.getItem('afos_chat_prefill');
+    const autoSend = sessionStorage.getItem('afos_chat_autosend');
     if (prefill) {
       sessionStorage.removeItem('afos_chat_prefill');
-      setInput(prefill);
-      // Focus the input so user can immediately confirm or edit
-      setTimeout(() => inputRef.current?.focus(), 100);
+      sessionStorage.removeItem('afos_chat_autosend');
+      if (autoSend === 'true' && !hasAutoSentRef.current) {
+        hasAutoSentRef.current = true;
+        // Auto-send after a short delay to let component fully mount
+        setTimeout(() => handleSend(prefill), 300);
+      } else {
+        setInput(prefill);
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Auto-scroll to bottom
