@@ -327,3 +327,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace hardcoded "intercomswap@mainnet" with live agent/node identity from backend
 - [x] Replace hardcoded "0000intercomswapbtcusdt" with live active pair or last swap pair
 - [x] Replace hardcoded "3 peers" with live peer count from backend
+
+## Dashboard Header — UX Improvements
+
+- [x] Add tooltip on node key showing full key + copy button
+- [x] Make peers pill clickable to navigate to Network page

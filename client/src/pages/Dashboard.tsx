@@ -32,6 +32,7 @@ import NetworkPage from "./NetworkPage";
 import TerminalPage from "./TerminalPage";
 import ChatPage from "./ChatPage";
 import { trpc } from "@/lib/trpc";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "network" | "settings" | "terminal";
 
@@ -2546,7 +2547,9 @@ export default function Dashboard() {
   // ── Live header data ──────────────────────────────────────────────────────
   const [headerPeers, setHeaderPeers] = useState<number | null>(null);
   const [headerNodeKey, setHeaderNodeKey] = useState<string | null>(null);
+  const [headerNodeKeyFull, setHeaderNodeKeyFull] = useState<string | null>(null);
   const [headerLastPair, setHeaderLastPair] = useState<string | null>(null);
+  const [headerNodeKeyCopied, setHeaderNodeKeyCopied] = useState(false);
 
   useEffect(() => {
     const fetchHeaderData = async () => {
@@ -2559,6 +2562,7 @@ export default function Dashboard() {
           setHeaderPeers(status.value.activePeers);
           if (status.value.p2pNodeKey) {
             const k = status.value.p2pNodeKey;
+            setHeaderNodeKeyFull(k);
             // Show first 6 + last 4 chars of the node key
             setHeaderNodeKey(k.length > 12 ? `${k.slice(0, 6)}…${k.slice(-4)}` : k);
           }
@@ -2648,20 +2652,52 @@ export default function Dashboard() {
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-sm text-muted-foreground font-mono hidden sm:block">AFOS Agent</span>
             <span className="text-muted-foreground/40 hidden sm:block">·</span>
-            <span className="text-xs text-cyan-400/70 font-mono">
-              {headerNodeKey ?? "intercomswap@mainnet"}
-            </span>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="text-xs text-cyan-400/70 font-mono hover:text-cyan-300 transition-colors cursor-pointer"
+                    onClick={() => {
+                      const key = headerNodeKeyFull ?? headerNodeKey ?? "intercomswap@mainnet";
+                      navigator.clipboard.writeText(key).then(() => {
+                        setHeaderNodeKeyCopied(true);
+                        setTimeout(() => setHeaderNodeKeyCopied(false), 2000);
+                      });
+                    }}
+                  >
+                    {headerNodeKey ?? "intercomswap@mainnet"}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-[10px] text-muted-foreground">P2P Node Key</p>
+                    <p className="font-mono text-xs break-all">{headerNodeKeyFull ?? headerNodeKey ?? "intercomswap@mainnet"}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {headerNodeKeyCopied ? (
+                        <span className="text-emerald-400">✓ Copied to clipboard</span>
+                      ) : (
+                        "Click to copy"
+                      )}
+                    </p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <div className="flex items-center gap-2 lg:gap-4">
             {headerLastPair && (
               <span className="text-xs text-muted-foreground font-mono hidden xl:block">{headerLastPair}</span>
             )}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20">
+            <button
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40 transition-all active:scale-95 cursor-pointer"
+              onClick={() => setActivePage("network")}
+              title="View Network page"
+            >
               <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
               <span className="text-xs text-violet-300 font-mono">
                 {headerPeers !== null ? `${headerPeers} peer${headerPeers === 1 ? '' : 's'}` : '— peers'}
               </span>
-            </div>
+            </button>
             {connected ? (
               <button
                 onClick={() => setShowWalletModal(true)}
