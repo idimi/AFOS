@@ -352,3 +352,20 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Show node wallet address (from backend nodeKey/address field) inline for each asset
 - [x] Show "not connected" for browser wallets not yet connected, "no balance" for node assets not yet funded
 - [ ] Update mobile WalletStrip to match the same two-section structure
+
+## Swap UI Redesign — Uniswap-style Compact Card
+
+- [ ] Constrain swap card to max-width ~480px, centered on page
+- [ ] Compact token selector rows (icon + name + chain, amount input on same row)
+- [ ] Large amount input field like Uniswap (big number, USD below)
+- [ ] Tighter fee summary section
+- [ ] Keep all existing state/logic (route chips, agent mode toggle, send button)
+
+## Swap UI Redesign — Uniswap-style Compact Card
+
+- [x] Redesign swap card to Uniswap-style compact layout (max 480px, unified token+amount panels, collapsed fee line)
+- [x] Sell/Buy panels: big amount input on left, token pill selector on right (with dropdown)
+- [x] Compact flip button between panels
+- [x] Fee summary collapsed into single line (expandable via Advanced settings toggle)
+- [x] Protocol chips as small rounded pills instead of large badges
+- [x] Right panel (order book, peers, recent swaps) flows beside card on xl, below on mobile

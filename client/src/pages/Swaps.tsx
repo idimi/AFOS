@@ -1397,6 +1397,8 @@ function AutopostTab() {
 
 export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefill?: string) => void } = {}) {
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
+  const [fromDropOpen, setFromDropOpen] = useState(false);
+  const [toDropOpen, setToDropOpen] = useState(false);
   const { connected, shortAddress } = useWallet();
   const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
   const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
@@ -1768,176 +1770,181 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {/* Chain Stats */}
       <ChainStatsBar />
 
-      {/* Main Layout — single column on mobile, side-by-side on xl */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 sm:gap-5">
+      {/* Main Layout — compact swap card centered, info panels below on mobile / side on xl */}
+      <div className="flex flex-col xl:flex-row gap-4 sm:gap-5 items-start">
 
-        {/* Left: Swap Interface — full width on mobile, max-w centered */}
-        <div className="space-y-4 w-full max-w-lg mx-auto xl:max-w-none xl:mx-0">
+        {/* Left: Compact Swap Card — Uniswap-style, max 480px */}
+        <div className="w-full xl:w-[480px] shrink-0 space-y-3">
 
           {/* Swap Card */}
           <div
-            className="rounded-2xl p-4 sm:p-5"
+            className="rounded-2xl p-4"
             style={{
               background: "var(--card)",
               border: "1px solid var(--border)",
-              backdropFilter: "blur(20px)",
-              boxShadow: "0 8px 40px rgba(0,0,0,0.4)",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.12)",
             }}
           >
-            {/* Protocol Badge */}
+            {/* Protocol chips row */}
             {swapPair && (
-              <div className="flex flex-wrap items-center gap-1.5 mb-4">
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
-                  style={{
-                    background: swapPair.native ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.1)",
-                    border: `1px solid ${swapPair.native ? "rgba(59,130,246,0.3)" : "rgba(16,185,129,0.25)"}`,
-                    color: swapPair.native ? "#60a5fa" : "#34d399",
-                  }}
-                >
-                  {swapPair.native ? <Zap className="w-3 h-3" /> : <Globe className="w-3 h-3" />}
+              <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono"
+                  style={{ background: swapPair.native ? "rgba(59,130,246,0.12)" : "rgba(16,185,129,0.1)", border: `1px solid ${swapPair.native ? "rgba(59,130,246,0.3)" : "rgba(16,185,129,0.25)"}`, color: swapPair.native ? "#60a5fa" : "#34d399" }}>
+                  {swapPair.native ? <Zap className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
                   {swapPair.protocol}
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono"
                   style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}>
-                  <Clock className="w-3 h-3" />
-                  {swapPair.time}
+                  <Clock className="w-2.5 h-2.5" />{swapPair.time}
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono"
                   style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "#94a3b8" }}>
-                  <Shield className="w-3 h-3" />
-                  Non-custodial
+                  <Shield className="w-2.5 h-2.5" />Non-custodial
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-mono"
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono"
                   style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", color: "#10b981" }}>
-                  <GitMerge className="w-3 h-3" />
-                  Hybrid routing
+                  <GitMerge className="w-2.5 h-2.5" />Hybrid routing
                 </div>
               </div>
             )}
 
-            {/* From Token */}
-            <TokenSelector
-              selected={fromToken}
-              onSelect={setFromToken}
-              label="YOU SEND"
-              exclude={toToken.symbol}
-            />
-
-            {/* Amount Input */}
-            <div className="mt-3 mb-2">
-              <div className="relative">
+            {/* ── Sell panel (Uniswap-style unified token+amount box) ── */}
+            <div className="rounded-xl px-4 pt-3 pb-3 mb-1"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-2">Sell</div>
+              <div className="flex items-center gap-3">
+                {/* Big amount input */}
                 <input
                   type="number"
                   value={fromAmount}
                   onChange={e => setFromAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full pl-4 pr-20 py-3 rounded-xl text-2xl font-bold font-mono text-foreground bg-transparent outline-none"
-                  style={{
-                    background: "var(--muted)",
-                    border: "1px solid var(--border)",
-                  }}
+                  placeholder="0"
+                  className="flex-1 min-w-0 bg-transparent outline-none text-3xl font-semibold text-foreground font-mono"
+                  style={{ border: "none" }}
                 />
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-right">
-                  <div className="text-xs text-slate-500">≈ ${parseFloat(fromUsd).toLocaleString()}</div>
+                {/* Token pill */}
+                <div className="relative shrink-0">
                   <button
-                    onClick={() => setFromAmount(fromToken.balance.toString())}
-                    className="text-[10px] text-cyan-500 hover:text-cyan-400 transition-colors"
+                    onClick={() => setFromDropOpen(v => !v)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full transition-all hover:opacity-80"
+                    style={{ background: CHAINS[fromToken.chain as keyof typeof CHAINS].bgColor, border: `1px solid ${CHAINS[fromToken.chain as keyof typeof CHAINS].borderColor}` }}
                   >
-                    MAX
+                    <span className="text-base" style={{ color: fromToken.color }}>{fromToken.icon}</span>
+                    <span className="text-sm font-bold text-foreground">{fromToken.symbol}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                   </button>
+                  {fromDropOpen && (
+                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[160px]"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+                      {TOKENS.filter(t => t.symbol !== toToken.symbol).map(token => (
+                        <button key={token.symbol}
+                          onClick={() => { setFromToken(token); setFromDropOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
+                          <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
+                          <div>
+                            <div className="text-xs font-bold text-foreground">{token.symbol}</div>
+                            <div className="text-[10px] text-muted-foreground">{token.name}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              </div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-xs text-muted-foreground">${parseFloat(fromUsd).toLocaleString()}</span>
+                <button onClick={() => setFromAmount(fromToken.balance.toString())}
+                  className="text-[10px] font-semibold transition-colors"
+                  style={{ color: "var(--primary)" }}>
+                  Balance: {fromToken.balance.toLocaleString(undefined, { maximumFractionDigits: 5 })} MAX
+                </button>
               </div>
             </div>
 
-            {/* Flip Button */}
-            <div className="flex justify-center my-3">
+            {/* Flip Button — compact */}
+            <div className="flex justify-center -my-1 relative z-10">
               <button
                 onClick={handleFlip}
-                className="w-10 h-10 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
-                style={{
-                  background: "rgba(59,130,246,0.15)",
-                  border: "1px solid rgba(59,130,246,0.4)",
-                }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+                style={{ background: "var(--card)", border: "2px solid var(--border)" }}
               >
-                <ArrowDownUp className="w-4 h-4 text-cyan-400" />
+                <ArrowDownUp className="w-3.5 h-3.5 text-muted-foreground" />
               </button>
             </div>
 
-            {/* To Token */}
-            <TokenSelector
-              selected={toToken}
-              onSelect={setToToken}
-              label="YOU RECEIVE"
-              exclude={fromToken.symbol}
-            />
-
-            {/* Output Amount */}
-            <div className="mt-3 px-4 py-3 rounded-xl"
-              style={{ background: "var(--muted)", border: `1px solid ${liveQuote ? 'rgba(16,185,129,0.3)' : 'var(--border)'}` }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold font-mono text-foreground">{toAmount}</span>
+            {/* ── Buy panel ── */}
+            <div className="rounded-xl px-4 pt-3 pb-3 mt-1"
+              style={{ background: "var(--muted)", border: `1px solid ${liveQuote ? 'rgba(16,185,129,0.35)' : 'var(--border)'}` }}>
+              <div className="text-[10px] font-semibold text-muted-foreground mb-2">Buy</div>
+              <div className="flex items-center gap-3">
+                {/* Output amount */}
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className="text-3xl font-semibold text-foreground font-mono">{toAmount}</span>
                   {quoteFetching && <Loader2 className="w-3.5 h-3.5 text-cyan-400 animate-spin" />}
                   {liveQuote && !quoteFetching && (
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>
-                      LIVE
-                    </span>
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                      style={{ background: 'rgba(16,185,129,0.15)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}>LIVE</span>
                   )}
                   {liveQuote && !quoteFetching && quoteSecondsLeft > 0 && (
-                    <span
-                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded"
+                    <span className="flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded-full"
                       style={{
-                        background: quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.15)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.15)' : 'rgba(100,116,139,0.15)',
+                        background: quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.15)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.15)' : 'rgba(100,116,139,0.12)',
                         color: quoteSecondsLeft <= 5 ? '#f87171' : quoteSecondsLeft <= 10 ? '#fbbf24' : '#94a3b8',
-                        border: `1px solid ${quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.3)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.3)' : 'rgba(100,116,139,0.3)'}`,
-                      }}
-                    >
-                      <Timer className="w-2.5 h-2.5" />
-                      {quoteSecondsLeft}s
-                    </span>
-                  )}
-                  {liveQuote && quoteFetching && (
-                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded"
-                      style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }}>
-                      Refreshing...
+                        border: `1px solid ${quoteSecondsLeft <= 5 ? 'rgba(239,68,68,0.3)' : quoteSecondsLeft <= 10 ? 'rgba(245,158,11,0.3)' : 'rgba(100,116,139,0.2)'}`,
+                      }}>
+                      <Timer className="w-2.5 h-2.5" />{quoteSecondsLeft}s
                     </span>
                   )}
                 </div>
-                <div className="text-right">
-                  <div className="text-xs text-slate-500">≈ ${parseFloat(toUsd).toLocaleString()}</div>
-                  <div className="text-[10px] text-slate-600">
-                    {liveQuote ? `via ${liveQuote.route}` : `1 ${fromToken.symbol} = ${rate.toFixed(4)} ${toToken.symbol}`}
-                  </div>
+                {/* Token pill */}
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() => setToDropOpen(v => !v)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full transition-all hover:opacity-80"
+                    style={{ background: CHAINS[toToken.chain as keyof typeof CHAINS].bgColor, border: `1px solid ${CHAINS[toToken.chain as keyof typeof CHAINS].borderColor}` }}
+                  >
+                    <span className="text-base" style={{ color: toToken.color }}>{toToken.icon}</span>
+                    <span className="text-sm font-bold text-foreground">{toToken.symbol}</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  {toDropOpen && (
+                    <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[160px]"
+                      style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.3)" }}>
+                      {TOKENS.filter(t => t.symbol !== fromToken.symbol).map(token => (
+                        <button key={token.symbol}
+                          onClick={() => { setToToken(token); setToDropOpen(false); }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
+                          <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
+                          <div>
+                            <div className="text-xs font-bold text-foreground">{token.symbol}</div>
+                            <div className="text-[10px] text-muted-foreground">{token.name}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              </div>
+              <div className="flex items-center justify-between mt-1.5">
+                <span className="text-xs text-muted-foreground">${parseFloat(toUsd).toLocaleString()}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {liveQuote ? `via ${liveQuote.route}` : `1 ${fromToken.symbol} ≈ ${rate.toFixed(4)} ${toToken.symbol}`}
+                </span>
               </div>
             </div>
 
-            {/* Fee Breakdown */}
-            <div className="mt-4 px-4 py-3 rounded-xl space-y-1.5"
-              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500">Platform fee ({platformFeePct}%)</span>
-                <span className="font-mono text-slate-400">${platformFee}</span>
-              </div>
-              <div className="flex justify-between text-[11px]">
-                <span className="text-slate-500">DEX/network fee (~0.1%)</span>
-                <span className="font-mono text-slate-400">${tradeFee}</span>
-              </div>
-              {liveQuote && (
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-500">Price impact</span>
-                  <span className={`font-mono ${liveQuote.priceImpact > 1 ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {(liveQuote.priceImpact * 100).toFixed(4)}%
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-[11px] pt-1 border-t border-border">
-                <span className="text-slate-400 font-semibold">Total fees</span>
-                <span className="font-mono text-amber-400 font-semibold">${totalFee}</span>
-              </div>
-            </div>
+            {/* Fee summary — single collapsed line, expandable */}
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="mt-3 w-full flex items-center justify-between px-3 py-2 rounded-xl text-[11px] transition-all hover:bg-muted/60"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+            >
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
+                {showAdvanced ? "Hide details" : `1 ${fromToken.symbol} ≈ ${rate.toFixed(4)} ${toToken.symbol} · Fee $${totalFee}`}
+              </span>
+              <span className="font-mono text-amber-400 font-semibold">${totalFee}</span>
+            </button>
 
             {/* Advanced Settings */}
             <button
