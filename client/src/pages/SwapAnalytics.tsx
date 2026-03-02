@@ -11,7 +11,7 @@
  *   - Recent swap activity feed
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer,
@@ -20,9 +20,10 @@ import {
 import {
   TrendingUp, Zap, Clock, Users, CheckCircle2,
   AlertTriangle, RefreshCw, ArrowLeftRight, Activity,
-  Trophy, Radio, BarChart3,
+  Trophy, Radio, BarChart3, Droplets,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { getWallet, type WalletAsset } from "@/lib/afosApi";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -539,7 +540,137 @@ export default function SwapAnalytics() {
           )}
         </SectionCard>
 
+        {/* ── Platform Liquidity ─────────────────────────────────────── */}
+        <PlatformLiquidity />
+
       </div>
     </div>
+  );
+}
+
+// ─── Platform Liquidity Section ──────────────────────────────────────────────
+
+function PlatformLiquidity() {
+  const [wallets, setWallets] = useState<WalletAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const data = await getWallet();
+      setWallets(data.wallets);
+    } catch { /* keep empty */ }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchData();
+    const t = setInterval(fetchData, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Group wallets by chain for the summary
+  const byChain = wallets.reduce<Record<string, { assets: WalletAsset[]; totalUsd: number }>>((acc, w) => {
+    const chain = w.chain;
+    if (!acc[chain]) acc[chain] = { assets: [], totalUsd: 0 };
+    acc[chain].assets.push(w);
+    const usdNum = parseFloat(w.usd.replace(/[^\d.-]/g, "")) || 0;
+    acc[chain].totalUsd += usdNum;
+    return acc;
+  }, {});
+
+  const totalPortfolioUsd = Object.values(byChain).reduce((s, c) => s + c.totalUsd, 0);
+
+  return (
+    <SectionCard title="Platform Liquidity" icon={Droplets}>
+      {loading && wallets.length === 0 ? (
+        <div className="h-32 flex items-center justify-center">
+          <div className="w-6 h-6 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+        </div>
+      ) : wallets.length === 0 ? (
+        <EmptyState message="No wallet data available. Ensure the Oracle VM is running." />
+      ) : (
+        <div className="space-y-4">
+          {/* Total portfolio value */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground">Total Portfolio Value</p>
+              <p className="text-2xl font-bold font-mono text-foreground">{fmtUsd(totalPortfolioUsd)}</p>
+            </div>
+            <button onClick={fetchData}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+
+          {/* Chain allocation bar */}
+          {totalPortfolioUsd > 0 && (
+            <div>
+              <div className="flex rounded-full overflow-hidden h-3 gap-0.5">
+                {Object.entries(byChain).map(([chain, data]) => {
+                  const pct = (data.totalUsd / totalPortfolioUsd) * 100;
+                  if (pct < 0.5) return null;
+                  return (
+                    <div key={chain}
+                      style={{ width: `${pct}%`, background: CHAIN_COLORS[chain] ?? "#888", borderRadius: 4 }}
+                      title={`${chain}: ${fmtUsd(data.totalUsd)} (${pct.toFixed(1)}%)`} />
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-4 mt-2 flex-wrap">
+                {Object.entries(byChain).map(([chain, data]) => {
+                  const pct = totalPortfolioUsd > 0 ? (data.totalUsd / totalPortfolioUsd) * 100 : 0;
+                  return (
+                    <div key={chain} className="flex items-center gap-1.5 text-[11px]">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: CHAIN_COLORS[chain] ?? "#888" }} />
+                      <span className="text-muted-foreground capitalize">{chain}</span>
+                      <span className="font-mono text-foreground">{fmtUsd(data.totalUsd)}</span>
+                      <span className="text-muted-foreground">({pct.toFixed(1)}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Per-chain reserve breakdown */}
+          <div className="space-y-3">
+            {Object.entries(byChain).map(([chain, data]) => (
+              <div key={chain}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="w-2 h-2 rounded-full" style={{ background: CHAIN_COLORS[chain] ?? "#888" }} />
+                  <span className="text-xs font-semibold text-foreground capitalize">{chain}</span>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{fmtUsd(data.totalUsd)}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {data.assets.map((w, i) => {
+                    const chainColor = CHAIN_COLORS[chain] ?? "#888";
+                    return (
+                      <div key={`${w.asset}-${i}`}
+                        className="flex items-center gap-2.5 p-2.5 rounded-xl"
+                        style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}20` }}>
+                        <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-bold font-mono"
+                          style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                          {w.asset}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono font-semibold text-foreground">{w.balance}</p>
+                          <p className="text-[10px] text-muted-foreground">{w.usd}</p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : "#6b7280" }} />
+                          <span className="text-[9px] text-muted-foreground">{w.live ? "live" : "offline"}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </SectionCard>
   );
 }

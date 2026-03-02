@@ -11,8 +11,10 @@ import {
   BarChart3, Activity, AlertTriangle, CheckCircle2, Copy,
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
   ArrowUpRight, ArrowDownRight, Server, Database,
-  GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp
+  GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
+  Cpu
 } from "lucide-react";
+import { getWallet, type WalletAsset } from "@/lib/afosApi";
 import { toast } from "sonner";
 
 // ─── Admin password (in production this would be server-side auth) ────────────
@@ -149,7 +151,7 @@ function PasswordGate({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users";
+type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users" | "agent_wallet";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -195,6 +197,27 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     toast.info("Wallet removed");
   };
 
+  // Agent wallet state (fetched from Oracle VM)
+  const [nodeWalletData, setNodeWalletData] = useState<WalletAsset[]>([]);
+  const [nodeKey, setNodeKey] = useState<string | null>(null);
+  const [nodeWalletLoading, setNodeWalletLoading] = useState(false);
+
+  const fetchNodeWallet = async () => {
+    setNodeWalletLoading(true);
+    try {
+      const data = await getWallet();
+      setNodeWalletData(data.wallets);
+      setNodeKey(data.nodeKey);
+    } catch { /* keep empty */ }
+    setNodeWalletLoading(false);
+  };
+
+  useEffect(() => {
+    fetchNodeWallet();
+    const t = setInterval(fetchNodeWallet, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
   // LP node state
   const [lpConfig, setLpConfig] = useState({
     btcReserve: 0.85,
@@ -224,6 +247,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     { id: "routing", label: "Routing", icon: Route },
     { id: "nodes", label: "Node Health", icon: Server },
     { id: "users", label: "Users", icon: Users },
+    { id: "agent_wallet", label: "Agent Wallet", icon: Cpu },
   ];
 
   return (
@@ -779,6 +803,94 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Agent Wallet Tab ── */}
+        {activeTab === "agent_wallet" && (
+          <div className="space-y-4 max-w-lg mx-auto">
+            {/* Node Key Header */}
+            <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-cyan-400" />
+                  <p className="text-sm font-bold text-foreground">AFOS Agent Hot Wallet</p>
+                </div>
+                <button onClick={fetchNodeWallet}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+                  <RefreshCw className={`w-3 h-3 ${nodeWalletLoading ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+              </div>
+              <p className="text-[10px] text-muted-foreground mb-2">Node hot wallet used for autonomous swaps. Fund this wallet to enable agent-executed trades.</p>
+              {nodeKey ? (
+                <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                  <span className="text-[10px] font-mono text-foreground truncate">{nodeKey}</span>
+                  <button onClick={() => { navigator.clipboard.writeText(nodeKey); toast.success("Node key copied"); }}
+                    className="shrink-0 text-muted-foreground hover:text-foreground">
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-amber-400">No node key configured. Set AGENT_WALLET_ADDRESS in environment.</p>
+              )}
+            </div>
+
+            {/* Wallet Balances */}
+            <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold text-foreground mb-3">Agent Wallet Balances</p>
+              {nodeWalletLoading && nodeWalletData.length === 0 ? (
+                <div className="space-y-2">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: "var(--muted)" }} />
+                  ))}
+                </div>
+              ) : nodeWalletData.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">No wallet data available. Ensure the Oracle VM is running.</p>
+              ) : (
+                <div className="space-y-2">
+                  {nodeWalletData.map((w, i) => {
+                    const chainColor = w.chain === "solana" ? "#9945FF" : w.chain === "ethereum" ? "#627EEA" : "#F7931A";
+                    return (
+                      <div key={`${w.asset}-${w.chain}-${i}`}
+                        className="flex items-center gap-3 p-3 rounded-xl"
+                        style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}25` }}>
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono"
+                          style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                          {w.asset}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-mono font-semibold text-foreground">{w.balance}</p>
+                          <p className="text-[10px] text-muted-foreground">{w.network}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-mono text-foreground">{w.usd}</p>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : "#6b7280" }} />
+                            <span className="text-[9px] text-muted-foreground">{w.live ? "live" : "offline"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <button onClick={() => toast.info("Fund agent wallet — send assets to the node address above")}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
+                <Plus className="w-3 h-3" /> Fund Wallet
+              </button>
+              <button onClick={() => toast.info("Withdraw — connect to node wallet to withdraw")}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444" }}>
+                <ArrowUpRight className="w-3 h-3" /> Withdraw
+              </button>
             </div>
           </div>
         )}

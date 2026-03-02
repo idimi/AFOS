@@ -1288,9 +1288,6 @@ function WalletRowItem({ row, onSend, onReceive }: {
 }
 function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
-  const [nodeWalletData, setNodeWalletData] = useState<WalletAsset[]>([]);
-  const [nodeKey, setNodeKey] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"my" | "node">("my");
   // Browser wallets
   const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
   const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
@@ -1301,19 +1298,6 @@ function WalletsCard() {
     : solShortAddr;
   const solBrowserConnected = solConnected || !!(phantomMultiChain?.chains.includes("solana"));
 
-  // Node wallet polling
-  useEffect(() => {
-    const fetchNode = async () => {
-      try {
-        const data = await getWallet();
-        setNodeWalletData(data.wallets);
-        setNodeKey(data.nodeKey);
-      } catch { /* keep empty */ }
-    };
-    fetchNode();
-    const t = setInterval(fetchNode, 30_000);
-    return () => clearInterval(t);
-  }, []);
 
   // ── Build "My Wallets" rows (browser) ─────────────────────────────────────
   const solBal = (sym: string) => solBalances.find(b => b.symbol === sym);
@@ -1376,80 +1360,8 @@ function WalletsCard() {
     },
   ];
 
-  // ── Build "AFOS Node Wallet" rows (server) ────────────────────────────────
-  // Short node key for display
-  const nodeShort = nodeKey ? `${nodeKey.slice(0, 4)}...${nodeKey.slice(-4)}` : null;
-  const nodeSolAddr = nodeShort ? `Solana · ${nodeShort}` : "Solana · not configured";
-  // Node wallet currently only has Solana assets from backend; ETH/BTC are placeholders
-  const findNode = (asset: string, chain: string) =>
-    nodeWalletData.find(w => w.asset === asset && w.network.toLowerCase().includes(chain.toLowerCase()));
-
-  const nodeSol  = findNode("SOL",  "solana");
-  const nodeUsdt = findNode("USDT", "solana");
-  const nodeUsdc = findNode("USDC", "solana");
-  const nodeEth  = findNode("ETH",  "ethereum");
-  const nodeEthUsdt = findNode("USDT", "ethereum");
-  const nodeEthUsdc = findNode("USDC", "ethereum");
-  const nodeBtc  = findNode("BTC",  "bitcoin");
-
-  const nodeWallets: WalletRowData[] = [
-    // ── Solana ──
-    {
-      asset: "SOL", chain: "Solana", networkLabel: nodeSolAddr,
-      balance: nodeSol?.balance ?? "0.000000",
-      usd: nodeSol?.usd ?? "$0",
-      connected: !!(nodeSol),
-      ...WALLET_ASSET_STYLE["SOL"],
-    },
-    {
-      asset: "USDT", chain: "Solana", networkLabel: nodeSolAddr,
-      balance: nodeUsdt?.balance ?? "0.00",
-      usd: nodeUsdt?.usd ?? "$0",
-      connected: !!(nodeUsdt),
-      ...WALLET_ASSET_STYLE["USDT"],
-    },
-    {
-      asset: "USDC", chain: "Solana", networkLabel: nodeSolAddr,
-      balance: nodeUsdc?.balance ?? "0.00",
-      usd: nodeUsdc?.usd ?? "$0",
-      connected: !!(nodeUsdc),
-      ...WALLET_ASSET_STYLE["USDC"],
-    },
-    // ── Ethereum (node) ──
-    {
-      asset: "ETH", chain: "Ethereum", networkLabel: "Ethereum · node",
-      balance: nodeEth?.balance ?? "0.000000",
-      usd: nodeEth?.usd ?? "$0",
-      connected: !!(nodeEth),
-      ...WALLET_ASSET_STYLE["ETH"],
-    },
-    {
-      asset: "USDT", chain: "Ethereum", networkLabel: "Ethereum · node",
-      balance: nodeEthUsdt?.balance ?? "0.00",
-      usd: nodeEthUsdt?.usd ?? "$0",
-      connected: !!(nodeEthUsdt),
-      ...WALLET_ASSET_STYLE["USDT"], chainColor: "text-blue-300",
-    },
-    {
-      asset: "USDC", chain: "Ethereum", networkLabel: "Ethereum · node",
-      balance: nodeEthUsdc?.balance ?? "0.00",
-      usd: nodeEthUsdc?.usd ?? "$0",
-      connected: !!(nodeEthUsdc),
-      ...WALLET_ASSET_STYLE["USDC"], chainColor: "text-blue-300",
-    },
-    // ── Bitcoin (node) ──
-    {
-      asset: "BTC", chain: "Bitcoin", networkLabel: "Bitcoin · node",
-      balance: nodeBtc?.balance ?? "0.00000000",
-      usd: nodeBtc?.usd ?? "$0",
-      connected: !!(nodeBtc),
-      ...WALLET_ASSET_STYLE["BTC"],
-    },
-  ];
-
-  const activeRows = activeTab === "my" ? myWallets : nodeWallets;
+  const activeRows = myWallets;
   const myConnected = myWallets.filter(w => w.connected).length;
-  const nodeConnected = nodeWallets.filter(w => w.connected).length;
 
   return (
     <>
@@ -1462,40 +1374,13 @@ function WalletsCard() {
             <h3 className="text-sm font-semibold text-foreground">Wallets</h3>
           </div>
           <span className="text-[10px] text-muted-foreground font-mono">
-            {activeTab === "my" ? `${myConnected}/7` : `${nodeConnected}/7`} active
+            {myConnected}/7 active
           </span>
-        </div>
-
-        {/* Tab switcher */}
-        <div className="flex gap-1 mb-3 p-0.5 rounded-xl" style={{ background: "var(--muted)" }}>
-          <button
-            onClick={() => setActiveTab("my")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-              activeTab === "my"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}>
-            <Shield className="w-3 h-3" />
-            My Wallets
-          </button>
-          <button
-            onClick={() => setActiveTab("node")}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all ${
-              activeTab === "node"
-                ? "bg-card text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}>
-            <Cpu className="w-3 h-3" />
-            AFOS Agent
-          </button>
         </div>
 
         {/* Section description */}
         <p className="text-[9px] text-muted-foreground mb-2 leading-relaxed">
-          {activeTab === "my"
-            ? "Your browser-connected wallets. You control the keys."
-            : `AFOS node hot wallet used for autonomous swaps.${nodeShort ? ` Node: ${nodeShort}` : " Configure AGENT_WALLET_ADDRESS to fund."}`
-          }
+          Your browser-connected wallets. You control the keys.
         </p>
 
         {/* Wallet rows */}

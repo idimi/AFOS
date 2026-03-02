@@ -561,3 +561,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix afosApi.ts getSwaps(): added defensive numeric coercion in normalise() for inAmount/outAmount/rate
 - [x] Fix afosApi.ts getStats(): added defensive Number() coercion for all numeric fields
 - [x] 54 tests still passing, 0 TypeScript errors
+
+## Restructure: AFOS Agent Wallet → Admin, Platform Liquidity → Analytics
+
+- [x] Move AFOS Agent wallet tab from Dashboard wallets panel to /admin page (admin-gated)
+- [x] Remove "AFOS Agent" tab from the Dashboard wallet panel (keep "My Wallets" only for regular users)
+- [x] Add Platform Liquidity section to Analytics page (reserves by chain, utilization, total value)
+- [x] Admin page is password-gated (operator access only)
