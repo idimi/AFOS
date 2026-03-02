@@ -19,9 +19,13 @@ import { Connection, VersionedTransaction } from "@solana/web3.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+type SupportedChain = "solana" | "ethereum" | "bitcoin";
+
 interface QuoteData {
   fromToken: string;
+  fromChain?: SupportedChain;
   toToken: string;
+  toChain?: SupportedChain;
   fromAmount: number;
   toAmount: number;
   fromAmountUsd: number;
@@ -53,11 +57,12 @@ const SUGGESTIONS = [
   "swap 10 USDT to USDC",
 ];
 
-// ─── Token → Chain mapping ───────────────────────────────────────────────────
-const TOKEN_CHAIN: Record<string, "solana" | "ethereum" | "bitcoin"> = {
-  SOL: "solana", USDT: "solana", USDC: "solana",
+// ─── Fallback token → chain (only used when quoteData.fromChain is missing) ──
+const TOKEN_CHAIN_FALLBACK: Record<string, SupportedChain> = {
+  SOL: "solana",
   BTC: "bitcoin",
   ETH: "ethereum",
+  // USDT/USDC intentionally omitted — ambiguous without chain context, defaults to "solana"
 };
 
 // ─── Token colors ─────────────────────────────────────────────────────────────
@@ -246,7 +251,7 @@ function MessageBubble({
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
   onCancelSwap: (msgId: string) => void;
   executingId: string | null;
-  onRequestConnect: (fromToken: string) => void;
+  onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -289,7 +294,7 @@ function MessageBubble({
               onConfirm={() => onConfirmSwap(msg.id, msg.quoteData!)}
               onCancel={() => onCancelSwap(msg.id)}
               isExecuting={executingId === msg.id}
-              onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken)}
+              onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken, msg.quoteData!.fromChain)}
             />
           </div>
         )}
@@ -422,15 +427,15 @@ export default function ChatPage() {
   }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
 
   // Open wallet modal for a specific chain based on the quote's FROM token
-  const openWalletForChain = useCallback((fromToken: string) => {
-    const chain = TOKEN_CHAIN[fromToken] || "solana";
+  const openWalletForChain = useCallback((fromToken: string, fromChain?: SupportedChain) => {
+    const chain = fromChain || TOKEN_CHAIN_FALLBACK[fromToken] || "solana";
     setWalletModalChain(chain);
     setShowWalletModal(true);
   }, []);
 
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
     if (!connected || !publicKey) {
-      openWalletForChain(quoteData.fromToken);
+      openWalletForChain(quoteData.fromToken, quoteData.fromChain);
       return;
     }
 

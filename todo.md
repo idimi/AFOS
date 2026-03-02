@@ -316,4 +316,4 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## ChatPage — Fix TOKEN_CHAIN Multi-Chain Mapping
 
-- [ ] Fix TOKEN_CHAIN: USDT/USDC exist on both Ethereum and Solana — need chain context from quote, not just symbol
+- [x] Fix TOKEN_CHAIN: USDT/USDC exist on both Ethereum and Solana — use fromChain from quote, fallback only for unambiguous symbols
