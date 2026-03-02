@@ -2573,7 +2573,7 @@ export default function Dashboard() {
 
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
-    { id: "chat" as NavPage, icon: Bot, label: "Agent Chat" },
+    { id: "chat" as NavPage, icon: Bot, label: "Agent" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
     { id: "network" as NavPage, icon: Network, label: "Network" },
