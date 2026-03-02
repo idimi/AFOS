@@ -2101,27 +2101,31 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
 
             {/* Agent Mode Toggle */}
             {swapPhase === "idle" && onNavigateToChat && (
-              <div className="mt-5 flex items-center justify-between">
-                <span className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                  <Bot className="w-3 h-3" />
-                  Agent mode
-                </span>
+              <div className="mt-5 flex items-center justify-end">
                 <button
                   onClick={() => setExecMode(execMode === 'manual' ? 'agent' : 'manual')}
-                  className="relative w-9 h-5 rounded-full transition-colors duration-200 focus:outline-none"
-                  style={{
-                    background: execMode === 'agent'
-                      ? 'linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)'
-                      : 'rgba(100,116,139,0.3)',
-                  }}
+                  className="flex items-center gap-2 group"
                   aria-label="Toggle agent mode"
                 >
+                  <span className="text-[11px] text-slate-500 group-hover:text-slate-400 flex items-center gap-1 transition-colors">
+                    <Bot className="w-3 h-3" />
+                    Agent mode
+                  </span>
                   <span
-                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                    className="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0"
                     style={{
-                      transform: execMode === 'agent' ? 'translateX(16px)' : 'translateX(0)',
+                      background: execMode === 'agent'
+                        ? 'linear-gradient(135deg, #7c3aed 0%, #9333ea 100%)'
+                        : 'rgba(100,116,139,0.3)',
                     }}
-                  />
+                  >
+                    <span
+                      className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                      style={{
+                        transform: execMode === 'agent' ? 'translateX(16px)' : 'translateX(0)',
+                      }}
+                    />
+                  </span>
                 </button>
               </div>
             )}
