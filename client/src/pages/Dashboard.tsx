@@ -2454,10 +2454,10 @@ function statusTextColor(s: ServiceStatus): string {
 function StackHealthStrip() {
   const [services, setServices] = useState<ServiceState[]>([
     { name: 'AFOS Agent',    status: 'checking' },
-    { name: 'IntercomSwap', status: 'checking' },
     { name: 'Bitcoin',      status: 'checking' },
-    { name: 'Solana',       status: 'checking' },
     { name: 'Ethereum',     status: 'checking' },
+    { name: 'Solana',       status: 'checking' },
+    { name: 'IntercomSwap', status: 'checking' },
   ]);
 
   const updateService = useCallback((name: string, status: ServiceStatus, latency?: number) => {
