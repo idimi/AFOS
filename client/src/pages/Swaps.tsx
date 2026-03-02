@@ -534,7 +534,7 @@ function RecentSwaps() {
               const isExpanded = expandedId === swap.rfqId;
               const txHash = syntheticTxHash(swap.rfqId);
               const chain = swap.toChain ?? swap.fromChain ?? 'solana';
-              const usdValue = swap.inAmount * (swap.fromToken === 'BTC' ? 67000 : swap.fromToken === 'ETH' ? 2000 : swap.fromToken === 'SOL' ? 87 : 1);
+              const usdValue = (swap.inAmount ?? 0) * (swap.fromToken === 'BTC' ? 67000 : swap.fromToken === 'ETH' ? 2000 : swap.fromToken === 'SOL' ? 87 : 1);
               const peer = peerFromSwap(swap);
               const isoTime = new Date(swap.timestamp).toLocaleString();
               const statusColor = swap.route === 'p2p' ? '#10b981' : '#f59e0b';
@@ -552,9 +552,9 @@ function RecentSwaps() {
                     {/* Pair */}
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-mono">
-                        <span style={{ color: TOKEN_COLORS[swap.fromToken] ?? '#f59e0b' }}>{swap.inAmount.toFixed(4)} {swap.fromToken}</span>
+                        <span style={{ color: TOKEN_COLORS[swap.fromToken] ?? '#f59e0b' }}>{(swap.inAmount ?? 0).toFixed(4)} {swap.fromToken}</span>
                         <span className="text-muted-foreground/50 mx-1">→</span>
-                        <span style={{ color: TOKEN_COLORS[swap.toToken] ?? '#06b6d4' }}>{swap.outAmount.toFixed(4)} {swap.toToken}</span>
+                        <span style={{ color: TOKEN_COLORS[swap.toToken] ?? '#06b6d4' }}>{(swap.outAmount ?? 0).toFixed(4)} {swap.toToken}</span>
                       </div>
                       <div className="text-[9px] text-muted-foreground/60">
                         {swap.route === 'p2p' ? 'IntercomSwap P2P' : `DEX · ${swap.dexRoute || 'Jupiter'}`}
@@ -621,7 +621,7 @@ function RecentSwaps() {
                             </div>
                             <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
                               <div className="text-[9px] text-muted-foreground/50">USD Value</div>
-                              <div className="text-[10px] font-mono text-amber-400 mt-0.5">${usdValue.toFixed(2)}</div>
+                              <div className="text-[10px] font-mono text-amber-400 mt-0.5">${(usdValue ?? 0).toFixed(2)}</div>
                             </div>
                             <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
                               <div className="text-[9px] text-muted-foreground/50">Counterparty</div>

@@ -656,7 +656,7 @@ export default function SwapHistory() {
                         <div>
                           <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>
                           <span className="text-xs font-mono text-foreground">
-                            1 {swap.fromSymbol} = {(swap.toAmount / swap.fromAmount).toFixed(4)} {swap.toSymbol}
+                            1 {swap.fromSymbol} = {swap.fromAmount > 0 ? (swap.toAmount / swap.fromAmount).toFixed(4) : '—'} {swap.toSymbol}
                           </span>
                         </div>
                         <div>

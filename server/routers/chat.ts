@@ -25,6 +25,8 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
+import { recordHtlcLock, recordSwapAnalytic } from "../htlcMonitor";
+import { buildHtlcLockTx } from "../ethHtlc";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -778,6 +780,17 @@ export const chatRouter = router({
       // ── Step 2: If P2P peer matched, return P2P route ─────────────────────
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
       if (p2pQuote) {
+        // Record P2P swap event to analytics DB (non-blocking)
+        void recordSwapAnalytic({
+          fromChain:  (fromChain ?? "solana") as "solana" | "ethereum" | "bitcoin",
+          toChain:    (toChain   ?? "solana") as "solana" | "ethereum" | "bitcoin",
+          fromToken:  fromToken ?? "SOL",
+          toToken:    toToken   ?? "USDT",
+          amount:     String(amount ?? 0),
+          route:      "IntercomSwap P2P",
+          status:     "completed",
+          peerId:     p2pQuote.peerId ?? undefined,
+        }).catch(() => {/* non-fatal */});
         return {
           route:          "IntercomSwap P2P" as const,
           p2pQuote,
@@ -803,6 +816,17 @@ export const chatRouter = router({
       if (!result?.swapTransaction) {
         throw new Error("Failed to build swap transaction via Jupiter. Please try again.");
       }
+
+      // Record Jupiter fallback swap event to analytics DB (non-blocking)
+      void recordSwapAnalytic({
+        fromChain:  "solana",
+        toChain:    "solana",
+        fromToken:  fromToken ?? "SOL",
+        toToken:    toToken   ?? "USDT",
+        amount:     String(amount ?? 0),
+        route:      "Jupiter DEX",
+        status:     "completed",
+      }).catch(() => {/* non-fatal */});
 
       return {
         route:          "Jupiter DEX" as const,
@@ -878,24 +902,72 @@ export const chatRouter = router({
 
       // ── Step 2: If P2P peer matched, return P2P route ─────────────────────
       if (p2pQuote) {
+        // Record P2P swap event to analytics DB (non-blocking)
+        void recordSwapAnalytic({
+          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin",
+          toChain:    toChain   as "solana" | "ethereum" | "bitcoin",
+          fromToken:  fromSymbol,
+          toToken:    toSymbol,
+          amount:     String(amount),
+          route:      "IntercomSwap P2P",
+          status:     "completed",
+          peerId:     p2pQuote.peerId ?? undefined,
+        }).catch(() => {/* non-fatal */});
+        // Build HTLC lock calldata if contract is deployed
+        const htlcTimelock = Math.floor(Date.now() / 1000) + 3600; // 1-hour timelock
+        const secretBytes  = crypto.getRandomValues(new Uint8Array(32));
+        const secretHex    = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+        const secretHashBytes = await crypto.subtle.digest("SHA-256", secretBytes);
+        const secretHash   = Array.from(new Uint8Array(secretHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
+        const amountWei    = BigInt(Math.floor(amount * 1e18));
+        const htlcLockTx   = buildHtlcLockTx({
+          secretHash,
+          recipient:   p2pQuote.counterpartyAddress ?? fromAddress, // peer's ETH address
+          timelock:    htlcTimelock,
+          amountWei:   fromSymbol === "ETH" ? amountWei : undefined,
+          tokenAddress: (fromAsset && fromAsset.address !== "native") ? fromAsset.address ?? undefined : undefined,
+          tokenAmount:  (fromAsset && fromAsset.address !== "native") ? BigInt(Math.floor(amount * Math.pow(10, fromAsset.decimals ?? 18))) : undefined,
+        });
+        // Record HTLC lock to DB (non-blocking)
+        if (htlcLockTx) {
+          void recordHtlcLock({
+            chain:       "ethereum",
+            htlcAddress: process.env.ETH_HTLC_ADDRESS ?? "pending",
+            secretHash,
+            amountRaw:   amountWei.toString(),
+            amountHuman: `${amount} ${fromSymbol}`,
+            locktime:    htlcTimelock,
+            peerId:      p2pQuote.peerId ?? undefined,
+            rfqId:       p2pQuote.rfqId  ?? undefined,
+            toToken:     toSymbol,
+            toChain:     toChain as "bitcoin" | "ethereum" | "solana",
+            senderAddress: fromAddress,
+          }).catch(() => {/* non-fatal */});
+        }
         return {
           success:  true,
           route:    "IntercomSwap P2P" as const,
           p2pQuote,
-          // No on-chain tx needed yet — HTLC will be coordinated by LightPeerContext
-          tx:       null,
+          // htlcLockTx is non-null when ETH_HTLC_ADDRESS is set (contract deployed)
+          tx:       htlcLockTx,
+          secretHash: htlcLockTx ? secretHash : undefined,
           message:
             `IntercomSwap P2P peer matched (${p2pQuote.peerId ?? "peer"}). ` +
             `Rate: ${p2pQuote.rate ?? "N/A"}. ` +
-            "The browser light peer will coordinate the Ethereum HTLC lock via Oracle VM.",
+            (htlcLockTx
+              ? "HTLC lock transaction ready — sign with your Ethereum wallet to lock funds."
+              : "The browser light peer will coordinate the Ethereum HTLC lock via Oracle VM."),
           nextStep:
-            `P2P counterparty ${p2pQuote.peerId ?? "peer"} matched via IntercomSwap. ` +
-            "Waiting for counterparty to lock their funds on the destination chain. " +
-            "Once confirmed, the HTLC secret will be revealed to complete the atomic swap.",
+            htlcLockTx
+              ? `Call eth_sendTransaction with the returned { to, data, value } payload to lock ${amount} ${fromSymbol} in the HTLC contract. ` +
+                "The counterparty will redeem by revealing the secret on the destination chain."
+              : `P2P counterparty ${p2pQuote.peerId ?? "peer"} matched via IntercomSwap. ` +
+                "Waiting for counterparty to lock their funds on the destination chain. " +
+                "Once confirmed, the HTLC secret will be revealed to complete the atomic swap.",
         };
       }
 
-      // ── Step 3: Fallback — 1inch aggregator ───────────────────────────────
+      // ── Step 3: Fallback — 1inch aggregator ─────────────────────────────────
       // No P2P peer found. Build executable swap calldata via 1inch.
       const p2pRoute = "Direct 1inch (no P2P peer)";
 
@@ -919,6 +991,16 @@ export const chatRouter = router({
       const swapTx = await get1inchSwapTx(fromAsset, toAsset, amountRaw, fromAddress, slippage);
 
       if (swapTx) {
+        // Record 1inch fallback swap event to analytics DB (non-blocking)
+        void recordSwapAnalytic({
+          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin",
+          toChain:    toChain   as "solana" | "ethereum" | "bitcoin",
+          fromToken:  fromSymbol,
+          toToken:    toSymbol,
+          amount:     String(amount),
+          route:      "1inch (Ethereum)",
+          status:     "completed",
+        }).catch(() => {/* non-fatal */});
         return {
           success:  true,
           route:    "1inch (Ethereum)" as const,
@@ -1092,13 +1174,40 @@ export const chatRouter = router({
       const resolvedCounterpartyPubKey = p2pQuote?.counterpartyPubKey ?? input.counterpartyPubKey;
 
       if (!agentWif) {
-        // ── Demo mode ──────────────────────────────────────────────────────────
+        // ── Demo mode ──────────────────────────────────────────────────────────────────
         const demoTxid = `${secretHash.slice(0, 16)}${
           Math.random().toString(36).slice(2, 10)
         }${
           Date.now().toString(36)
         }`;
         const demoHtlcAddr = `bc1q${secretHash.slice(0, 32)}`;
+
+        // Record BTC HTLC lock to DB (non-blocking)
+        void recordHtlcLock({
+          chain:        "bitcoin",
+          htlcAddress:  demoHtlcAddr,
+          secretHash,
+          lockTxId:     demoTxid,
+          amountRaw:    String(amountSats),
+          amountHuman:  String(amountBtc),
+          locktime,
+          peerId:       p2pQuote?.peerId ?? undefined,
+          rfqId:        p2pQuote?.rfqId  ?? undefined,
+          toToken:      toToken ?? undefined,
+          toChain:      (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana",
+          senderAddress,
+        }).catch(() => {/* non-fatal */});
+        void recordSwapAnalytic({
+          fromChain:  "bitcoin",
+          toChain:    (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana",
+          fromToken:  "BTC",
+          toToken:    toToken ?? "BTC",
+          amount:     String(amountBtc),
+          route:      p2pRoute,
+          status:     "completed",
+          txId:       demoTxid,
+          peerId:     p2pQuote?.peerId ?? undefined,
+        }).catch(() => {/* non-fatal */});
 
         return {
           success: true,

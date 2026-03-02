@@ -522,3 +522,42 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix TypeError: Cannot read properties of undefined (reading 'toFixed') in RecentSwapsCard (line 935-936)
 - [x] Fix same issue in mobile MobileRecentSwaps section (line 2285-2286)
 - [x] Added null guards: (s.inAmount ?? 0) and (s.outAmount ?? 0) before .toFixed()/.toString()
+
+## Phase: Full HTLC Completion + DB Analytics Wiring
+
+### DB Analytics Recording
+- [ ] executeBtcSwap: call recordHtlcLock() + recordSwapAnalytic() after P2P match or HTLC lock
+- [ ] executeEthSwap: call recordHtlcLock() + recordSwapAnalytic() after P2P match or 1inch route
+- [ ] buildSwapTx (Solana): call recordHtlcLock() + recordSwapAnalytic() after P2P match or Jupiter route
+- [ ] Analytics dashboard shows real data from DB
+
+### Ethereum HTLC.sol
+- [ ] Write HTLC.sol smart contract (ETH + ERC-20 hashlock + timelock, lock/claim/refund)
+- [ ] Compile HTLC.sol and extract ABI + bytecode
+- [ ] Deploy HTLC.sol to Sepolia testnet (requires ETH_DEPLOYER_KEY + Sepolia ETH)
+- [ ] Store deployed contract address in env (HTLC_CONTRACT_ADDRESS_SEPOLIA)
+- [ ] Wire real ABI-encoded lock() call in executeEthSwap (replace placeholder)
+- [ ] Wire real ABI-encoded lock() call in LightPeerContext ETH branch
+- [ ] Wire ETH_AGENT_KEY for htlcMonitor refund() trigger
+
+### Solana HTLC Program
+- [ ] Research existing Solana HTLC programs (SPL or Anchor-based)
+- [ ] Implement Solana HTLC PDA instruction builder using @solana/web3.js
+- [ ] Replace mock signTransaction in LightPeerContext Solana branch with real PDA instruction
+- [ ] Wire SOL_AGENT_KEY for htlcMonitor PDA close trigger
+
+### Agent Keys
+- [ ] Set BTC_AGENT_WIF secret (enables real BTC HTLC execution)
+- [ ] Set ETH_AGENT_KEY secret (enables ETH HTLC monitor refund trigger)
+- [ ] Set SOL_AGENT_KEY secret (enables SOL HTLC monitor PDA close)
+
+## Bug Fix: RecentSwaps toFixed crash (recurring — deeper fix)
+
+- [x] Find all .toFixed() calls on potentially-undefined swap fields in RecentSwaps and related components
+- [x] Fix Swaps.tsx: swap.inAmount.toFixed(4), swap.outAmount.toFixed(4), usdValue.toFixed(2) — all guarded with ?? 0
+- [x] Fix Dashboard.tsx: quoteData.toAmount/fromAmountUsd/toAmountUsd/platformFee/platformFeeUsd/priceImpact — all guarded
+- [x] Fix ConnectWalletModal.tsx: b.usdValue.toFixed(2) — guarded with ?? 0
+- [x] Fix SwapHistory.tsx: division-by-zero guard on rate calculation (fromAmount > 0 check)
+- [x] Fix afosApi.ts getSwaps(): added defensive numeric coercion in normalise() for inAmount/outAmount/rate
+- [x] Fix afosApi.ts getStats(): added defensive Number() coercion for all numeric fields
+- [x] 54 tests still passing, 0 TypeScript errors

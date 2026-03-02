@@ -388,7 +388,20 @@ export async function getStats(): Promise<BackendStats> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/stats`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
-  return data.stats;
+  const s = data.stats ?? {};
+  // Defensively coerce all numeric fields — Oracle VM may return null/string
+  return {
+    ...s,
+    totalVolumeUsd: Number(s.totalVolumeUsd) || 0,
+    totalFeesUsd:   Number(s.totalFeesUsd)   || 0,
+    totalSwaps:     Number(s.totalSwaps)     || 0,
+    p2pSwaps:       Number(s.p2pSwaps)       || 0,
+    dexSwaps:       Number(s.dexSwaps)       || 0,
+    p2pRatio:       Number(s.p2pRatio)       || 0,
+    activePeers:    Number(s.activePeers)    || 0,
+    uptimeMs:       Number(s.uptimeMs)       || 0,
+    pendingRfqs:    Number(s.pendingRfqs)    || 0,
+  };
 }
 
 /**
@@ -403,8 +416,12 @@ export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: Rfq
   const normalise = (swaps: RfqResult[]): RfqResult[] =>
     swaps.map(s => ({
       ...s,
+      // Defensively coerce numeric fields — Oracle VM may return null/string
+      inAmount:  typeof s.inAmount  === 'number' ? s.inAmount  : parseFloat(String(s.inAmount  ?? 0)) || 0,
+      outAmount: typeof s.outAmount === 'number' ? s.outAmount : parseFloat(String(s.outAmount ?? 0)) || 0,
+      rate:      typeof s.rate      === 'number' ? s.rate      : parseFloat(String(s.rate      ?? 0)) || 0,
       fromChain: s.fromChain ?? inferChain(s.fromToken),
-      toChain: s.toChain ?? inferChain(s.toToken),
+      toChain:   s.toChain   ?? inferChain(s.toToken),
     }));
   return {
     pending: normalise(data.pending || []),

@@ -870,7 +870,7 @@ function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalU
               </div>
               <div className="text-right">
                 <p className="text-sm font-mono font-semibold text-foreground">{b.amount}</p>
-                <p className="text-[10px] text-muted-foreground">${b.usdValue.toFixed(2)}</p>
+                <p className="text-[10px] text-muted-foreground">${(b.usdValue ?? 0).toFixed(2)}</p>
               </div>
             </div>
           ))}

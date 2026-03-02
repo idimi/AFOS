@@ -408,7 +408,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
       await connection.confirmTransaction(signature, "confirmed");
       addMessage({
         role: "assistant",
-        content: `Swap confirmed! ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken}`,
+        content: `Swap confirmed! ${quoteData.fromAmount} ${quoteData.fromToken} → ${(quoteData.toAmount ?? 0).toFixed(6)} ${quoteData.toToken}`,
         type: "tx_success",
       });
     } catch (err: unknown) {
@@ -521,7 +521,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
                   <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
                     <p className="text-[9px] text-muted-foreground mb-0.5">You pay</p>
                     <p className="text-sm font-bold font-mono text-foreground">{msg.quoteData.fromAmount} {msg.quoteData.fromToken}</p>
-                    <p className="text-[9px] text-muted-foreground">${msg.quoteData.fromAmountUsd.toFixed(2)}</p>
+                    <p className="text-[9px] text-muted-foreground">${(msg.quoteData.fromAmountUsd ?? 0).toFixed(2)}</p>
                     {msg.quoteData.fromChain && (
                       <span className="inline-block mt-1 text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: CHAIN_BADGE[msg.quoteData.fromChain].color + "22", color: CHAIN_BADGE[msg.quoteData.fromChain].color, border: `1px solid ${CHAIN_BADGE[msg.quoteData.fromChain].color}44` }}>
                         {CHAIN_BADGE[msg.quoteData.fromChain].label}
@@ -531,8 +531,8 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
                   <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 rounded-lg px-2.5 py-2" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
                     <p className="text-[9px] text-muted-foreground mb-0.5">You receive</p>
-                    <p className="text-sm font-bold font-mono text-emerald-400">{msg.quoteData.toAmount.toFixed(6)} {msg.quoteData.toToken}</p>
-                    <p className="text-[9px] text-muted-foreground">${msg.quoteData.toAmountUsd.toFixed(2)}</p>
+                    <p className="text-sm font-bold font-mono text-emerald-400">{(msg.quoteData.toAmount ?? 0).toFixed(6)} {msg.quoteData.toToken}</p>
+                    <p className="text-[9px] text-muted-foreground">${(msg.quoteData.toAmountUsd ?? 0).toFixed(2)}</p>
                     {msg.quoteData.toChain && (
                       <span className="inline-block mt-1 text-[8px] font-mono px-1.5 py-0.5 rounded-full" style={{ background: CHAIN_BADGE[msg.quoteData.toChain].color + "22", color: CHAIN_BADGE[msg.quoteData.toChain].color, border: `1px solid ${CHAIN_BADGE[msg.quoteData.toChain].color}44` }}>
                         {CHAIN_BADGE[msg.quoteData.toChain].label}
@@ -542,9 +542,9 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
                 </div>
                 {/* Fee row */}
                 <div className="flex items-center justify-between px-3 pb-2 text-[9px] font-mono text-muted-foreground">
-                  <span>Fee: {msg.quoteData.platformFee.toFixed(6)} {msg.quoteData.fromToken} (${msg.quoteData.platformFeeUsd.toFixed(4)})</span>
-                  <span className={msg.quoteData.priceImpact > 1 ? "text-amber-400" : "text-emerald-400"}>
-                    Impact: {msg.quoteData.priceImpact < 0.01 ? "<0.01" : msg.quoteData.priceImpact.toFixed(2)}%
+                  <span>Fee: {(msg.quoteData.platformFee ?? 0).toFixed(6)} {msg.quoteData.fromToken} (${(msg.quoteData.platformFeeUsd ?? 0).toFixed(4)})</span>
+                  <span className={(msg.quoteData.priceImpact ?? 0) > 1 ? "text-amber-400" : "text-emerald-400"}>
+                    Impact: {(msg.quoteData.priceImpact ?? 0) < 0.01 ? "<0.01" : (msg.quoteData.priceImpact ?? 0).toFixed(2)}%
                   </span>
                 </div>
                 {/* Confirm button */}
