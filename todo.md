@@ -332,3 +332,9 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Add tooltip on node key showing full key + copy button
 - [x] Make peers pill clickable to navigate to Network page
+
+## Dashboard Header — Real-time UX Polish
+
+- [x] Add sonner toast on node key copy
+- [x] Peer pill flash animation (green/red) on SSE peer_connected/peer_disconnected
+- [x] Real-time headerLastPair update via SSE swap_executed event

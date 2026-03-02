@@ -2550,6 +2550,8 @@ export default function Dashboard() {
   const [headerNodeKeyFull, setHeaderNodeKeyFull] = useState<string | null>(null);
   const [headerLastPair, setHeaderLastPair] = useState<string | null>(null);
   const [headerNodeKeyCopied, setHeaderNodeKeyCopied] = useState(false);
+  // 'up' = green flash, 'down' = red flash, null = idle
+  const [peerFlash, setPeerFlash] = useState<'up' | 'down' | null>(null);
 
   useEffect(() => {
     const fetchHeaderData = async () => {
@@ -2579,13 +2581,28 @@ export default function Dashboard() {
     fetchHeaderData();
     const t = setInterval(fetchHeaderData, 30000);
     // Also update peer count from SSE
-    const unsubPeer = onSSEEvent('peer_connected', () => setHeaderPeers(p => (p ?? 0) + 1));
-    const unsubPeerD = onSSEEvent('peer_disconnected', () => setHeaderPeers(p => Math.max(0, (p ?? 0) - 1)));
+    const unsubPeer = onSSEEvent('peer_connected', () => {
+      setHeaderPeers(p => (p ?? 0) + 1);
+      setPeerFlash('up');
+      setTimeout(() => setPeerFlash(null), 1200);
+    });
+    const unsubPeerD = onSSEEvent('peer_disconnected', () => {
+      setHeaderPeers(p => Math.max(0, (p ?? 0) - 1));
+      setPeerFlash('down');
+      setTimeout(() => setPeerFlash(null), 1200);
+    });
     const unsubInit = onSSEEvent('init', (data: unknown) => {
       const d = data as { activePeers?: number };
       if (d?.activePeers !== undefined) setHeaderPeers(d.activePeers);
     });
-    return () => { clearInterval(t); unsubPeer(); unsubPeerD(); unsubInit(); };
+    // Real-time last swap pair from SSE
+    const unsubSwap = onSSEEvent('swap_executed', (data: unknown) => {
+      const d = data as { fromToken?: string; toToken?: string };
+      if (d?.fromToken && d?.toToken) {
+        setHeaderLastPair(`${d.fromToken}/${d.toToken}`);
+      }
+    });
+    return () => { clearInterval(t); unsubPeer(); unsubPeerD(); unsubInit(); unsubSwap(); };
   }, []);
 
   // Swipe-right from left edge to open drawer
@@ -2662,6 +2679,7 @@ export default function Dashboard() {
                       navigator.clipboard.writeText(key).then(() => {
                         setHeaderNodeKeyCopied(true);
                         setTimeout(() => setHeaderNodeKeyCopied(false), 2000);
+                        toast.success("Node key copied", { description: key.length > 20 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key, duration: 2500 });
                       });
                     }}
                   >
@@ -2689,12 +2707,25 @@ export default function Dashboard() {
               <span className="text-xs text-muted-foreground font-mono hidden xl:block">{headerLastPair}</span>
             )}
             <button
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40 transition-all active:scale-95 cursor-pointer"
+              className={[
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 cursor-pointer duration-300",
+                peerFlash === 'up'
+                  ? "bg-emerald-500/20 border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                  : peerFlash === 'down'
+                  ? "bg-red-500/20 border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]"
+                  : "bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40",
+              ].join(" ")}
               onClick={() => setActivePage("network")}
               title="View Network page"
             >
-              <Radio className="w-3 h-3 text-violet-400 animate-pulse" />
-              <span className="text-xs text-violet-300 font-mono">
+              <Radio className={[
+                "w-3 h-3 animate-pulse",
+                peerFlash === 'up' ? "text-emerald-400" : peerFlash === 'down' ? "text-red-400" : "text-violet-400"
+              ].join(" ")} />
+              <span className={[
+                "text-xs font-mono",
+                peerFlash === 'up' ? "text-emerald-300" : peerFlash === 'down' ? "text-red-300" : "text-violet-300"
+              ].join(" ")}>
                 {headerPeers !== null ? `${headerPeers} peer${headerPeers === 1 ? '' : 's'}` : '— peers'}
               </span>
             </button>
