@@ -317,3 +317,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## ChatPage — Fix TOKEN_CHAIN Multi-Chain Mapping
 
 - [x] Fix TOKEN_CHAIN: USDT/USDC exist on both Ethereum and Solana — use fromChain from quote, fallback only for unambiguous symbols
+
+## ChatPage Footer — Update Powered By Text
+
+- [x] Change "Powered by Jupiter" to mention all three: IntercomSwap P2P · Jupiter · 1inch

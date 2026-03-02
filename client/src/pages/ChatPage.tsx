@@ -643,7 +643,7 @@ export default function ChatPage() {
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground text-center mt-2">
-          AFOS never holds your keys · All swaps are self-custodial · Powered by Jupiter
+          AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 1inch
         </p>
       </div>
       <ConnectWalletModal
