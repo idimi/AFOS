@@ -323,7 +323,7 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
-  const { bitcoin } = useMultiChainWallet();
+  const { bitcoin, ethereum } = useMultiChainWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -345,6 +345,7 @@ export default function ChatPage() {
   const sendMessage = trpc.chat.sendMessage.useMutation();
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
   const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
+  const executeEthSwap = trpc.chat.executeEthSwap.useMutation();
 
   // Read prefill from Swaps page "Send to Agent" button on mount
   // If afos_chat_autosend is set, auto-send the message immediately
@@ -492,11 +493,130 @@ export default function ChatPage() {
         return;
       }
 
-      // ── Solana swaps: Jupiter DEX ────────────────────────────────────────────────
-      const { swapTransaction } = await buildSwapTx.mutateAsync({
+      // ── Ethereum swaps: IntercomSwap P2P primary + 1inch fallback ────────────────
+      if (quoteData.fromChain === "ethereum" || quoteData.toChain === "ethereum") {
+        const ethAddress = ethereum?.address ?? "";
+        if (!ethAddress) {
+          toast.error("Ethereum wallet not connected", { description: "Please connect an Ethereum wallet (MetaMask, Phantom ETH, or Coinbase) to execute ETH swaps." });
+          setExecutingId(null);
+          return;
+        }
+
+        toast.loading("Finding best ETH swap route…", { id: "eth-swap" });
+        const ethResult = await executeEthSwap.mutateAsync({
+          fromAddress: ethAddress,
+          fromToken:   quoteData.fromToken,
+          toToken:     quoteData.toToken,
+          fromChain:   (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "ethereum",
+          toChain:     (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "ethereum",
+          amount:      quoteData.fromAmount,
+          slippage:    1,
+        });
+        toast.dismiss("eth-swap");
+
+        if (!ethResult.success) {
+          addMessage({ role: "assistant", content: ethResult.message ?? "ETH swap route unavailable. Please try again.", type: "error" });
+          setExecutingId(null);
+          return;
+        }
+
+        // P2P route: HTLC will be coordinated by LightPeerContext / Oracle VM
+        if (ethResult.route === "IntercomSwap P2P") {
+          toast.success("P2P peer matched!", { description: `Peer: ${ethResult.p2pQuote?.peerId ?? "unknown"}` });
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: ethResult.p2pQuote?.rfqId ?? "p2p" } : m
+          ));
+          addMessage({
+            role: "assistant",
+            content: ethResult.nextStep ?? ethResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+            type: "text",
+          });
+          setExecutingId(null);
+          return;
+        }
+
+        // 1inch route: sign and broadcast via window.ethereum
+        if (ethResult.tx) {
+          const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
+          if (!rawEth) {
+            toast.error("No Ethereum provider", { description: "Install MetaMask or Phantom to sign ETH transactions." });
+            setExecutingId(null);
+            return;
+          }
+          toast.loading("Waiting for wallet signature…", { id: "eth-sign" });
+          try {
+            const txHash = await rawEth.request({
+              method: "eth_sendTransaction",
+              params: [{
+                from:  ethAddress,
+                to:    ethResult.tx.to,
+                data:  ethResult.tx.data,
+                value: ethResult.tx.value,
+                ...(ethResult.tx.gas ? { gas: `0x${ethResult.tx.gas.toString(16)}` } : {}),
+              }],
+            });
+            toast.dismiss("eth-sign");
+            toast.success("ETH swap submitted!", { description: `Tx: ${txHash.slice(0, 12)}…` });
+            setMessages(prev => prev.map(m =>
+              m.id === msgId ? { ...m, type: "tx_success" as const, txHash } : m
+            ));
+            addMessage({
+              role: "assistant",
+              content: `✅ ETH swap submitted via 1inch: ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}. Tx: ${txHash.slice(0, 16)}…`,
+              type: "text",
+            });
+          } catch (ethErr: unknown) {
+            toast.dismiss("eth-sign");
+            const msg = ethErr instanceof Error ? ethErr.message : String(ethErr);
+            if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("rejected")) {
+              toast.info("ETH swap cancelled");
+              addMessage({ role: "assistant", content: "ETH swap cancelled. Let me know if you'd like to try again.", type: "text" });
+            } else {
+              toast.error("ETH swap failed", { description: msg.slice(0, 100) });
+              addMessage({ role: "assistant", content: `ETH swap failed: ${msg.slice(0, 150)}`, type: "error" });
+            }
+          }
+          setExecutingId(null);
+          return;
+        }
+
+        // Fallback: no tx and no P2P
+        addMessage({ role: "assistant", content: ethResult.message ?? "ETH swap unavailable at this time.", type: "error" });
+        setExecutingId(null);
+        return;
+      }
+
+      // ── Solana swaps: IntercomSwap P2P primary + Jupiter fallback ──────────────
+      const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: publicKey.toString(),
+        fromToken:     quoteData.fromToken,
+        toToken:       quoteData.toToken,
+        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
+        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "solana",
+        amount:        quoteData.fromAmount,
       });
+
+      // P2P route matched: HTLC coordinated by LightPeerContext
+      if (solResult.route === "IntercomSwap P2P") {
+        toast.success("P2P peer matched!", { description: `Peer: ${solResult.p2pQuote?.peerId ?? "unknown"}` });
+        setMessages(prev => prev.map(m =>
+          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: solResult.p2pQuote?.rfqId ?? "p2p" } : m
+        ));
+        addMessage({
+          role: "assistant",
+          content: solResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+          type: "text",
+        });
+        setExecutingId(null);
+        return;
+      }
+
+      // Jupiter route: deserialize and send via Solana wallet
+      const swapTransaction = solResult.swapTransaction;
+      if (!swapTransaction) {
+        throw new Error("No swap transaction returned from Jupiter. Please try again.");
+      }
 
       // Deserialize the transaction
       const txBytes = Buffer.from(swapTransaction, "base64");
@@ -507,10 +627,10 @@ export default function ChatPage() {
       const txHash = await (sendTransaction as (tx: VersionedTransaction, conn: Connection) => Promise<string>)(transaction, connection);
 
       // Wait for confirmation
-      toast.loading("Confirming transaction\u2026", { id: "swap-confirm" });
+      toast.loading("Confirming transaction…", { id: "swap-confirm" });
       await connection.confirmTransaction(txHash, "confirmed");
       toast.dismiss("swap-confirm");
-      toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}\u2026` });
+      toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}…` });
 
       // Update the message to show success
       setMessages(prev => prev.map(m =>
@@ -522,7 +642,7 @@ export default function ChatPage() {
       // Add a follow-up message
       addMessage({
         role: "assistant",
-        content: `\u2705 Your swap of ${quoteData.fromAmount} ${quoteData.fromToken} \u2192 ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken} is confirmed on-chain. Would you like to make another swap?`,
+        content: `✅ Your swap of ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken} is confirmed on-chain. Would you like to make another swap?`,
         type: "text",
       });
 
@@ -538,7 +658,7 @@ export default function ChatPage() {
     } finally {
       setExecutingId(null);
     }
-  }, [connected, publicKey, buildSwapTx, sendTransaction, addMessage, openWalletForChain]);
+  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum]);
 
   const handleCancelSwap = useCallback((msgId: string) => {
     setCancelledIds(prev => { const next = new Set(prev); next.add(msgId); return next; });

@@ -366,10 +366,33 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
     }
     addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}…`, type: "text" });
     try {
-      const { swapTransaction } = await buildSwapTx.mutateAsync({
+      const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: publicKey.toString(),
+        fromToken:     quoteData.fromToken,
+        toToken:       quoteData.toToken,
+        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
+        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "solana",
+        amount:        quoteData.fromAmount,
       });
+
+      // P2P route: HTLC coordinated by LightPeerContext / Oracle VM
+      if (solResult.route === "IntercomSwap P2P") {
+        addMessage({
+          role: "assistant",
+          content: solResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+          type: "text",
+        });
+        return;
+      }
+
+      // Jupiter route: deserialize and sign via Phantom
+      const swapTransaction = solResult.swapTransaction;
+      if (!swapTransaction) {
+        addMessage({ role: "assistant", content: "No swap transaction returned. Please try again.", type: "error" });
+        return;
+      }
+
       // Decode and sign via Phantom
       const { Connection, VersionedTransaction } = await import("@solana/web3.js");
       const connection = new Connection("https://api.mainnet-beta.solana.com");

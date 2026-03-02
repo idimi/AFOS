@@ -1,16 +1,25 @@
 /**
- * AFOS Conversational Agent Router — Multi-Chain v2
+ * AFOS Conversational Agent Router — Multi-Chain v3 (Unified P2P-First Architecture)
  *
- * Supported assets and routing:
- *   Solana:   SOL, USDT (SPL), USDC (SPL)  → Jupiter DEX
- *   Ethereum: ETH, USDT (ERC-20), USDC (ERC-20) → 1inch / IntercomSwap
- *   Bitcoin:  BTC → IntercomSwap P2P
+ * All three chains follow the same pattern:
+ *   PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+ *   FALLBACK: Chain-specific aggregator
+ *
+ * Routing per chain:
+ *   Solana:   IntercomSwap P2P → Jupiter DEX fallback
+ *   Ethereum: IntercomSwap P2P → 1inch aggregator fallback
+ *   Bitcoin:  IntercomSwap P2P → Direct HTLC (mempool.space) fallback
+ *
+ * Execution procedures:
+ *   buildSwapTx      — Solana swaps (P2P primary + Jupiter fallback)
+ *   executeEthSwap   — Ethereum swaps (P2P primary + 1inch fallback)
+ *   executeBtcSwap   — Bitcoin swaps (P2P primary + direct HTLC fallback)
  *
  * Flow:
  *   1. Parse user intent with LLM (fromToken, toToken, fromChain, toChain, amount)
  *   2. Fetch real quote from the appropriate DEX/aggregator
  *   3. Return structured quote_card response for frontend confirmation
- *   4. On confirmation: build the chain-appropriate transaction
+ *   4. On confirmation: submit RFQ to IntercomSwap P2P → fallback to chain aggregator
  */
 
 import { z } from "zod";
@@ -147,6 +156,159 @@ async function get1inchQuote(
     return { toAmount, gas: data.gas ?? data.estimatedGas ?? 0 };
   } catch (err) {
     console.warn("[1inch] Quote error:", err);
+    return null;
+  }
+}
+
+/**
+ * Build an executable 1inch swap transaction.
+ * Returns the raw tx payload { to, data, value } for eth_sendTransaction.
+ *
+ * Requires the sender wallet address (from) so 1inch can estimate gas correctly.
+ * The API key is optional — public endpoint works for quote-only, but the /swap
+ * endpoint may require ONEINCH_API_KEY for production use.
+ */
+async function get1inchSwapTx(
+  fromAsset: AssetDef,
+  toAsset: AssetDef,
+  amountRaw: string,
+  fromAddress: string,
+  slippage = 1
+): Promise<{ to: string; data: string; value: string; gas?: number } | null> {
+  try {
+    const apiKey = process.env.ONEINCH_API_KEY;
+    const params = new URLSearchParams({
+      src:              get1inchAddress(fromAsset),
+      dst:              get1inchAddress(toAsset),
+      amount:           amountRaw,
+      from:             fromAddress.toLowerCase(),
+      slippage:         String(slippage),
+      disableEstimate:  "false",
+      allowPartialFill: "false",
+    });
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept":       "application/json",
+    };
+    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+    const res = await fetch(`${ONEINCH_BASE}/swap?${params}`, {
+      headers,
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[1inch] Swap tx build failed: ${res.status} ${errText.slice(0, 120)}`);
+      return null;
+    }
+
+    const data = await res.json() as {
+      tx?: { to?: string; data?: string; value?: string | bigint; gas?: number };
+      // v6 may return top-level fields
+      to?: string; data?: string; value?: string | bigint; gas?: number;
+    };
+
+    const tx = data.tx ?? data;
+    if (!tx.to || !tx.data) return null;
+
+    return {
+      to:    tx.to,
+      data:  tx.data,
+      value: String(tx.value ?? "0x0"),
+      gas:   tx.gas,
+    };
+  } catch (err) {
+    console.warn("[1inch] Swap tx build error:", err);
+    return null;
+  }
+}
+
+// ─── Shared IntercomSwap P2P RFQ helper ───────────────────────────────────────
+// Used by all three chain execution procedures (Solana, Ethereum, Bitcoin)
+
+interface P2PQuoteResult {
+  rfqId?: string;
+  peerId?: string;
+  counterpartyPubKey?: string;
+  counterpartyAddress?: string;
+  rate?: number;
+  outAmount?: number;
+  route?: string;
+}
+
+/**
+ * Submit an RFQ to the IntercomSwap Oracle VM and wait for a P2P peer quote.
+ * Returns the best peer quote, or null if no peer responds within the timeout.
+ *
+ * This is the PRIMARY route for all three chains. If it returns null,
+ * each chain falls back to its own aggregator (Jupiter / 1inch / direct HTLC).
+ */
+async function submitIntercomSwapRfq(params: {
+  fromToken: string;
+  toToken: string;
+  amount: number;
+  fromChain: string;
+  toChain: string;
+  timeoutMs?: number;
+}): Promise<P2PQuoteResult | null> {
+  const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
+  const { fromToken, toToken, amount, fromChain, toChain, timeoutMs = 8000 } = params;
+
+  try {
+    console.log(`[IntercomSwap P2P] Submitting RFQ: ${fromToken} (${fromChain}) → ${toToken} (${toChain}), amount=${amount}`);
+
+    const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fromToken, toToken, amount, fromChain, toChain }),
+      signal: AbortSignal.timeout(timeoutMs),
+    }).catch(() => null);
+
+    if (!rfqRes?.ok) {
+      console.log(`[IntercomSwap P2P] RFQ failed: ${rfqRes?.status ?? "timeout/network error"}`);
+      return null;
+    }
+
+    const rfqData = await rfqRes.json().catch(() => null) as {
+      success?: boolean;
+      result?: {
+        rfqId?: string; id?: string;
+        peerId?: string; responderId?: string;
+        counterpartyPubKey?: string; peerPubKey?: string;
+        counterpartyAddress?: string; peerAddress?: string;
+        rate?: number; price?: number;
+        outAmount?: number;
+        route?: string;
+        p2pQuotes?: number;
+      };
+    } | null;
+
+    if (!rfqData?.success || !rfqData?.result) {
+      console.log("[IntercomSwap P2P] No matching peer found.");
+      return null;
+    }
+
+    const r = rfqData.result;
+    const quote: P2PQuoteResult = {
+      rfqId:               r.rfqId ?? r.id,
+      peerId:              r.peerId ?? r.responderId,
+      counterpartyPubKey:  r.counterpartyPubKey ?? r.peerPubKey,
+      counterpartyAddress: r.counterpartyAddress ?? r.peerAddress,
+      rate:                r.rate ?? r.price,
+      outAmount:           r.outAmount,
+      route:               r.route ?? ((r.p2pQuotes ?? 0) > 0 ? "p2p" : "dex"),
+    };
+
+    console.log(
+      `[IntercomSwap P2P] Peer matched: ${quote.peerId ?? "unknown"} ` +
+      `rate=${quote.rate} rfqId=${quote.rfqId} route=${quote.route}`
+    );
+    return quote;
+
+  } catch (err) {
+    console.warn("[IntercomSwap P2P] RFQ error:", err);
     return null;
   }
 }
@@ -564,27 +726,231 @@ export const chatRouter = router({
     }),
 
   /**
-   * Build a Jupiter swap transaction for Solana swaps.
+   * Build a Solana swap transaction.
+   * PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+   * FALLBACK: Jupiter DEX aggregator
+   *
    * Called when user clicks "Confirm Swap" for a Solana quote card.
+   * Returns either a P2P route descriptor (for HTLC coordination) or a
+   * Jupiter swapTransaction (base64-encoded VersionedTransaction).
    */
   buildSwapTx: publicProcedure
     .input(
       z.object({
         quoteResponse:  z.unknown(),
         userPublicKey:  z.string(),
+        /** Source token symbol (e.g. "SOL", "USDT") — used for P2P RFQ */
+        fromToken:      z.string().optional(),
+        /** Destination token symbol — used for P2P RFQ */
+        toToken:        z.string().optional(),
+        /** Source chain (default: solana) */
+        fromChain:      z.enum(["solana", "ethereum", "bitcoin"]).optional(),
+        /** Destination chain — if cross-chain, P2P is attempted first */
+        toChain:        z.enum(["solana", "ethereum", "bitcoin"]).optional(),
+        /** Human-readable swap amount (e.g. 1.5) — used for P2P RFQ */
+        amount:         z.number().positive().optional(),
+        /** Skip IntercomSwap P2P and go straight to Jupiter */
+        skipP2P:        z.boolean().optional().default(false),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, skipP2P } = input;
 
       if (!userPublicKey) throw new Error("Wallet not connected");
 
-      const result = await getJupiterSwapTx(quoteResponse, userPublicKey);
-      if (!result?.swapTransaction) {
-        throw new Error("Failed to build swap transaction. Please try again.");
+      // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
+      // Attempt P2P route first when token/amount context is available.
+      // Cross-chain swaps always go through P2P; same-chain Solana swaps
+      // also try P2P first for potentially better rates.
+      let p2pQuote: P2PQuoteResult | null = null;
+      const isCrossChain = toChain && toChain !== "solana";
+
+      if (!skipP2P && fromToken && toToken && amount) {
+        p2pQuote = await submitIntercomSwapRfq({
+          fromToken:  fromToken.toUpperCase(),
+          toToken:    toToken.toUpperCase(),
+          amount,
+          fromChain:  fromChain ?? "solana",
+          toChain:    toChain   ?? "solana",
+        });
       }
 
-      return { swapTransaction: result.swapTransaction };
+      // ── Step 2: If P2P peer matched, return P2P route ─────────────────────
+      // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
+      if (p2pQuote) {
+        return {
+          route:          "IntercomSwap P2P" as const,
+          p2pQuote,
+          swapTransaction: null,
+          message:
+            `IntercomSwap P2P peer matched (${p2pQuote.peerId ?? "peer"}). ` +
+            `Rate: ${p2pQuote.rate ?? "N/A"}. ` +
+            "Coordinating HTLC lock with counterparty via Oracle VM.",
+        };
+      }
+
+      // ── Step 3: Fallback — Jupiter DEX ────────────────────────────────────
+      // No P2P peer found (or P2P skipped / no context). Use Jupiter.
+      if (isCrossChain) {
+        // Cross-chain with no P2P peer — cannot use Jupiter (Solana-only)
+        throw new Error(
+          "No IntercomSwap P2P peer available for this cross-chain swap. " +
+          "Please try again or use the browser light peer for manual HTLC coordination."
+        );
+      }
+
+      const result = await getJupiterSwapTx(quoteResponse, userPublicKey);
+      if (!result?.swapTransaction) {
+        throw new Error("Failed to build swap transaction via Jupiter. Please try again.");
+      }
+
+      return {
+        route:          "Jupiter DEX" as const,
+        p2pQuote:       null,
+        swapTransaction: result.swapTransaction,
+        message:        "No P2P peer found — routing via Jupiter DEX.",
+      };
+    }),
+
+  /**
+   * Execute an Ethereum swap via the agent.
+   * PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+   * FALLBACK: 1inch aggregator (builds eth_sendTransaction calldata)
+   *
+   * In browser mode: returns tx calldata for wallet.eth_sendTransaction().
+   * In agent mode (ETH_AGENT_ADDRESS set): returns the calldata with a hint
+   * to sign and broadcast server-side.
+   *
+   * The browser light peer path (MetaMask, Phantom ETH, Coinbase) calls
+   * eth_sendTransaction directly with the returned { to, data, value }.
+   */
+  executeEthSwap: publicProcedure
+    .input(
+      z.object({
+        /** Sender's Ethereum address (checksummed or lowercase) */
+        fromAddress:  z.string(),
+        /** Source token symbol ("ETH", "USDT", "USDC") */
+        fromToken:    z.string(),
+        /** Destination token symbol */
+        toToken:      z.string(),
+        /** Source chain (default: ethereum) */
+        fromChain:    z.enum(["solana", "ethereum", "bitcoin"]).optional().default("ethereum"),
+        /** Destination chain */
+        toChain:      z.enum(["solana", "ethereum", "bitcoin"]).optional().default("ethereum"),
+        /** Human-readable amount to swap (e.g. 0.1 for 0.1 ETH) */
+        amount:       z.number().positive(),
+        /** Allowed slippage in percent (default: 1%) */
+        slippage:     z.number().min(0.1).max(50).optional().default(1),
+        /** Skip IntercomSwap P2P and go straight to 1inch */
+        skipP2P:      z.boolean().optional().default(false),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, slippage, skipP2P } = input;
+
+      // Resolve asset definitions
+      const normaliseToken = (sym: string, chain: string): string => {
+        // USDT_ETH / USDC_ETH are internal aliases — strip the _ETH suffix for 1inch
+        if (sym === "USDT_ETH") return "USDT";
+        if (sym === "USDC_ETH") return "USDC";
+        return sym;
+      };
+      const fromSymbol = normaliseToken(fromToken, fromChain);
+      const toSymbol   = normaliseToken(toToken,   toChain);
+
+      const fromAsset = getAsset(fromSymbol, fromChain as SupportedChain)
+        ?? getAsset(fromSymbol, "ethereum");
+      const toAsset   = getAsset(toSymbol,   toChain   as SupportedChain)
+        ?? getAsset(toSymbol,   "ethereum");
+
+      // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
+      let p2pQuote: P2PQuoteResult | null = null;
+
+      if (!skipP2P) {
+        p2pQuote = await submitIntercomSwapRfq({
+          fromToken:  fromSymbol.toUpperCase(),
+          toToken:    toSymbol.toUpperCase(),
+          amount,
+          fromChain,
+          toChain,
+        });
+      }
+
+      // ── Step 2: If P2P peer matched, return P2P route ─────────────────────
+      if (p2pQuote) {
+        return {
+          success:  true,
+          route:    "IntercomSwap P2P" as const,
+          p2pQuote,
+          // No on-chain tx needed yet — HTLC will be coordinated by LightPeerContext
+          tx:       null,
+          message:
+            `IntercomSwap P2P peer matched (${p2pQuote.peerId ?? "peer"}). ` +
+            `Rate: ${p2pQuote.rate ?? "N/A"}. ` +
+            "The browser light peer will coordinate the Ethereum HTLC lock via Oracle VM.",
+          nextStep:
+            `P2P counterparty ${p2pQuote.peerId ?? "peer"} matched via IntercomSwap. ` +
+            "Waiting for counterparty to lock their funds on the destination chain. " +
+            "Once confirmed, the HTLC secret will be revealed to complete the atomic swap.",
+        };
+      }
+
+      // ── Step 3: Fallback — 1inch aggregator ───────────────────────────────
+      // No P2P peer found. Build executable swap calldata via 1inch.
+      const p2pRoute = "Direct 1inch (no P2P peer)";
+
+      if (!fromAsset || !toAsset) {
+        return {
+          success:  false,
+          route:    p2pRoute,
+          p2pQuote: null,
+          tx:       null,
+          message:
+            `Unsupported token pair: ${fromToken} → ${toToken} on ${fromChain}. ` +
+            "Supported Ethereum tokens: ETH, USDT, USDC.",
+        };
+      }
+
+      // Amount in smallest unit (wei for ETH, 6-decimal units for stables)
+      const amountRaw = BigInt(
+        Math.floor(amount * Math.pow(10, fromAsset.decimals))
+      ).toString();
+
+      const swapTx = await get1inchSwapTx(fromAsset, toAsset, amountRaw, fromAddress, slippage);
+
+      if (swapTx) {
+        return {
+          success:  true,
+          route:    "1inch (Ethereum)" as const,
+          p2pQuote: null,
+          tx:       swapTx,
+          message:
+            `No P2P peer found — routing via 1inch aggregator. ` +
+            `Swap ${amount} ${fromSymbol} → ${toSymbol} on Ethereum. ` +
+            "Sign and broadcast the returned transaction with your Ethereum wallet.",
+          nextStep:
+            "Call eth_sendTransaction with the returned { to, data, value } payload " +
+            "using window.ethereum or your connected wallet provider.",
+        };
+      }
+
+      // ── Step 4: Final fallback — price estimate only ───────────────────────
+      // 1inch also failed (rate limit / no API key). Return a descriptive error
+      // so the frontend can show a helpful message.
+      return {
+        success:  false,
+        route:    "unavailable" as const,
+        p2pQuote: null,
+        tx:       null,
+        message:
+          `No swap route available for ${fromSymbol} → ${toSymbol} at this time. ` +
+          "IntercomSwap P2P found no matching peer, and 1inch aggregator is temporarily unavailable. " +
+          "Please try again in a few seconds, or use the browser light peer for manual coordination.",
+        hint: {
+          procedure: "trpc.chat.executeEthSwap",
+          suggestion: "Set ONEINCH_API_KEY env var for reliable 1inch access, or retry in 30s.",
+        },
+      };
     }),
 
   /**

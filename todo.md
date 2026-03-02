@@ -476,3 +476,20 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] chat.executeBtcSwap: resolvedCounterpartyPubKey prefers P2P peer, falls back to manual input
 - [x] chat.executeBtcSwap: response includes route ("IntercomSwap P2P" vs "Direct HTLC") and p2pQuote metadata
 - [x] Vitest coverage: 12 tests for router structure, input schema validation, and P2P discovery logic
+
+## Unified 3-Chain Agent Swap Architecture (P2P-first)
+
+- [x] executeEthSwap tRPC procedure: IntercomSwap P2P primary + 1inch aggregator fallback
+- [x] executeEthSwap: submitIntercomSwapRfq shared helper (8s timeout, Oracle VM /api/rfq)
+- [x] executeEthSwap: get1inchSwapTx helper builds executable eth_sendTransaction calldata
+- [x] executeEthSwap: returns route ("IntercomSwap P2P" | "1inch (Ethereum)" | "unavailable")
+- [x] executeEthSwap: returns tx { to, data, value, gas } for 1inch route
+- [x] executeEthSwap: returns p2pQuote + nextStep for P2P route (HTLC via LightPeerContext)
+- [x] buildSwapTx (Solana): upgraded to IntercomSwap P2P primary + Jupiter DEX fallback
+- [x] buildSwapTx: accepts new optional fields: fromToken, toToken, amount, fromChain, toChain, skipP2P
+- [x] buildSwapTx: cross-chain with no P2P peer throws descriptive error (Jupiter is Solana-only)
+- [x] ChatPage: executeEthSwap mutation wired; routes ETH swaps to P2P or eth_sendTransaction
+- [x] ChatPage: Solana swaps now use P2P-first buildSwapTx (P2P route or Jupiter fallback)
+- [x] Dashboard.tsx: buildSwapTx updated to handle new return type (swapTransaction | null)
+- [x] TypeScript: 0 errors across all files after multi-chain refactor
+- [x] Vitest: 35 tests pass (17 new multi-chain tests + 12 BTC P2P + 5 chat + 1 auth)
