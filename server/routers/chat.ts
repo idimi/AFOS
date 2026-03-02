@@ -615,13 +615,93 @@ export const chatRouter = router({
         expiryHours: z.number().int().positive().default(24),
         /** Bitcoin network */
         network: z.enum(["mainnet", "testnet"]).default("mainnet"),
+        /** Destination token for cross-chain swaps (e.g. "USDT", "SOL") */
+        toToken: z.string().optional(),
+        /** Destination chain for cross-chain swaps */
+        toChain: z.enum(["bitcoin", "ethereum", "solana"]).optional(),
+        /** Skip IntercomSwap P2P discovery and go straight to direct HTLC */
+        skipP2P: z.boolean().optional().default(false),
       })
     )
     .mutation(async ({ input }) => {
-      const { senderAddress, amountBtc, expiryHours, network } = input;
+      const { senderAddress, amountBtc, expiryHours, network, toToken, toChain, skipP2P } = input;
       const amountSats = Math.round(amountBtc * 1e8);
 
-      // Fetch current block height for locktime calculation
+      // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
+      // Submit an RFQ to the IntercomSwap P2P network and wait up to 8 seconds
+      // for a counterparty quote. If a peer responds, use their pubkey for the
+      // HTLC. If no peer responds, fall back to direct HTLC.
+      const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
+      let p2pQuote: {
+        rfqId?: string;
+        peerId?: string;
+        counterpartyPubKey?: string;
+        rate?: number;
+        outAmount?: number;
+        route?: string;
+      } | null = null;
+
+      if (!skipP2P && toToken) {
+        try {
+          console.log(`[BTC Agent] Submitting RFQ to IntercomSwap P2P: BTC → ${toToken} (${amountBtc} BTC)`);
+          const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fromToken: "BTC",
+              toToken: toToken.toUpperCase(),
+              amount: amountBtc,
+              fromChain: "bitcoin",
+              toChain: toChain ?? "solana",
+            }),
+            signal: AbortSignal.timeout(8000),
+          }).catch(() => null);
+
+          if (rfqRes?.ok) {
+            const rfqData = await rfqRes.json().catch(() => null) as {
+              success?: boolean;
+              result?: {
+                rfqId?: string;
+                id?: string;
+                peerId?: string;
+                responderId?: string;
+                counterpartyPubKey?: string;
+                peerPubKey?: string;
+                rate?: number;
+                price?: number;
+                outAmount?: number;
+                route?: string;
+                p2pQuotes?: number;
+              };
+            } | null;
+
+            if (rfqData?.success && rfqData?.result) {
+              const r = rfqData.result;
+              p2pQuote = {
+                rfqId: r.rfqId ?? r.id,
+                peerId: r.peerId ?? r.responderId,
+                counterpartyPubKey: r.counterpartyPubKey ?? r.peerPubKey,
+                rate: r.rate ?? r.price,
+                outAmount: r.outAmount,
+                route: r.route ?? ((r.p2pQuotes ?? 0) > 0 ? "p2p" : "dex"),
+              };
+              console.log(
+                `[BTC Agent] P2P peer found: ${p2pQuote.peerId ?? "unknown"} ` +
+                `rate=${p2pQuote.rate} rfqId=${p2pQuote.rfqId} route=${p2pQuote.route}`
+              );
+            } else {
+              console.log("[BTC Agent] IntercomSwap returned no matching P2P peer.");
+            }
+          } else {
+            console.log(`[BTC Agent] IntercomSwap RFQ request failed: ${rfqRes?.status ?? "timeout"}`);
+          }
+        } catch (err) {
+          // P2P discovery failed — continue to direct HTLC fallback
+          console.warn("[BTC Agent] IntercomSwap P2P discovery error:", err);
+        }
+      }
+
+      // ── Step 2: Fetch current block height for locktime ───────────────────
       const mempoolBase = network === "testnet"
         ? "https://mempool.space/testnet/api"
         : "https://mempool.space/api";
@@ -632,7 +712,7 @@ export const chatRouter = router({
       const currentBlock = blockRes?.ok ? parseInt(await blockRes.text(), 10) : 840000;
       const locktime = currentBlock + Math.round(expiryHours * 6);
 
-      // Generate cryptographic HTLC secret (SHA256 preimage)
+      // ── Step 3: Generate cryptographic HTLC secret ────────────────────────
       const secretBytes = new Uint8Array(32);
       crypto.getRandomValues(secretBytes);
       const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -640,11 +720,13 @@ export const chatRouter = router({
       const secretHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
       const agentWif = process.env.BTC_AGENT_WIF;
+      const p2pRoute = p2pQuote ? "IntercomSwap P2P" : "Direct HTLC (no P2P peer)";
+
+      // Resolve counterparty pubkey: prefer P2P peer, then manual input
+      const resolvedCounterpartyPubKey = p2pQuote?.counterpartyPubKey ?? input.counterpartyPubKey;
 
       if (!agentWif) {
         // ── Demo mode ──────────────────────────────────────────────────────────
-        // Returns a realistic simulated response so the full UI flow works
-        // without requiring a funded agent wallet.
         const demoTxid = `${secretHash.slice(0, 16)}${
           Math.random().toString(36).slice(2, 10)
         }${
@@ -655,41 +737,50 @@ export const chatRouter = router({
         return {
           success: true,
           demo: true,
+          route: p2pRoute,
+          p2pQuote: p2pQuote ?? undefined,
           htlcAddress: demoHtlcAddr,
           txid: demoTxid,
           secretHash,
-          // NOTE: In production the secret is stored server-side and never
-          // returned to the client. In demo mode we return it for transparency.
           secret,
           locktime,
           amountSats,
           amountBtc,
           expiryHours,
           explorerUrl: `https://mempool.space/${network === "testnet" ? "testnet/" : ""}tx/${demoTxid}`,
-          message: `[DEMO] BTC HTLC lock initiated: ${amountBtc} BTC (${amountSats.toLocaleString()} sats). ` +
+          message:
+            `[DEMO] BTC HTLC lock via ${p2pRoute}: ${amountBtc} BTC (${amountSats.toLocaleString()} sats). ` +
+            (p2pQuote?.peerId ? `P2P peer: ${p2pQuote.peerId}. ` : "") +
+            (p2pQuote?.rate ? `Rate: ${p2pQuote.rate}. ` : "") +
             `HTLC address: ${demoHtlcAddr}. ` +
             `Secret hash: ${secretHash.slice(0, 16)}\u2026 ` +
             `Expiry: ${expiryHours}h (~${Math.round(expiryHours * 6)} blocks). ` +
             `Set BTC_AGENT_WIF env var to execute real on-chain transactions.`,
-          nextStep: "Waiting for counterparty to lock their funds on the destination chain. " +
-            "Once their lock is confirmed, the agent will reveal the secret to complete the atomic swap.",
+          nextStep: p2pQuote
+            ? `P2P counterparty ${p2pQuote.peerId ?? "peer"} matched via IntercomSwap. ` +
+              "Waiting for counterparty to lock their funds on the destination chain. " +
+              "Once confirmed, the agent will reveal the secret to complete the atomic swap."
+            : "No P2P peer found — direct HTLC initiated via mempool.space. " +
+              "Waiting for counterparty to lock their funds on the destination chain.",
         };
       }
 
       // ── Production mode ─────────────────────────────────────────────────────
-      // Delegate to the btcHtlc router which handles PSBT construction,
-      // signing with the agent WIF key, and broadcasting via mempool.space.
-      // The caller should use trpc.btcHtlc.htlcLock.mutate() directly for
-      // full control over senderPubKey, recipientPubKey, and amountSats.
       return {
         success: false,
         demo: false,
-        message: "Production BTC HTLC: call trpc.btcHtlc.htlcLock with senderAddress, senderPubKey, " +
-          "recipientPubKey, amountSats, expiryHours, and network for full on-chain execution.",
+        route: p2pRoute,
+        p2pQuote: p2pQuote ?? undefined,
+        message:
+          "Production BTC HTLC: call trpc.btcHtlc.htlcLock with senderAddress, senderPubKey, " +
+          "recipientPubKey, amountSats, expiryHours, and network for full on-chain execution." +
+          (p2pQuote ? ` IntercomSwap P2P peer ${p2pQuote.peerId ?? ""} matched — using their pubkey as recipientPubKey.` : ""),
         hint: {
           procedure: "trpc.btcHtlc.htlcLock",
           params: {
             senderAddress,
+            senderPubKey: input.senderPubKey,
+            recipientPubKey: resolvedCounterpartyPubKey,
             amountSats,
             expiryHours,
             network,

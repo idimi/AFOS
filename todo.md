@@ -466,3 +466,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire agent BTC HTLC into chat intent parser: chat.executeBtcSwap procedure + ChatPage/Dashboard BTC path
 - [x] MultiChainWalletContext: expose btcSignPsbt() helper that auto-routes to Phantom/Xverse/Tap/MetaMask signPsbt API
 - [x] Xverse added as fully supported BTC provider in connectBitcoin flow
+
+## BTC Agent — IntercomSwap P2P Path
+
+- [x] Wire BTC agent swap through IntercomSwap RFQ (submitRfq → poll quotes → pick best peer → htlcLock)
+- [x] Fallback: if no IntercomSwap peer found within timeout, fall back to direct mempool.space HTLC
+- [x] chat.executeBtcSwap: add toToken/toChain/skipP2P inputs for P2P discovery control
+- [x] chat.executeBtcSwap: Step 1 queries Oracle VM /api/rfq with 8s timeout, extracts counterpartyPubKey
+- [x] chat.executeBtcSwap: resolvedCounterpartyPubKey prefers P2P peer, falls back to manual input
+- [x] chat.executeBtcSwap: response includes route ("IntercomSwap P2P" vs "Direct HTLC") and p2pQuote metadata
+- [x] Vitest coverage: 12 tests for router structure, input schema validation, and P2P discovery logic
