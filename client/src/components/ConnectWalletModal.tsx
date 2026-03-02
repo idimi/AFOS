@@ -106,6 +106,54 @@ function WalletConnectedToast({
   );
 }
 
+/** Fire a rich wallet-disconnected toast — shows which chains were dropped */
+export function showWalletDisconnectedToast(walletName: string, chains: ChainTab[]) {
+  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin" };
+  toast.custom(
+    () => (
+      <div
+        className="w-full max-w-sm rounded-xl px-4 py-3 shadow-lg"
+        style={{
+          background: "var(--popover)",
+          border: "1px solid rgba(100,116,139,0.35)",
+          boxShadow: "0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5"
+            style={{ background: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.3)" }}
+          >
+            <Wallet className="w-4 h-4" style={{ color: "#94a3b8" }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+              {walletName} disconnected
+            </p>
+            <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+              {chains.map(chain => (
+                <span
+                  key={chain}
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{
+                    background: `${CHAIN_DOTS[chain]}18`,
+                    color: `${CHAIN_DOTS[chain]}99`,
+                    border: `1px solid ${CHAIN_DOTS[chain]}30`,
+                    textDecoration: "line-through",
+                  }}
+                >
+                  {CHAIN_LABELS[chain]}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    ),
+    { duration: 3000 }
+  );
+}
+
 /** Fire a rich wallet-connected toast — shows all connected chain addresses in one card */
 export function showWalletConnectedToast(walletName: string, chainAddresses: ChainAddress[]) {
   toast.custom(

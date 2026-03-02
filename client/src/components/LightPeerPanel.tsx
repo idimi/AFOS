@@ -12,9 +12,9 @@ import {
   Radio, Settings2, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Clock, Zap, TrendingUp,
   Users, Shield, AlertCircle, RefreshCw,
-  ToggleLeft, ToggleRight, Info,
+  ToggleLeft, ToggleRight, Info, Lock,
 } from "lucide-react";
-import { useLightPeer, type IncomingRfq } from "../contexts/LightPeerContext";
+import { useLightPeer, type IncomingRfq, type HtlcStep } from "../contexts/LightPeerContext";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 
@@ -482,6 +482,96 @@ export default function LightPeerPanel() {
               )}
 
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── HTLC Signing Progress Dialog ── */}
+      <AnimatePresence>
+        {peer.htlcSigning && peer.htlcSigning.step !== "idle" && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
+            onClick={(e) => {
+              const step = peer.htlcSigning?.step;
+              if (e.target === e.currentTarget && step !== "signing" && step !== "locking") {
+                peer.dismissHtlc();
+              }
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="rounded-2xl p-6 w-80"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Lock className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm font-bold text-foreground">HTLC Atomic Swap</span>
+              </div>
+
+              <div className="space-y-3 mb-5">
+                {(["signing", "locking", "revealing", "settled"] as HtlcStep[]).map((step, stepIdx) => {
+                  const steps: HtlcStep[] = ["signing", "locking", "revealing", "settled"];
+                  const currentIdx = steps.indexOf(peer.htlcSigning!.step);
+                  const isDone = peer.htlcSigning!.step === "settled" || stepIdx < currentIdx;
+                  const isActive = peer.htlcSigning!.step === step;
+                  const labels: Record<string, string> = {
+                    signing: "Sign HTLC lock transaction",
+                    locking: "Lock funds in escrow",
+                    revealing: "Reveal secret hash",
+                    settled: "Atomic settlement complete",
+                  };
+                  return (
+                    <div key={step} className="flex items-center gap-3">
+                      <div
+                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                        style={{
+                          background: isDone ? "rgba(16,185,129,0.2)" : isActive ? "rgba(6,182,212,0.2)" : "var(--muted)",
+                          border: `1px solid ${isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--border)"}`,
+                          color: isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--muted-foreground)",
+                        }}
+                      >
+                        {isDone ? "✓" : isActive ? <span className="animate-spin inline-block">◌</span> : stepIdx + 1}
+                      </div>
+                      <span className="text-xs" style={{ color: isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--muted-foreground)" }}>
+                        {labels[step]}
+                      </span>
+                    </div>
+                  );
+                })}
+
+                {peer.htlcSigning.step === "failed" && (
+                  <div className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
+                      style={{ background: "rgba(239,68,68,0.2)", border: "1px solid #ef4444", color: "#ef4444" }}
+                    >✗</div>
+                    <span className="text-xs text-red-400">{peer.htlcSigning.error ?? "Signing failed"}</span>
+                  </div>
+                )}
+              </div>
+
+              {peer.htlcSigning.txHash && (
+                <div className="rounded-lg px-3 py-2 mb-4" style={{ background: "var(--muted)" }}>
+                  <div className="text-[9px] text-slate-500 mb-0.5">Transaction Hash</div>
+                  <div className="text-[10px] font-mono text-emerald-400 break-all">{peer.htlcSigning.txHash}</div>
+                </div>
+              )}
+
+              {(peer.htlcSigning.step === "settled" || peer.htlcSigning.step === "failed") && (
+                <button
+                  onClick={peer.dismissHtlc}
+                  className="w-full py-2 rounded-xl text-xs font-bold transition-all hover:opacity-80"
+                  style={{ background: "rgba(6,182,212,0.15)", color: "#06b6d4", border: "1px solid rgba(6,182,212,0.3)" }}
+                >
+                  {peer.htlcSigning.step === "settled" ? "Done" : "Dismiss"}
+                </button>
+              )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

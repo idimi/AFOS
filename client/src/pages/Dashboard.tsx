@@ -288,6 +288,7 @@ interface MiniChatMessage {
 
 function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
   const { publicKey, balances } = useWallet();
+  const { bitcoin } = useMultiChainWallet();
   const [messages, setMessages] = useState<MiniChatMessage[]>([
     {
       id: "welcome",
@@ -314,13 +315,42 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
     }]);
   }, []);
 
-  const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
-
+   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
+  const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
   const handleConfirmSwap = useCallback(async (quoteData: QuoteData) => {
     const fromChain = quoteData.fromChain ?? "solana";
 
-    // Non-Solana swaps route through IntercomSwap — redirect user to Swaps page
-    if (fromChain !== "solana" || (quoteData.toChain && quoteData.toChain !== "solana")) {
+    // ── BTC swaps: use executeBtcSwap (agent HTLC) ──────────────────────────
+    if (fromChain === "bitcoin" || (quoteData.toChain && quoteData.toChain === "bitcoin")) {
+      const btcAddress = bitcoin?.address ?? "";
+      if (!btcAddress) {
+        addMessage({ role: "assistant", content: "Please connect a Bitcoin wallet first to execute BTC swaps.", type: "error" });
+        return;
+      }
+      addMessage({ role: "assistant", content: `Initiating BTC HTLC lock for ${quoteData.fromAmount} ${quoteData.fromToken}\u2026`, type: "text" });
+      try {
+        const result = await executeBtcSwap.mutateAsync({
+          senderAddress: btcAddress,
+          amountBtc: fromChain === "bitcoin" ? quoteData.fromAmount : quoteData.toAmount,
+          expiryHours: 24,
+          network: "mainnet",
+        });
+        const isDemoStr = result.demo ? " [DEMO]" : "";
+        addMessage({
+          role: "assistant",
+          content: result.success
+            ? `BTC HTLC lock initiated${isDemoStr}. Tx: ${result.txid?.slice(0, 12)}\u2026 ${result.nextStep ?? ""}`
+            : result.message ?? "BTC HTLC lock could not be completed.",
+          type: result.success ? "tx_success" : "error",
+        });
+      } catch (err: unknown) {
+        addMessage({ role: "assistant", content: `BTC swap failed: ${err instanceof Error ? err.message : "Unknown error"}`, type: "error" });
+      }
+      return;
+    }
+
+    // Non-Solana swaps (Ethereum) route through IntercomSwap — redirect user to Swaps page
+    if (fromChain !== "solana") {
       addMessage({
         role: "assistant",
         content: `This ${fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} swap routes via IntercomSwap. Head to the **Swaps** page with your ${fromChain === "ethereum" ? "MetaMask" : "Bitcoin"} wallet connected to confirm.`,
@@ -361,7 +391,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
       const msg = err instanceof Error ? err.message : "Transaction failed";
       addMessage({ role: "assistant", content: `Swap failed: ${msg}`, type: "error" });
     }
-  }, [publicKey, buildSwapTx, addMessage]);
+  }, [publicKey, buildSwapTx, executeBtcSwap, bitcoin, addMessage]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text ?? input).trim();
@@ -2680,6 +2710,7 @@ function StackHealthStrip() {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
+  const { ethereum: topbarEth, bitcoin: topbarBtc } = useMultiChainWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
@@ -2871,23 +2902,62 @@ export default function Dashboard() {
                 {headerPeers !== null ? `${headerPeers} peer${headerPeers === 1 ? '' : 's'}` : '— peers'}
               </span>
             </button>
-            {connected ? (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all"
-                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                {shortAddress}
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all"
-                style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}>
-                <Wallet className="w-3 h-3" />
-                Connect
-              </button>
-            )}
+            {/* Multi-chain wallet badge */}
+            <button
+              onClick={() => setShowWalletModal(true)}
+              title="Manage wallets"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 hover:opacity-90"
+              style={{
+                background: (connected || topbarEth?.connected || topbarBtc?.connected)
+                  ? "rgba(16,185,129,0.08)"
+                  : "rgba(59,130,246,0.12)",
+                border: (connected || topbarEth?.connected || topbarBtc?.connected)
+                  ? "1px solid rgba(16,185,129,0.25)"
+                  : "1px solid rgba(59,130,246,0.3)",
+              }}
+            >
+              {/* Chain dots */}
+              <span className="flex items-center gap-0.5">
+                {/* SOL dot */}
+                <span
+                  className="w-2 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    background: connected ? "#9945FF" : "rgba(153,69,255,0.2)",
+                    boxShadow: connected ? "0 0 5px rgba(153,69,255,0.6)" : "none",
+                  }}
+                  title={connected ? `Solana: ${shortAddress}` : "Solana: not connected"}
+                />
+                {/* ETH dot */}
+                <span
+                  className="w-2 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    background: topbarEth?.connected ? "#627EEA" : "rgba(98,126,234,0.2)",
+                    boxShadow: topbarEth?.connected ? "0 0 5px rgba(98,126,234,0.6)" : "none",
+                  }}
+                  title={topbarEth?.connected ? `Ethereum: ${topbarEth.shortAddress}` : "Ethereum: not connected"}
+                />
+                {/* BTC dot */}
+                <span
+                  className="w-2 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    background: topbarBtc?.connected ? "#F7931A" : "rgba(247,147,26,0.2)",
+                    boxShadow: topbarBtc?.connected ? "0 0 5px rgba(247,147,26,0.6)" : "none",
+                  }}
+                  title={topbarBtc?.connected ? `Bitcoin: ${topbarBtc.shortAddress}` : "Bitcoin: not connected"}
+                />
+              </span>
+              {/* Label */}
+              {(connected || topbarEth?.connected || topbarBtc?.connected) ? (
+                <span style={{ color: "#10b981" }}>
+                  {[connected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && "BTC"]
+                    .filter(Boolean).join(" + ")}
+                </span>
+              ) : (
+                <span style={{ color: "#60a5fa" }}>
+                  <Wallet className="w-3 h-3 inline mr-0.5" />Connect
+                </span>
+              )}
+            </button>
             <button
               onClick={toggleTheme}
               className="w-8 h-8 rounded-lg flex items-center justify-center transition-all hover:scale-110 active:scale-95"

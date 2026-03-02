@@ -420,7 +420,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Build quote engine: calculate competitive quotes from live prices + user-set spread/slippage preferences
 - [x] Build LightPeerPanel UI component: peer status (online/offline), quote settings (spread, accepted pairs, min/max size), active incoming RFQs
 - [x] Add peer badge to Swaps page header showing "You are a peer" when light peer is active
-- [ ] Wire light peer into order book: show user's own quotes in the live order book
+- [x] Wire light peer into order book: show user's own quotes in the live order book
 
 ## Wallet Connection Toast — Unified Single Toast
 
@@ -428,6 +428,41 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Upgrade WalletConnectedToast to show per-chain address rows (Solana / Ethereum / Bitcoin)
 - [x] Single rich toast card shows all connected wallet addresses when Phantom connects all chains
 - [x] Handle incoming RFQ: show notification/toast when someone wants to trade with you, allow accept/reject
-- [ ] In-browser HTLC signing: use connected wallet to sign HTLC lock transaction when accepting a trade
+- [x] In-browser HTLC signing: use connected wallet to sign HTLC lock transaction when accepting a trade
 - [x] Graceful disconnect: send peer_disconnected announcement when wallet disconnects or tab closes
 - [x] Persist peer preferences (spread, pairs, limits) in localStorage
+
+## Wallet UX — Disconnect Toast + Topbar Badge
+
+- [x] Unified disconnect toast: replace separate per-chain disconnect toasts with one card listing dropped chains
+- [x] Export showWalletDisconnectedToast from ConnectWalletModal and call from contexts
+- [x] Persistent multi-chain badge in topbar: SOL/ETH/BTC colored dots reflecting live connection status
+- [x] Badge opens Connect modal on click for quick wallet management
+
+## Advanced P2P Features — Order Book, HTLC, Reputation
+
+- [x] Order book: inject own light peer quote as highlighted "You" row with live rate vs other nodes
+- [x] Order book: show rate delta (better/worse %) vs best competing quote
+- [x] In-browser HTLC signing: prompt wallet to sign lock tx on RFQ accept (Solana + ETH)
+- [x] HTLC signing: show step-by-step progress (Lock → Reveal → Settle) in accept dialog
+- [x] Peer reputation score: track trades completed / quotes given per peer ID in localStorage
+- [x] Reputation badge: display score (0–100) and tier (New/Trusted/Elite) in order book rows
+- [x] Reputation: persist cross-session in localStorage, seed from SSE peer_connected events
+
+## Bitcoin HTLC Atomic Swap — Browser + Agent
+
+### Goal: BTC HTLC signing works in both browser (Xverse/Tap Wallet via PSBT) and AFOS agent (server-side via mempool.space)
+
+- [x] Audit all four BTC wallet signing APIs: Phantom (window.phantom.bitcoin.signPSBT), Xverse (window.XverseProviders.BitcoinProvider.signPsbt), Tap Wallet (window.tapwallet.signPsbt), MetaMask Snaps (BTC snap via wallet_invokeSnap)
+- [x] Build shared client-side BTC HTLC utilities (client/src/lib/btcHtlc.ts): P2WSH script builder, PSBT constructor (bitcoinjs-lib v7 + @noble/hashes), secret hash generator, provider auto-detection
+- [x] Provider detection: detect which BTC wallet is active (Phantom native SegWit / Xverse / Tap Wallet / MetaMask Snap) and route to correct signPsbt() call
+- [x] Extend LightPeerContext acceptRfq() with BTC path: build P2WSH PSBT, call detected provider's signPsbt(), broadcast signed PSBT via mempool.space /api/tx
+- [x] Show BTC HTLC steps in same Lock → Reveal → Settle progress dialog (reuse existing HtlcStep flow)
+- [x] Build server-side BTC HTLC router (server/routers/btcHtlc.ts): build raw HTLC tx, sign with ecpair/WIF, broadcast via mempool.space API
+- [x] Add tRPC procedure: btcHtlc.htlcLock — agent locks BTC in P2WSH HTLC escrow
+- [x] Add tRPC procedure: btcHtlc.htlcReveal — agent reveals secret and claims counterparty funds
+- [x] Add tRPC procedure: btcHtlc.htlcRefund — agent reclaims BTC after CLTV timeout
+- [x] Add tRPC procedure: btcHtlc.htlcStatus — polls mempool.space for confirmation count and HTLC state
+- [x] Wire agent BTC HTLC into chat intent parser: chat.executeBtcSwap procedure + ChatPage/Dashboard BTC path
+- [x] MultiChainWalletContext: expose btcSignPsbt() helper that auto-routes to Phantom/Xverse/Tap/MetaMask signPsbt API
+- [x] Xverse added as fully supported BTC provider in connectBitcoin flow

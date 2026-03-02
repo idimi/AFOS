@@ -27,6 +27,7 @@ import { Wallet } from "lucide-react";
 import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import LightPeerPanel from "../components/LightPeerPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
+import { usePeerReputation } from "../hooks/usePeerReputation";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -865,12 +866,17 @@ function buildFallbackOrders(fromSym: string, toSym: string, baseRate: number): 
   }).sort((a, b) => b.rate - a.rate);
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
+  ownQuote?: OrderBookEntry | null;
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
+  const { getReputation, recordQuote } = usePeerReputation();
+  // Record quote events for reputation tracking
+  const recordQuoteRef = useRef(recordQuote);
+  recordQuoteRef.current = recordQuote;
   // Start with empty — real SSE quotes will populate; fallback fills after 3s if none arrive
   const [orders, setOrders] = useState<OrderBookEntry[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
@@ -920,6 +926,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       setDataSource("live");
       setFlash(entry.id);
       setTimeout(() => setFlash(null), 800);
+      // Record this quote for peer reputation tracking
+      recordQuoteRef.current(entry.peer, entry.latency);
       setOrders(prev => {
         // Deduplicate by id, keep newest 7
         const next = [entry, ...prev.filter(o => o.id !== entry.id)].slice(0, 7);
@@ -962,7 +970,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
     return () => clearInterval(interval);
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 
-  const bestRate = orders.length > 0 ? Math.max(...orders.map(o => o.rate)) : baseRate;
+  // Include own quote in best rate calculation
+  const allRates = [
+    ...orders.map(o => o.rate),
+    ...(ownQuote ? [ownQuote.rate] : []),
+  ];
+  const bestRate = allRates.length > 0 ? Math.max(...allRates) : baseRate;
 
   return (
     <div
@@ -1014,7 +1027,68 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
       {/* Order rows */}
       <div className="divide-y" style={{ borderColor: "var(--border)" }}>
         <AnimatePresence mode="popLayout">
-          {orders.slice(0, 6).map((order, i) => {
+          {/* Own light peer quote — pinned at top with cyan highlight */}
+          {ownQuote && (
+            <motion.div
+              key="own-quote"
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="grid items-center px-4 py-2.5 transition-colors"
+              style={{
+                gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr",
+                background: "rgba(6,182,212,0.08)",
+                borderLeft: "2px solid rgba(6,182,212,0.6)",
+              }}
+            >
+              {/* Peer — You */}
+              <div>
+                <div className="flex items-center gap-1.5">
+                  {ownQuote.rate === bestRate && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
+                  <span className="text-[10px] font-mono text-cyan-400 font-bold">You</span>
+                  <span className="text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide"
+                    style={{ background: "rgba(6,182,212,0.2)", color: "#22d3ee" }}>LP</span>
+                </div>
+                <div className="text-[9px]" style={{ color: "rgba(6,182,212,0.6)" }}>
+                  {ownQuote.latency}ms ·
+                  {(() => {
+                    const delta = orders.length > 0
+                      ? ((ownQuote.rate - Math.max(...orders.map(o => o.rate))) / Math.max(...orders.map(o => o.rate))) * 100
+                      : 0;
+                    return (
+                      <span className={delta >= 0 ? "text-emerald-400" : "text-red-400"}>
+                        {delta >= 0 ? " ▲" : " ▼"}{Math.abs(delta).toFixed(2)}%
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+              {/* Offer */}
+              <div>
+                <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[ownQuote.fromSymbol] ?? "#94a3b8" }}>
+                  {ownQuote.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {ownQuote.fromSymbol}
+                </div>
+                <div className="text-[9px] text-slate-600">${ownQuote.usdValue.toFixed(0)}</div>
+              </div>
+              {/* Rate */}
+              <div>
+                <div className={`text-[10px] font-mono font-semibold ${ownQuote.rate === bestRate ? "text-amber-400" : "text-cyan-400"}`}>
+                  {ownQuote.rate.toFixed(4)}
+                </div>
+                <div className="text-[9px] text-slate-600">{ownQuote.toAmount} {ownQuote.toSymbol}</div>
+              </div>
+              {/* Expiry — live peer always fresh */}
+              <div>
+                <div className="text-[10px] font-mono text-cyan-500">live</div>
+                <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
+                  <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
+                </div>
+              </div>
+              {/* You are the maker — no accept button */}
+              <div className="text-[9px] text-cyan-600 font-mono">Quoting</div>
+            </motion.div>
+          )}
+          {orders.slice(0, ownQuote ? 5 : 6).map((order, i) => {
             const isBest = order.rate === bestRate;
             const isFlashing = flash === order.id;
             const expiryPct = (order.expiresIn / 60) * 100;
@@ -1033,6 +1107,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
                   <div className="flex items-center gap-1.5">
                     {isBest && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
                     <span className="text-[10px] font-mono text-slate-300">{order.peer}</span>
+                    {(() => {
+                      const rep = getReputation(order.peer);
+                      return (
+                        <span
+                          className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}
+                        >
+                          {rep.tierLabel}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
                 </div>
@@ -2111,7 +2195,37 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
           <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
 
           {/* Live Order Book */}
-          <LiveOrderBook fromToken={fromToken} toToken={toToken} onAccept={handleAcceptOrder} />
+          <LiveOrderBook
+            fromToken={fromToken}
+            toToken={toToken}
+            onAccept={handleAcceptOrder}
+            ownQuote={(() => {
+              if (!lightPeer.isOnline || !lightPeer.prefs.enabled) return null;
+              const pair = `${fromToken.symbol}/${toToken.symbol}`;
+              if (!lightPeer.prefs.acceptedPairs.includes(pair)) return null;
+              const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
+              const spreadMultiplier = 1 + lightPeer.prefs.spreadBps / 10000;
+              const myRate = baseRate * spreadMultiplier;
+              const myFromAmount = Math.max(
+                lightPeer.prefs.minTradeUsd / (fromToken.usdPrice || 1),
+                0.001,
+              );
+              const myToAmount = parseFloat((myFromAmount * myRate).toFixed(6));
+              return {
+                id: `own_${lightPeer.peerId ?? 'lp'}`,
+                peer: lightPeer.peerAlias || 'You',
+                fromSymbol: fromToken.symbol,
+                toSymbol: toToken.symbol,
+                fromAmount: myFromAmount,
+                toAmount: myToAmount,
+                rate: myRate,
+                usdValue: myFromAmount * (fromToken.usdPrice || 0),
+                expiresIn: 999,
+                latency: 1,
+                reputation: 100,
+              } satisfies OrderBookEntry;
+            })()}
+          />
 
           {/* HTLC Protocol Info — compact horizontal */}
           <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>

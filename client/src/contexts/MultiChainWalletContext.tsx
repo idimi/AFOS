@@ -21,12 +21,13 @@ import React, {
   ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { showWalletConnectedToast, showWalletDisconnectedToast } from "../components/ConnectWalletModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Chain = "solana" | "ethereum" | "bitcoin";
 export type EthProviderType = "metamask" | "coinbase" | "phantom";
-export type BtcProviderType = "metamask" | "tap" | "phantom";
+export type BtcProviderType = "metamask" | "tap" | "phantom" | "xverse";
 
 export interface ChainWallet {
   chain: Chain;
@@ -77,6 +78,14 @@ interface MultiChainWalletContextValue {
   ethConnecting: boolean;
   btcConnecting: boolean;
   phantomConnecting: boolean;
+  /**
+   * Unified BTC PSBT signing helper — auto-routes to whichever wallet is connected.
+   * Supports: Phantom, Xverse, Tap Wallet, MetaMask (Bitcoin Snap).
+   * @param psbtBase64 - Base64-encoded PSBT string
+   * @param inputsToSign - Array of input indices to sign
+   * @returns Signed PSBT as base64 string
+   */
+  btcSignPsbt: (psbtBase64: string, inputsToSign?: number[]) => Promise<string>;
 }
 
 const MultiChainWalletContext = createContext<MultiChainWalletContextValue | null>(null);
@@ -142,6 +151,14 @@ declare global {
       requestAccount: () => Promise<string>;
       getBalance: () => Promise<string>;
       getNetwork: () => Promise<string>;
+      signPsbt?: (psbtHex: string) => Promise<string>;
+    };
+    XverseProviders?: {
+      BitcoinProvider?: {
+        connect: (opts?: { purposes?: string[]; message?: string }) => Promise<{ addresses: { address: string; publicKey: string; purpose: string }[] }>;
+        signPsbt: (request: { psbt: string; inputsToSign: { address: string; signingIndexes: number[] }[] }) => Promise<{ psbt: string }>;
+        getBalance: () => Promise<{ confirmed: number; unconfirmed: number; total: number }>;
+      };
     };
     phantom?: {
       solana?: {
@@ -375,7 +392,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       return { usdc: 0, usdt: 0 };
     });
     setPhantomMultiChain(null);
-    toast.info("Phantom disconnected from all chains");
+    const phantomChains = (phantomMultiChain?.chains ?? ["solana", "ethereum", "bitcoin"]) as ("solana" | "ethereum" | "bitcoin")[];
+    showWalletDisconnectedToast("Phantom", phantomChains);
   }, []);
 
   // ── Ethereum (non-Phantom) ────────────────────────────────────────────────
@@ -460,7 +478,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // If Phantom was connected, disconnect all Phantom chains
       disconnectPhantom();
     } else {
-      toast.info("Ethereum wallet disconnected");
+      showWalletDisconnectedToast(ethereum?.walletName ?? "Ethereum Wallet", ["ethereum"]);
     }
   }, [phantomMultiChain, disconnectPhantom]);
 
@@ -590,6 +608,47 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, []);
 
+  // ── Xverse Bitcoin Connect ────────────────────────────────────────────────
+  const connectXverseBitcoin = useCallback(async () => {
+    const xverse = window.XverseProviders?.BitcoinProvider;
+    if (!xverse) {
+      toast.error("Xverse not detected", {
+        description: "Please install the Xverse browser extension.",
+        action: { label: "Install", onClick: () => window.open("https://www.xverse.app/download", "_blank") },
+      });
+      return;
+    }
+    try {
+      const result = await xverse.connect({ purposes: ["payment", "ordinals"], message: "AFOS needs access to your Bitcoin wallet" });
+      const paymentAddr = result.addresses.find(a => a.purpose === "payment");
+      const addr = paymentAddr?.address ?? result.addresses[0]?.address;
+      if (!addr) throw new Error("No Bitcoin address returned from Xverse");
+      const [{ btc, sats }, priceUsd] = await Promise.all([
+        fetchBtcBalanceFromMempool(addr),
+        fetchBtcPriceUsd(),
+      ]);
+      const balanceUsd = (sats / 1e8) * priceUsd;
+      setBitcoin({
+        chain: "bitcoin",
+        walletName: "Xverse",
+        address: addr,
+        shortAddress: shortAddr(addr),
+        balance: `${btc} BTC`,
+        balanceUsd,
+        symbol: "BTC",
+        connected: true,
+        connecting: false,
+        isPhantom: false,
+      });
+      showWalletConnectedToast("Xverse", [{ chain: "bitcoin", address: shortAddr(addr) }]);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      if (!msg.includes("cancel") && !msg.includes("reject")) {
+        toast.error("Xverse connection failed", { description: msg });
+      }
+    }
+  }, []);
+
   const connectBitcoin = useCallback(async (provider: BtcProviderType) => {
     // Route Phantom to the multi-chain connector
     if (provider === "phantom") {
@@ -599,18 +658,77 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     setBtcConnecting(true);
     try {
       if (provider === "metamask") await connectMetaMaskBitcoin();
+      else if (provider === "xverse") await connectXverseBitcoin();
       else await connectTapWallet();
     } finally {
       setBtcConnecting(false);
     }
-  }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain]);
+  }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain, connectXverseBitcoin]);
+
+  // ── Unified BTC PSBT signing ─────────────────────────────────────────────────
+  // Auto-routes to whichever BTC wallet is currently connected.
+  const btcSignPsbt = useCallback(async (psbtBase64: string, inputsToSign?: number[]): Promise<string> => {
+    const walletName = bitcoin?.walletName ?? (phantomMultiChain?.chains.includes("bitcoin") ? "Phantom" : null);
+    if (!walletName) throw new Error("No Bitcoin wallet connected");
+
+    // ── Phantom ──────────────────────────────────────────────────────────────
+    if (walletName === "Phantom" || bitcoin?.isPhantom) {
+      const ph = window.phantom?.bitcoin;
+      if (!ph) throw new Error("Phantom Bitcoin provider not available");
+      const psbtBytes = Uint8Array.from(atob(psbtBase64), c => c.charCodeAt(0));
+      const signedBytes = await ph.signPSBT(psbtBytes, {
+        inputsToSign: inputsToSign?.map(i => ({ index: i, sighashTypes: [0x01] })),
+      });
+      return btoa(Array.from(signedBytes).map(b => String.fromCharCode(b)).join(""));
+    }
+
+    // ── Xverse ───────────────────────────────────────────────────────────────
+    if (walletName === "Xverse") {
+      const xverse = window.XverseProviders?.BitcoinProvider;
+      if (!xverse) throw new Error("Xverse provider not available");
+      const address = bitcoin?.address ?? "";
+      const result = await xverse.signPsbt({
+        psbt: psbtBase64,
+        inputsToSign: [{ address, signingIndexes: inputsToSign ?? [0] }],
+      });
+      return result.psbt;
+    }
+
+    // ── Tap Wallet ────────────────────────────────────────────────────────────
+    if (walletName === "Tap Wallet") {
+      const tap = window.tracnetwork;
+      if (!tap?.signPsbt) throw new Error("Tap Wallet signPsbt not available");
+      const psbtHex = Array.from(Uint8Array.from(atob(psbtBase64), c => c.charCodeAt(0)))
+        .map(b => b.toString(16).padStart(2, "0")).join("");
+      const signedHex = await tap.signPsbt(psbtHex);
+      const signedBytes = signedHex.match(/.{2}/g)!.map(h => parseInt(h, 16));
+      return btoa(Array.from(signedBytes).map(b => String.fromCharCode(b)).join(""));
+    }
+
+    // ── MetaMask (Bitcoin Snap) ───────────────────────────────────────────────
+    if (walletName === "MetaMask") {
+      const eth = window.ethereum;
+      if (!eth) throw new Error("MetaMask not available");
+      const BITCOIN_SNAP_ID = "npm:@consensys/bitcoin-snap";
+      const result = await eth.request({
+        method: "wallet_invokeSnap",
+        params: {
+          snapId: BITCOIN_SNAP_ID,
+          request: { method: "btc_signPsbt", params: { psbt: psbtBase64, inputsToSign } },
+        },
+      }) as { signedPsbt: string };
+      return result.signedPsbt;
+    }
+
+    throw new Error(`btcSignPsbt: unsupported wallet "${walletName}"`);
+  }, [bitcoin, phantomMultiChain]);
 
   const disconnectBitcoin = useCallback(() => {
     if (bitcoin?.isPhantom) {
       disconnectPhantom();
     } else {
       setBitcoin(null);
-      toast.info("Bitcoin wallet disconnected");
+      showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
     }
   }, [bitcoin, disconnectPhantom]);
 
@@ -684,6 +802,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       ethConnecting,
       btcConnecting,
       phantomConnecting,
+      btcSignPsbt,
     }}>
       {children}
     </MultiChainWalletContext.Provider>

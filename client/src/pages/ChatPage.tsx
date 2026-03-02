@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/contexts/WalletContext";
+import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 
@@ -322,6 +323,7 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
+  const { bitcoin } = useMultiChainWallet();
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -342,6 +344,7 @@ export default function ChatPage() {
 
   const sendMessage = trpc.chat.sendMessage.useMutation();
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
+  const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
 
   // Read prefill from Swaps page "Send to Agent" button on mount
   // If afos_chat_autosend is set, auto-send the message immediately
@@ -442,7 +445,54 @@ export default function ChatPage() {
     setExecutingId(msgId);
 
     try {
-      // Build the Jupiter swap transaction
+      // ── BTC swaps: use executeBtcSwap (agent HTLC) or btcSignPsbt (browser light peer) ──
+      if (quoteData.fromChain === "bitcoin" || quoteData.toChain === "bitcoin") {
+        const btcAddress = bitcoin?.address ?? "";
+        if (!btcAddress) {
+          toast.error("Bitcoin wallet not connected", { description: "Please connect a Bitcoin wallet to execute BTC swaps." });
+          setExecutingId(null);
+          return;
+        }
+
+        toast.loading("Initiating BTC HTLC lock\u2026", { id: "btc-htlc" });
+        const result = await executeBtcSwap.mutateAsync({
+          senderAddress: btcAddress,
+          amountBtc: quoteData.fromChain === "bitcoin" ? quoteData.fromAmount : quoteData.toAmount,
+          expiryHours: 24,
+          network: "mainnet",
+        });
+        toast.dismiss("btc-htlc");
+
+        if (result.success) {
+          const isDemoStr = result.demo ? " [DEMO]" : "";
+          toast.success(`BTC HTLC lock initiated${isDemoStr}`, {
+            description: `Tx: ${result.txid?.slice(0, 12)}\u2026`,
+          });
+
+          setMessages(prev => prev.map(m =>
+            m.id === msgId
+              ? { ...m, type: "tx_success" as const, txHash: result.txid ?? "" }
+              : m
+          ));
+
+          addMessage({
+            role: "assistant",
+            content: result.message ?? `BTC HTLC lock created. ${result.nextStep ?? "Waiting for counterparty."}`,
+            type: "text",
+          });
+        } else {
+          addMessage({
+            role: "assistant",
+            content: result.message ?? "BTC HTLC lock could not be completed. Please try again.",
+            type: "error",
+          });
+        }
+
+        setExecutingId(null);
+        return;
+      }
+
+      // ── Solana swaps: Jupiter DEX ────────────────────────────────────────────────
       const { swapTransaction } = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: publicKey.toString(),
@@ -457,10 +507,10 @@ export default function ChatPage() {
       const txHash = await (sendTransaction as (tx: VersionedTransaction, conn: Connection) => Promise<string>)(transaction, connection);
 
       // Wait for confirmation
-      toast.loading("Confirming transaction…", { id: "swap-confirm" });
+      toast.loading("Confirming transaction\u2026", { id: "swap-confirm" });
       await connection.confirmTransaction(txHash, "confirmed");
       toast.dismiss("swap-confirm");
-      toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}…` });
+      toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}\u2026` });
 
       // Update the message to show success
       setMessages(prev => prev.map(m =>
@@ -472,7 +522,7 @@ export default function ChatPage() {
       // Add a follow-up message
       addMessage({
         role: "assistant",
-        content: `✅ Your swap of ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken} is confirmed on-chain. Would you like to make another swap?`,
+        content: `\u2705 Your swap of ${quoteData.fromAmount} ${quoteData.fromToken} \u2192 ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken} is confirmed on-chain. Would you like to make another swap?`,
         type: "text",
       });
 

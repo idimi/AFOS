@@ -13,6 +13,7 @@ import React, {
   ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { showWalletDisconnectedToast } from "../components/ConnectWalletModal";
 import {
   ConnectionProvider,
   WalletProvider as SolanaWalletProvider,
@@ -183,10 +184,11 @@ function WalletInner({ children }: { children: ReactNode }) {
   }, [solanaConnect]);
 
   const disconnect = useCallback(async () => {
+    const walletLabel = wallet?.adapter.name ?? "Solana Wallet";
     await solanaDisconnect();
     setBalances([]);
-    toast.info("Wallet disconnected");
-  }, [solanaDisconnect]);
+    showWalletDisconnectedToast(walletLabel, ["solana"]);
+  }, [solanaDisconnect, wallet]);
 
   const shortAddress = publicKey
     ? `${publicKey.toString().slice(0, 4)}...${publicKey.toString().slice(-4)}`
