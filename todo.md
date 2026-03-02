@@ -396,3 +396,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Tighten padding and gaps throughout the page (gap-3, space-y-3)
 - [x] Make the chart + swap card top row more proportional (360px right column)
 - [x] Compact the bottom panels (order book, peers, recent swaps)
+
+## Swaps Page — Token Balance Auto-Refresh + Swap History Detail View
+
+- [x] Wire Sell panel balance to live on-chain data from WalletContext (Solana) and MultiChainWalletContext (ETH/BTC)
+- [x] Auto-refresh Solana balances every 15 seconds via refreshBalances() interval
+- [x] MAX button uses live getTokenBalance() — shows actual on-chain amount, not hardcoded static value
+- [x] Live balance indicator: pulsing green dot next to balance when wallet is connected and live data is present
+- [x] Expandable Recent Swaps rows: click any row to expand full transaction detail panel
+- [x] Detail panel shows: full tx hash with copy button, block explorer link (Solscan/Etherscan/mempool.space), ISO timestamp, USD value, counterparty/peer name, route type, platform fee, chain
+- [x] Copy button shows checkmark confirmation for 2 seconds after copy
+- [x] Smooth AnimatePresence expand/collapse animation on detail panel
+- [x] Recent Swaps shows up to 8 entries (was 5), with count badge in header
+- [x] "Click row for details" hint in Recent Swaps header

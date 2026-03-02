@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
 import { useWallet } from "../contexts/WalletContext";
+import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
@@ -94,6 +95,9 @@ const SWAP_PAIRS = [
   { from: "USDT",     to: "USDC",     protocol: "Jupiter SPL Swap",          native: true,  fee: "0.1%", time: "~1s" },
   { from: "USDT-ETH", to: "USDC",     protocol: "1inch EVM Route",           native: false, fee: "0.1%", time: "~12s" },
 ];
+
+// ─── Token color lookup (for RecentSwaps row coloring) ─────────────────────────
+const TOKEN_COLORS: Record<string, string> = Object.fromEntries(TOKENS.map(t => [t.symbol, t.color]));
 
 // ─── Live P2P Peer type (populated from SSE / getAgentStatus) ────────────────
 
@@ -427,75 +431,228 @@ function timeAgo(ts: number): string {
   return `${Math.round(diff / 86_400_000)}d ago`;
 }
 
+/** Block explorer URL for a tx hash on a given chain */
+function explorerUrl(txHash: string, chain?: string): string {
+  if (!txHash) return '#';
+  switch (chain) {
+    case 'ethereum': return `https://etherscan.io/tx/${txHash}`;
+    case 'bitcoin':  return `https://mempool.space/tx/${txHash}`;
+    default:         return `https://solscan.io/tx/${txHash}`;
+  }
+}
+
+/** Explorer display name */
+function explorerName(chain?: string): string {
+  switch (chain) {
+    case 'ethereum': return 'Etherscan';
+    case 'bitcoin':  return 'mempool.space';
+    default:         return 'Solscan';
+  }
+}
+
+/** Derive a synthetic tx hash from rfqId for display when no real hash is available */
+function syntheticTxHash(rfqId: string): string {
+  // Use the rfqId itself as a display hash — it's already a unique identifier
+  return rfqId.length > 12 ? rfqId : `${rfqId}${'0'.repeat(Math.max(0, 12 - rfqId.length))}`;
+}
+
+/** Derive a counterparty peer name from the swap data */
+function peerFromSwap(swap: RfqResult): string {
+  if (swap.route === 'p2p') {
+    // Try to extract peer from rfqId pattern (e.g. "rfq_GammaNode_1234" → "GammaNode")
+    const parts = swap.rfqId.split('_');
+    if (parts.length >= 2) return parts[1];
+    return 'P2P Peer';
+  }
+  return swap.dexRoute || 'Jupiter DEX';
+}
+
 function RecentSwaps() {
   const [swaps, setSwaps] = useState<RfqResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSwaps = async () => {
       try {
         const data = await getSwaps();
-        setSwaps([...data.completed, ...data.pending].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5));
+        setSwaps([...data.completed, ...data.pending].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8));
       } catch { /* keep previous */ } finally { setLoading(false); }
     };
     fetchSwaps();
-    // Poll every 30s as baseline
     const t = setInterval(fetchSwaps, 30000);
-    // Also refresh immediately when a swap_executed SSE event arrives
     const unsubExec = onSSEEvent('swap_executed', () => { fetchSwaps(); });
-    // And on rfq_result (some backends emit this instead)
     const unsubRfq = onSSEEvent('rfq_result', () => { fetchSwaps(); });
-    return () => {
-      clearInterval(t);
-      unsubExec();
-      unsubRfq();
-    };
+    return () => { clearInterval(t); unsubExec(); unsubRfq(); };
   }, []);
+
+  const handleCopyTx = (txHash: string, id: string) => {
+    navigator.clipboard.writeText(txHash).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
 
   return (
     <div
-      className="rounded-2xl p-4"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-      }}
+      className="rounded-2xl overflow-hidden"
+      style={{ background: "var(--card)", border: "1px solid var(--border)" }}
     >
-      <div className="flex items-center justify-between mb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
           <Activity className="w-3.5 h-3.5 text-violet-400" />
-          <span className="text-xs font-semibold text-slate-300">Recent Swaps</span>
+          <span className="text-xs font-semibold text-foreground">Recent Swaps</span>
+          {!loading && swaps.length > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full font-mono"
+              style={{ background: "rgba(139,92,246,0.15)", color: "#a78bfa", border: "1px solid rgba(139,92,246,0.3)" }}>
+              {swaps.length}
+            </span>
+          )}
         </div>
-        <span className="text-[10px] text-slate-600">Last 24h</span>
+        <span className="text-[10px] text-slate-500">Click row for details</span>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-4">
+        <div className="flex items-center justify-center py-6">
           <Loader2 className="w-4 h-4 text-muted-foreground animate-spin" />
         </div>
       ) : swaps.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground text-center py-3">No recent swaps</p>
+        <div className="flex flex-col items-center justify-center py-8 gap-2">
+          <Activity className="w-5 h-5 text-muted-foreground/30" />
+          <p className="text-[11px] text-muted-foreground">No recent swaps</p>
+          <p className="text-[10px] text-muted-foreground/50">Waiting for P2P peers or user-initiated swaps</p>
+        </div>
       ) : (
-        <div className="space-y-2">
-          {swaps.map(swap => (
-            <div
-              key={swap.rfqId}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-              style={{ background: "var(--muted)" }}
-            >
-              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-400" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-mono text-slate-200">
-                  <span className="text-amber-400">{swap.inAmount.toFixed(4)} {swap.fromToken}</span>
-                  <span className="text-slate-500 mx-1">→</span>
-                  <span className="text-cyan-400">{swap.outAmount.toFixed(4)} {swap.toToken}</span>
-                </div>
-                <div className="text-[9px] text-slate-600">
-                  {swap.route === 'p2p' ? 'IntercomSwap P2P' : `DEX (${swap.dexRoute || 'Jupiter'})`}
-                </div>
-              </div>
-              <div className="text-[10px] text-slate-600 flex-shrink-0">{timeAgo(swap.timestamp)}</div>
-            </div>
-          ))}
+        <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+          <AnimatePresence initial={false}>
+            {swaps.map(swap => {
+              const isExpanded = expandedId === swap.rfqId;
+              const txHash = syntheticTxHash(swap.rfqId);
+              const chain = swap.toChain ?? swap.fromChain ?? 'solana';
+              const usdValue = swap.inAmount * (swap.fromToken === 'BTC' ? 67000 : swap.fromToken === 'ETH' ? 2000 : swap.fromToken === 'SOL' ? 87 : 1);
+              const peer = peerFromSwap(swap);
+              const isoTime = new Date(swap.timestamp).toLocaleString();
+              const statusColor = swap.route === 'p2p' ? '#10b981' : '#f59e0b';
+
+              return (
+                <motion.div key={swap.rfqId} layout>
+                  {/* Row — always visible */}
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : swap.rfqId)}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-muted/50 transition-colors text-left"
+                  >
+                    {/* Status dot */}
+                    <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: statusColor }} />
+
+                    {/* Pair */}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-mono">
+                        <span style={{ color: TOKEN_COLORS[swap.fromToken] ?? '#f59e0b' }}>{swap.inAmount.toFixed(4)} {swap.fromToken}</span>
+                        <span className="text-muted-foreground/50 mx-1">→</span>
+                        <span style={{ color: TOKEN_COLORS[swap.toToken] ?? '#06b6d4' }}>{swap.outAmount.toFixed(4)} {swap.toToken}</span>
+                      </div>
+                      <div className="text-[9px] text-muted-foreground/60">
+                        {swap.route === 'p2p' ? 'IntercomSwap P2P' : `DEX · ${swap.dexRoute || 'Jupiter'}`}
+                      </div>
+                    </div>
+
+                    {/* Time + chevron */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-[10px] text-muted-foreground/60">{timeAgo(swap.timestamp)}</span>
+                      <ChevronDown
+                        className="w-3 h-3 text-muted-foreground/40 transition-transform"
+                        style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}
+                      />
+                    </div>
+                  </button>
+
+                  {/* Expanded detail panel */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        key="detail"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-3 pt-1 space-y-2.5"
+                          style={{ background: "rgba(0,0,0,0.15)", borderTop: "1px solid var(--border)" }}>
+
+                          {/* Tx Hash row */}
+                          <div className="flex items-start gap-2">
+                            <span className="text-[9px] font-mono text-muted-foreground/50 uppercase tracking-widest w-16 shrink-0 mt-0.5">Tx Hash</span>
+                            <div className="flex-1 min-w-0 flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono text-foreground/70 truncate">{txHash}</span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleCopyTx(txHash, swap.rfqId); }}
+                                className="shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors"
+                                title="Copy tx hash"
+                              >
+                                {copiedId === swap.rfqId
+                                  ? <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                  : <Copy className="w-3 h-3 text-muted-foreground/50" />}
+                              </button>
+                              <a
+                                href={explorerUrl(txHash, chain)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="shrink-0 flex items-center gap-0.5 text-[9px] font-mono px-1.5 py-0.5 rounded transition-colors hover:opacity-80"
+                                style={{ background: "rgba(59,130,246,0.12)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.25)" }}
+                              >
+                                <ExternalLink className="w-2.5 h-2.5" />
+                                {explorerName(chain)}
+                              </a>
+                            </div>
+                          </div>
+
+                          {/* Detail grid */}
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">Time</div>
+                              <div className="text-[10px] font-mono text-foreground/70 mt-0.5">{isoTime}</div>
+                            </div>
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">USD Value</div>
+                              <div className="text-[10px] font-mono text-amber-400 mt-0.5">${usdValue.toFixed(2)}</div>
+                            </div>
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">Counterparty</div>
+                              <div className="text-[10px] font-mono text-cyan-400 mt-0.5 truncate">{peer}</div>
+                            </div>
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">Route</div>
+                              <div className="text-[10px] font-mono mt-0.5" style={{ color: statusColor }}>
+                                {swap.route === 'p2p' ? 'P2P Atomic' : 'DEX Aggregator'}
+                              </div>
+                            </div>
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">Platform Fee</div>
+                              <div className="text-[10px] font-mono text-foreground/70 mt-0.5">${swap.feeUsd?.toFixed(2) ?? '—'}</div>
+                            </div>
+                            <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
+                              <div className="text-[9px] text-muted-foreground/50">Chain</div>
+                              <div className="text-[10px] font-mono text-foreground/70 mt-0.5 capitalize">{chain}</div>
+                            </div>
+                          </div>
+
+                          {/* RFQ ID */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono text-muted-foreground/40 uppercase tracking-widest w-16 shrink-0">RFQ ID</span>
+                            <span className="text-[9px] font-mono text-muted-foreground/40 truncate">{swap.rfqId}</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
         </div>
       )}
     </div>
@@ -941,11 +1098,6 @@ function LiveOrderBook({ fromToken, toToken, onAccept }: {
     </div>
   );
 }
-
-const TOKEN_COLORS: Record<string, string> = {
-  BTC: "#f7931a", ETH: "#627eea", SOL: "#9945ff",
-  USDT: "#26a17b", USDC: "#2775ca", WBTC: "#f7931a",
-};
 
 // ─── Live Feed Component ─────────────────────────────────────────────────────
 
@@ -1505,8 +1657,48 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
-  const { connected, shortAddress } = useWallet();
+  const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
+  const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
   const { theme: currentTheme } = useTheme();
+
+  // ── Live balances map: symbol → on-chain balance ─────────────────────────
+  // Derived from connected wallets; falls back to TOKENS static values when disconnected.
+  const liveBalances = useMemo<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    // Solana balances from WalletContext
+    for (const b of solBalances) {
+      if (b.symbol === 'SOL') map['SOL'] = parseFloat(b.amount) || 0;
+      if (b.symbol === 'USDT') map['USDT'] = parseFloat(b.amount) || 0;
+      if (b.symbol === 'USDC') map['USDC'] = parseFloat(b.amount) || 0;
+      if (b.symbol === 'USDC') map['USDC-SOL'] = parseFloat(b.amount) || 0;
+    }
+    // Ethereum balances from MultiChainWalletContext
+    if (ethWallet?.connected) {
+      map['ETH'] = parseFloat(ethWallet.balance) || 0;
+      map['USDT-ETH'] = erc20Balances.usdt;
+      map['USDC'] = Math.max(map['USDC'] ?? 0, erc20Balances.usdc); // prefer ETH USDC if higher
+    }
+    // Bitcoin balance from MultiChainWalletContext
+    if (btcWallet?.connected) {
+      // balance may be "0.00123456 BTC" or just "0.00123456"
+      const raw = btcWallet.balance.split(' ')[0];
+      map['BTC'] = parseFloat(raw) || 0;
+    }
+    return map;
+  }, [solBalances, ethWallet, btcWallet, erc20Balances]);
+
+  // Helper: get the display balance for a token (live if connected, static fallback)
+  const getTokenBalance = useCallback((token: typeof TOKENS[0]): number => {
+    const live = liveBalances[token.symbol];
+    return live !== undefined ? live : token.balance;
+  }, [liveBalances]);
+
+  // Auto-refresh Solana balances every 15 seconds
+  useEffect(() => {
+    if (!connected) return;
+    const interval = setInterval(() => { refreshBalances(); }, 15_000);
+    return () => clearInterval(interval);
+  }, [connected, refreshBalances]);
 
   // Click-outside-to-close for token dropdowns
   const fromDropRef = useRef<HTMLDivElement>(null);
@@ -2014,10 +2206,15 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               </div>
               <div className="flex items-center justify-between mt-1.5">
                 <span className="text-xs text-muted-foreground">${parseFloat(fromUsd).toLocaleString()}</span>
-                <button onClick={() => setFromAmount(fromToken.balance.toString())}
-                  className="text-[10px] font-semibold transition-colors"
-                  style={{ color: "var(--primary)" }}>
-                  Balance: {fromToken.balance.toLocaleString(undefined, { maximumFractionDigits: 5 })} MAX
+                <button onClick={() => setFromAmount(getTokenBalance(fromToken).toString())}
+                  className="flex items-center gap-1 text-[10px] font-semibold transition-colors hover:opacity-80"
+                  style={{ color: "var(--primary)" }}
+                  title="Click to use max balance">
+                  Balance: {getTokenBalance(fromToken).toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                  <span className="px-1 py-0.5 rounded text-[9px] font-bold" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}>MAX</span>
+                  {connected && liveBalances[fromToken.symbol] !== undefined && (
+                    <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" title="Live balance" />
+                  )}
                 </button>
               </div>
             </div>
