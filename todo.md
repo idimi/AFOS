@@ -338,3 +338,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add sonner toast on node key copy
 - [x] Peer pill flash animation (green/red) on SSE peer_connected/peer_disconnected
 - [x] Real-time headerLastPair update via SSE swap_executed event
+
+## Wallet Connection UX Polish
+
+- [x] Improve toast visual in light mode (custom rich toast with chain chips, address, green border)
+- [x] Add connected success animation overlay to ConnectWalletModal with auto-dismiss after 1.6s

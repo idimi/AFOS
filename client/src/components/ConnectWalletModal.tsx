@@ -18,13 +18,14 @@
  * Clicking Phantom on any tab connects all available chains simultaneously.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { useWallet } from "@/contexts/WalletContext";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Wallet, CheckCircle2, ExternalLink, Loader2, Zap, Globe } from "lucide-react";
+import { toast } from "sonner";
 
 // ─── Wallet logos ─────────────────────────────────────────────────────────────
 
@@ -52,6 +53,76 @@ const CHAIN_DOTS: Record<ChainTab, string> = {
   bitcoin: "#F7931A",
 };
 
+// ─── Custom toast renderer for wallet connection ───────────────────────────────
+
+function WalletConnectedToast({
+  walletName,
+  chains,
+  address,
+}: {
+  walletName: string;
+  chains: ChainTab[];
+  address: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      {/* Green check circle */}
+      <div
+        className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5"
+        style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)" }}
+      >
+        <CheckCircle2 className="w-4 h-4" style={{ color: "#10b981" }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+          {walletName} connected
+        </p>
+        {/* Chain chips */}
+        <div className="flex items-center gap-1 mt-1 flex-wrap">
+          {chains.map(c => (
+            <span
+              key={c}
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+              style={{
+                background: `${CHAIN_DOTS[c]}22`,
+                color: CHAIN_DOTS[c],
+                border: `1px solid ${CHAIN_DOTS[c]}44`,
+              }}
+            >
+              {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
+            </span>
+          ))}
+        </div>
+        {/* Address */}
+        {address && (
+          <p className="text-[11px] font-mono mt-1" style={{ color: "var(--muted-foreground)" }}>
+            {address}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Fire a rich wallet-connected toast */
+export function showWalletConnectedToast(walletName: string, chains: ChainTab[], address: string) {
+  toast.custom(
+    () => (
+      <div
+        className="w-full max-w-sm rounded-xl px-4 py-3 shadow-lg"
+        style={{
+          background: "var(--popover)",
+          border: "1px solid rgba(16,185,129,0.35)",
+          boxShadow: "0 4px 24px rgba(16,185,129,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <WalletConnectedToast walletName={walletName} chains={chains} address={address} />
+      </div>
+    ),
+    { duration: 4000 }
+  );
+}
+
 interface ConnectWalletModalProps {
   open: boolean;
   onClose: () => void;
@@ -61,11 +132,44 @@ interface ConnectWalletModalProps {
 
 export default function ConnectWalletModal({ open, onClose, defaultChain = "solana" }: ConnectWalletModalProps) {
   const [activeChain, setActiveChain] = useState<ChainTab>(defaultChain);
+  // Success overlay state: null = hidden, otherwise holds the connection info to display
+  const [successState, setSuccessState] = useState<{
+    walletName: string;
+    chains: ChainTab[];
+    address: string;
+    accentColor: string;
+  } | null>(null);
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync active tab when modal opens with a new defaultChain
   useEffect(() => {
-    if (open) setActiveChain(defaultChain);
+    if (open) {
+      setActiveChain(defaultChain);
+      setSuccessState(null);
+    }
   }, [open, defaultChain]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
+    };
+  }, []);
+
+  /** Show the success overlay then auto-close the modal */
+  const showSuccessAndClose = (
+    walletName: string,
+    chains: ChainTab[],
+    address: string,
+    accentColor: string
+  ) => {
+    setSuccessState({ walletName, chains, address, accentColor });
+    showWalletConnectedToast(walletName, chains, address);
+    dismissTimerRef.current = setTimeout(() => {
+      setSuccessState(null);
+      onClose();
+    }, 1600);
+  };
 
   // Solana
   const { connected: solConnected, walletName: solWalletName, shortAddress: solShortAddr, balances, totalUsd, disconnect: solDisconnect } = useWallet();
@@ -82,6 +186,46 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     disconnectPhantom,
     ethConnecting, btcConnecting, phantomConnecting,
   } = useMultiChainWallet();
+
+  // Watch for Phantom multi-chain connection completing and trigger success overlay
+  const prevPhantomRef = useRef(phantomMultiChain?.connected ?? false);
+  useEffect(() => {
+    const wasConnected = prevPhantomRef.current;
+    const isNowConnected = phantomMultiChain?.connected ?? false;
+    prevPhantomRef.current = isNowConnected;
+    if (!wasConnected && isNowConnected && open && !successState) {
+      const addr = phantomMultiChain?.solanaAddress
+        ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
+        : phantomMultiChain?.ethereumAddress
+        ? `${phantomMultiChain.ethereumAddress.slice(0, 6)}…${phantomMultiChain.ethereumAddress.slice(-4)}`
+        : "";
+      showSuccessAndClose("Phantom", (phantomMultiChain?.chains ?? []) as ChainTab[], addr, "#AB9FF2");
+    }
+  }, [phantomMultiChain?.connected, open]);
+
+  // Watch for Ethereum connection
+  const prevEthRef = useRef(ethereum?.connected ?? false);
+  useEffect(() => {
+    const wasConnected = prevEthRef.current;
+    const isNowConnected = ethereum?.connected ?? false;
+    prevEthRef.current = isNowConnected;
+    if (!wasConnected && isNowConnected && open && !successState) {
+      const addr = ethereum?.shortAddress ?? "";
+      showSuccessAndClose(ethereum?.walletName ?? "Ethereum Wallet", ["ethereum"], addr, "#627EEA");
+    }
+  }, [ethereum?.connected, open]);
+
+  // Watch for Bitcoin connection
+  const prevBtcRef = useRef(bitcoin?.connected ?? false);
+  useEffect(() => {
+    const wasConnected = prevBtcRef.current;
+    const isNowConnected = bitcoin?.connected ?? false;
+    prevBtcRef.current = isNowConnected;
+    if (!wasConnected && isNowConnected && open && !successState) {
+      const addr = bitcoin?.shortAddress ?? "";
+      showSuccessAndClose(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"], addr, "#F7931A");
+    }
+  }, [bitcoin?.connected, open]);
 
   const handleSolanaConnect = () => {
     onClose();
@@ -111,16 +255,111 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
           style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(10px)" }}
-          onClick={e => e.target === e.currentTarget && onClose()}
+          onClick={e => e.target === e.currentTarget && !successState && onClose()}
         >
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 40 }}
             transition={{ type: "spring", stiffness: 380, damping: 32 }}
-            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden"
+            className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl overflow-hidden relative"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
+            {/* ── Success overlay ── */}
+            <AnimatePresence>
+              {successState && (
+                <motion.div
+                  key="success-overlay"
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.04 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                  className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-5 px-6"
+                  style={{
+                    background: "var(--card)",
+                    borderRadius: "inherit",
+                  }}
+                >
+                  {/* Animated ring + check */}
+                  <motion.div
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 22, delay: 0.05 }}
+                    className="relative flex items-center justify-center"
+                  >
+                    {/* Outer glow ring */}
+                    <motion.div
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1.15, opacity: 0 }}
+                      transition={{ duration: 0.8, ease: "easeOut", delay: 0.1 }}
+                      className="absolute w-24 h-24 rounded-full"
+                      style={{ background: `${successState.accentColor}30` }}
+                    />
+                    {/* Inner circle */}
+                    <div
+                      className="w-20 h-20 rounded-full flex items-center justify-center"
+                      style={{
+                        background: `${successState.accentColor}18`,
+                        border: `2px solid ${successState.accentColor}55`,
+                        boxShadow: `0 0 32px ${successState.accentColor}30`,
+                      }}
+                    >
+                      <motion.div
+                        initial={{ scale: 0, rotate: -30 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: "spring", stiffness: 600, damping: 20, delay: 0.1 }}
+                      >
+                        <CheckCircle2 className="w-10 h-10" style={{ color: successState.accentColor }} />
+                      </motion.div>
+                    </div>
+                  </motion.div>
+
+                  {/* Text */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.18 }}
+                    className="text-center space-y-2"
+                  >
+                    <p className="text-lg font-bold text-foreground">{successState.walletName} connected</p>
+                    {/* Chain chips */}
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      {successState.chains.map(c => (
+                        <span
+                          key={c}
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                          style={{
+                            background: `${CHAIN_DOTS[c]}20`,
+                            color: CHAIN_DOTS[c],
+                            border: `1px solid ${CHAIN_DOTS[c]}40`,
+                          }}
+                        >
+                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
+                        </span>
+                      ))}
+                    </div>
+                    {successState.address && (
+                      <p className="text-xs font-mono text-muted-foreground">{successState.address}</p>
+                    )}
+                  </motion.div>
+
+                  {/* Progress bar */}
+                  <motion.div
+                    className="w-full max-w-[160px] h-0.5 rounded-full overflow-hidden"
+                    style={{ background: "var(--border)" }}
+                  >
+                    <motion.div
+                      initial={{ width: "0%" }}
+                      animate={{ width: "100%" }}
+                      transition={{ duration: 1.5, ease: "linear" }}
+                      className="h-full rounded-full"
+                      style={{ background: successState.accentColor }}
+                    />
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Drag handle (mobile) */}
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 rounded-full" style={{ background: "var(--border)" }} />
@@ -176,8 +415,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                     <div className="flex items-center gap-1 mt-0.5">
                       {phantomMultiChain.chains.map(c => (
                         <span key={c} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
-                          style={{ background: `${CHAIN_DOTS[c]}20`, color: CHAIN_DOTS[c] }}>
-                          {c.charAt(0).toUpperCase() + c.slice(1)}
+                          style={{ background: `${CHAIN_DOTS[c as ChainTab]}18`, color: CHAIN_DOTS[c as ChainTab] }}>
+                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
                         </span>
                       ))}
                     </div>
