@@ -1605,7 +1605,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                     </div>
                     {/* Accept button */}
                     <button
-                      onClick={() => onAccept(order)}
+                      onClick={() => { navigator.vibrate?.(50); onAccept(order); }}
                       className="px-4 py-2 rounded-xl text-[13px] font-bold transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                       style={{
                         background: isBest ? "rgba(59,130,246,0.25)" : "var(--muted)",
@@ -1672,7 +1672,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                   </div>
                   {/* Accept */}
                   <button
-                    onClick={() => onAccept(order)}
+                    onClick={() => { navigator.vibrate?.(50); onAccept(order); }}
                     className="px-2 py-1 rounded-lg text-[9px] font-bold transition-all hover:scale-105 active:scale-95"
                     style={{
                       background: isBest ? "rgba(59,130,246,0.2)" : "var(--muted)",
@@ -3109,6 +3109,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   sessionStorage.setItem('afos_chat_autosend', 'true');
                   onNavigateToChat(msg);
                 } else {
+                  navigator.vibrate?.(50);
                   handleSwap();
                 }
               }}

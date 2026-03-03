@@ -778,3 +778,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Keep desktop table layout unchanged (only affects mobile)
 - [x] Improve header on mobile: stack DEX depth row below offer count, larger text
 - [x] Own-quote (You/LP) row also uses card layout on mobile
+
+## Haptic Feedback on Accept
+
+- [x] Call navigator.vibrate(50) on Accept button tap in order book (mobile only)
+- [x] Also vibrate on Swap Now button tap in swap form
