@@ -746,3 +746,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Reorder mobile sections: Swap card, Chart (collapsible), Live Order Book, Recent Swaps, Light Peers, P2P Peers, HTLC Escrow
 - [x] Sticky swap card column on desktop (position: sticky, top offset)
 - [x] Collapsible chart on mobile with "Show chart ↓" toggle
+
+## Chart Pair Selector + Best Rate Badge
+
+- [x] Add chart pair selector to TradingView chart header (BTC/USDT, ETH/USDT, SOL/USDT, ETH/BTC, SOL/BTC) — independent of swap pair
+- [x] Add "Best rate" badge to Live Order Book top offer — compares P2P rate vs Jupiter DEX (SOL pairs) and 1inch DEX (ETH pairs, API key placeholder)
+- [x] Add dexBestRate state: fetch Jupiter quote for BTC/SOL pairs, 1inch quote stub for ETH pairs
+- [x] Highlight top offer row in green when P2P rate beats DEX reference rate
+- [x] Show badge "★ Best · beats Jupiter by X%" or "★ Best · beats 1inch by X%" on top row
+- [x] 1inch API key wired via VITE_ONEINCH_API_KEY env var (placeholder, activate when user provides key)

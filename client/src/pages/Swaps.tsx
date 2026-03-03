@@ -726,6 +726,31 @@ function ChainStatsBar() {
 
 // ─── TradingView Chart ───────────────────────────────────────────────────────
 
+// Chart pair options for the independent pair selector
+const CHART_PAIRS = [
+  { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT", color: "#f7931a" },
+  { label: "ETH/USDT", symbol: "BINANCE:ETHUSDT", color: "#627eea" },
+  { label: "SOL/USDT", symbol: "BINANCE:SOLUSDT", color: "#9945ff" },
+  { label: "ETH/BTC",  symbol: "BINANCE:ETHBTC",  color: "#627eea" },
+  { label: "SOL/BTC",  symbol: "BINANCE:SOLBTC",  color: "#9945ff" },
+] as const;
+
+function deriveTvSymbol(fromSym: string, toSym: string): string {
+  const from = fromSym.replace("-ETH", "").replace("-SOL", "");
+  const to = toSym.replace("-ETH", "").replace("-SOL", "");
+  const stables = ["USDT", "USDC"];
+  if (stables.includes(from) && !stables.includes(to)) return `BINANCE:${to}USDT`;
+  if (stables.includes(to) && !stables.includes(from)) return `BINANCE:${from}USDT`;
+  if (stables.includes(from) && stables.includes(to)) return "BINANCE:BTCUSDT";
+  if (from === "BTC" && to === "ETH") return "BINANCE:ETHBTC";
+  if (from === "ETH" && to === "BTC") return "BINANCE:ETHBTC";
+  if (from === "BTC" && to === "SOL") return "BINANCE:SOLBTC";
+  if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
+  if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
+  if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
+  return `BINANCE:${from}USDT`;
+}
+
 function TradingViewChart({ fromToken, toToken, theme }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
@@ -734,25 +759,23 @@ function TradingViewChart({ fromToken, toToken, theme }: {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<HTMLDivElement | null>(null);
 
-  // Derive the best TradingView symbol for this pair
-  const tvSymbol = useMemo(() => {
-    const from = fromToken.symbol.replace("-ETH", "").replace("-SOL", "");
-    const to = toToken.symbol.replace("-ETH", "").replace("-SOL", "");
-    // Stablecoin pairs — show the non-stable token vs USD
-    const stables = ["USDT", "USDC"];
-    if (stables.includes(from) && !stables.includes(to)) return `BINANCE:${to}USDT`;
-    if (stables.includes(to) && !stables.includes(from)) return `BINANCE:${from}USDT`;
-    if (stables.includes(from) && stables.includes(to)) return "BINANCE:BTCUSDT";
-    // Cross pairs
-    if (from === "BTC" && to === "ETH") return "BINANCE:ETHBTC";
-    if (from === "ETH" && to === "BTC") return "BINANCE:ETHBTC";
-    if (from === "BTC" && to === "SOL") return "BINANCE:SOLBTC";
-    if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
-    if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
-    if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
-    // Default: from token vs USD
-    return `BINANCE:${from}USDT`;
-  }, [fromToken.symbol, toToken.symbol]);
+  // Derive the default symbol from the active swap pair
+  const defaultSymbol = useMemo(
+    () => deriveTvSymbol(fromToken.symbol, toToken.symbol),
+    [fromToken.symbol, toToken.symbol],
+  );
+
+  // Independent chart pair — can differ from the swap pair
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(defaultSymbol);
+
+  // When the swap pair changes, auto-update the chart symbol
+  useEffect(() => {
+    setSelectedSymbol(defaultSymbol);
+  }, [defaultSymbol]);
+
+  // Active symbol label for display
+  const activePair = CHART_PAIRS.find(p => p.symbol === selectedSymbol);
+  const pairLabel = activePair?.label ?? selectedSymbol.replace("BINANCE:", "").replace("BITSTAMP:", "");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -768,7 +791,7 @@ function TradingViewChart({ fromToken, toToken, theme }: {
     const resolvedTheme = theme ?? (document.documentElement.classList.contains("dark") ? "dark" : "light");
     script.innerHTML = JSON.stringify({
       autosize: true,
-      symbol: tvSymbol,
+      symbol: selectedSymbol,
       interval: "60",
       timezone: "Etc/UTC",
       theme: resolvedTheme,
@@ -795,26 +818,44 @@ function TradingViewChart({ fromToken, toToken, theme }: {
       }
       widgetRef.current = null;
     };
-  }, [tvSymbol, theme]);
-
-  const pairLabel = useMemo(() => {
-    const from = fromToken.symbol.replace("-ETH", "").replace("-SOL", "");
-    const to = toToken.symbol.replace("-ETH", "").replace("-SOL", "");
-    return `${from}/${to}`;
-  }, [fromToken.symbol, toToken.symbol]);
+  }, [selectedSymbol, theme]);
 
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--card)", border: "1px solid var(--border)", height: 460 }}>
       {/* Chart header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between px-3 py-2 border-b gap-2" style={{ borderColor: "var(--border)" }}>
+        {/* Left: active pair label + TradingView badge */}
+        <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs font-bold font-mono text-foreground">{pairLabel}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono"
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono hidden sm:inline"
             style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#60a5fa" }}>
             TradingView
           </span>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">{tvSymbol}</span>
+        {/* Right: pair selector pills */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+          {CHART_PAIRS.map(pair => {
+            const isActive = selectedSymbol === pair.symbol;
+            return (
+              <button
+                key={pair.symbol}
+                onClick={() => setSelectedSymbol(pair.symbol)}
+                className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold transition-all"
+                style={isActive ? {
+                  background: `${pair.color}22`,
+                  border: `1px solid ${pair.color}66`,
+                  color: pair.color,
+                } : {
+                  background: "transparent",
+                  border: "1px solid var(--border)",
+                  color: "var(--muted-foreground)",
+                }}
+              >
+                {pair.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
       {/* Widget container */}
       <div ref={containerRef} className="tradingview-widget-container" style={{ height: 410, width: "100%" }} />
@@ -866,6 +907,134 @@ function buildFallbackOrders(fromSym: string, toSym: string, baseRate: number): 
   }).sort((a, b) => b.rate - a.rate);
 }
 
+// ─── DEX Reference Rate ──────────────────────────────────────────────────────
+// Token mint addresses for Jupiter (Solana)
+const JUPITER_MINTS: Record<string, string> = {
+  SOL:  "So11111111111111111111111111111111111111112",
+  USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+};
+
+// 1inch API key placeholder — will be wired when user provides key
+// Set VITE_ONEINCH_API_KEY in environment to enable live ETH pair comparisons
+const ONEINCH_API_KEY = import.meta.env.VITE_ONEINCH_API_KEY as string | undefined;
+
+// ERC-20 token addresses for 1inch (Ethereum)
+const ONEINCH_TOKENS: Record<string, string> = {
+  ETH:  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", // native ETH
+  USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+};
+
+interface DexRefRate {
+  rate: number | null;       // output-per-input rate (e.g. USDT per BTC)
+  source: "jupiter" | "1inch" | "none";
+  loading: boolean;
+  error: string | null;
+}
+
+/**
+ * Fetches a DEX reference rate for the given pair:
+ * - Jupiter (jup.ag v6) for SOL-ecosystem pairs
+ * - 1inch (v5.2, chain 1) for ETH-ecosystem pairs
+ * - Returns null rate for BTC pairs (no on-chain DEX)
+ */
+function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toUsdPrice: number): DexRefRate {
+  const [state, setState] = useState<DexRefRate>({ rate: null, source: "none", loading: false, error: null });
+
+  useEffect(() => {
+    const from = fromSym.replace("-ETH", "").replace("-SOL", "");
+    const to   = toSym.replace("-ETH", "").replace("-SOL", "");
+
+    // Determine which DEX to use
+    const isSolPair = (from === "SOL" || JUPITER_MINTS[from]) && (to === "SOL" || JUPITER_MINTS[to]);
+    const isEthPair = (from === "ETH" || ONEINCH_TOKENS[from]) && (to === "ETH" || ONEINCH_TOKENS[to]);
+
+    if (!isSolPair && !isEthPair) {
+      // BTC or cross-chain — use price ratio as fallback reference
+      const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
+      setState({ rate: fallbackRate, source: "none", loading: false, error: null });
+      return;
+    }
+
+    let cancelled = false;
+    setState(s => ({ ...s, loading: true, error: null }));
+
+    if (isSolPair) {
+      // Jupiter v6 quote: 0.001 input amount (in lamports/smallest unit)
+      const inputMint  = JUPITER_MINTS[from];
+      const outputMint = JUPITER_MINTS[to];
+      if (!inputMint || !outputMint) {
+        setState({ rate: toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null, source: "none", loading: false, error: null });
+        return;
+      }
+      const decimals = from === "SOL" ? 9 : 6;
+      const inAmount = Math.round(0.001 * Math.pow(10, decimals));
+      const outDecimals = to === "SOL" ? 9 : 6;
+      fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${inAmount}&slippageBps=50`)
+        .then(r => r.json())
+        .then((data: { outAmount?: string; error?: string }) => {
+          if (cancelled) return;
+          if (data.error || !data.outAmount) {
+            setState({ rate: null, source: "jupiter", loading: false, error: data.error ?? "No quote" });
+            return;
+          }
+          const outAmount = parseInt(data.outAmount, 10) / Math.pow(10, outDecimals);
+          const inAmountHuman = inAmount / Math.pow(10, decimals);
+          const rate = outAmount / inAmountHuman;
+          setState({ rate, source: "jupiter", loading: false, error: null });
+        })
+        .catch(err => {
+          if (cancelled) return;
+          setState({ rate: null, source: "jupiter", loading: false, error: String(err) });
+        });
+    } else if (isEthPair) {
+      if (!ONEINCH_API_KEY) {
+        // 1inch API key not configured — use price ratio as placeholder
+        const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
+        setState({ rate: fallbackRate, source: "1inch", loading: false, error: "API key not configured" });
+        return;
+      }
+      // 1inch v5.2 quote on Ethereum mainnet (chain 1)
+      const srcToken  = ONEINCH_TOKENS[from];
+      const dstToken  = ONEINCH_TOKENS[to];
+      if (!srcToken || !dstToken) {
+        setState({ rate: toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null, source: "none", loading: false, error: null });
+        return;
+      }
+      const srcDecimals = from === "ETH" ? 18 : 6;
+      const dstDecimals = to === "ETH" ? 18 : 6;
+      const amount = (0.001 * Math.pow(10, srcDecimals)).toFixed(0);
+      fetch(`https://api.1inch.dev/swap/v6.0/1/quote?src=${srcToken}&dst=${dstToken}&amount=${amount}`, {
+        headers: { Authorization: `Bearer ${ONEINCH_API_KEY}` },
+      })
+        .then(r => r.json())
+        .then((data: { dstAmount?: string; error?: string }) => {
+          if (cancelled) return;
+          if (data.error || !data.dstAmount) {
+            setState({ rate: null, source: "1inch", loading: false, error: data.error ?? "No quote" });
+            return;
+          }
+          const dstAmount = parseInt(data.dstAmount, 10) / Math.pow(10, dstDecimals);
+          const srcAmount = parseFloat(amount) / Math.pow(10, srcDecimals);
+          const rate = dstAmount / srcAmount;
+          setState({ rate, source: "1inch", loading: false, error: null });
+        })
+        .catch(err => {
+          if (cancelled) return;
+          setState({ rate: null, source: "1inch", loading: false, error: String(err) });
+        });
+    }
+
+    return () => { cancelled = true; };
+  // Refresh every 30 seconds
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromSym, toSym]);
+
+  return state;
+}
+
 function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
@@ -874,6 +1043,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
+  // DEX reference rate for best-rate badge
+  const dexRef = useDexRefRate(fromToken.symbol, toToken.symbol, fromToken.usdPrice, toToken.usdPrice);
   // Record quote events for reputation tracking
   const recordQuoteRef = useRef(recordQuote);
   recordQuoteRef.current = recordQuote;
@@ -977,6 +1148,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
   ];
   const bestRate = allRates.length > 0 ? Math.max(...allRates) : baseRate;
 
+  // DEX comparison: does the best P2P rate beat the DEX reference?
+  const dexBeatsPct = (dexRef.rate && dexRef.rate > 0 && bestRate > 0)
+    ? ((bestRate - dexRef.rate) / dexRef.rate) * 100
+    : null;
+  const beatsDex = dexBeatsPct !== null && dexBeatsPct > 0;
+
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -1000,7 +1177,19 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
         </div>
         <div className="text-right">
           <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
-          <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
+          {/* DEX reference rate row */}
+          {dexRef.loading ? (
+            <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              <span>Fetching {dexRef.source === "1inch" ? "1inch" : "Jupiter"}…</span>
+            </div>
+          ) : dexRef.rate && dexRef.source !== "none" ? (
+            <div className="text-[9px] text-slate-500">
+              {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
+            </div>
+          ) : (
+            <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
+          )}
         </div>
       </div>
 
@@ -1092,15 +1281,20 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
             const isBest = order.rate === bestRate;
             const isFlashing = flash === order.id;
             const expiryPct = (order.expiresIn / 60) * 100;
+            // Best-rate badge: only on the top offer, only when it beats the DEX
+            const showBestBadge = isBest && beatsDex && dexBeatsPct !== null;
             return (
               <motion.div
                 key={order.id}
                 initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0, background: isFlashing ? "rgba(59,130,246,0.12)" : "transparent" }}
+                animate={{ opacity: 1, x: 0, background: isFlashing ? "rgba(59,130,246,0.12)" : showBestBadge ? "rgba(16,185,129,0.05)" : "transparent" }}
                 exit={{ opacity: 0, x: 10 }}
                 transition={{ delay: i * 0.04 }}
                 className="grid items-center px-4 py-2.5 hover:bg-muted/50 transition-colors"
-                style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr" }}
+                style={{
+                  gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr",
+                  ...(showBestBadge ? { borderLeft: "2px solid rgba(16,185,129,0.6)" } : {}),
+                }}
               >
                 {/* Peer */}
                 <div>
@@ -1119,6 +1313,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
                     })()}
                   </div>
                   <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
+                  {/* Best-rate badge: beats DEX */}
+                  {showBestBadge && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <span
+                        className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                        style={{ background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
+                      >
+                        ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Offer amount */}
