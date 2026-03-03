@@ -621,3 +621,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update getHtlcWallets tRPC procedure to return all 7 assets (not just SOL/ETH/BTC)
 - [x] Update HtlcWalletSection UI to render all 7 asset rows with chain badges and QR codes
 - [x] Update htlcWallet tests to cover new token balance fields
+
+## Bug Fix — USDT/USDC SOL showing "pending" instead of "live 0.00"
+
+- [x] Fix fetchSplBalance to return 0 (not null) when wallet has no token account — empty accounts array = 0 balance, not an error
+- [x] Fix live flag for SPL/ERC-20 tokens: if the RPC call succeeded (even with 0 balance), set live=true not pending
+- [x] Fix balance display: show "0.00" not "—" when balance is 0

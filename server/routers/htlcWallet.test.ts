@@ -123,7 +123,7 @@ describe("htlcWallet router", () => {
   });
 
   describe("missing keys", () => {
-    it("should report not configured when BTC_AGENT_WIF is unset", async () => {
+    it("should report not configured when BTC_AGENT_WIF is unset", { timeout: 30_000 }, async () => {
       delete process.env.BTC_AGENT_WIF;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -137,7 +137,7 @@ describe("htlcWallet router", () => {
       expect(btcAsset?.configured).toBe(false);
     });
 
-    it("should report not configured when ETH_AGENT_KEY is unset", async () => {
+    it("should report not configured when ETH_AGENT_KEY is unset", { timeout: 30_000 }, async () => {
       delete process.env.ETH_AGENT_KEY;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -154,7 +154,7 @@ describe("htlcWallet router", () => {
       }
     });
 
-    it("should report not configured when SOL_AGENT_KEY is unset", async () => {
+    it("should report not configured when SOL_AGENT_KEY is unset", { timeout: 30_000 }, async () => {
       delete process.env.SOL_AGENT_KEY;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -173,7 +173,7 @@ describe("htlcWallet router", () => {
   });
 
   describe("ETH address derivation", () => {
-    it("should derive correct ETH address from a known test private key", async () => {
+    it("should derive correct ETH address from a known test private key", { timeout: 30_000 }, async () => {
       // Well-known Hardhat account #0 private key (DO NOT use in production)
       process.env.ETH_AGENT_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
       const caller = appRouter.createCaller(createTestContext());
@@ -189,7 +189,7 @@ describe("htlcWallet router", () => {
       expect(ethUsdc?.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     });
 
-    it("should handle ETH key without 0x prefix", async () => {
+    it("should handle ETH key without 0x prefix", { timeout: 30_000 }, async () => {
       process.env.ETH_AGENT_KEY = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();

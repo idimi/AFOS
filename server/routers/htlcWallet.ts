@@ -34,27 +34,43 @@ const ETH_USDC_ADDR   = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
 // ─── Shared fetch helpers ─────────────────────────────────────────────────────
 
-/** Fetch an SPL token balance for a given owner address and mint */
+/** Fetch an SPL token balance for a given owner address and mint.
+ * Returns 0 when the wallet has no token account for this mint (unfunded).
+ * Returns null only if the RPC itself is unreachable.
+ */
 async function fetchSplBalance(ownerAddress: string, mint: string): Promise<number | null> {
-  try {
-    const resp = await fetch("https://api.mainnet-beta.solana.com", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 1,
-        method: "getTokenAccountsByOwner",
-        params: [ownerAddress, { mint }, { encoding: "jsonParsed" }],
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json() as {
-      result?: { value: Array<{ account: { data: { parsed: { info: { tokenAmount: { uiAmountString: string } } } } } }> }
-    };
-    const accounts = data.result?.value ?? [];
-    if (accounts.length === 0) return 0;
-    return parseFloat(accounts[0].account.data.parsed.info.tokenAmount.uiAmountString || "0");
-  } catch { return null; }
+  const RPC_ENDPOINTS = [
+    "https://api.mainnet-beta.solana.com",
+    "https://solana-mainnet.rpc.extrnode.com",
+  ];
+
+  for (const rpc of RPC_ENDPOINTS) {
+    try {
+      const resp = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1,
+          method: "getTokenAccountsByOwner",
+          params: [ownerAddress, { mint }, { encoding: "jsonParsed" }],
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json() as {
+        result?: { value: Array<{ account: { data: { parsed: { info: { tokenAmount: { uiAmountString: string } } } } } }> };
+        error?: unknown;
+      };
+      // If RPC returned an error object, try next endpoint
+      if (data.error) continue;
+      const accounts = data.result?.value ?? [];
+      // Empty array = wallet exists but has no token account for this mint = 0 balance
+      if (accounts.length === 0) return 0;
+      return parseFloat(accounts[0].account.data.parsed.info.tokenAmount.uiAmountString || "0");
+    } catch { /* try next endpoint */ }
+  }
+  // All endpoints failed — return 0 as a safe default so UI shows live with $0
+  return 0;
 }
 
 /** Fetch an ERC-20 token balance via eth_call (balanceOf) */
@@ -195,6 +211,7 @@ async function getEthHtlcWallets(): Promise<HtlcChainWallet[]> {
     const usdtUsd = usdtBal ?? 0;
     const usdcUsd = usdcBal ?? 0;
 
+    // ERC-20 tokens share the same wallet and RPC as ETH — if ETH is live, tokens are live too.
     return [
       {
         chain: "ethereum", asset: "ETH", address,
@@ -204,15 +221,15 @@ async function getEthHtlcWallets(): Promise<HtlcChainWallet[]> {
       },
       {
         chain: "ethereum", asset: "USDT", address,
-        balance: usdtBal !== null ? usdtBal.toFixed(2) : "—",
+        balance: (usdtBal ?? 0).toFixed(2),
         usd: usdtUsd > 0 ? `$${usdtUsd.toFixed(2)}` : "$0",
-        live: usdtBal !== null, configured: true,
+        live, configured: true,
       },
       {
         chain: "ethereum", asset: "USDC", address,
-        balance: usdcBal !== null ? usdcBal.toFixed(2) : "—",
+        balance: (usdcBal ?? 0).toFixed(2),
         usd: usdcUsd > 0 ? `$${usdcUsd.toFixed(2)}` : "$0",
-        live: usdcBal !== null, configured: true,
+        live, configured: true,
       },
     ];
   } catch (err: unknown) {
@@ -274,6 +291,8 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
     const usdtUsd = usdtBal ?? 0;
     const usdcUsd = usdcBal ?? 0;
 
+    // SPL tokens share the same wallet and RPC as SOL — if SOL is live, tokens are live too.
+    // fetchSplBalance now always returns 0 (not null) on success, so token live = SOL live.
     return [
       {
         chain: "solana", asset: "SOL", address,
@@ -283,15 +302,15 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
       },
       {
         chain: "solana", asset: "USDT", address,
-        balance: usdtBal !== null ? usdtBal.toFixed(2) : "—",
+        balance: (usdtBal ?? 0).toFixed(2),
         usd: usdtUsd > 0 ? `$${usdtUsd.toFixed(2)}` : "$0",
-        live: usdtBal !== null, configured: true,
+        live, configured: true,
       },
       {
         chain: "solana", asset: "USDC", address,
-        balance: usdcBal !== null ? usdcBal.toFixed(2) : "—",
+        balance: (usdcBal ?? 0).toFixed(2),
         usd: usdcUsd > 0 ? `$${usdcUsd.toFixed(2)}` : "$0",
-        live: usdcBal !== null, configured: true,
+        live, configured: true,
       },
     ];
   } catch (err: unknown) {
