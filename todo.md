@@ -627,3 +627,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix fetchSplBalance to return 0 (not null) when wallet has no token account — empty accounts array = 0 balance, not an error
 - [x] Fix live flag for SPL/ERC-20 tokens: if the RPC call succeeded (even with 0 balance), set live=true not pending
 - [x] Fix balance display: show "0.00" not "—" when balance is 0
+
+## Portfolio Totals + Oracle VM Health + Analytics Wiring
+
+- [x] Add /api/health endpoint to Oracle VM server.js reporting ETH_RPC_URL, uptime, and RPC connectivity
+- [x] Add oracleVmHealth state to AdminPanel fetching Oracle VM /health endpoint on refresh
+- [x] Always show portfolio total row in HTLC Wallet header (remove totalUsd > 0 guard)
+- [x] Always show portfolio total row in Oracle VM Node Hot Wallet header
+- [x] Surface Oracle VM RPC health badges (ETH/SOL/BTC) in Admin panel Agent Wallet tab
+- [x] Confirmed Platform Liquidity in Analytics is wired to Oracle VM /api/wallet balances (already correct)

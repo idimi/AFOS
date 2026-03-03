@@ -203,6 +203,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [nodeWalletData, setNodeWalletData] = useState<WalletAsset[]>([]);
   const [nodeKey, setNodeKey] = useState<string | null>(null);
   const [nodeWalletLoading, setNodeWalletLoading] = useState(false);
+  const [oracleVmHealth, setOracleVmHealth] = useState<{
+    rpc: { eth: { url: string; ok: boolean }; sol: { url: string; ok: boolean }; btc: { url: string; ok: boolean } };
+  } | null>(null);
 
   // Oracle VM wallet addresses derived from agent keys (for all 7 assets)
   const { data: oracleVmAddresses } = trpc.htlcWallet.getOracleVmAddresses.useQuery(undefined, {
@@ -219,6 +222,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       setNodeWalletData(mergeWithAllAssets(data.wallets));
       setNodeKey(data.nodeKey);
     } catch { /* keep empty */ }
+    // Fetch Oracle VM health in parallel
+    try {
+      const healthResp = await fetch("http://141.253.123.101:4000/health");
+      if (healthResp.ok) {
+        const healthData = await healthResp.json() as { rpc: { eth: { url: string; ok: boolean }; sol: { url: string; ok: boolean }; btc: { url: string; ok: boolean } } };
+        setOracleVmHealth(healthData);
+      }
+    } catch { /* health optional */ }
     setNodeWalletLoading(false);
   };
 
@@ -846,6 +857,43 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <p className="text-[10px] text-amber-400">No node key configured. Set AGENT_WALLET_ADDRESS in environment.</p>
               )}
+
+              {/* Portfolio total — always visible */}
+              <div className="flex items-center gap-2 mt-3 p-2 rounded-lg" style={{ background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.15)" }}>
+                <DollarSign className="w-3.5 h-3.5 text-cyan-400" />
+                {nodeWalletLoading && nodeWalletData.length === 0 ? (
+                  <span className="text-xs font-mono text-muted-foreground">Loading...</span>
+                ) : (
+                  <>
+                    <span className="text-xs font-mono font-bold text-foreground">
+                      ${nodeWalletData.reduce((sum, w) => {
+                        const usdNum = parseFloat((w.usd || '$0').replace(/[$,]/g, ''));
+                        return sum + (isNaN(usdNum) ? 0 : usdNum);
+                      }, 0).toFixed(2)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">total across all 7 node assets</span>
+                  </>
+                )}
+              </div>
+
+              {/* RPC health badges */}
+              {oracleVmHealth && (
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  {(['eth', 'sol', 'btc'] as const).map(chain => {
+                    const rpc = oracleVmHealth.rpc[chain];
+                    const label = chain === 'eth' ? 'ETH RPC' : chain === 'sol' ? 'SOL RPC' : 'BTC RPC';
+                    const color = chain === 'eth' ? '#627EEA' : chain === 'sol' ? '#9945FF' : '#F7931A';
+                    return (
+                      <div key={chain} className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-mono"
+                        style={{ background: rpc.ok ? `${color}12` : 'rgba(239,68,68,0.1)', border: `1px solid ${rpc.ok ? color + '30' : 'rgba(239,68,68,0.3)'}`, color: rpc.ok ? color : '#ef4444' }}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: rpc.ok ? '#10b981' : '#ef4444' }} />
+                        {label}
+                        <span className="text-muted-foreground ml-0.5 truncate max-w-[80px]" title={rpc.url}>{rpc.url.replace('https://', '').split('/')[0]}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Wallet Balances */}
@@ -1031,14 +1079,18 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           HTLC signing wallets derived from agent private keys. Used to lock, claim, and refund atomic swaps across all 3 chains.
         </p>
 
-        {/* Total value */}
-        {totalUsd > 0 && (
-          <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
-            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-xs font-mono font-bold text-foreground">${totalUsd.toFixed(2)}</span>
-            <span className="text-[10px] text-muted-foreground">total across HTLC wallets</span>
-          </div>
-        )}
+        {/* Total value — always visible */}
+        <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+          <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+          {loading ? (
+            <span className="text-xs font-mono text-muted-foreground">Loading...</span>
+          ) : (
+            <>
+              <span className="text-xs font-mono font-bold text-foreground">${totalUsd.toFixed(2)}</span>
+              <span className="text-[10px] text-muted-foreground">total across all 7 HTLC assets</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* HTLC Wallet Balances */}
