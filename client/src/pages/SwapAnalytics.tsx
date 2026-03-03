@@ -20,7 +20,7 @@ import {
 import {
   TrendingUp, Zap, Clock, Users, CheckCircle2,
   AlertTriangle, RefreshCw, ArrowLeftRight, Activity,
-  Trophy, Radio, BarChart3, Droplets,
+  Trophy, Radio, BarChart3, Droplets, Globe, ArrowUpDown, Star,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
@@ -148,7 +148,8 @@ export default function SwapAnalytics() {
   const { data: routes,   isLoading: loadingRoutes   } = trpc.analytics.routeDistribution.useQuery({ days });
   const { data: htlc,     isLoading: loadingHtlc     } = trpc.analytics.htlcRatio.useQuery({ days });
   const { data: settle,   isLoading: loadingSettle   } = trpc.analytics.settlementTime.useQuery({ days });
-  const { data: peers,    isLoading: loadingPeers    } = trpc.analytics.peerLeaderboard.useQuery({ days, limit: 10 });
+  const [peerSortBy, setPeerSortBy] = useState<'score' | 'swaps' | 'volume' | 'latency'>('score');
+  const { data: peers,    isLoading: loadingPeers    } = trpc.analytics.peerLeaderboard.useQuery({ days, limit: 25, sortBy: peerSortBy });
   const { data: recent,   isLoading: loadingRecent   } = trpc.analytics.recentSwaps.useQuery({ limit: 20 });
 
   const utils = trpc.useUtils();
@@ -447,6 +448,24 @@ export default function SwapAnalytics() {
 
         {/* ── Peer Leaderboard ───────────────────────────────────────────── */}
         <SectionCard title="P2P Peer Leaderboard" icon={Trophy}>
+          {/* Sort controls */}
+          <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+            <ArrowUpDown className="w-3 h-3 text-muted-foreground shrink-0" />
+            <span className="text-[10px] text-muted-foreground mr-1">Sort:</span>
+            {(['score', 'swaps', 'volume', 'latency'] as const).map(key => (
+              <button key={key}
+                onClick={() => setPeerSortBy(key)}
+                className="px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all"
+                style={{
+                  background: peerSortBy === key ? 'rgba(6,182,212,0.15)' : 'transparent',
+                  border: `1px solid ${peerSortBy === key ? 'rgba(6,182,212,0.4)' : 'rgba(100,116,139,0.2)'}`,
+                  color: peerSortBy === key ? '#22d3ee' : 'var(--muted-foreground)',
+                }}>
+                {key === 'score' ? '★ Score' : key === 'swaps' ? '⇅ Swaps' : key === 'volume' ? '$ Volume' : '⏱ Latency'}
+              </button>
+            ))}
+          </div>
+
           {loadingPeers ? (
             <div className="h-32 flex items-center justify-center">
               <div className="w-6 h-6 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
@@ -459,30 +478,85 @@ export default function SwapAnalytics() {
                 <thead>
                   <tr className="text-muted-foreground border-b border-border">
                     <th className="text-left pb-2 font-medium w-8">#</th>
-                    <th className="text-left pb-2 font-medium">Peer ID</th>
+                    <th className="text-left pb-2 font-medium">Peer</th>
+                    <th className="text-left pb-2 font-medium">Layer</th>
+                    <th className="text-right pb-2 font-medium">Score</th>
                     <th className="text-right pb-2 font-medium">Swaps</th>
-                    <th className="text-right pb-2 font-medium">Volume</th>
-                    <th className="text-right pb-2 font-medium">Avg Time</th>
+                    <th className="text-right pb-2 font-medium hidden sm:table-cell">Volume</th>
+                    <th className="text-right pb-2 font-medium hidden sm:table-cell">Avg Latency</th>
+                    <th className="text-right pb-2 font-medium hidden md:table-cell">Last Seen</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(peers ?? []).map((p, i) => (
-                    <tr key={p.peerId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                      <td className="py-2 pr-2">
-                        {i === 0 ? <Trophy className="w-3.5 h-3.5 text-amber-400" /> :
-                         i === 1 ? <span className="text-zinc-400 font-bold">2</span> :
-                         i === 2 ? <span className="text-amber-700 font-bold">3</span> :
-                         <span className="text-muted-foreground">{p.rank}</span>}
-                      </td>
-                      <td className="py-2 font-mono text-foreground truncate max-w-[160px]"
-                        title={p.peerId}>
-                        {p.peerId.slice(0, 12)}…{p.peerId.slice(-6)}
-                      </td>
-                      <td className="py-2 text-right font-mono text-emerald-400">{p.swapCount}</td>
-                      <td className="py-2 text-right font-mono text-foreground">{fmtUsd(p.totalUsd)}</td>
-                      <td className="py-2 text-right font-mono text-muted-foreground">{fmtMs(p.avgMs)}</td>
-                    </tr>
-                  ))}
+                  {(peers ?? []).map((p, i) => {
+                    const isHW = p.origin === 'hyperswarm';
+                    const score = p.score;
+                    const scoreColor = score === null ? '#64748b'
+                      : score >= 80 ? '#10b981'
+                      : score >= 60 ? '#f59e0b'
+                      : score >= 40 ? '#f97316'
+                      : '#ef4444';
+                    const lastSeen = p.lastSeenAt
+                      ? (() => {
+                          const diff = Date.now() - new Date(p.lastSeenAt).getTime();
+                          const mins = Math.floor(diff / 60000);
+                          if (mins < 60) return `${mins}m ago`;
+                          const hrs = Math.floor(mins / 60);
+                          if (hrs < 24) return `${hrs}h ago`;
+                          return `${Math.floor(hrs / 24)}d ago`;
+                        })()
+                      : '—';
+                    return (
+                      <tr key={p.peerId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                        {/* Rank */}
+                        <td className="py-2 pr-2">
+                          {i === 0 ? <Trophy className="w-3.5 h-3.5 text-amber-400" /> :
+                           i === 1 ? <span className="text-zinc-400 font-bold">2</span> :
+                           i === 2 ? <span className="text-amber-700 font-bold">3</span> :
+                           <span className="text-muted-foreground">{p.rank}</span>}
+                        </td>
+                        {/* Peer alias / ID */}
+                        <td className="py-2 max-w-[120px]">
+                          <div className="font-semibold text-foreground truncate" title={p.peerId}>
+                            {p.alias ?? `${p.peerId.slice(0, 8)}…`}
+                          </div>
+                          <div className="font-mono text-[9px] text-muted-foreground truncate">{p.peerId.slice(0, 10)}…</div>
+                        </td>
+                        {/* Layer badge */}
+                        <td className="py-2">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold"
+                            style={{
+                              background: isHW ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                              border: `1px solid ${isHW ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
+                              color: isHW ? '#10b981' : '#06b6d4',
+                            }}>
+                            {isHW ? <Radio className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
+                            {isHW ? 'HW' : 'IS'}
+                          </span>
+                        </td>
+                        {/* Reputation score */}
+                        <td className="py-2 text-right">
+                          {score !== null ? (
+                            <span className="inline-flex items-center gap-0.5 font-mono font-bold text-[11px]"
+                              style={{ color: scoreColor }}>
+                              <Star className="w-2.5 h-2.5" />
+                              {score}
+                            </span>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </td>
+                        {/* Swaps */}
+                        <td className="py-2 text-right font-mono text-emerald-400">{p.swapCount || p.successfulSwaps || 0}</td>
+                        {/* Volume */}
+                        <td className="py-2 text-right font-mono text-foreground hidden sm:table-cell">{fmtUsd(p.totalUsd)}</td>
+                        {/* Avg Latency */}
+                        <td className="py-2 text-right font-mono text-muted-foreground hidden sm:table-cell">
+                          {p.avgLatencyMs !== null ? fmtMs(p.avgLatencyMs) : '—'}
+                        </td>
+                        {/* Last Seen */}
+                        <td className="py-2 text-right text-muted-foreground hidden md:table-cell">{lastSeen}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

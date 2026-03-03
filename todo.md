@@ -694,3 +694,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update scanning badge to show both layers (Hyperswarm + IntercomSwap) with individual status
 - [x] Update header subtitle to reflect dual-DHT topology
 - [x] Show Light Peer connection status separately from Oracle VM status in the Network header
+
+## Unified Analytics Leaderboard
+
+- [x] Add getPeerLeaderboard tRPC procedure that joins swap history with peerReputation data
+- [x] Rewrite Analytics P2P Peer Leaderboard table with columns: Alias, Layer (HW/IS), Score, Swaps, Volume, Avg Latency, Last Seen
+- [x] Add layer badge (HW green / IS cyan) to each row
+- [x] Add reputation score badge (color-coded 0-100) to each row
+- [x] Sort leaderboard by score desc by default, allow sort pill buttons (Score/Swaps/Volume/Latency)

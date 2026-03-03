@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
+import { swapAnalytics, htlcSwaps, peerReputation } from "../../drizzle/schema";
 import { eq, and, gte, sql, desc, count, avg } from "drizzle-orm";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -152,45 +152,99 @@ export const analyticsRouter = router({
     }),
 
   /**
-   * Peer reputation leaderboard.
-   * Ranks P2P peers by completed swap count and total volume.
+   * Unified peer leaderboard.
+   * Merges swap history (volume, swap count, settlement time) with peerReputation
+   * data (score, origin layer, avg latency, last seen) into a single ranked table.
+   * Peers with reputation data but no swap history are included (score-only rows).
+   * Sort order: reputation score desc by default.
    */
   peerLeaderboard: publicProcedure
     .input(z.object({
-      days:  z.number().int().min(1).max(365).default(30),
-      limit: z.number().int().min(1).max(50).default(10),
+      days:    z.number().int().min(1).max(365).default(30),
+      limit:   z.number().int().min(1).max(50).default(25),
+      sortBy:  z.enum(['score', 'swaps', 'volume', 'latency']).default('score'),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) return [];
       const since = sinceMs(input.days);
 
-      const rows = await db
+      // 1. Swap history aggregated by peerId
+      const swapRows = await db
         .select({
           peerId:    swapAnalytics.peerId,
           swapCount: count(swapAnalytics.id),
           totalUsd:  sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
-          avgMs:     avg(swapAnalytics.settlementMs),
+          avgSettlementMs: avg(swapAnalytics.settlementMs),
         })
         .from(swapAnalytics)
         .where(
           and(
-            eq(swapAnalytics.status, "completed"),
+            eq(swapAnalytics.status, 'completed'),
             gte(swapAnalytics.createdAt, since),
             sql`${swapAnalytics.peerId} IS NOT NULL`
           )
         )
-        .groupBy(swapAnalytics.peerId)
-        .orderBy(desc(count(swapAnalytics.id)))
-        .limit(input.limit);
+        .groupBy(swapAnalytics.peerId);
 
-      return rows.map((r, i) => ({
-        rank:      i + 1,
-        peerId:    r.peerId ?? "unknown",
-        swapCount: Number(r.swapCount),
-        totalUsd:  parseFloat(r.totalUsd ?? "0"),
-        avgMs:     Math.round(Number(r.avgMs) || 0),
-      }));
+      // 2. All reputation records
+      const repRows = await db
+        .select()
+        .from(peerReputation)
+        .orderBy(desc(peerReputation.score));
+
+      // 3. Build a map of peerId → reputation
+      const repMap = new Map(repRows.map(r => [r.peerId, r]));
+
+      // 4. Build a map of peerId → swap stats
+      const swapMap = new Map(swapRows.map(r => [r.peerId ?? '', r]));
+
+      // 5. Union: start with all peers that have reputation data,
+      //    then add any swap-only peers not yet in reputation table.
+      const allPeerIds = new Set([
+        ...repRows.map(r => r.peerId),
+        ...swapRows.map(r => r.peerId ?? '').filter(Boolean),
+      ]);
+
+      const merged = Array.from(allPeerIds).map(peerId => {
+        const rep  = repMap.get(peerId);
+        const swap = swapMap.get(peerId);
+        const avgLatencyMs = rep && rep.successfulPings > 0
+          ? Math.round(rep.totalLatencyMs / rep.successfulPings)
+          : null;
+        return {
+          peerId,
+          alias:           rep?.alias ?? null,
+          origin:          rep?.origin ?? 'unknown',
+          score:           rep?.score ?? null,
+          successfulSwaps: rep?.successfulSwaps ?? 0,
+          failedPings:     rep?.failedPings ?? 0,
+          successfulPings: rep?.successfulPings ?? 0,
+          avgLatencyMs,
+          lastSeenAt:      rep?.lastSeenAt ?? null,
+          // From swap history
+          swapCount:       Number(swap?.swapCount ?? 0),
+          totalUsd:        parseFloat(swap?.totalUsd ?? '0'),
+          avgSettlementMs: Math.round(Number(swap?.avgSettlementMs) || 0),
+        };
+      });
+
+      // 6. Sort
+      merged.sort((a, b) => {
+        if (input.sortBy === 'swaps')   return b.swapCount - a.swapCount;
+        if (input.sortBy === 'volume')  return b.totalUsd - a.totalUsd;
+        if (input.sortBy === 'latency') {
+          const la = a.avgLatencyMs ?? 99999;
+          const lb = b.avgLatencyMs ?? 99999;
+          return la - lb; // lowest latency first
+        }
+        // default: score desc (nulls last)
+        const sa = a.score ?? -1;
+        const sb = b.score ?? -1;
+        return sb - sa;
+      });
+
+      return merged.slice(0, input.limit).map((r, i) => ({ rank: i + 1, ...r }));
     }),
 
   /**
