@@ -1,9 +1,9 @@
 /**
- * Tests for the HTLC Wallet router — verifies address derivation from keys
- * and graceful handling when keys are missing.
+ * Tests for the HTLC Wallet router — verifies address derivation from keys,
+ * graceful handling when keys are missing, and the new 7-asset flat array.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { appRouter } from "../routers";
 import type { TrpcContext } from "../_core/context";
 
@@ -36,7 +36,7 @@ describe("htlcWallet router", () => {
     else delete process.env.SOL_AGENT_KEY;
   });
 
-  describe("response structure", () => {
+  describe("response structure — legacy btc/eth/sol keys", () => {
     it("should always return btc, eth, sol keys with expected fields", { timeout: 30_000 }, async () => {
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -60,6 +60,68 @@ describe("htlcWallet router", () => {
     });
   });
 
+  describe("response structure — new 7-asset flat array", () => {
+    it("should return assets array with exactly 7 items covering all chains and tokens", { timeout: 30_000 }, async () => {
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      expect(result.assets).toBeDefined();
+      expect(Array.isArray(result.assets)).toBe(true);
+      expect(result.assets).toHaveLength(7);
+
+      const expectedAssets = [
+        { chain: "solana",   asset: "SOL"  },
+        { chain: "solana",   asset: "USDT" },
+        { chain: "solana",   asset: "USDC" },
+        { chain: "ethereum", asset: "ETH"  },
+        { chain: "ethereum", asset: "USDT" },
+        { chain: "ethereum", asset: "USDC" },
+        { chain: "bitcoin",  asset: "BTC"  },
+      ];
+
+      for (const expected of expectedAssets) {
+        const found = result.assets.find(
+          a => a.chain === expected.chain && a.asset === expected.asset
+        );
+        expect(found, `Missing ${expected.asset}/${expected.chain}`).toBeDefined();
+        expect(found).toHaveProperty("balance");
+        expect(found).toHaveProperty("usd");
+        expect(found).toHaveProperty("live");
+        expect(found).toHaveProperty("configured");
+      }
+    });
+
+    it("should have USDT/USDC on solana sharing the same address as SOL", { timeout: 30_000 }, async () => {
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      const sol  = result.assets.find(a => a.chain === "solana"   && a.asset === "SOL");
+      const usdt = result.assets.find(a => a.chain === "solana"   && a.asset === "USDT");
+      const usdc = result.assets.find(a => a.chain === "solana"   && a.asset === "USDC");
+
+      // If SOL key is configured, all 3 Solana assets share the same address
+      if (sol?.address) {
+        expect(usdt?.address).toBe(sol.address);
+        expect(usdc?.address).toBe(sol.address);
+      }
+    });
+
+    it("should have USDT/USDC on ethereum sharing the same address as ETH", { timeout: 30_000 }, async () => {
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      const eth  = result.assets.find(a => a.chain === "ethereum" && a.asset === "ETH");
+      const usdt = result.assets.find(a => a.chain === "ethereum" && a.asset === "USDT");
+      const usdc = result.assets.find(a => a.chain === "ethereum" && a.asset === "USDC");
+
+      // If ETH key is configured, all 3 Ethereum assets share the same address
+      if (eth?.address) {
+        expect(usdt?.address).toBe(eth.address);
+        expect(usdc?.address).toBe(eth.address);
+      }
+    });
+  });
+
   describe("missing keys", () => {
     it("should report not configured when BTC_AGENT_WIF is unset", async () => {
       delete process.env.BTC_AGENT_WIF;
@@ -69,6 +131,10 @@ describe("htlcWallet router", () => {
       expect(result.btc.configured).toBe(false);
       expect(result.btc.address).toBeNull();
       expect(result.btc.error).toContain("not set");
+
+      // Also check via assets array
+      const btcAsset = result.assets.find(a => a.chain === "bitcoin" && a.asset === "BTC");
+      expect(btcAsset?.configured).toBe(false);
     });
 
     it("should report not configured when ETH_AGENT_KEY is unset", async () => {
@@ -79,6 +145,13 @@ describe("htlcWallet router", () => {
       expect(result.eth.configured).toBe(false);
       expect(result.eth.address).toBeNull();
       expect(result.eth.error).toContain("not set");
+
+      // All 3 ETH-chain assets should be unconfigured
+      const ethAssets = result.assets.filter(a => a.chain === "ethereum");
+      expect(ethAssets).toHaveLength(3);
+      for (const a of ethAssets) {
+        expect(a.configured).toBe(false);
+      }
     });
 
     it("should report not configured when SOL_AGENT_KEY is unset", async () => {
@@ -89,6 +162,13 @@ describe("htlcWallet router", () => {
       expect(result.sol.configured).toBe(false);
       expect(result.sol.address).toBeNull();
       expect(result.sol.error).toContain("not set");
+
+      // All 3 SOL-chain assets should be unconfigured
+      const solAssets = result.assets.filter(a => a.chain === "solana");
+      expect(solAssets).toHaveLength(3);
+      for (const a of solAssets) {
+        expect(a.configured).toBe(false);
+      }
     });
   });
 
@@ -101,6 +181,12 @@ describe("htlcWallet router", () => {
 
       expect(result.eth.configured).toBe(true);
       expect(result.eth.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+
+      // USDT and USDC on ETH should share the same address
+      const ethUsdt = result.assets.find(a => a.chain === "ethereum" && a.asset === "USDT");
+      const ethUsdc = result.assets.find(a => a.chain === "ethereum" && a.asset === "USDC");
+      expect(ethUsdt?.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+      expect(ethUsdc?.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     });
 
     it("should handle ETH key without 0x prefix", async () => {

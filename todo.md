@@ -612,3 +612,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Restart Oracle VM PM2 process with new env vars — all 7 assets return live=true
 - [x] Fix inferChainFromNetwork() in afosApi.ts so ETH USDT/USDC map to ethereum chain correctly
 - [x] All 60 tests passing, 0 TypeScript errors
+
+## HTLC Wallet — Full 7-Asset Token Balances
+
+- [x] Set ETH_RPC_URL (Infura) in Oracle VM ecosystem.json and restart PM2
+- [x] Extend htlcWallet.ts getSolHtlcWallet() to also fetch USDT/SOL and USDC/SOL SPL token balances
+- [x] Extend htlcWallet.ts getEthHtlcWallet() to also fetch USDT/ETH and USDC/ETH ERC-20 balances
+- [x] Update getHtlcWallets tRPC procedure to return all 7 assets (not just SOL/ETH/BTC)
+- [x] Update HtlcWalletSection UI to render all 7 asset rows with chain badges and QR codes
+- [x] Update htlcWallet tests to cover new token balance fields

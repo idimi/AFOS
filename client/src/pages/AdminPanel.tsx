@@ -1000,11 +1000,12 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
     staleTime: 30_000,
   });
 
-  const wallets = data ? [data.btc, data.eth, data.sol] : [];
+  // Use the new flat assets array (7 items); fall back to legacy btc/eth/sol keys for backward compat
+  const wallets = data?.assets ?? (data ? [data.btc, data.eth, data.sol] : []);
   const loading = isLoading;
   const refreshing = isRefetching;
 
-  // Total USD
+  // Total USD across all 7 assets
   const totalUsd = wallets.reduce((sum, w) => {
     const usdNum = parseFloat((w.usd ?? "$0").replace(/[^\d.-]/g, "")) || 0;
     return sum + usdNum;
@@ -1053,28 +1054,43 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           <div className="space-y-2">
             {wallets.map((w) => {
               const chainColor = CHAIN_COLORS[w.chain] ?? "#888";
+              const isStable = w.asset === "USDT" || w.asset === "USDC";
+              const chainLabel = w.chain === "solana" ? "SOL" : w.chain === "ethereum" ? "ETH" : "BTC";
               return (
-                <div key={w.chain}
+                <div key={`${w.chain}-${w.asset}`}
                   className="rounded-xl p-3"
                   style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}25` }}>
                   <div className="flex items-center gap-3">
-                    {/* Asset badge */}
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono"
-                      style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
-                      {w.asset}
+                    {/* Asset badge — shows asset symbol + chain sub-label for tokens */}
+                    <div className="w-10 h-10 rounded-lg flex flex-col items-center justify-center shrink-0"
+                      style={{ background: `${chainColor}20`, border: `1px solid ${chainColor}40` }}>
+                      <span className="text-[10px] font-bold font-mono leading-tight" style={{ color: chainColor }}>
+                        {w.asset}
+                      </span>
+                      {isStable && (
+                        <span className="text-[7px] font-mono leading-tight" style={{ color: chainColor, opacity: 0.7 }}>
+                          {chainLabel}
+                        </span>
+                      )}
                     </div>
                     {/* Balance + address */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <p className="text-xs font-mono font-semibold text-foreground">{w.balance} {w.asset}</p>
                         <span className="text-[10px] font-mono text-muted-foreground">{w.usd}</span>
+                        {isStable && (
+                          <span className="text-[8px] px-1 py-0.5 rounded font-mono"
+                            style={{ background: `${chainColor}12`, color: chainColor, border: `1px solid ${chainColor}25` }}>
+                            {w.chain === "solana" ? "SPL" : "ERC-20"}
+                          </span>
+                        )}
                       </div>
                       {w.address ? (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-[9px] font-mono text-muted-foreground truncate max-w-[200px]">
+                          <span className="text-[9px] font-mono text-muted-foreground truncate max-w-[180px]">
                             {w.address}
                           </span>
-                          <button onClick={() => { navigator.clipboard.writeText(w.address!); toast.success(`${w.asset} HTLC address copied`); }}
+                          <button onClick={() => { navigator.clipboard.writeText(w.address!); toast.success(`${w.asset}/${chainLabel} address copied`); }}
                             className="shrink-0 text-muted-foreground hover:text-foreground">
                             <Copy className="w-2.5 h-2.5" />
                           </button>
@@ -1090,8 +1106,8 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
                         </p>
                       )}
                     </div>
-                    {/* Status */}
-                    <div className="flex flex-col items-end gap-0.5">
+                    {/* Status + chain badge */}
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
                       <div className="flex items-center gap-1">
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : w.configured ? "#f59e0b" : "#6b7280" }} />
                         <span className="text-[9px] text-muted-foreground">
