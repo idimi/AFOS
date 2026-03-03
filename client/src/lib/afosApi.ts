@@ -431,8 +431,8 @@ export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: Rfq
 
 /**
  * GET /api/wallet
- * Returns Oracle VM node wallet balances (Solana assets).
- * Normalises each asset to include chain field.
+ * Returns Oracle VM node wallet balances for all 7 assets across 3 chains.
+ * Normalises each asset to include chain field derived from the `network` field.
  */
 export async function getWallet(): Promise<WalletData> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/wallet`);
@@ -440,7 +440,8 @@ export async function getWallet(): Promise<WalletData> {
   const data = await res.json();
   const wallets: WalletAsset[] = (data.wallets || []).map((w: WalletAsset) => ({
     ...w,
-    chain: w.chain ?? inferChain(w.asset),
+    // Derive chain from network label if chain field is absent
+    chain: w.chain ?? inferChainFromNetwork(w.network) ?? inferChain(w.asset),
   }));
   return { ...data, wallets };
 }
@@ -488,4 +489,17 @@ export function inferChain(symbol: string): SupportedChain {
   if (upper === 'ETH') return 'ethereum';
   if (upper === 'BTC') return 'bitcoin';
   return 'solana'; // SOL, USDT, USDC default to Solana
+}
+
+/**
+ * Infer chain from the `network` label returned by the Oracle VM.
+ * e.g. "Solana" → 'solana', "Ethereum" → 'ethereum', "Bitcoin" → 'bitcoin'
+ */
+export function inferChainFromNetwork(network: string | undefined): SupportedChain | null {
+  if (!network) return null;
+  const lower = network.toLowerCase();
+  if (lower.includes('ethereum')) return 'ethereum';
+  if (lower.includes('bitcoin')) return 'bitcoin';
+  if (lower.includes('solana')) return 'solana';
+  return null;
 }

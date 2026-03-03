@@ -597,3 +597,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add QR code modal (react-qr-code) to both Oracle VM and HTLC wallet cards — click QR icon to open modal with scannable code
 - [x] Wire HTLC monitor refund trigger to write htlc_swaps rows (confirmed already done in htlcMonitor.ts lines 229-235)
 - [x] Fix test timeout — added { timeout: 30_000 } to live RPC test (60 tests pass)
+
+## Oracle VM Node Hot Wallet — 3-Chain Setup
+
+- [x] Generate new dedicated SOL wallet for Oracle VM Node Hot Wallet (DRipB6UHbcK9NXrvRUjkge1ungV65U1U8eun74KhP5rR)
+- [x] Generate new dedicated ETH wallet for Oracle VM Node Hot Wallet (0x4d171Af4aa3E78D65bd25a6599eB05f76fF8fAdd)
+- [x] Generate new dedicated BTC wallet for Oracle VM Node Hot Wallet (bc1qee49tcut6rf2mmsnpa5kmmzttk7w09hfskcvtm)
+- [x] Update Oracle VM server.js to support AGENT_WALLET_ADDRESS (SOL), AGENT_ETH_ADDRESS (ETH), AGENT_BTC_ADDRESS (BTC)
+- [x] Add ETH balance fetching (eth_getBalance via ETH_RPC_URL) to Oracle VM
+- [x] Add ERC-20 USDT/USDC balance fetching (eth_call balanceOf) to Oracle VM
+- [x] Add BTC balance fetching (mempool.space API) to Oracle VM
+- [x] Add SOL USDC balance fetching (getTokenAccountsByOwner with USDC mint) to Oracle VM
+- [x] Set AGENT_WALLET_ADDRESS, AGENT_ETH_ADDRESS, AGENT_BTC_ADDRESS in Oracle VM ecosystem.json
+- [x] Restart Oracle VM PM2 process with new env vars — all 7 assets return live=true
+- [x] Fix inferChainFromNetwork() in afosApi.ts so ETH USDT/USDC map to ethereum chain correctly
+- [x] All 60 tests passing, 0 TypeScript errors
