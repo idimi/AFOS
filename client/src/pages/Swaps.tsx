@@ -2185,8 +2185,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {/* ── Main 2-Column DEX Layout ─────────────────────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
 
-        {/* ═══ LEFT COLUMN: Chart + Order Book ═══ */}
-        <div className="space-y-3 min-w-0">
+        {/* ═══ LEFT COLUMN: Chart + Order Book ═══ (below swap card on mobile) */}
+        <div className="space-y-3 min-w-0 order-2 xl:order-1">
 
           {/* Price Ticker Bar */}
           <ChainStatsBar />
@@ -2250,8 +2250,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
           </div>
         </div>
 
-        {/* ═══ RIGHT COLUMN: Swap Card + Peers + Recent Swaps ═══ */}
-        <div className="space-y-3">
+        {/* ═══ RIGHT COLUMN: Swap Card + Peers + Recent Swaps ═══ (first on mobile) */}
+        <div className="space-y-3 order-1 xl:order-2">
 
           {/* Swap Card */}
           <div

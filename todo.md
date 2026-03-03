@@ -735,3 +735,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Audit Fees Collected card: reads from Oracle VM /api/stats; shows 'no data' hint when zero
 - [x] Audit P2P Ratio card: reads from Oracle VM /api/stats; shows 'P2P vs DEX' hint when no swaps
 - [x] Fixed hardcoded +3.2%/+12.4% change badges; replaced with 'no data' / 'live' / 'earned' contextual labels
+
+## Swaps Page Layout Reorder
+
+- [x] Move Swap form to the top of the Swaps page (before chart and order book) on mobile; desktop 2-col layout unchanged
