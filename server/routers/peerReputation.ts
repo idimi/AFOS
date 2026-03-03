@@ -100,4 +100,48 @@ export const peerReputationRouter = router({
       await recordPeerSwap(input.peerId);
       return { success: true };
     }),
+
+  /**
+   * Update operator notes and tags for a peer.
+   * Creates the reputation record if it doesn't exist yet.
+   */
+  updateNotes: publicProcedure
+    .input(z.object({
+      peerId: z.string().min(1),
+      notes:  z.string().max(2000).nullable(),
+      tags:   z.array(z.string().max(50)).max(20),
+    }))
+    .mutation(async ({ input }) => {
+      const { getDb } = await import('../db');
+      const { peerReputation } = await import('../../drizzle/schema');
+      const { eq } = await import('drizzle-orm');
+      const db = await getDb();
+      if (!db) return { success: false };
+
+      const tagsJson = JSON.stringify(input.tags);
+
+      // Try update first
+      const [existing] = await db
+        .select({ id: peerReputation.id })
+        .from(peerReputation)
+        .where(eq(peerReputation.peerId, input.peerId))
+        .limit(1);
+
+      if (existing) {
+        await db
+          .update(peerReputation)
+          .set({ notes: input.notes, tags: tagsJson })
+          .where(eq(peerReputation.peerId, input.peerId));
+      } else {
+        await db
+          .insert(peerReputation)
+          .values({
+            peerId: input.peerId,
+            notes: input.notes,
+            tags: tagsJson,
+            origin: 'hyperswarm',
+          });
+      }
+      return { success: true };
+    }),
 });

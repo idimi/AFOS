@@ -710,3 +710,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire leaderboard rows to open PeerDetailDrawer on click
 - [x] Add "All Time" tooltip/label to Score column header in leaderboard
 - [x] Pre-fill Open Channel form with selected peer's ID when opened from drawer (via sessionStorage + custom event)
+
+## Peer Notes/Tags + Keyboard Navigation
+
+- [x] Add notes (text) and tags (JSON array) columns to peerReputation schema
+- [x] Push DB migration for notes/tags columns
+- [x] Add peerReputation.updateNotes tRPC mutation (upsert notes + tags for a peerId)
+- [x] Add notes textarea and tag chip UI to PeerDetailDrawer Overview tab
+- [x] Add Escape key handler to close drawer
+- [x] Add ArrowUp/ArrowDown key handler to cycle through leaderboard rows
+- [x] Show current row index indicator in drawer header (e.g. "3 / 12")

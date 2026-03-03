@@ -127,6 +127,10 @@ export const peerReputation = mysqlTable("peer_reputation", {
   /** Timestamp of last successful interaction */
   lastSeenAt:       timestamp("lastSeenAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  /** Operator free-text notes about this peer */
+  notes:            text("notes"),
+  /** JSON-encoded array of tag strings, e.g. ["main LP","slow ETH"] */
+  tags:             text("tags"),
 });
 
 export type PeerReputation = typeof peerReputation.$inferSelect;

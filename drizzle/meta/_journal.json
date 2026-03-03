@@ -22,6 +22,13 @@
       "when": 1772551819243,
       "tag": "0002_clean_absorbing_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1772556970543,
+      "tag": "0003_condemned_nuke",
+      "breakpoints": true
     }
   ]
 }

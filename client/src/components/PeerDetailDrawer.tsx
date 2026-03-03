@@ -2,16 +2,20 @@
  * PeerDetailDrawer
  *
  * Slide-over panel that opens when a leaderboard row is clicked.
- * Shows: Overview (reputation stats), Swap History, Channel History,
+ * Shows: Overview (reputation stats + notes/tags), Swap History, Channel History,
  * and an Open Channel shortcut pre-filled with the peer's ID.
+ *
+ * Keyboard navigation:
+ *  - Escape          → close drawer
+ *  - ArrowUp / ArrowDown → cycle through leaderboard rows (via onNavigate callback)
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   X, Star, Radio, Globe, Zap, ArrowLeftRight,
   Clock, CheckCircle2, AlertTriangle, ExternalLink,
-  Activity, Layers, Plus,
+  Activity, Layers, Plus, Tag, StickyNote, ChevronUp, ChevronDown,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,11 +64,30 @@ interface PeerDetailDrawerProps {
   peerId: string | null;
   alias: string | null;
   origin: string;
+  /** Current index in the leaderboard list (0-based) */
+  peerIndex?: number;
+  /** Total number of peers in the leaderboard */
+  peerTotal?: number;
   onClose: () => void;
   onOpenChannel?: (peerId: string) => void;
+  /** Called when user presses ArrowUp (-1) or ArrowDown (+1) */
+  onNavigate?: (direction: -1 | 1) => void;
 }
 
 type Tab = "overview" | "swaps" | "channels";
+
+// ─── Preset tag suggestions ───────────────────────────────────────────────────
+
+const TAG_PRESETS = [
+  "Main LP",
+  "High Volume",
+  "Slow ETH",
+  "Reliable",
+  "New Peer",
+  "Avoid",
+  "BTC Specialist",
+  "SOL Specialist",
+];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -72,15 +95,108 @@ export function PeerDetailDrawer({
   peerId,
   alias,
   origin,
+  peerIndex,
+  peerTotal,
   onClose,
   onOpenChannel,
+  onNavigate,
 }: PeerDetailDrawerProps) {
   const [tab, setTab] = useState<Tab>("overview");
+
+  // Notes / tags local state
+  const [notes, setNotes] = useState<string>("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [notesDirty, setNotesDirty] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, isLoading } = trpc.analytics.peerDetail.useQuery(
     { peerId: peerId ?? "" },
     { enabled: !!peerId }
   );
+
+  const updateNotes = trpc.peerReputation.updateNotes.useMutation({
+    onSuccess: () => {
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    },
+    onError: () => setSaveStatus("error"),
+  });
+
+  // Populate notes/tags from DB when data loads
+  useEffect(() => {
+    if (data?.reputation) {
+      const rep = data.reputation as { notes?: string | null; tags?: string | null };
+      setNotes(rep.notes ?? "");
+      try {
+        setTags(rep.tags ? JSON.parse(rep.tags) : []);
+      } catch {
+        setTags([]);
+      }
+    } else {
+      setNotes("");
+      setTags([]);
+    }
+    setNotesDirty(false);
+    setSaveStatus("idle");
+  }, [data?.reputation, peerId]);
+
+  // Auto-save notes after 1.2s of inactivity
+  const handleNotesChange = useCallback((val: string) => {
+    setNotes(val);
+    setNotesDirty(true);
+    setSaveStatus("idle");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      if (!peerId) return;
+      setSaveStatus("saving");
+      updateNotes.mutate({ peerId, notes: val || null, tags });
+    }, 1200);
+  }, [peerId, tags, updateNotes]);
+
+  const saveTagsNow = useCallback((newTags: string[]) => {
+    if (!peerId) return;
+    setSaveStatus("saving");
+    updateNotes.mutate({ peerId, notes: notes || null, tags: newTags });
+  }, [peerId, notes, updateNotes]);
+
+  const addTag = useCallback((tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed || tags.includes(trimmed) || tags.length >= 20) return;
+    const next = [...tags, trimmed];
+    setTags(next);
+    setTagInput("");
+    saveTagsNow(next);
+  }, [tags, saveTagsNow]);
+
+  const removeTag = useCallback((tag: string) => {
+    const next = tags.filter(t => t !== tag);
+    setTags(next);
+    saveTagsNow(next);
+  }, [tags, saveTagsNow]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't intercept when typing in inputs/textareas
+      const target = e.target as HTMLElement;
+      if (target.tagName === "TEXTAREA" || target.tagName === "INPUT") return;
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        onNavigate?.(-1);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        onNavigate?.(1);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose, onNavigate]);
 
   const isHW = origin === "hyperswarm";
   const displayName = alias ?? (peerId ? `${peerId.slice(0, 12)}…${peerId.slice(-6)}` : "Unknown");
@@ -110,7 +226,7 @@ export function PeerDetailDrawer({
           className="flex items-start justify-between px-5 py-4 border-b border-border shrink-0"
           style={{ background: "var(--muted)" }}
         >
-          <div className="flex flex-col gap-1 min-w-0">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-foreground text-base truncate max-w-[200px]">
                 {displayName}
@@ -146,12 +262,40 @@ export function PeerDetailDrawer({
               {peerId}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="ml-3 p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
-          >
-            <X className="w-4 h-4 text-muted-foreground" />
-          </button>
+
+          {/* Right side: nav arrows + row counter + close */}
+          <div className="flex items-center gap-1 ml-3 shrink-0">
+            {peerTotal !== undefined && peerIndex !== undefined && (
+              <>
+                <button
+                  onClick={() => onNavigate?.(-1)}
+                  disabled={peerIndex === 0}
+                  className="p-1 rounded hover:bg-muted/80 transition-colors disabled:opacity-30"
+                  title="Previous peer (↑)"
+                >
+                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                </button>
+                <span className="text-[10px] text-muted-foreground font-mono w-10 text-center">
+                  {peerIndex + 1}/{peerTotal}
+                </span>
+                <button
+                  onClick={() => onNavigate?.(1)}
+                  disabled={peerIndex >= peerTotal - 1}
+                  className="p-1 rounded hover:bg-muted/80 transition-colors disabled:opacity-30"
+                  title="Next peer (↓)"
+                >
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </>
+            )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+              title="Close (Esc)"
+            >
+              <X className="w-4 h-4 text-muted-foreground" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -256,6 +400,110 @@ export function PeerDetailDrawer({
                       <span>Last seen {timeAgo(data.reputation.lastSeenAt)} · {fmtDate(data.reputation.lastSeenAt)}</span>
                     </div>
                   )}
+
+                  {/* ── Tags ── */}
+                  <div
+                    className="rounded-xl p-3 space-y-2"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Tag className="w-3.5 h-3.5 text-cyan-400" />
+                      <span className="text-xs font-semibold text-foreground">Tags</span>
+                      {saveStatus === "saving" && <span className="ml-auto text-[10px] text-muted-foreground animate-pulse">Saving…</span>}
+                      {saveStatus === "saved" && <span className="ml-auto text-[10px] text-emerald-400">Saved ✓</span>}
+                    </div>
+
+                    {/* Active tags */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-all hover:opacity-80"
+                          style={{
+                            background: "rgba(6,182,212,0.12)",
+                            border: "1px solid rgba(6,182,212,0.3)",
+                            color: "#22d3ee",
+                          }}
+                          onClick={() => removeTag(tag)}
+                          title="Click to remove"
+                        >
+                          {tag}
+                          <X className="w-2.5 h-2.5" />
+                        </span>
+                      ))}
+                      {tags.length === 0 && (
+                        <span className="text-[11px] text-muted-foreground">No tags yet</span>
+                      )}
+                    </div>
+
+                    {/* Tag input */}
+                    <div className="flex gap-1.5">
+                      <input
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === ",") {
+                            e.preventDefault();
+                            addTag(tagInput);
+                          }
+                        }}
+                        placeholder="Add tag…"
+                        maxLength={50}
+                        className="flex-1 text-xs px-2.5 py-1.5 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-cyan-400/50 transition-colors"
+                      />
+                      <button
+                        onClick={() => addTag(tagInput)}
+                        disabled={!tagInput.trim()}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                        style={{
+                          background: "rgba(6,182,212,0.12)",
+                          border: "1px solid rgba(6,182,212,0.3)",
+                          color: "#22d3ee",
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+
+                    {/* Preset suggestions */}
+                    <div className="flex flex-wrap gap-1">
+                      {TAG_PRESETS.filter(p => !tags.includes(p)).slice(0, 5).map((preset) => (
+                        <button
+                          key={preset}
+                          onClick={() => addTag(preset)}
+                          className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
+                        >
+                          + {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* ── Notes ── */}
+                  <div
+                    className="rounded-xl p-3 space-y-2"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <StickyNote className="w-3.5 h-3.5 text-amber-400" />
+                      <span className="text-xs font-semibold text-foreground">Notes</span>
+                      {notesDirty && saveStatus === "idle" && (
+                        <span className="ml-auto text-[10px] text-muted-foreground">Unsaved</span>
+                      )}
+                      {saveStatus === "saving" && <span className="ml-auto text-[10px] text-muted-foreground animate-pulse">Saving…</span>}
+                      {saveStatus === "saved" && <span className="ml-auto text-[10px] text-emerald-400">Saved ✓</span>}
+                      {saveStatus === "error" && <span className="ml-auto text-[10px] text-red-400">Save failed</span>}
+                    </div>
+                    <textarea
+                      value={notes}
+                      onChange={(e) => handleNotesChange(e.target.value)}
+                      placeholder="Add operator notes about this peer… (auto-saved)"
+                      rows={4}
+                      maxLength={2000}
+                      className="w-full text-xs px-3 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-400/50 transition-colors resize-none leading-relaxed"
+                    />
+                    <div className="text-[10px] text-muted-foreground text-right">{notes.length}/2000</div>
+                  </div>
                 </div>
               )}
 

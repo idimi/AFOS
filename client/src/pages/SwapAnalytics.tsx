@@ -144,6 +144,7 @@ function EmptyState({ message }: { message: string }) {
 export default function SwapAnalytics() {
   const [days, setDays] = useState(30);
   const [drawerPeer, setDrawerPeer] = useState<{ peerId: string; alias: string | null; origin: string } | null>(null);
+  const [drawerPeerIndex, setDrawerPeerIndex] = useState<number>(0);
 
   const { data: summary,  isLoading: loadingSummary  } = trpc.analytics.summary.useQuery({ days });
   const { data: volume,   isLoading: loadingVolume   } = trpc.analytics.volumeByChain.useQuery({ days });
@@ -189,7 +190,17 @@ export default function SwapAnalytics() {
           peerId={drawerPeer.peerId}
           alias={drawerPeer.alias}
           origin={drawerPeer.origin}
+          peerIndex={drawerPeerIndex}
+          peerTotal={peers?.length ?? 0}
           onClose={() => setDrawerPeer(null)}
+          onNavigate={(dir) => {
+            const list = peers ?? [];
+            const next = drawerPeerIndex + dir;
+            if (next < 0 || next >= list.length) return;
+            const p = list[next];
+            setDrawerPeerIndex(next);
+            setDrawerPeer({ peerId: p.peerId, alias: p.alias, origin: p.origin });
+          }}
           onOpenChannel={(peerId) => {
             setDrawerPeer(null);
             // Navigate to Network page with pre-filled peer ID via sessionStorage
@@ -538,8 +549,11 @@ export default function SwapAnalytics() {
                       <tr
                         key={p.peerId}
                         className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
-                        onClick={() => setDrawerPeer({ peerId: p.peerId, alias: p.alias, origin: p.origin })}
-                        title="Click to view peer details"
+                        onClick={() => {
+                          setDrawerPeerIndex(i);
+                          setDrawerPeer({ peerId: p.peerId, alias: p.alias, origin: p.origin });
+                        }}
+                        title="Click to view peer details (↑↓ to navigate, Esc to close)"
                       >
                         {/* Rank */}
                         <td className="py-2 pr-2">
