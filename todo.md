@@ -755,3 +755,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Highlight top offer row in green when P2P rate beats DEX reference rate
 - [x] Show badge "★ Best · beats Jupiter by X%" or "★ Best · beats 1inch by X%" on top row
 - [x] 1inch API key wired via VITE_ONEINCH_API_KEY env var (placeholder, activate when user provides key)
+
+## Chart Selector Custom Input + DEX Depth Row
+
+- [x] Custom symbol input field in chart header — type any TradingView symbol (e.g. BINANCE:BNBUSDT) and press Enter to load
+- [x] DEX depth row in order book header — show Jupiter/1inch quoted output for the exact current swap size (apples-to-apples vs P2P offers)

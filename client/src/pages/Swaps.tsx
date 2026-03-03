@@ -777,6 +777,28 @@ function TradingViewChart({ fromToken, toToken, theme }: {
   const activePair = CHART_PAIRS.find(p => p.symbol === selectedSymbol);
   const pairLabel = activePair?.label ?? selectedSymbol.replace("BINANCE:", "").replace("BITSTAMP:", "");
 
+  // Custom symbol input state
+  const [customInput, setCustomInput] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const customInputRef = useRef<HTMLInputElement>(null);
+
+  // When the custom input becomes visible, focus it
+  useEffect(() => {
+    if (showCustomInput && customInputRef.current) {
+      customInputRef.current.focus();
+    }
+  }, [showCustomInput]);
+
+  function handleCustomSubmit() {
+    const raw = customInput.trim().toUpperCase();
+    if (!raw) { setShowCustomInput(false); return; }
+    // If user typed just e.g. "BNBUSDT" without exchange prefix, default to BINANCE:
+    const symbol = raw.includes(":") ? raw : `BINANCE:${raw}`;
+    setSelectedSymbol(symbol);
+    setCustomInput("");
+    setShowCustomInput(false);
+  }
+
   useEffect(() => {
     if (!containerRef.current) return;
     // Remove previous widget
@@ -822,17 +844,63 @@ function TradingViewChart({ fromToken, toToken, theme }: {
 
   return (
     <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: "var(--card)", border: "1px solid var(--border)", height: 460 }}>
-      {/* Chart header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b gap-2" style={{ borderColor: "var(--border)" }}>
-        {/* Left: active pair label + TradingView badge */}
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-bold font-mono text-foreground">{pairLabel}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono hidden sm:inline"
-            style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#60a5fa" }}>
-            TradingView
-          </span>
+      {/* Chart header — two rows on mobile, one row on desktop */}
+      <div className="flex flex-col gap-1.5 px-3 py-2 border-b" style={{ borderColor: "var(--border)" }}>
+        {/* Row 1: pair label + TradingView badge + custom input toggle */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold font-mono text-foreground">{pairLabel}</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono hidden sm:inline"
+              style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.25)", color: "#60a5fa" }}>
+              TradingView
+            </span>
+          </div>
+          {/* Custom symbol input or toggle button */}
+          {showCustomInput ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={customInputRef}
+                value={customInput}
+                onChange={e => setCustomInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") handleCustomSubmit();
+                  if (e.key === "Escape") { setShowCustomInput(false); setCustomInput(""); }
+                }}
+                placeholder="e.g. BNBUSDT or NASDAQ:AAPL"
+                className="w-44 px-2 py-0.5 rounded-lg text-[10px] font-mono outline-none"
+                style={{
+                  background: "var(--muted)",
+                  border: "1px solid rgba(59,130,246,0.5)",
+                  color: "var(--foreground)",
+                }}
+              />
+              <button
+                onClick={handleCustomSubmit}
+                className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all hover:scale-105"
+                style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.4)", color: "#60a5fa" }}
+              >
+                Go
+              </button>
+              <button
+                onClick={() => { setShowCustomInput(false); setCustomInput(""); }}
+                className="px-1.5 py-0.5 rounded-lg text-[10px] font-mono transition-all"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowCustomInput(true)}
+              title="Enter any TradingView symbol"
+              className="shrink-0 px-2 py-0.5 rounded-lg text-[10px] font-mono font-semibold transition-all hover:scale-105"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            >
+              + Custom
+            </button>
+          )}
         </div>
-        {/* Right: pair selector pills */}
+        {/* Row 2: preset pair selector pills */}
         <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
           {CHART_PAIRS.map(pair => {
             const isActive = selectedSymbol === pair.symbol;
@@ -855,6 +923,22 @@ function TradingViewChart({ fromToken, toToken, theme }: {
               </button>
             );
           })}
+          {/* If a custom symbol is active (not in presets), show it as a removable pill */}
+          {!activePair && (
+            <div
+              className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold"
+              style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", color: "#c084fc" }}
+            >
+              <span>{pairLabel}</span>
+              <button
+                onClick={() => setSelectedSymbol(defaultSymbol)}
+                className="text-[9px] leading-none opacity-70 hover:opacity-100"
+                title="Reset to swap pair"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {/* Widget container */}
@@ -1035,16 +1119,24 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
   ownQuote?: OrderBookEntry | null;
+  fromAmount?: number; // current swap input amount for DEX depth comparison
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
   // DEX reference rate for best-rate badge
   const dexRef = useDexRefRate(fromToken.symbol, toToken.symbol, fromToken.usdPrice, toToken.usdPrice);
+
+  // DEX depth: quoted output for the exact current swap size
+  // Uses the dexRef rate (already fetched) scaled to the actual input amount
+  const dexDepthOutput = useMemo(() => {
+    if (!dexRef.rate || !fromAmount || fromAmount <= 0) return null;
+    return dexRef.rate * fromAmount;
+  }, [dexRef.rate, fromAmount]);
   // Record quote events for reputation tracking
   const recordQuoteRef = useRef(recordQuote);
   recordQuoteRef.current = recordQuote;
@@ -1177,11 +1269,20 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote }: {
         </div>
         <div className="text-right">
           <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
-          {/* DEX reference rate row */}
+          {/* DEX depth row: quoted output for the exact swap size */}
           {dexRef.loading ? (
             <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
               <Loader2 className="w-2.5 h-2.5 animate-spin" />
               <span>Fetching {dexRef.source === "1inch" ? "1inch" : "Jupiter"}…</span>
+            </div>
+          ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
+            <div className="text-right">
+              <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : "#1470ef" }}>
+                {dexRef.source === "jupiter" ? "Jupiter" : "1inch"}: {fromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
+              </div>
+              {beatsDex && dexBeatsPct !== null && (
+                <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
+              )}
             </div>
           ) : dexRef.rate && dexRef.source !== "none" ? (
             <div className="text-[9px] text-slate-500">
@@ -2910,6 +3011,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                 reputation: 100,
               } satisfies OrderBookEntry;
             })()}
+            fromAmount={parseFloat(fromAmount) || undefined}
           />
         </div>
 
