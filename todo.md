@@ -769,3 +769,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove from watchlist button on watchlist pills (×)
 - [x] Debounce DEX depth quote refresh — 500ms after fromAmount changes, re-fetch Jupiter/1inch quote
 - [x] Show loading spinner in DEX depth row while debounced fetch is in-flight
+
+## Mobile Order Book Redesign
+
+- [x] Replace cramped 5-column table rows with card-per-offer layout on mobile (sm breakpoint)
+- [x] Each mobile card: peer name + badge top-left, rate large top-right, offer amount + USD value bottom-left, expires + Accept button bottom-right
+- [x] Best rate badge displayed prominently below peer name on mobile card
+- [x] Keep desktop table layout unchanged (only affects mobile)
+- [x] Improve header on mobile: stack DEX depth row below offer count, larger text
+- [x] Own-quote (You/LP) row also uses card layout on mobile

@@ -1404,9 +1404,9 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
         </div>
       </div>
 
-      {/* Column headers */}
+      {/* Column headers — desktop only */}
       <div
-        className="grid text-[9px] font-mono uppercase tracking-widest text-slate-600 px-4 py-2 border-b"
+        className="hidden sm:grid text-[9px] font-mono uppercase tracking-widest text-slate-600 px-4 py-2 border-b"
         style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr", borderColor: "var(--border)" }}
       >
         <span>Peer</span>
@@ -1434,66 +1434,110 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
-              className="grid items-center px-4 py-2.5 transition-colors"
-              style={{
-                gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr",
-                background: "rgba(6,182,212,0.08)",
-                borderLeft: "2px solid rgba(6,182,212,0.6)",
-              }}
+              className="hover:bg-muted/50 transition-colors"
+              style={{ background: "rgba(6,182,212,0.06)", borderLeft: "2px solid rgba(6,182,212,0.6)" }}
             >
-              {/* Peer — You */}
-              <div>
-                <div className="flex items-center gap-1.5">
-                  {ownQuote.rate === bestRate && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
-                  <span className="text-[10px] font-mono text-cyan-400 font-bold">You</span>
-                  <span className="text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide"
-                    style={{ background: "rgba(6,182,212,0.2)", color: "#22d3ee" }}>LP</span>
+              {/* ── MOBILE CARD — own quote ── */}
+              {(() => {
+                const delta = orders.length > 0
+                  ? ((ownQuote.rate - Math.max(...orders.map(o => o.rate))) / Math.max(...orders.map(o => o.rate))) * 100
+                  : 0;
+                return (
+                  <div className="sm:hidden px-4 py-3 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5">
+                          {ownQuote.rate === bestRate && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+                          <span className="text-sm font-semibold text-cyan-400">You</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide"
+                            style={{ background: "rgba(6,182,212,0.2)", color: "#22d3ee" }}>LP</span>
+                        </div>
+                        <span className="text-[11px]" style={{ color: "rgba(6,182,212,0.6)" }}>
+                          {ownQuote.latency}ms ·{" "}
+                          <span className={delta >= 0 ? "text-emerald-400" : "text-red-400"}>
+                            {delta >= 0 ? "▲" : "▼"}{Math.abs(delta).toFixed(2)}%
+                          </span>
+                        </span>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className={`text-base font-mono font-bold ${ownQuote.rate === bestRate ? "text-amber-400" : "text-cyan-400"}`}>
+                          {ownQuote.rate.toFixed(4)}
+                        </div>
+                        <div className="text-[10px] text-slate-500">{ownQuote.toAmount} {ownQuote.toSymbol}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-[13px] font-mono" style={{ color: TOKEN_COLORS[ownQuote.fromSymbol] ?? "#94a3b8" }}>
+                          {ownQuote.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {ownQuote.fromSymbol}
+                        </div>
+                        <div className="text-[11px] text-slate-500">${ownQuote.usdValue.toFixed(0)}</div>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 min-w-[48px]">
+                        <span className="text-[12px] font-mono font-semibold text-cyan-400">live</span>
+                        <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
+                          <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
+                        </div>
+                      </div>
+                      <div className="px-4 py-2 rounded-xl text-[13px] font-mono font-bold flex-shrink-0" style={{ color: "#06b6d4", background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.3)" }}>Quoting</div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* ── DESKTOP TABLE ROW — own quote ── */}
+              <div
+                className="hidden sm:grid items-center px-4 py-2.5 transition-colors"
+                style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr" }}
+              >
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    {ownQuote.rate === bestRate && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
+                    <span className="text-[10px] font-mono text-cyan-400 font-bold">You</span>
+                    <span className="text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide"
+                      style={{ background: "rgba(6,182,212,0.2)", color: "#22d3ee" }}>LP</span>
+                  </div>
+                  <div className="text-[9px]" style={{ color: "rgba(6,182,212,0.6)" }}>
+                    {ownQuote.latency}ms ·
+                    {(() => {
+                      const delta2 = orders.length > 0
+                        ? ((ownQuote.rate - Math.max(...orders.map(o => o.rate))) / Math.max(...orders.map(o => o.rate))) * 100
+                        : 0;
+                      return (
+                        <span className={delta2 >= 0 ? "text-emerald-400" : "text-red-400"}>
+                          {delta2 >= 0 ? " ▲" : " ▼"}{Math.abs(delta2).toFixed(2)}%
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <div className="text-[9px]" style={{ color: "rgba(6,182,212,0.6)" }}>
-                  {ownQuote.latency}ms ·
-                  {(() => {
-                    const delta = orders.length > 0
-                      ? ((ownQuote.rate - Math.max(...orders.map(o => o.rate))) / Math.max(...orders.map(o => o.rate))) * 100
-                      : 0;
-                    return (
-                      <span className={delta >= 0 ? "text-emerald-400" : "text-red-400"}>
-                        {delta >= 0 ? " ▲" : " ▼"}{Math.abs(delta).toFixed(2)}%
-                      </span>
-                    );
-                  })()}
+                <div>
+                  <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[ownQuote.fromSymbol] ?? "#94a3b8" }}>
+                    {ownQuote.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {ownQuote.fromSymbol}
+                  </div>
+                  <div className="text-[9px] text-slate-600">${ownQuote.usdValue.toFixed(0)}</div>
                 </div>
+                <div>
+                  <div className={`text-[10px] font-mono font-semibold ${ownQuote.rate === bestRate ? "text-amber-400" : "text-cyan-400"}`}>
+                    {ownQuote.rate.toFixed(4)}
+                  </div>
+                  <div className="text-[9px] text-slate-600">{ownQuote.toAmount} {ownQuote.toSymbol}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-cyan-500">live</div>
+                  <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
+                    <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
+                  </div>
+                </div>
+                <div className="text-[9px] text-cyan-600 font-mono">Quoting</div>
               </div>
-              {/* Offer */}
-              <div>
-                <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[ownQuote.fromSymbol] ?? "#94a3b8" }}>
-                  {ownQuote.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {ownQuote.fromSymbol}
-                </div>
-                <div className="text-[9px] text-slate-600">${ownQuote.usdValue.toFixed(0)}</div>
-              </div>
-              {/* Rate */}
-              <div>
-                <div className={`text-[10px] font-mono font-semibold ${ownQuote.rate === bestRate ? "text-amber-400" : "text-cyan-400"}`}>
-                  {ownQuote.rate.toFixed(4)}
-                </div>
-                <div className="text-[9px] text-slate-600">{ownQuote.toAmount} {ownQuote.toSymbol}</div>
-              </div>
-              {/* Expiry — live peer always fresh */}
-              <div>
-                <div className="text-[10px] font-mono text-cyan-500">live</div>
-                <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
-                  <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
-                </div>
-              </div>
-              {/* You are the maker — no accept button */}
-              <div className="text-[9px] text-cyan-600 font-mono">Quoting</div>
             </motion.div>
           )}
           {orders.slice(0, ownQuote ? 5 : 6).map((order, i) => {
             const isBest = order.rate === bestRate;
             const isFlashing = flash === order.id;
             const expiryPct = (order.expiresIn / 60) * 100;
-            // Best-rate badge: only on the top offer, only when it beats the DEX
             const showBestBadge = isBest && beatsDex && dexBeatsPct !== null;
+            const rep = getReputation(order.peer);
             return (
               <motion.div
                 key={order.id}
@@ -1501,86 +1545,144 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                 animate={{ opacity: 1, x: 0, background: isFlashing ? "rgba(59,130,246,0.12)" : showBestBadge ? "rgba(16,185,129,0.05)" : "transparent" }}
                 exit={{ opacity: 0, x: 10 }}
                 transition={{ delay: i * 0.04 }}
-                className="grid items-center px-4 py-2.5 hover:bg-muted/50 transition-colors"
-                style={{
-                  gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr",
-                  ...(showBestBadge ? { borderLeft: "2px solid rgba(16,185,129,0.6)" } : {}),
-                }}
+                className="hover:bg-muted/50 transition-colors"
+                style={showBestBadge ? { borderLeft: "2px solid rgba(16,185,129,0.6)" } : {}}
               >
-                {/* Peer */}
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    {isBest && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
-                    <span className="text-[10px] font-mono text-slate-300">{order.peer}</span>
-                    {(() => {
-                      const rep = getReputation(order.peer);
-                      return (
-                        <span
-                          className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}
-                        >
+                {/* ── MOBILE CARD LAYOUT (hidden on sm+) ── */}
+                <div className="sm:hidden px-4 py-3 flex flex-col gap-2">
+                  {/* Row 1: Peer name + badge + rate */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {isBest && <div className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+                        <span className="text-sm font-semibold text-slate-200">{order.peer}</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}>
                           {rep.tierLabel}
                         </span>
-                      );
-                    })()}
+                      </div>
+                      <span className="text-[11px] text-slate-500">{order.latency}ms · {order.reputation}% rep</span>
+                    </div>
+                    {/* Rate — large and prominent */}
+                    <div className="text-right flex-shrink-0">
+                      <div className={`text-base font-mono font-bold ${isBest ? "text-amber-400" : "text-slate-300"}`}>
+                        {order.rate.toFixed(4)}
+                      </div>
+                      <div className="text-[10px] text-slate-500">{order.toAmount} {order.toSymbol}</div>
+                    </div>
                   </div>
-                  <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
-                  {/* Best-rate badge: beats DEX */}
+
+                  {/* Best-rate badge */}
                   {showBestBadge && (
-                    <div className="flex items-center gap-1 mt-0.5">
+                    <div className="flex">
                       <span
-                        className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                        className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                         style={{ background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
                       >
                         ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
                       </span>
                     </div>
                   )}
-                </div>
 
-                {/* Offer amount */}
-                <div>
-                  <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[order.fromSymbol] ?? "#94a3b8" }}>
-                    {order.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {order.fromSymbol}
-                  </div>
-                  <div className="text-[9px] text-slate-600">${order.usdValue.toFixed(0)}</div>
-                </div>
-
-                {/* Rate */}
-                <div>
-                  <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
-                    {order.rate.toFixed(4)}
-                  </div>
-                  <div className="text-[9px] text-slate-600">{order.toAmount} {order.toSymbol}</div>
-                </div>
-
-                {/* Expiry */}
-                <div>
-                  <div className={`text-[10px] font-mono ${order.expiresIn < 15 ? "text-red-400" : "text-slate-500"}`}>
-                    {order.expiresIn}s
-                  </div>
-                  <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
-                    <div
-                      className="h-full rounded-full transition-all duration-1000"
+                  {/* Row 2: Offer amount + expires + Accept */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="text-[13px] font-mono" style={{ color: TOKEN_COLORS[order.fromSymbol] ?? "#94a3b8" }}>
+                        {order.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {order.fromSymbol}
+                      </div>
+                      <div className="text-[11px] text-slate-500">${order.usdValue.toFixed(0)}</div>
+                    </div>
+                    {/* Expires + bar */}
+                    <div className="flex flex-col items-center gap-1 min-w-[48px]">
+                      <span className={`text-[12px] font-mono font-semibold ${order.expiresIn < 15 ? "text-red-400" : "text-slate-400"}`}>
+                        {order.expiresIn}s
+                      </span>
+                      <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-1000"
+                          style={{ width: `${expiryPct}%`, background: order.expiresIn < 15 ? "#ef4444" : "#10b981" }}
+                        />
+                      </div>
+                    </div>
+                    {/* Accept button */}
+                    <button
+                      onClick={() => onAccept(order)}
+                      className="px-4 py-2 rounded-xl text-[13px] font-bold transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                       style={{
-                        width: `${expiryPct}%`,
-                        background: order.expiresIn < 15 ? "#ef4444" : "#10b981",
+                        background: isBest ? "rgba(59,130,246,0.25)" : "var(--muted)",
+                        border: `1px solid ${isBest ? "rgba(59,130,246,0.5)" : "var(--border)"}`,
+                        color: isBest ? "#3b82f6" : "var(--muted-foreground)",
                       }}
-                    />
+                    >
+                      Accept
+                    </button>
                   </div>
                 </div>
 
-                {/* Accept button */}
-                <button
-                  onClick={() => onAccept(order)}
-                  className="px-2 py-1 rounded-lg text-[9px] font-bold transition-all hover:scale-105 active:scale-95"
-                  style={{
-                    background: isBest ? "rgba(59,130,246,0.2)" : "var(--muted)",
-                    border: `1px solid ${isBest ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
-                    color: isBest ? "#3b82f6" : "var(--muted-foreground)",
-                  }}
+                {/* ── DESKTOP TABLE ROW (hidden below sm) ── */}
+                <div
+                  className="hidden sm:grid items-center px-4 py-2.5"
+                  style={{ gridTemplateColumns: "1fr 0.9fr 0.9fr 0.7fr 0.6fr" }}
                 >
-                  Accept
-                </button>
+                  {/* Peer */}
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      {isBest && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
+                      <span className="text-[10px] font-mono text-slate-300">{order.peer}</span>
+                      <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}>
+                        {rep.tierLabel}
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
+                    {showBestBadge && (
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <span
+                          className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
+                          style={{ background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
+                        >
+                          ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Offer */}
+                  <div>
+                    <div className="text-[10px] font-mono" style={{ color: TOKEN_COLORS[order.fromSymbol] ?? "#94a3b8" }}>
+                      {order.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {order.fromSymbol}
+                    </div>
+                    <div className="text-[9px] text-slate-600">${order.usdValue.toFixed(0)}</div>
+                  </div>
+                  {/* Rate */}
+                  <div>
+                    <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
+                      {order.rate.toFixed(4)}
+                    </div>
+                    <div className="text-[9px] text-slate-600">{order.toAmount} {order.toSymbol}</div>
+                  </div>
+                  {/* Expiry */}
+                  <div>
+                    <div className={`text-[10px] font-mono ${order.expiresIn < 15 ? "text-red-400" : "text-slate-500"}`}>
+                      {order.expiresIn}s
+                    </div>
+                    <div className="w-full h-1 rounded-full mt-1 overflow-hidden" style={{ background: "var(--muted)" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{ width: `${expiryPct}%`, background: order.expiresIn < 15 ? "#ef4444" : "#10b981" }}
+                      />
+                    </div>
+                  </div>
+                  {/* Accept */}
+                  <button
+                    onClick={() => onAccept(order)}
+                    className="px-2 py-1 rounded-lg text-[9px] font-bold transition-all hover:scale-105 active:scale-95"
+                    style={{
+                      background: isBest ? "rgba(59,130,246,0.2)" : "var(--muted)",
+                      border: `1px solid ${isBest ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                      color: isBest ? "#3b82f6" : "var(--muted-foreground)",
+                    }}
+                  >
+                    Accept
+                  </button>
+                </div>
               </motion.div>
             );
           })}
