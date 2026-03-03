@@ -568,3 +568,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove "AFOS Agent" tab from the Dashboard wallet panel (keep "My Wallets" only for regular users)
 - [x] Add Platform Liquidity section to Analytics page (reserves by chain, utilization, total value)
 - [x] Admin page is password-gated (operator access only)
+
+## Admin Agent Wallet — HTLC Wallet Section
+
+- [x] Add backend tRPC procedure to derive BTC/ETH/SOL HTLC wallet addresses from stored keys and fetch on-chain balances
+- [x] Add AFOS Agent HTLC Wallet card below Hot Wallet in Admin Agent Wallet tab
+- [x] Show BTC address (P2WPKH from WIF), ETH address (from private key), SOL address (from keypair)
+- [x] Show on-chain balances for each HTLC address (BTC via mempool.space, ETH via etherscan/RPC, SOL via RPC)
+- [x] Write vitest tests for htlcWallet router (6 tests — structure, missing keys, ETH derivation)

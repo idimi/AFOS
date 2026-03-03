@@ -15,6 +15,7 @@ import {
   Cpu
 } from "lucide-react";
 import { getWallet, type WalletAsset } from "@/lib/afosApi";
+import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 // ─── Admin password (in production this would be server-side auth) ────────────
@@ -892,11 +893,140 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <ArrowUpRight className="w-3 h-3" /> Withdraw
               </button>
             </div>
+
+            {/* HTLC Wallet Section */}
+            <HtlcWalletSection />
+
           </div>
         )}
 
       </div>
     </div>
+  );
+}
+
+// ─── HTLC Wallet Section ─────────────────────────────────────────────────────
+
+const CHAIN_COLORS: Record<string, string> = {
+  bitcoin:  "#F7931A",
+  ethereum: "#627EEA",
+  solana:   "#9945FF",
+};
+
+function HtlcWalletSection() {
+  const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcWallets.useQuery(undefined, {
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const wallets = data ? [data.btc, data.eth, data.sol] : [];
+  const loading = isLoading;
+  const refreshing = isRefetching;
+
+  // Total USD
+  const totalUsd = wallets.reduce((sum, w) => {
+    const usdNum = parseFloat((w.usd ?? "$0").replace(/[^\d.-]/g, "")) || 0;
+    return sum + usdNum;
+  }, 0);
+
+  return (
+    <>
+      {/* HTLC Wallet Header */}
+      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-400" />
+            <p className="text-sm font-bold text-foreground">AFOS Agent HTLC Wallet</p>
+          </div>
+          <button onClick={() => refetch()}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+            <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground mb-3">
+          HTLC signing wallets derived from agent private keys. Used to lock, claim, and refund atomic swaps across all 3 chains.
+        </p>
+
+        {/* Total value */}
+        {totalUsd > 0 && (
+          <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
+            <DollarSign className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-mono font-bold text-foreground">${totalUsd.toFixed(2)}</span>
+            <span className="text-[10px] text-muted-foreground">total across HTLC wallets</span>
+          </div>
+        )}
+      </div>
+
+      {/* HTLC Wallet Balances */}
+      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <p className="text-xs font-semibold text-foreground mb-3">HTLC Wallet Balances</p>
+        {loading && wallets.length === 0 ? (
+          <div className="space-y-2">
+            {[1,2,3].map(i => (
+              <div key={i} className="h-14 rounded-xl animate-pulse" style={{ background: "var(--muted)" }} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {wallets.map((w) => {
+              const chainColor = CHAIN_COLORS[w.chain] ?? "#888";
+              return (
+                <div key={w.chain}
+                  className="rounded-xl p-3"
+                  style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}25` }}>
+                  <div className="flex items-center gap-3">
+                    {/* Asset badge */}
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono"
+                      style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                      {w.asset}
+                    </div>
+                    {/* Balance + address */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-mono font-semibold text-foreground">{w.balance} {w.asset}</p>
+                        <span className="text-[10px] font-mono text-muted-foreground">{w.usd}</span>
+                      </div>
+                      {w.address ? (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-[9px] font-mono text-muted-foreground truncate max-w-[200px]">
+                            {w.address}
+                          </span>
+                          <button onClick={() => { navigator.clipboard.writeText(w.address!); toast.success(`${w.asset} HTLC address copied`); }}
+                            className="shrink-0 text-muted-foreground hover:text-foreground">
+                            <Copy className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[9px] text-amber-400 mt-0.5">
+                          {w.error ?? "Key not configured"}
+                        </p>
+                      )}
+                    </div>
+                    {/* Status */}
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : w.configured ? "#f59e0b" : "#6b7280" }} />
+                        <span className="text-[9px] text-muted-foreground">
+                          {w.live ? "live" : w.configured ? "pending" : "not set"}
+                        </span>
+                      </div>
+                      {w.configured && (
+                        <span className="text-[8px] px-1 py-0.5 rounded font-mono"
+                          style={{ background: `${chainColor}15`, color: chainColor, border: `1px solid ${chainColor}30` }}>
+                          {w.chain}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
