@@ -368,4 +368,63 @@ export const analyticsRouter = router({
         days:            input.days,
       };
     }),
+
+  /**
+   * Peer detail — full history for a single peer.
+   * Returns reputation record, all completed swaps, and HTLC channel history.
+   */
+  peerDetail: publicProcedure
+    .input(z.object({ peerId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+
+      // 1. Reputation record (lifetime stats)
+      const [rep] = await db
+        .select()
+        .from(peerReputation)
+        .where(eq(peerReputation.peerId, input.peerId))
+        .limit(1);
+
+      // 2. All completed swaps with this peer (most recent first)
+      const swaps = await db
+        .select()
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.peerId, input.peerId),
+            eq(swapAnalytics.status, 'completed')
+          )
+        )
+        .orderBy(desc(swapAnalytics.createdAt))
+        .limit(50);
+
+      // 3. HTLC channel history with this peer
+      const channels = await db
+        .select()
+        .from(htlcSwaps)
+        .where(eq(htlcSwaps.peerId, input.peerId))
+        .orderBy(desc(htlcSwaps.createdAt))
+        .limit(20);
+
+      // 4. Ping timeline — derive from reputation signals
+      const avgLatencyMs = rep && rep.successfulPings > 0
+        ? Math.round(rep.totalLatencyMs / rep.successfulPings)
+        : null;
+      const totalPings = (rep?.successfulPings ?? 0) + (rep?.failedPings ?? 0);
+      const uptimePct = totalPings > 0
+        ? Math.round((rep!.successfulPings / totalPings) * 100)
+        : null;
+
+      return {
+        reputation: rep ?? null,
+        avgLatencyMs,
+        uptimePct,
+        totalPings,
+        swaps,
+        channels,
+        swapCount:  swaps.length,
+        totalUsd:   swaps.reduce((s, sw) => s + parseFloat(sw.amountUsd ?? '0'), 0),
+      };
+    }),
 });

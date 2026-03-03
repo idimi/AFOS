@@ -702,3 +702,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add layer badge (HW green / IS cyan) to each row
 - [x] Add reputation score badge (color-coded 0-100) to each row
 - [x] Sort leaderboard by score desc by default, allow sort pill buttons (Score/Swaps/Volume/Latency)
+
+## Peer Detail Drawer + Score Label Fix
+
+- [x] Add analytics.peerDetail tRPC procedure: returns swap history, ping stats, channel history for a given peerId
+- [x] Build PeerDetailDrawer slide-over component with tabs: Overview, Swaps, Channels, Open Channel shortcut
+- [x] Wire leaderboard rows to open PeerDetailDrawer on click
+- [x] Add "All Time" tooltip/label to Score column header in leaderboard
+- [x] Pre-fill Open Channel form with selected peer's ID when opened from drawer (via sessionStorage + custom event)

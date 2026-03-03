@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
+import { PeerDetailDrawer } from "@/components/PeerDetailDrawer";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,7 @@ function EmptyState({ message }: { message: string }) {
 
 export default function SwapAnalytics() {
   const [days, setDays] = useState(30);
+  const [drawerPeer, setDrawerPeer] = useState<{ peerId: string; alias: string | null; origin: string } | null>(null);
 
   const { data: summary,  isLoading: loadingSummary  } = trpc.analytics.summary.useQuery({ days });
   const { data: volume,   isLoading: loadingVolume   } = trpc.analytics.volumeByChain.useQuery({ days });
@@ -181,6 +183,22 @@ export default function SwapAnalytics() {
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
+      {/* Peer Detail Drawer */}
+      {drawerPeer && (
+        <PeerDetailDrawer
+          peerId={drawerPeer.peerId}
+          alias={drawerPeer.alias}
+          origin={drawerPeer.origin}
+          onClose={() => setDrawerPeer(null)}
+          onOpenChannel={(peerId) => {
+            setDrawerPeer(null);
+            // Navigate to Network page with pre-filled peer ID via sessionStorage
+            sessionStorage.setItem('afos_open_channel_peer', peerId);
+            window.dispatchEvent(new CustomEvent('afos:open-channel', { detail: { peerId } }));
+          }}
+        />
+      )}
+
       {/* Header */}
       <div className="px-4 lg:px-6 py-4 flex items-center justify-between border-b border-border shrink-0">
         <div className="flex items-center gap-2">
@@ -480,8 +498,18 @@ export default function SwapAnalytics() {
                     <th className="text-left pb-2 font-medium w-8">#</th>
                     <th className="text-left pb-2 font-medium">Peer</th>
                     <th className="text-left pb-2 font-medium">Layer</th>
-                    <th className="text-right pb-2 font-medium">Score</th>
-                    <th className="text-right pb-2 font-medium">Swaps</th>
+                    <th className="text-right pb-2 font-medium">
+                      <span className="inline-flex flex-col items-end gap-0">
+                        <span>Score</span>
+                        <span className="text-[9px] font-normal text-muted-foreground/70 leading-none">All Time</span>
+                      </span>
+                    </th>
+                    <th className="text-right pb-2 font-medium">
+                      <span className="inline-flex flex-col items-end gap-0">
+                        <span>Swaps</span>
+                        <span className="text-[9px] font-normal text-muted-foreground/70 leading-none">{days}d</span>
+                      </span>
+                    </th>
                     <th className="text-right pb-2 font-medium hidden sm:table-cell">Volume</th>
                     <th className="text-right pb-2 font-medium hidden sm:table-cell">Avg Latency</th>
                     <th className="text-right pb-2 font-medium hidden md:table-cell">Last Seen</th>
@@ -507,7 +535,12 @@ export default function SwapAnalytics() {
                         })()
                       : '—';
                     return (
-                      <tr key={p.peerId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={p.peerId}
+                        className="border-b border-border/50 hover:bg-muted/30 transition-colors cursor-pointer"
+                        onClick={() => setDrawerPeer({ peerId: p.peerId, alias: p.alias, origin: p.origin })}
+                        title="Click to view peer details"
+                      >
                         {/* Rank */}
                         <td className="py-2 pr-2">
                           {i === 0 ? <Trophy className="w-3.5 h-3.5 text-amber-400" /> :
