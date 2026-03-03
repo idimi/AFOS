@@ -687,3 +687,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add recordSwap tRPC procedure to peerReputation router (already existed)
 - [x] Wire swap_executed SSE event in NetworkPage to call recordSwap for the counterparty peer
 - [x] Update reputation score computation to weight swap history more heavily
+
+## Dual-DHT Network UI Fix
+
+- [x] Update Network page empty state to mention both Hyperswarm DHT and IntercomSwap DHT
+- [x] Update scanning badge to show both layers (Hyperswarm + IntercomSwap) with individual status
+- [x] Update header subtitle to reflect dual-DHT topology
+- [x] Show Light Peer connection status separately from Oracle VM status in the Network header

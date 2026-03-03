@@ -625,7 +625,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
             {remotePeers.length === 0 ? (
               <>
                 <p className="text-[10px] text-muted-foreground">No remote peers connected</p>
-                <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm DHT...</p>
+                <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm + IntercomSwap DHT...</p>
               </>
             ) : (
               <>
@@ -654,14 +654,30 @@ function EmptyTopology() {
         <div className="absolute inset-0 w-20 h-20 rounded-full border border-cyan-400/10 animate-ping" style={{ animationDuration: "2s" }} />
         <div className="absolute -inset-4 w-28 h-28 rounded-full border border-cyan-400/5 animate-ping" style={{ animationDuration: "3s" }} />
       </div>
-      <h3 className="text-sm font-bold text-foreground mb-1">Scanning P2P Network</h3>
+      <h3 className="text-sm font-bold text-foreground mb-1">Scanning Dual-Layer P2P Network</h3>
       <p className="text-xs text-muted-foreground text-center max-w-xs mb-4">
-        Your AFOS node is announcing on the Hyperswarm DHT. Remote peers will appear here once they connect.
+        Your AFOS node announces on both DHT networks simultaneously. Remote peers from either layer will appear here once they connect.
       </p>
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-        style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-[10px] font-mono text-emerald-400">DHT Announced · Listening for peers</span>
+      {/* Two-layer DHT status badges */}
+      <div className="flex flex-col gap-2 w-full max-w-xs">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-mono text-emerald-400 font-bold">Hyperswarm DHT</div>
+            <div className="text-[9px] text-emerald-400/60">Oracle VM full node · Announced</div>
+          </div>
+          <Radio className="w-3 h-3 text-emerald-400 shrink-0" />
+        </div>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)" }}>
+          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: "0.5s" }} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-mono text-cyan-400 font-bold">IntercomSwap DHT</div>
+            <div className="text-[9px] text-cyan-400/60">Browser Light Peer · Relay bridge active</div>
+          </div>
+          <Globe className="w-3 h-3 text-cyan-400 shrink-0" />
+        </div>
       </div>
     </div>
   );
@@ -969,7 +985,7 @@ export default function NetworkPage() {
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">P2P Network</h1>
           <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
-            IntercomSwap DHT · Live peer topology · Atomic swap channels
+            Hyperswarm DHT + IntercomSwap DHT · Dual-layer P2P · Atomic swap channels
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
             {livePeers.filter(p => p.online).length}/{livePeers.length} peers online
@@ -982,10 +998,23 @@ export default function NetworkPage() {
             <RefreshCw className="w-3 h-3 text-muted-foreground" />
             <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">Refresh</span>
           </button>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+          {/* Hyperswarm DHT badge */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" title="Oracle VM Hyperswarm DHT — full node"
             style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-            <span className="text-[10px] font-mono text-emerald-400">DHT Live</span>
+            <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">Hyperswarm</span>
+            <span className="text-[10px] font-mono text-emerald-400 sm:hidden">HW</span>
+          </div>
+          {/* IntercomSwap DHT badge — reflects Light Peer status */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+            title={lightPeer.isOnline ? "IntercomSwap DHT — Light Peer connected" : "IntercomSwap DHT — Light Peer offline"}
+            style={{
+              background: lightPeer.isOnline ? "rgba(6,182,212,0.1)" : "rgba(100,116,139,0.1)",
+              border: `1px solid ${lightPeer.isOnline ? "rgba(6,182,212,0.25)" : "rgba(100,116,139,0.2)"}`,
+            }}>
+            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: lightPeer.isOnline ? "#06b6d4" : "#64748b" }} />
+            <span className="text-[10px] font-mono hidden sm:inline" style={{ color: lightPeer.isOnline ? "#06b6d4" : "#64748b" }}>IntercomSwap</span>
+            <span className="text-[10px] font-mono sm:hidden" style={{ color: lightPeer.isOnline ? "#06b6d4" : "#64748b" }}>IS</span>
           </div>
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
@@ -1511,7 +1540,7 @@ export default function NetworkPage() {
             <div className="space-y-1.5">
               {[
                 { label: "Channel", value: "intercomswap-rfq-mainnet" },
-                { label: "Protocol", value: "Hyperswarm DHT" },
+                { label: "Protocol", value: "Hyperswarm + IntercomSwap DHT" },
                 { label: "Node Key", value: oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Loading..." },
                 { label: "Escrow", value: "HTLC Atomic Swap" },
                 { label: "Settlement", value: "SOL · ETH · BTC" },
