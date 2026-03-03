@@ -636,3 +636,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Always show portfolio total row in Oracle VM Node Hot Wallet header
 - [x] Surface Oracle VM RPC health badges (ETH/SOL/BTC) in Admin panel Agent Wallet tab
 - [x] Confirmed Platform Liquidity in Analytics is wired to Oracle VM /api/wallet balances (already correct)
+
+## Bug Fixes — Header Wallet Badge + Peer Count
+
+- [x] Fix header wallet badge: show SOL dot when Solana wallet is connected — now checks both wallet-adapter connected AND phantomMultiChain.chains.includes('solana')
+- [x] Fix peer count: include local Light Peer as +1 when it is ONLINE and active — total = Oracle VM activePeers + (lightPeerOnline ? 1 : 0)

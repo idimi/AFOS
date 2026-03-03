@@ -23,6 +23,7 @@ import { useHaptic } from "../hooks/useHaptic";
 import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
+import { useLightPeer } from "../contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
@@ -2619,7 +2620,10 @@ function StackHealthStrip() {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
-  const { ethereum: topbarEth, bitcoin: topbarBtc } = useMultiChainWallet();
+  const { ethereum: topbarEth, bitcoin: topbarBtc, phantomMultiChain } = useMultiChainWallet();
+  const { isOnline: lightPeerOnline } = useLightPeer();
+  // SOL is connected either via wallet-adapter OR via Phantom multi-chain
+  const solConnected = connected || !!(phantomMultiChain?.chains.includes("solana"));
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
@@ -2810,7 +2814,13 @@ export default function Dashboard() {
                 "text-xs font-mono",
                 peerFlash === 'up' ? "text-emerald-300" : peerFlash === 'down' ? "text-red-300" : "text-violet-300"
               ].join(" ")}>
-                {headerPeers !== null ? `${headerPeers} peer${headerPeers === 1 ? '' : 's'}` : '— peers'}
+                {(() => {
+                  // Remote peers from Oracle VM + local Light Peer when online
+                  const remotePeers = headerPeers ?? 0;
+                  const total = remotePeers + (lightPeerOnline ? 1 : 0);
+                  if (headerPeers === null && !lightPeerOnline) return '— peers';
+                  return `${total} peer${total === 1 ? '' : 's'}`;
+                })()}
               </span>
             </button>
             {/* Multi-chain wallet badge */}
@@ -2819,10 +2829,10 @@ export default function Dashboard() {
               title="Manage wallets"
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 hover:opacity-90"
               style={{
-                background: (connected || topbarEth?.connected || topbarBtc?.connected)
+                background: (solConnected || topbarEth?.connected || topbarBtc?.connected)
                   ? "rgba(16,185,129,0.08)"
                   : "rgba(59,130,246,0.12)",
-                border: (connected || topbarEth?.connected || topbarBtc?.connected)
+                border: (solConnected || topbarEth?.connected || topbarBtc?.connected)
                   ? "1px solid rgba(16,185,129,0.25)"
                   : "1px solid rgba(59,130,246,0.3)",
               }}
@@ -2833,10 +2843,10 @@ export default function Dashboard() {
                 <span
                   className="w-2 h-2 rounded-full transition-all duration-300"
                   style={{
-                    background: connected ? "#9945FF" : "rgba(153,69,255,0.2)",
-                    boxShadow: connected ? "0 0 5px rgba(153,69,255,0.6)" : "none",
+                    background: solConnected ? "#9945FF" : "rgba(153,69,255,0.2)",
+                    boxShadow: solConnected ? "0 0 5px rgba(153,69,255,0.6)" : "none",
                   }}
-                  title={connected ? `Solana: ${shortAddress}` : "Solana: not connected"}
+                  title={solConnected ? `Solana: ${shortAddress || phantomMultiChain?.solanaAddress?.slice(0, 6) + "…"}` : "Solana: not connected"}
                 />
                 {/* ETH dot */}
                 <span
@@ -2858,9 +2868,9 @@ export default function Dashboard() {
                 />
               </span>
               {/* Label */}
-              {(connected || topbarEth?.connected || topbarBtc?.connected) ? (
+              {(solConnected || topbarEth?.connected || topbarBtc?.connected) ? (
                 <span style={{ color: "#10b981" }}>
-                  {[connected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && "BTC"]
+                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && "BTC"]
                     .filter(Boolean).join(" + ")}
                 </span>
               ) : (
