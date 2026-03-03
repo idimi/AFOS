@@ -678,3 +678,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add /api/channels/:id/health endpoint on Oracle VM
 - [x] Show warning badge on unresponsive channels in Liquidity Channels tab
 - [ ] Add channel health status to Active Channels sidebar (future)
+
+## Peer Directory Sort/Filter + Swap Reputation Update
+
+- [x] Add sort dropdown to Peer Directory: by Reputation (desc), Latency (asc), Channels (desc), Alias (A-Z)
+- [x] Add filter toggle: show All / Online Only / High Reputation (≥80)
+- [x] Sort remote peers in PeerList by selected criterion
+- [x] Add recordSwap tRPC procedure to peerReputation router (already existed)
+- [x] Wire swap_executed SSE event in NetworkPage to call recordSwap for the counterparty peer
+- [x] Update reputation score computation to weight swap history more heavily

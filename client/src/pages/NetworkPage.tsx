@@ -13,7 +13,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
-  GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2
+  GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
+  ArrowUpDown, SlidersHorizontal, Star
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -390,6 +391,9 @@ function reputationColor(score: number): string {
   return '#ef4444';                  // red
 }
 
+type SortKey = 'reputation' | 'latency' | 'channels' | 'alias';
+type FilterKey = 'all' | 'online' | 'highRep';
+
 function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores }: {
   peers: Peer[];
   selectedId: string | null;
@@ -398,18 +402,132 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
   onPing: (peerId: string, fullKey: string) => void;
   reputationScores: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }> | undefined;
 }) {
+  const [sortKey, setSortKey] = useState<SortKey>('reputation');
+  const [filterKey, setFilterKey] = useState<FilterKey>('all');
+  const [showControls, setShowControls] = useState(false);
+
+  const remotePeers = peers.filter(p => p.id !== 'self');
+
+  // Apply filter
+  const filteredPeers = remotePeers.filter(peer => {
+    if (filterKey === 'online') return peer.online;
+    if (filterKey === 'highRep') {
+      const score = peer.fullKey ? (reputationScores?.[peer.fullKey]?.score ?? null) : null;
+      return score !== null && score >= 80;
+    }
+    return true;
+  });
+
+  // Apply sort
+  const sortedPeers = [...filteredPeers].sort((a, b) => {
+    if (sortKey === 'reputation') {
+      const sa = a.fullKey ? (reputationScores?.[a.fullKey]?.score ?? -1) : -1;
+      const sb = b.fullKey ? (reputationScores?.[b.fullKey]?.score ?? -1) : -1;
+      return sb - sa; // highest first
+    }
+    if (sortKey === 'latency') {
+      const la = pingResults[a.id]?.latencyMs ?? a.latency;
+      const lb = pingResults[b.id]?.latencyMs ?? b.latency;
+      return la - lb; // lowest first
+    }
+    if (sortKey === 'channels') return b.channels - a.channels; // most first
+    if (sortKey === 'alias') return a.alias.localeCompare(b.alias);
+    return 0;
+  });
+
+  const sortLabels: Record<SortKey, string> = {
+    reputation: 'Reputation ↓',
+    latency: 'Latency ↑',
+    channels: 'Channels ↓',
+    alias: 'Alias A–Z',
+  };
+  const filterLabels: Record<FilterKey, string> = {
+    all: 'All',
+    online: 'Online',
+    highRep: '★ High Rep',
+  };
+
   return (
     <div className="rounded-2xl overflow-hidden"
       style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-      <div className="px-4 py-3 border-b flex items-center justify-between"
-        style={{ borderColor: "var(--border)" }}>
-        <div className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-xs font-bold text-foreground">Peer Directory</span>
+      {/* Header */}
+      <div className="px-4 py-3 border-b" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Globe className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-xs font-bold text-foreground">Peer Directory</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{peers.length} nodes</span>
+          </div>
+          <button
+            onClick={() => setShowControls(v => !v)}
+            title="Sort & Filter"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all hover:opacity-80"
+            style={{
+              background: showControls ? "rgba(6,182,212,0.12)" : "var(--muted)",
+              border: `1px solid ${showControls ? "rgba(6,182,212,0.3)" : "var(--border)"}`,
+              color: showControls ? "#06b6d4" : "var(--muted-foreground)",
+            }}>
+            <SlidersHorizontal className="w-2.5 h-2.5" />
+            Sort
+          </button>
         </div>
-        <span className="text-[10px] font-mono text-muted-foreground">{peers.length} nodes</span>
+
+        {/* Sort & Filter controls — collapsible */}
+        <AnimatePresence>
+          {showControls && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="overflow-hidden"
+            >
+              <div className="pt-2.5 space-y-2">
+                {/* Sort row */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-muted-foreground/70 font-mono w-8 shrink-0">Sort</span>
+                  {(Object.keys(sortLabels) as SortKey[]).map(key => (
+                    <button
+                      key={key}
+                      onClick={() => setSortKey(key)}
+                      className="px-2 py-0.5 rounded text-[9px] font-mono transition-all"
+                      style={{
+                        background: sortKey === key ? "rgba(6,182,212,0.15)" : "var(--muted)",
+                        border: `1px solid ${sortKey === key ? "rgba(6,182,212,0.35)" : "var(--border)"}`,
+                        color: sortKey === key ? "#06b6d4" : "var(--muted-foreground)",
+                      }}>
+                      {sortLabels[key]}
+                    </button>
+                  ))}
+                </div>
+                {/* Filter row */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[9px] text-muted-foreground/70 font-mono w-8 shrink-0">Filter</span>
+                  {(Object.keys(filterLabels) as FilterKey[]).map(key => (
+                    <button
+                      key={key}
+                      onClick={() => setFilterKey(key)}
+                      className="px-2 py-0.5 rounded text-[9px] font-mono transition-all"
+                      style={{
+                        background: filterKey === key ? "rgba(139,92,246,0.15)" : "var(--muted)",
+                        border: `1px solid ${filterKey === key ? "rgba(139,92,246,0.35)" : "var(--border)"}`,
+                        color: filterKey === key ? "#a78bfa" : "var(--muted-foreground)",
+                      }}>
+                      {filterLabels[key]}
+                    </button>
+                  ))}
+                </div>
+                {/* Active state summary */}
+                <div className="text-[9px] text-muted-foreground/50 font-mono">
+                  Showing {sortedPeers.length} of {remotePeers.length} remote peers
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-      <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: "var(--border)" }}>
+
+      <div className="divide-y max-h-72 overflow-y-auto" style={{ borderColor: "var(--border)" }}>
         {/* "You" row always first */}
         {peers.filter(p => p.id === "self").map(peer => {
           const isSelected = selectedId === peer.id;
@@ -435,8 +553,8 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
             </button>
           );
         })}
-        {/* Remote peers */}
-        {peers.filter(p => p.id !== "self").map(peer => {
+        {/* Remote peers — sorted & filtered */}
+        {sortedPeers.map(peer => {
           const pingState = pingResults[peer.id];
           const displayLatency = pingState?.latencyMs ?? peer.latency;
           const color = latencyColor(displayLatency);
@@ -501,11 +619,20 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
           );
         })}
         {/* Empty state when no remote peers */}
-        {peers.filter(p => p.id !== "self").length === 0 && (
+        {sortedPeers.length === 0 && (
           <div className="px-4 py-6 text-center">
             <WifiOff className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-[10px] text-muted-foreground">No remote peers connected</p>
-            <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm DHT...</p>
+            {remotePeers.length === 0 ? (
+              <>
+                <p className="text-[10px] text-muted-foreground">No remote peers connected</p>
+                <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm DHT...</p>
+              </>
+            ) : (
+              <>
+                <p className="text-[10px] text-muted-foreground">No peers match the filter</p>
+                <button onClick={() => setFilterKey('all')} className="text-[9px] text-cyan-400 mt-1 hover:underline">Clear filter</button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -575,6 +702,7 @@ export default function NetworkPage() {
     { enabled: remotePeerIds.length > 0, refetchInterval: 60_000 }
   );
   const recordPingMutation = trpc.peerReputation.recordPing.useMutation();
+  const recordSwapMutation = trpc.peerReputation.recordSwap.useMutation();
 
   // ── Channel Health ─────────────────────────────────────────────────────────
   // channelHealth: channelId → { healthy: boolean; lastChecked: number }
@@ -811,6 +939,17 @@ export default function NetworkPage() {
     const unsubSwap = onSSEEvent("swap_executed", (data: any) => {
       setLastActivity(`Swap executed: ${data.pair || "—"}`);
       triggerPulse(["self"]);
+      // Automatically update peer reputation when a swap completes.
+      // The Oracle VM emits { peerId, pair, amount, ... } in the swap_executed event.
+      // We record the swap for the counterparty peer so their reputation score improves
+      // organically over time without any manual operator action.
+      const counterpartyKey = data.peerId || data.peer || data.counterparty;
+      if (counterpartyKey && typeof counterpartyKey === 'string') {
+        recordSwapMutation.mutate(
+          { peerId: counterpartyKey },
+          { onSuccess: () => refetchReputation() },
+        );
+      }
     });
 
     return () => {
@@ -821,7 +960,7 @@ export default function NetworkPage() {
       unsubQuote();
       unsubSwap();
     };
-  }, [triggerPulse, fetchLiveData]);
+  }, [triggerPulse, fetchLiveData, recordSwapMutation, refetchReputation]);
 
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>
