@@ -720,3 +720,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add Escape key handler to close drawer
 - [x] Add ArrowUp/ArrowDown key handler to cycle through leaderboard rows
 - [x] Show current row index indicator in drawer header (e.g. "3 / 12")
+
+## Peer Directory: Origin Badge + Reputation-Gated Invite
+
+- [x] Add HW/IS origin badge next to peer alias in Peer Directory (desktop table + mobile cards)
+- [x] Add Invite button to each remote peer row — enabled only when reputation score >= 70
+- [x] Show tooltip on disabled Invite button explaining the score threshold
+- [x] Invite button opens Open Channel form pre-filled with that peer's ID

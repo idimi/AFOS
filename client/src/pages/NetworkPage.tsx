@@ -41,6 +41,7 @@ interface Peer {
   liquidity: number; // BTC
   version: string;
   fullKey?: string; // full public key for ping
+  origin?: 'hyperswarm' | 'intercomswap'; // which DHT layer this peer came from
 }
 
 interface Channel {
@@ -394,13 +395,14 @@ function reputationColor(score: number): string {
 type SortKey = 'reputation' | 'latency' | 'channels' | 'alias';
 type FilterKey = 'all' | 'online' | 'highRep';
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores }: {
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   pingResults: Record<string, { latencyMs: number | null; loading: boolean }>;
   onPing: (peerId: string, fullKey: string) => void;
   reputationScores: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }> | undefined;
+  onInvite?: (peerId: string, alias: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('reputation');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
@@ -575,6 +577,16 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono text-slate-200 truncate flex items-center gap-1.5">
                     {peer.alias}
+                    {/* DHT layer origin badge */}
+                    <span
+                      className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
+                      title={peer.origin === 'hyperswarm' ? 'Hyperswarm DHT — full node' : peer.origin === 'intercomswap' ? 'IntercomSwap DHT — light peer' : 'Unknown layer'}
+                      style={{
+                        background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                        border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
+                        color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
+                      }}
+                    >{peer.origin === 'hyperswarm' ? 'HW' : 'IS'}</span>
                     {repScore !== null && (
                       <span
                         className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
@@ -615,6 +627,36 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                 {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
                 Ping
               </button>
+              {/* Invite button — only enabled when reputation score >= 70 */}
+              {(() => {
+                const canInvite = repScore !== null && repScore >= 70;
+                const noScore = repScore === null;
+                const tooltip = noScore
+                  ? 'Ping this peer first to establish a reputation score'
+                  : canInvite
+                    ? `Invite to open a Liquidity Channel (score ${repScore}/100 \u2265 70)`
+                    : `Score ${repScore}/100 is below the 70-point threshold to invite`;
+                return (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (canInvite && peer.fullKey) onInvite?.(peer.fullKey, peer.alias); }}
+                    disabled={!canInvite}
+                    title={tooltip}
+                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                    style={{
+                      background: canInvite ? 'rgba(139,92,246,0.12)' : 'rgba(100,116,139,0.08)',
+                      border: `1px solid ${canInvite ? 'rgba(139,92,246,0.3)' : 'rgba(100,116,139,0.2)'}`,
+                      color: canInvite ? '#a78bfa' : '#475569',
+                      opacity: canInvite ? 1 : 0.5,
+                      cursor: canInvite ? 'pointer' : 'not-allowed',
+                    }}
+                    onMouseEnter={(e) => { if (canInvite) (e.currentTarget as HTMLButtonElement).style.opacity = '0.8'; }}
+                    onMouseLeave={(e) => { if (canInvite) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                  >
+                    <Mail className="w-2.5 h-2.5" />
+                    Invite
+                  </button>
+                );
+              })()}
             </div>
           );
         })}
@@ -745,6 +787,7 @@ export default function NetworkPage() {
       channels: 0,
       liquidity: 0,
       version: "2.0.0",
+      origin: 'intercomswap' as const,
     };
   }, [lightPeer.isOnline, lightPeer.peerAlias, lightPeer.totalVolumeUsd, lightPeer.prefs?.acceptedPairs]);
 
@@ -767,6 +810,7 @@ export default function NetworkPage() {
         liquidity: 0,
         version: "1.x",
         fullKey: op.publicKey,
+        origin: 'hyperswarm' as const,
       };
     });
   }, []);
@@ -1341,7 +1385,19 @@ export default function NetworkPage() {
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#ef4444" }} />
                   <div className="min-w-0">
-                    <div className="text-sm font-bold text-foreground truncate">{peer.alias}</div>
+                    <div className="text-sm font-bold text-foreground truncate flex items-center gap-1.5">
+                      {peer.alias}
+                      {/* DHT layer origin badge */}
+                      <span
+                        className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
+                        title={peer.origin === 'hyperswarm' ? 'Hyperswarm DHT' : 'IntercomSwap DHT'}
+                        style={{
+                          background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                          border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
+                          color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
+                        }}
+                      >{peer.origin === 'hyperswarm' ? 'HW' : 'IS'}</span>
+                    </div>
                     <div className="text-[10px] font-mono text-muted-foreground">{peer.region}</div>
                   </div>
                 </div>
@@ -1366,6 +1422,37 @@ export default function NetworkPage() {
                     {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
                     Ping
                   </button>
+                  {/* Mobile Invite button — reputation-gated */}
+                  {(() => {
+                    const mobileRep = peer.fullKey ? reputationData?.[peer.fullKey] : undefined;
+                    const mobileScore = mobileRep?.score ?? null;
+                    const canInvite = mobileScore !== null && mobileScore >= 70;
+                    return (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!canInvite) {
+                            toast.error(mobileScore === null ? 'Ping this peer first to get a reputation score' : `Score ${mobileScore}/100 is below the 70-point threshold`);
+                            return;
+                          }
+                          setActiveTab('channels');
+                          sessionStorage.setItem('afos_open_channel_peer', peer.fullKey!);
+                          window.dispatchEvent(new CustomEvent('afos:open-channel', { detail: { peerId: peer.fullKey } }));
+                          toast.success(`Opening channel form for ${peer.alias}`);
+                        }}
+                        title={canInvite ? `Invite (score ${mobileScore}/100)` : mobileScore === null ? 'Ping first to establish score' : `Score ${mobileScore}/100 < 70`}
+                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                        style={{
+                          background: canInvite ? 'rgba(139,92,246,0.12)' : 'rgba(100,116,139,0.08)',
+                          border: `1px solid ${canInvite ? 'rgba(139,92,246,0.3)' : 'rgba(100,116,139,0.2)'}`,
+                          color: canInvite ? '#a78bfa' : '#475569',
+                          opacity: canInvite ? 1 : 0.4,
+                        }}>
+                        <Mail className="w-2.5 h-2.5" />
+                        Invite
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
               <AnimatePresence>
@@ -1489,7 +1576,24 @@ export default function NetworkPage() {
 
         {/* Right: Peer List + Info */}
         <div className="space-y-4">
-          <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} pingResults={pingResults} onPing={handlePing} reputationScores={reputationData} />
+          <PeerList
+            peers={livePeers}
+            selectedId={selectedId}
+            onSelect={id => setSelectedId(prev => prev === id ? null : id)}
+            pingResults={pingResults}
+            onPing={handlePing}
+            reputationScores={reputationData}
+            onInvite={(peerId, alias) => {
+              // Switch to Liquidity Channels tab and pre-fill the Open Channel form
+              setActiveTab('channels');
+              // Store the peer ID for the Open Channel form to pick up
+              sessionStorage.setItem('afos_open_channel_peer', peerId);
+              window.dispatchEvent(new CustomEvent('afos:open-channel', { detail: { peerId } }));
+              toast.success(`Opening channel form for ${alias}`, {
+                description: `Score ≥ 70 — peer is eligible for a Liquidity Channel`,
+              });
+            }}
+          />
 
           {/* Active Channels summary */}
           <div className="rounded-2xl p-4"
