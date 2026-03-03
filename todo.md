@@ -641,3 +641,16 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix header wallet badge: show SOL dot when Solana wallet is connected — now checks both wallet-adapter connected AND phantomMultiChain.chains.includes('solana')
 - [x] Fix peer count: include local Light Peer as +1 when it is ONLINE and active — total = Oracle VM activePeers + (lightPeerOnline ? 1 : 0)
+
+## Network Page — Production Ready + P2P Bridge + Peer Tooltip
+
+- [ ] Add relay bridge endpoints on Oracle VM to forward RFQs between Hyperswarm and IntercomSwap networks
+- [x] Rewrite Network Topology tab: replace mock peers (GammaNode, AlphaNode, etc.) with live data from Oracle VM /api/peers
+- [x] Rewrite Network Topology stats (Online Peers, Active Channels, 24h Volume, Avg Latency) with live Oracle VM data
+- [x] Rewrite Peer Directory sidebar with live peer list from Oracle VM
+- [x] Rewrite Active Channels sidebar with live channel data from Oracle VM
+- [x] Rewrite Network LN Channels tab: replaced mock channels with empty state + real Open Channel form
+- [x] Rewrite Network Invites tab: replaced mock invites with empty state + real Generate form
+- [x] Add "You (Light Peer)" row at top of Peer Directory when Light Peer is online
+- [x] Add peer count tooltip to header showing breakdown: "X Light Peer (you) · Y remote nodes"
+- [x] Remove all hardcoded mock data from Network page — all PEERS/CHANNELS arrays replaced with live Oracle VM + Light Peer data

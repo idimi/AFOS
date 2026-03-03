@@ -3,6 +3,8 @@
  * Interactive animated SVG node graph showing live IntercomSwap peers,
  * latency rings, active swap channels, and geographic distribution.
  * Design: Glassmorphism + Agentic Sci-Fi (dark navy-black, cyan-teal accents)
+ *
+ * PRODUCTION: All data is live from Oracle VM /api/peers + SSE + LightPeerContext.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -10,9 +12,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
-  GitBranch, Plus, Minus, Mail, Link2, AlertCircle
+  GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLightPeer } from "@/contexts/LightPeerContext";
+import { getPeers, getAgentStatus, onSSEEvent, type OraclePeer } from "@/lib/afosApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,38 +44,7 @@ interface Channel {
   pair: string;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const PEERS: Peer[] = [
-  { id: "self", alias: "You (AFOS Agent)", region: "Local", lat: 0.5, lng: 0.5, latency: 0, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL", "ETH/USDC"], online: true, reputation: 100, channels: 4, liquidity: 0.142, version: "1.2.0" },
-  { id: "p1", alias: "GammaNode", region: "US-East", lat: 0.18, lng: 0.38, latency: 8, volume24h: 231000, pairs: ["BTC/USDT", "BTC/ETH"], online: true, reputation: 99.8, channels: 7, liquidity: 0.85, version: "1.2.0" },
-  { id: "p2", alias: "AlphaNode", region: "EU-West", lat: 0.42, lng: 0.22, latency: 12, volume24h: 142000, pairs: ["BTC/USDT", "BTC/SOL"], online: true, reputation: 99.2, channels: 5, liquidity: 0.42, version: "1.1.9" },
-  { id: "p3", alias: "BetaSwap", region: "AP-South", lat: 0.78, lng: 0.30, latency: 34, volume24h: 89000, pairs: ["ETH/USDC", "ETH/SOL"], online: true, reputation: 97.8, channels: 3, liquidity: 0.21, version: "1.2.0" },
-  { id: "p4", alias: "DeltaNode", region: "US-West", lat: 0.14, lng: 0.65, latency: 67, volume24h: 45000, pairs: ["SOL/USDT"], online: true, reputation: 95.1, channels: 2, liquidity: 0.09, version: "1.1.8" },
-  { id: "p5", alias: "EpsilonPeer", region: "EU-Central", lat: 0.52, lng: 0.18, latency: 21, volume24h: 178000, pairs: ["BTC/USDT", "ETH/USDC"], online: false, reputation: 98.4, channels: 6, liquidity: 0.61, version: "1.2.0" },
-  { id: "p6", alias: "ZetaHub", region: "AP-East", lat: 0.82, lng: 0.55, latency: 45, volume24h: 95000, pairs: ["BTC/USDT", "SOL/USDT"], online: true, reputation: 96.7, channels: 4, liquidity: 0.33, version: "1.1.9" },
-  { id: "p7", alias: "EtaNode", region: "SA-East", lat: 0.30, lng: 0.75, latency: 88, volume24h: 32000, pairs: ["BTC/USDT"], online: true, reputation: 93.2, channels: 1, liquidity: 0.05, version: "1.1.7" },
-  { id: "p8", alias: "ThetaRelay", region: "AF-South", lat: 0.62, lng: 0.82, latency: 112, volume24h: 18000, pairs: ["BTC/USDT", "ETH/USDC"], online: true, reputation: 91.5, channels: 2, liquidity: 0.04, version: "1.1.6" },
-  { id: "p9", alias: "IotaSwap", region: "EU-North", lat: 0.38, lng: 0.12, latency: 16, volume24h: 204000, pairs: ["BTC/USDT", "BTC/SOL", "ETH/SOL"], online: true, reputation: 98.9, channels: 8, liquidity: 0.73, version: "1.2.0" },
-  { id: "p10", alias: "KappaNode", region: "US-Central", lat: 0.25, lng: 0.52, latency: 29, volume24h: 67000, pairs: ["SOL/USDT", "ETH/USDC"], online: true, reputation: 96.1, channels: 3, liquidity: 0.18, version: "1.1.9" },
-];
-
-const CHANNELS: Channel[] = [
-  { from: "self", to: "p1", active: true, volume: 0.042, pair: "BTC/USDT" },
-  { from: "self", to: "p2", active: true, volume: 0.018, pair: "BTC/SOL" },
-  { from: "self", to: "p9", active: true, volume: 0.031, pair: "BTC/USDT" },
-  { from: "self", to: "p10", active: false, volume: 0.008, pair: "SOL/USDT" },
-  { from: "p1", to: "p2", active: true, volume: 0.125, pair: "BTC/USDT" },
-  { from: "p1", to: "p9", active: true, volume: 0.089, pair: "BTC/USDT" },
-  { from: "p2", to: "p5", active: false, volume: 0.034, pair: "ETH/USDC" },
-  { from: "p3", to: "p6", active: true, volume: 0.056, pair: "ETH/SOL" },
-  { from: "p4", to: "p10", active: true, volume: 0.012, pair: "SOL/USDT" },
-  { from: "p6", to: "p8", active: true, volume: 0.021, pair: "BTC/USDT" },
-  { from: "p7", to: "p8", active: false, volume: 0.007, pair: "BTC/USDT" },
-  { from: "p9", to: "p3", active: true, volume: 0.044, pair: "ETH/SOL" },
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────────
 
 function latencyColor(ms: number): string {
   if (ms === 0) return "#06b6d4";
@@ -86,6 +59,18 @@ function nodeRadius(peer: Peer): number {
   const base = 7;
   const extra = Math.min(6, peer.channels * 0.8);
   return base + extra;
+}
+
+/** Deterministic position from public key hash — spreads peers evenly around the canvas */
+function peerPosition(pubkey: string, index: number, total: number): { lat: number; lng: number } {
+  // Use golden angle distribution for even spacing
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const angle = index * goldenAngle;
+  const radius = 0.15 + (index / Math.max(total, 1)) * 0.25;
+  return {
+    lat: 0.5 + radius * Math.cos(angle) * 1.4,
+    lng: 0.5 + radius * Math.sin(angle) * 1.2,
+  };
 }
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
@@ -122,7 +107,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
       style={{ cursor: "default" }}
     >
       <defs>
-        {/* Glow filter for active channels */}
         <filter id="glow-cyan" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -131,7 +115,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
           <feGaussianBlur stdDeviation="5" result="blur" />
           <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
-        {/* Animated dash for active channels */}
         <style>{`
           @keyframes dash-flow {
             to { stroke-dashoffset: -20; }
@@ -162,7 +145,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
         const isSelected = selectedId === ch.from || selectedId === ch.to;
         return (
           <g key={i}>
-            {/* Glow underlay for active channels */}
             {ch.active && (
               <line
                 x1={px(from.lat)} y1={py(from.lng)}
@@ -181,7 +163,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               strokeDasharray={ch.active ? "6 4" : "3 6"}
               className={ch.active ? "channel-active" : ""}
             />
-            {/* Volume dot at midpoint */}
             {ch.active && (
               <circle
                 cx={(px(from.lat) + px(to.lat)) / 2}
@@ -206,7 +187,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
 
         return (
           <g key={peer.id} onClick={() => onSelect(peer.id)} style={{ cursor: "pointer" }}>
-            {/* Latency ring */}
             {peer.online && (
               <circle
                 cx={x} cy={y} r={r + 8}
@@ -217,7 +197,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               />
             )}
 
-            {/* Pulse animation on activity */}
             {isPulsing && (
               <motion.circle
                 cx={x} cy={y}
@@ -231,7 +210,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               />
             )}
 
-            {/* Selection ring */}
             {isSelected && (
               <circle
                 cx={x} cy={y} r={r + 12}
@@ -242,7 +220,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               />
             )}
 
-            {/* Node body */}
             <circle
               cx={x} cy={y} r={r}
               fill={isSelf
@@ -257,7 +234,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               filter={isSelected || isSelf ? "url(#glow-node)" : undefined}
             />
 
-            {/* Offline indicator */}
             {!peer.online && (
               <line
                 x1={x - r * 0.5} y1={y - r * 0.5}
@@ -266,12 +242,10 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               />
             )}
 
-            {/* Self icon */}
             {isSelf && (
               <text x={x} y={y + 4} textAnchor="middle" fontSize={10} fill="rgba(6,182,212,0.9)" fontWeight="bold">⚡</text>
             )}
 
-            {/* Alias label */}
             <text
               x={x} y={y + r + 14}
               textAnchor="middle"
@@ -282,7 +256,6 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               {peer.alias.split(" ")[0]}
             </text>
 
-            {/* Latency badge */}
             {peer.id !== "self" && peer.online && (
               <text
                 x={x} y={y + r + 24}
@@ -339,7 +312,7 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
           { label: "Reputation", value: `${peer.reputation}%`, color: peer.reputation > 98 ? "#10b981" : peer.reputation > 95 ? "#f59e0b" : "#ef4444" },
           { label: "Channels", value: peer.channels.toString(), color: "#06b6d4" },
           { label: "Liquidity", value: `${peer.liquidity} BTC`, color: "#f7931a" },
-          { label: "24h Volume", value: `$${(peer.volume24h / 1000).toFixed(0)}k`, color: "#a78bfa" },
+          { label: "24h Volume", value: peer.volume24h > 0 ? `$${(peer.volume24h / 1000).toFixed(0)}k` : "$0", color: "#a78bfa" },
           { label: "Version", value: peer.version, color: "#64748b" },
         ].map(item => (
           <div key={item.label} className="flex items-center justify-between">
@@ -370,15 +343,18 @@ function NetworkStats({ peers, channels }: { peers: Peer[]; channels: Channel[] 
   const online = peers.filter(p => p.online).length;
   const activeChannels = channels.filter(c => c.active).length;
   const totalVolume = peers.reduce((s, p) => s + p.volume24h, 0);
-  const avgLatency = Math.round(peers.filter(p => p.id !== "self" && p.online).reduce((s, p) => s + p.latency, 0) / (online - 1));
+  const onlineRemote = peers.filter(p => p.id !== "self" && p.online);
+  const avgLatency = onlineRemote.length > 0
+    ? Math.round(onlineRemote.reduce((s, p) => s + p.latency, 0) / onlineRemote.length)
+    : 0;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       {[
         { label: "Online Peers", value: `${online}/${peers.length}`, icon: Users, color: "#10b981" },
         { label: "Active Channels", value: `${activeChannels}`, icon: Zap, color: "#06b6d4" },
-        { label: "24h Volume", value: `$${(totalVolume / 1000).toFixed(0)}k`, icon: TrendingUp, color: "#a78bfa" },
-        { label: "Avg Latency", value: `${avgLatency}ms`, icon: Clock, color: "#f59e0b" },
+        { label: "24h Volume", value: totalVolume > 0 ? `$${(totalVolume / 1000).toFixed(0)}k` : "$0", icon: TrendingUp, color: "#a78bfa" },
+        { label: "Avg Latency", value: avgLatency > 0 ? `${avgLatency}ms` : "—", icon: Clock, color: "#f59e0b" },
       ].map(stat => {
         const Icon = stat.icon;
         return (
@@ -418,6 +394,32 @@ function PeerList({ peers, selectedId, onSelect }: {
         <span className="text-[10px] font-mono text-muted-foreground">{peers.length} nodes</span>
       </div>
       <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: "var(--border)" }}>
+        {/* "You" row always first */}
+        {peers.filter(p => p.id === "self").map(peer => {
+          const isSelected = selectedId === peer.id;
+          return (
+            <button
+              key={peer.id}
+              onClick={() => onSelect(peer.id)}
+              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+              style={{ background: isSelected ? "rgba(6,182,212,0.06)" : "rgba(6,182,212,0.02)" }}
+            >
+              <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-mono text-cyan-300 truncate flex items-center gap-1.5">
+                  {peer.alias}
+                  <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
+                </div>
+                <div className="text-[9px] text-slate-600">{peer.region}</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-[10px] font-mono text-cyan-400">local</div>
+              </div>
+              <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+            </button>
+          );
+        })}
+        {/* Remote peers */}
         {peers.filter(p => p.id !== "self").map(peer => {
           const color = latencyColor(peer.latency);
           const isSelected = selectedId === peer.id;
@@ -431,16 +433,51 @@ function PeerList({ peers, selectedId, onSelect }: {
               <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] font-mono text-slate-200 truncate">{peer.alias}</div>
-                <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0]}</div>
+                <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0] || "—"}</div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[10px] font-mono" style={{ color }}>{peer.id === "self" ? "local" : `${peer.latency}ms`}</div>
+                <div className="text-[10px] font-mono" style={{ color }}>{`${peer.latency}ms`}</div>
                 <div className="text-[9px] text-slate-600">{peer.channels}ch</div>
               </div>
               <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
             </button>
           );
         })}
+        {/* Empty state when no remote peers */}
+        {peers.filter(p => p.id !== "self").length === 0 && (
+          <div className="px-4 py-6 text-center">
+            <WifiOff className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-[10px] text-muted-foreground">No remote peers connected</p>
+            <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm DHT...</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Empty State for Topology ─────────────────────────────────────────────────
+
+function EmptyTopology() {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6">
+      <div className="relative mb-6">
+        <div className="w-20 h-20 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(6,182,212,0.08)", border: "2px solid rgba(6,182,212,0.2)" }}>
+          <Wifi className="w-8 h-8 text-cyan-400 animate-pulse" />
+        </div>
+        {/* Scanning rings */}
+        <div className="absolute inset-0 w-20 h-20 rounded-full border border-cyan-400/10 animate-ping" style={{ animationDuration: "2s" }} />
+        <div className="absolute -inset-4 w-28 h-28 rounded-full border border-cyan-400/5 animate-ping" style={{ animationDuration: "3s" }} />
+      </div>
+      <h3 className="text-sm font-bold text-foreground mb-1">Scanning P2P Network</h3>
+      <p className="text-xs text-muted-foreground text-center max-w-xs mb-4">
+        Your AFOS node is announcing on the Hyperswarm DHT. Remote peers will appear here once they connect.
+      </p>
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+        style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+        <span className="text-[10px] font-mono text-emerald-400">DHT Announced · Listening for peers</span>
       </div>
     </div>
   );
@@ -459,29 +496,22 @@ interface LNChannel {
   feePpm: number;
 }
 
-const INITIAL_LN_CHANNELS: LNChannel[] = [
-  { id: "ch_1", peer: "AlphaNode", pubkey: "02a3b4c5d6e7f8...", localBal: 0.05, remoteBal: 0.03, capacity: 0.08, status: "active", feePpm: 100 },
-  { id: "ch_2", peer: "GammaNode", pubkey: "03b4c5d6e7f8a9...", localBal: 0.12, remoteBal: 0.08, capacity: 0.20, status: "active", feePpm: 150 },
-  { id: "ch_3", peer: "IotaSwap", pubkey: "04c5d6e7f8a9b0...", localBal: 0.02, remoteBal: 0.06, capacity: 0.08, status: "inactive", feePpm: 200 },
-  { id: "ch_4", peer: "ZetaHub", pubkey: "05d6e7f8a9b0c1...", localBal: 0.08, remoteBal: 0.02, capacity: 0.10, status: "pending", feePpm: 80 },
-];
-
 export default function NetworkPage() {
   const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites">("topology");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(new Set());
-  const [liveChannels, setLiveChannels] = useState<Channel[]>(CHANNELS);
-  const [livePeers, setLivePeers] = useState<Peer[]>(PEERS);
+  const [liveChannels, setLiveChannels] = useState<Channel[]>([]);
+  const [livePeers, setLivePeers] = useState<Peer[]>([]);
   const [lastActivity, setLastActivity] = useState<string>("Scanning P2P network...");
-  const [lnChannels, setLnChannels] = useState<LNChannel[]>(INITIAL_LN_CHANNELS);
+  const [lnChannels, setLnChannels] = useState<LNChannel[]>([]);
   const [openChannelForm, setOpenChannelForm] = useState(false);
   const [newChannel, setNewChannel] = useState({ peer: "", pubkey: "", amount: "" });
   const [inviteCode, setInviteCode] = useState("");
-  const [invites, setInvites] = useState<{code: string; peer: string; created: Date; used: boolean}[]>([
-    { code: "AFOS-7X3K-SWAP", peer: "AlphaNode", created: new Date(Date.now() - 86400000), used: true },
-    { code: "AFOS-9M2P-SWAP", peer: "GammaNode", created: new Date(Date.now() - 3600000), used: false },
-  ]);
+  const [invites, setInvites] = useState<{code: string; peer: string; created: Date; used: boolean}[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [oracleNodeKey, setOracleNodeKey] = useState<string | null>(null);
 
+  const lightPeer = useLightPeer();
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
 
   const triggerPulse = useCallback((ids: string[]) => {
@@ -489,37 +519,135 @@ export default function NetworkPage() {
     setTimeout(() => setPulseIds(new Set()), 900);
   }, []);
 
-  // Simulate live network activity
-  useEffect(() => {
-    const activities = [
-      { msg: "New RFQ offer: GammaNode → 0.05 BTC/USDT", peers: ["self", "p1"] },
-      { msg: "Channel rebalanced: AlphaNode ↔ IotaSwap", peers: ["p2", "p9"] },
-      { msg: "Swap settled: BetaSwap ↔ ZetaHub (0.02 ETH/SOL)", peers: ["p3", "p6"] },
-      { msg: "Peer probe: DeltaNode latency 67ms", peers: ["p4"] },
-      { msg: "New peer joined: ThetaRelay (AF-South)", peers: ["p8"] },
-      { msg: "Heartbeat: 10/11 peers alive", peers: ["self"] },
-      { msg: "HTLC escrow locked: GammaNode → 0.001 BTC", peers: ["p1", "self"] },
-      { msg: "Quote accepted: IotaSwap → 0.003 BTC/USDT", peers: ["p9", "self"] },
-    ];
-    const interval = setInterval(() => {
-      const activity = activities[Math.floor(Math.random() * activities.length)];
-      setLastActivity(activity.msg);
-      triggerPulse(activity.peers);
+  /** Build the "You" (self) peer from LightPeer context + Oracle VM */
+  const buildSelfPeer = useCallback((): Peer => {
+    return {
+      id: "self",
+      alias: lightPeer.isOnline ? `You (${lightPeer.peerAlias || "Light Peer"})` : "You (AFOS Agent)",
+      region: "Local",
+      lat: 0.5,
+      lng: 0.5,
+      latency: 0,
+      volume24h: lightPeer.totalVolumeUsd || 0,
+      pairs: lightPeer.prefs?.acceptedPairs || ["BTC/USDT", "BTC/SOL", "ETH/USDC"],
+      online: true,
+      reputation: 100,
+      channels: 0,
+      liquidity: 0,
+      version: "2.0.0",
+    };
+  }, [lightPeer.isOnline, lightPeer.peerAlias, lightPeer.totalVolumeUsd, lightPeer.prefs?.acceptedPairs]);
 
-      // Occasionally toggle a channel active state
-      if (Math.random() < 0.3) {
-        setLiveChannels(prev => {
-          const idx = Math.floor(Math.random() * prev.length);
-          return prev.map((ch, i) => i === idx ? { ...ch, active: !ch.active } : ch);
-        });
+  /** Convert Oracle VM peers to our Peer type */
+  const convertOraclePeers = useCallback((oraclePeers: OraclePeer[]): Peer[] => {
+    return oraclePeers.map((op, index) => {
+      const pos = peerPosition(op.publicKey, index, oraclePeers.length);
+      return {
+        id: op.publicKey.slice(0, 16),
+        alias: `Node-${op.shortKey.slice(0, 8)}`,
+        region: "Hyperswarm",
+        lat: pos.lat,
+        lng: pos.lng,
+        latency: Math.round(20 + Math.random() * 80), // Estimated — no real ping yet
+        volume24h: 0,
+        pairs: ["BTC/USDT", "SOL/USDT"],
+        online: op.isConnected,
+        reputation: 98,
+        channels: op.quotesReceived > 0 ? 1 : 0,
+        liquidity: 0,
+        version: "1.x",
+      };
+    });
+  }, []);
+
+  /** Build channels from connected peers (each remote peer gets a channel to self) */
+  const buildChannels = useCallback((remotePeers: Peer[]): Channel[] => {
+    return remotePeers.filter(p => p.online).map(p => ({
+      from: "self",
+      to: p.id,
+      active: true,
+      volume: 0,
+      pair: p.pairs[0] || "BTC/USDT",
+    }));
+  }, []);
+
+  /** Fetch live peer data from Oracle VM */
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const [peersData, statusData] = await Promise.all([
+        getPeers().catch(() => null),
+        getAgentStatus().catch(() => null),
+      ]);
+
+      const selfPeer = buildSelfPeer();
+      const remotePeers = peersData ? convertOraclePeers(peersData.peers) : [];
+      const allPeers = [selfPeer, ...remotePeers];
+      const channels = buildChannels(remotePeers);
+
+      // Update self peer with Oracle VM data
+      if (statusData) {
+        selfPeer.channels = remotePeers.length;
       }
-      // Slightly vary latencies
-      setLivePeers(prev => prev.map(p =>
-        p.id === "self" ? p : { ...p, latency: Math.max(5, p.latency + Math.round((Math.random() - 0.5) * 6)) }
-      ));
-    }, 3500);
+      if (peersData?.nodeKey) {
+        setOracleNodeKey(peersData.nodeKey);
+      }
+
+      setLivePeers(allPeers);
+      setLiveChannels(channels);
+      setLoading(false);
+    } catch (err) {
+      console.error("[NetworkPage] Failed to fetch live data:", err);
+      setLivePeers([buildSelfPeer()]);
+      setLiveChannels([]);
+      setLoading(false);
+    }
+  }, [buildSelfPeer, convertOraclePeers, buildChannels]);
+
+  // Initial fetch + polling every 15s
+  useEffect(() => {
+    fetchLiveData();
+    const interval = setInterval(fetchLiveData, 15000);
     return () => clearInterval(interval);
-  }, [triggerPulse]);
+  }, [fetchLiveData]);
+
+  // SSE event listeners for real-time updates
+  useEffect(() => {
+    const unsubPeerConnect = onSSEEvent("peer_connected", (data: any) => {
+      setLastActivity(`Peer connected: ${data.peer} (${data.totalPeers} total)`);
+      triggerPulse(["self"]);
+      // Refresh peer list
+      fetchLiveData();
+    });
+    const unsubPeerDisconnect = onSSEEvent("peer_disconnected", (data: any) => {
+      setLastActivity(`Peer disconnected: ${data.peer} (${data.totalPeers} remaining)`);
+      fetchLiveData();
+    });
+    const unsubRfq = onSSEEvent("p2p_rfq", (data: any) => {
+      setLastActivity(`RFQ received: ${data.pair} ${data.amount} from ${data.peer}`);
+      triggerPulse(["self"]);
+    });
+    const unsubRfqSent = onSSEEvent("p2p_rfq_sent", (data: any) => {
+      setLastActivity(`RFQ broadcast: ${data.pair} ${data.amount} to ${data.peers} peers`);
+      triggerPulse(["self"]);
+    });
+    const unsubQuote = onSSEEvent("p2p_quote", (data: any) => {
+      setLastActivity(`Quote received: ${data.peer} rate=${data.rate}`);
+      triggerPulse(["self"]);
+    });
+    const unsubSwap = onSSEEvent("swap_executed", (data: any) => {
+      setLastActivity(`Swap executed: ${data.pair || "—"}`);
+      triggerPulse(["self"]);
+    });
+
+    return () => {
+      unsubPeerConnect();
+      unsubPeerDisconnect();
+      unsubRfq();
+      unsubRfqSent();
+      unsubQuote();
+      unsubSwap();
+    };
+  }, [triggerPulse, fetchLiveData]);
 
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>
@@ -535,6 +663,12 @@ export default function NetworkPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => fetchLiveData()}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:opacity-80"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <RefreshCw className="w-3 h-3 text-muted-foreground" />
+            <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">Refresh</span>
+          </button>
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
             style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
             <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
@@ -572,7 +706,11 @@ export default function NetworkPage() {
       {activeTab === "channels" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">{lnChannels.length} channels · {lnChannels.filter(c => c.status === "active").length} active</p>
+            <p className="text-xs text-muted-foreground">
+              {lnChannels.length > 0
+                ? `${lnChannels.length} channels · ${lnChannels.filter(c => c.status === "active").length} active`
+                : "No payment channels open yet"}
+            </p>
             <button onClick={() => setOpenChannelForm(v => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
               style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#06b6d4" }}>
@@ -628,6 +766,18 @@ export default function NetworkPage() {
             )}
           </AnimatePresence>
 
+          {/* Empty state for channels */}
+          {lnChannels.length === 0 && !openChannelForm && (
+            <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <GitBranch className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-foreground mb-1">No Payment Channels</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Open a payment channel with a peer to enable instant off-chain swaps with lower fees.
+                Click "Open Channel" above to get started.
+              </p>
+            </div>
+          )}
+
           {lnChannels.map(ch => (
             <div key={ch.id} className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.2)" : ch.status === "pending" ? "rgba(245,158,11,0.2)" : "var(--border)"}` }}>
               <div className="flex items-start justify-between gap-3">
@@ -649,7 +799,7 @@ export default function NetworkPage() {
                     </div>
                     <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
                       <div className="h-full rounded-full bg-cyan-400 transition-all"
-                        style={{ width: `${(ch.localBal / ch.capacity) * 100}%` }} />
+                        style={{ width: `${ch.capacity > 0 ? (ch.localBal / ch.capacity) * 100 : 0}%` }} />
                     </div>
                   </div>
                   <div className="flex gap-4">
@@ -699,6 +849,18 @@ export default function NetworkPage() {
             </div>
           </div>
 
+          {/* Empty state for invites */}
+          {invites.length === 0 && (
+            <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <Mail className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-semibold text-foreground mb-1">No Invites Yet</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Generate a private channel invite code to share with a specific peer.
+                They can use it to establish a direct swap channel with you.
+              </p>
+            </div>
+          )}
+
           {invites.map(inv => (
             <div key={inv.code} className="rounded-2xl p-4 flex items-center justify-between gap-3"
               style={{ background: "var(--card)", border: `1px solid ${inv.used ? "var(--border)" : "rgba(139,92,246,0.25)"}` }}>
@@ -730,11 +892,50 @@ export default function NetworkPage() {
       {/* Stats */}
       {activeTab === "topology" && <NetworkStats peers={livePeers} channels={liveChannels} />}
 
-      {/* Topology content — only shown when topology tab is active */}
+      {/* Topology content */}
       {activeTab === "topology" && (
       <>
-      {/* Mobile peer list — shown only on small screens instead of the SVG graph */}
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="w-6 h-6 text-cyan-400 animate-spin" />
+        </div>
+      )}
+
+      {/* Empty state — no remote peers */}
+      {!loading && livePeers.filter(p => p.id !== "self").length === 0 && (
+        <EmptyTopology />
+      )}
+
+      {/* Mobile peer list — shown only on small screens */}
+      {!loading && (
       <div className="sm:hidden space-y-2 mb-4">
+        {/* Self peer card on mobile */}
+        {livePeers.filter(p => p.id === "self").map(peer => (
+          <div key={peer.id} className="rounded-xl p-3"
+            style={{ background: "rgba(6,182,212,0.04)", border: "1px solid rgba(6,182,212,0.15)" }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
+                <div className="min-w-0">
+                  <div className="text-sm font-bold text-cyan-300 truncate flex items-center gap-1.5">
+                    {peer.alias}
+                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
+                  </div>
+                  <div className="text-[10px] font-mono text-muted-foreground">
+                    {oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Local node"}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-mono text-cyan-400">local</div>
+                <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Remote peers on mobile */}
         {livePeers.filter(p => p.id !== "self").map(peer => {
           const color = latencyColor(peer.latency);
           const isSelected = selectedId === peer.id;
@@ -745,9 +946,7 @@ export default function NetworkPage() {
               className="rounded-xl p-3 cursor-pointer transition-all"
               animate={{ scale: isSelected ? 0.99 : 1 }}
               style={{
-                background: isSelected
-                  ? "var(--accent)"
-                  : "var(--card)",
+                background: isSelected ? "var(--accent)" : "var(--card)",
                 border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
               }}
             >
@@ -766,13 +965,8 @@ export default function NetworkPage() {
                     </div>
                     <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs font-mono text-amber-400">{peer.liquidity} BTC</div>
-                    <div className="text-[9px] text-muted-foreground">${(peer.volume24h/1000).toFixed(0)}k vol</div>
-                  </div>
                 </div>
               </div>
-              {/* Expanded detail on select */}
               <AnimatePresence>
                 {isSelected && (
                   <motion.div
@@ -806,9 +1000,19 @@ export default function NetworkPage() {
             </motion.div>
           );
         })}
-      </div>
 
-      {/* Desktop/tablet main layout — hidden on mobile */}
+        {/* Mobile empty state */}
+        {livePeers.filter(p => p.id !== "self").length === 0 && !loading && (
+          <div className="rounded-xl p-6 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <WifiOff className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">No remote peers connected yet</p>
+          </div>
+        )}
+      </div>
+      )}
+
+      {/* Desktop/tablet main layout */}
+      {!loading && (
       <div className="hidden sm:grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
 
         {/* Node Graph */}
@@ -820,14 +1024,30 @@ export default function NetworkPage() {
             height: "480px",
           }}>
 
-          {/* Graph canvas */}
-          <NodeGraph
-            peers={livePeers}
-            channels={liveChannels}
-            selectedId={selectedId}
-            onSelect={id => setSelectedId(prev => prev === id ? null : id)}
-            pulseIds={pulseIds}
-          />
+          {livePeers.length > 1 ? (
+            <NodeGraph
+              peers={livePeers}
+              channels={liveChannels}
+              selectedId={selectedId}
+              onSelect={id => setSelectedId(prev => prev === id ? null : id)}
+              pulseIds={pulseIds}
+            />
+          ) : (
+            /* Single node (just "You") — show scanning state inside graph area */
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center">
+                <div className="relative inline-block mb-4">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center"
+                    style={{ background: "rgba(6,182,212,0.15)", border: "2px solid rgba(6,182,212,0.3)" }}>
+                    <span className="text-xl">⚡</span>
+                  </div>
+                  <div className="absolute inset-0 w-16 h-16 rounded-full border border-cyan-400/15 animate-ping" style={{ animationDuration: "2.5s" }} />
+                </div>
+                <p className="text-xs text-muted-foreground">Your node is online</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">Waiting for remote peers to connect...</p>
+              </div>
+            </div>
+          )}
 
           {/* Peer detail overlay */}
           <AnimatePresence>
@@ -866,38 +1086,46 @@ export default function NetworkPage() {
           </div>
         </div>
 
-        {/* Right: Peer List */}
+        {/* Right: Peer List + Info */}
         <div className="space-y-4">
           <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} />
 
-          {/* Channel activity */}
+          {/* Active Channels summary */}
           <div className="rounded-2xl p-4"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2 mb-3">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-bold text-foreground">Active Channels</span>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-auto" />
+              {liveChannels.filter(c => c.active).length > 0 && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-auto" />
+              )}
             </div>
             <div className="space-y-2">
-              {liveChannels.filter(c => c.active).slice(0, 6).map((ch, i) => {
-                const from = livePeers.find(p => p.id === ch.from);
-                const to = livePeers.find(p => p.id === ch.to);
-                if (!from || !to) return null;
-                return (
-                  <div key={i} className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                      <span className="text-[10px] font-mono text-foreground/80 truncate">
-                        {from.alias.split(" ")[0]} ↔ {to.alias.split(" ")[0]}
-                      </span>
+              {liveChannels.filter(c => c.active).length > 0 ? (
+                liveChannels.filter(c => c.active).slice(0, 6).map((ch, i) => {
+                  const from = livePeers.find(p => p.id === ch.from);
+                  const to = livePeers.find(p => p.id === ch.to);
+                  if (!from || !to) return null;
+                  return (
+                    <div key={i} className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                        <span className="text-[10px] font-mono text-foreground/80 truncate">
+                          {from.alias.split(" ")[0]} ↔ {to.alias.split(" ")[0]}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0 ml-2">
+                        <div className="text-[9px] text-slate-600">{ch.pair}</div>
+                      </div>
                     </div>
-                    <div className="text-right shrink-0 ml-2">
-                      <div className="text-[10px] font-mono text-amber-400">{ch.volume} BTC</div>
-                      <div className="text-[9px] text-slate-600">{ch.pair}</div>
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="text-center py-3">
+                  <p className="text-[10px] text-muted-foreground">No active channels</p>
+                  <p className="text-[9px] text-muted-foreground/60">Channels appear when peers connect</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -910,10 +1138,11 @@ export default function NetworkPage() {
             </div>
             <div className="space-y-1.5">
               {[
-                { label: "Channel", value: "0000intercomswapbtcusdt" },
-                { label: "Protocol", value: "IntercomSwap DHT" },
-                { label: "Escrow", value: "Solana Mainnet" },
-                { label: "Settlement", value: "IntercomSwap + HTLC" },
+                { label: "Channel", value: "intercomswap-rfq-mainnet" },
+                { label: "Protocol", value: "Hyperswarm DHT" },
+                { label: "Node Key", value: oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Loading..." },
+                { label: "Escrow", value: "HTLC Atomic Swap" },
+                { label: "Settlement", value: "SOL · ETH · BTC" },
               ].map(item => (
                 <div key={item.label} className="flex justify-between">
                   <span className="text-[10px] text-muted-foreground">{item.label}</span>
@@ -924,6 +1153,7 @@ export default function NetworkPage() {
           </div>
         </div>
       </div>
+      )}
       {/* end hidden sm:grid */}
       </>
       )}

@@ -2794,6 +2794,9 @@ export default function Dashboard() {
             {headerLastPair && (
               <span className="text-xs text-muted-foreground font-mono hidden xl:block">{headerLastPair}</span>
             )}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
             <button
               className={[
                 "flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 cursor-pointer duration-300",
@@ -2804,7 +2807,6 @@ export default function Dashboard() {
                   : "bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40",
               ].join(" ")}
               onClick={() => setActivePage("network")}
-              title="View Network page"
             >
               <Radio className={[
                 "w-3 h-3 animate-pulse",
@@ -2823,6 +2825,29 @@ export default function Dashboard() {
                 })()}
               </span>
             </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs">
+                  <div className="space-y-1 py-0.5">
+                    <div className="flex items-center gap-2 justify-between">
+                      <span className="text-muted-foreground">Light Peer (you)</span>
+                      <span className={lightPeerOnline ? "text-emerald-400 font-mono" : "text-muted-foreground/60 font-mono"}>
+                        {lightPeerOnline ? "1 online" : "offline"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 justify-between">
+                      <span className="text-muted-foreground">Remote nodes</span>
+                      <span className="font-mono text-foreground">{headerPeers ?? 0}</span>
+                    </div>
+                    <div className="border-t border-border pt-1 mt-1 flex items-center gap-2 justify-between">
+                      <span className="text-muted-foreground font-semibold">Total</span>
+                      <span className="font-mono font-semibold text-foreground">
+                        {(headerPeers ?? 0) + (lightPeerOnline ? 1 : 0)}
+                      </span>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             {/* Multi-chain wallet badge */}
             <button
               onClick={() => setShowWalletModal(true)}

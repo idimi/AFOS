@@ -451,6 +451,52 @@ export function getBackendUrl(): string {
 }
 
 /**
+ * GET /api/peers
+ * Returns list of connected Hyperswarm P2P peers from the Oracle VM.
+ */
+export interface OraclePeer {
+  publicKey: string;
+  shortKey: string;
+  connectedAt: number;
+  quotesReceived: number;
+  isConnected: boolean;
+}
+export interface PeersResponse {
+  success: boolean;
+  nodeKey: string;
+  totalPeers: number;
+  peers: OraclePeer[];
+  timestamp: number;
+}
+export async function getPeers(): Promise<PeersResponse> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/peers`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * GET /health
+ * Returns Oracle VM health status including RPC connectivity.
+ */
+export interface OracleHealth {
+  status: string;
+  version: string;
+  agentStatus: string;
+  p2pPeers: number;
+  rpc: {
+    eth: { url: string; ok: boolean };
+    sol: { url: string; ok: boolean };
+    btc: { url: string; ok: boolean };
+  };
+  timestamp: number;
+}
+export async function getOracleHealth(): Promise<OracleHealth> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/health`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
  * Merge Oracle VM wallet response with the full ASSET_REGISTRY.
  * Any asset not returned by the Oracle VM is shown with 0 balance and live=false.
  * This ensures all 7 supported assets are always visible in the UI.
