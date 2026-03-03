@@ -9,6 +9,10 @@
  */
 
 import { publicProcedure, router } from "../_core/trpc";
+import { getDb } from "../db";
+import { htlcSwaps } from "../../drizzle/schema";
+import { desc, eq } from "drizzle-orm";
+import { z } from "zod";
 import * as bitcoin from "bitcoinjs-lib";
 import ECPairFactory from "ecpair";
 import * as tinysecp from "tiny-secp256k1";
@@ -111,11 +115,12 @@ async function getEthHtlcWallet(): Promise<{
     const wallet = new ethers.Wallet(rawKey);
     const address = wallet.address;
 
-    // Fetch balance via public Ethereum RPC (Cloudflare)
+    // Fetch balance via configured RPC (ETH_RPC_URL env var), falling back to Cloudflare
+    const rpcUrl = process.env.ETH_RPC_URL || "https://cloudflare-eth.com";
     let balanceEth = 0;
     let live = false;
     try {
-      const provider = new ethers.JsonRpcProvider("https://cloudflare-eth.com");
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
       const balWei = await provider.getBalance(address);
       balanceEth = parseFloat(ethers.formatEther(balWei));
       live = true;
@@ -229,6 +234,41 @@ export const htlcWalletRouter = router({
    * Returns derived HTLC wallet addresses and on-chain balances for BTC, ETH, SOL.
    * Reads keys from environment variables — never exposes private keys.
    */
+  /**
+   * Returns recent HTLC transactions from the database with optional chain filter.
+   */
+  getHtlcHistory: publicProcedure
+    .input(
+      z.object({
+        chain: z.enum(["all", "bitcoin", "ethereum", "solana"]).default("all"),
+        limit: z.number().min(1).max(100).default(20),
+      })
+    )
+    .query(async ({ input }) => {
+      try {
+        const db = await getDb();
+        if (!db) return { rows: [], total: 0, error: "Database not available" };
+
+        const rows =
+          input.chain === "all"
+            ? await db
+                .select()
+                .from(htlcSwaps)
+                .orderBy(desc(htlcSwaps.createdAt))
+                .limit(input.limit)
+            : await db
+                .select()
+                .from(htlcSwaps)
+                .where(eq(htlcSwaps.chain, input.chain as "bitcoin" | "ethereum" | "solana"))
+                .orderBy(desc(htlcSwaps.createdAt))
+                .limit(input.limit);
+
+        return { rows, total: rows.length };
+      } catch (err) {
+        return { rows: [], total: 0, error: err instanceof Error ? err.message : String(err) };
+      }
+    }),
+
   getHtlcWallets: publicProcedure.query(async () => {
     const [btc, eth, sol] = await Promise.all([
       getBtcHtlcWallet(),

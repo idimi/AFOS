@@ -576,3 +576,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Show BTC address (P2WPKH from WIF), ETH address (from private key), SOL address (from keypair)
 - [x] Show on-chain balances for each HTLC address (BTC via mempool.space, ETH via etherscan/RPC, SOL via RPC)
 - [x] Write vitest tests for htlcWallet router (6 tests — structure, missing keys, ETH derivation)
+
+## ETH RPC + HTLC Transaction History
+
+- [x] Add ETH_RPC_URL secret (Infura) and update htlcWallet router to use it with Cloudflare as fallback
+- [x] Add HTLC transaction history section to Admin panel showing recent lock/claim/refund transactions per chain
+- [x] Backend: tRPC htlcWallet.getHtlcHistory procedure queries htlc_swaps table with chain filter and limit
+- [x] Frontend: HTLC Tx History section in Admin Agent Wallet tab with All/BTC/ETH/SOL filter tabs, status badges, chain icons, timeAgo, and empty state

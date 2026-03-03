@@ -897,6 +897,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             {/* HTLC Wallet Section */}
             <HtlcWalletSection />
 
+            {/* HTLC Transaction History */}
+            <HtlcHistorySection />
+
           </div>
         )}
 
@@ -1027,6 +1030,155 @@ function HtlcWalletSection() {
         )}
       </div>
     </>
+  );
+}
+
+// ─── HTLC Transaction History Section ───────────────────────────────────────
+
+const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  pending:   { bg: "rgba(245,158,11,0.12)",  text: "#f59e0b",  label: "Pending" },
+  completed: { bg: "rgba(16,185,129,0.12)",  text: "#10b981",  label: "Completed" },
+  refunded:  { bg: "rgba(99,102,241,0.12)",  text: "#818cf8",  label: "Refunded" },
+  expired:   { bg: "rgba(239,68,68,0.12)",   text: "#ef4444",  label: "Expired" },
+};
+
+function HtlcHistorySection() {
+  const [chainFilter, setChainFilter] = useState<"all" | "bitcoin" | "ethereum" | "solana">("all");
+
+  const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcHistory.useQuery(
+    { chain: chainFilter, limit: 20 },
+    { refetchInterval: 30_000, staleTime: 15_000 }
+  );
+
+  const rows = data?.rows ?? [];
+
+  const chainTabs: { key: "all" | "bitcoin" | "ethereum" | "solana"; label: string; color: string }[] = [
+    { key: "all",      label: "All",      color: "#888" },
+    { key: "bitcoin",  label: "BTC",      color: CHAIN_COLORS.bitcoin },
+    { key: "ethereum", label: "ETH",      color: CHAIN_COLORS.ethereum },
+    { key: "solana",   label: "SOL",      color: CHAIN_COLORS.solana },
+  ];
+
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-indigo-400" />
+          <p className="text-sm font-bold text-foreground">HTLC Transaction History</p>
+        </div>
+        <button onClick={() => refetch()}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
+          style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+          <RefreshCw className={`w-3 h-3 ${isRefetching ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Chain filter tabs */}
+      <div className="flex gap-1 mb-3">
+        {chainTabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setChainFilter(tab.key)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all"
+            style={{
+              background: chainFilter === tab.key ? `${tab.color}20` : "var(--muted)",
+              border: `1px solid ${chainFilter === tab.key ? tab.color + "50" : "var(--border)"}`,
+              color: chainFilter === tab.key ? tab.color : "var(--muted-foreground)",
+            }}>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Table */}
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1,2,3].map(i => (
+            <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: "var(--muted)" }} />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="py-8 text-center">
+          <Database className="w-8 h-8 text-muted-foreground mx-auto mb-2 opacity-40" />
+          <p className="text-xs text-muted-foreground">No HTLC transactions recorded yet.</p>
+          <p className="text-[10px] text-muted-foreground mt-1">Transactions will appear here once atomic swaps are executed.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(row => {
+            const chainColor = CHAIN_COLORS[row.chain] ?? "#888";
+            const statusStyle = STATUS_COLORS[row.status] ?? STATUS_COLORS.pending;
+            const shortHash = (s: string | null | undefined) =>
+              s ? `${s.slice(0, 6)}…${s.slice(-4)}` : "—";
+            const timeAgo = (d: Date | null | undefined) => {
+              if (!d) return "—";
+              const diff = Date.now() - new Date(d).getTime();
+              const mins = Math.floor(diff / 60_000);
+              if (mins < 60) return `${mins}m ago`;
+              const hrs = Math.floor(mins / 60);
+              if (hrs < 24) return `${hrs}h ago`;
+              return `${Math.floor(hrs / 24)}d ago`;
+            };
+
+            return (
+              <div key={row.id}
+                className="rounded-xl p-3"
+                style={{ background: `${chainColor}06`, border: `1px solid ${chainColor}20` }}>
+                <div className="flex items-start gap-3">
+                  {/* Chain badge */}
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-bold font-mono shrink-0"
+                    style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                    {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL"}
+                  </div>
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-semibold text-foreground">
+                        {row.amountHuman} {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL"}
+                      </span>
+                      {row.toToken && (
+                        <span className="text-[9px] text-muted-foreground">
+                          → {row.toToken} ({row.toChain ?? "?"})
+                        </span>
+                      )}
+                      {/* Status badge */}
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                        style={{ background: statusStyle.bg, color: statusStyle.text }}>
+                        {statusStyle.label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1 flex-wrap">
+                      <span className="text-[9px] font-mono text-muted-foreground">
+                        Lock: {shortHash(row.lockTxId)}
+                      </span>
+                      {row.refundTxId && (
+                        <span className="text-[9px] font-mono text-indigo-400">
+                          Refund: {shortHash(row.refundTxId)}
+                        </span>
+                      )}
+                      {row.peerId && (
+                        <span className="text-[9px] text-muted-foreground">
+                          Peer: {shortHash(row.peerId)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Time */}
+                  <div className="text-right shrink-0">
+                    <p className="text-[9px] text-muted-foreground">{timeAgo(row.createdAt)}</p>
+                    <p className="text-[8px] font-mono text-muted-foreground mt-0.5">#{row.id}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
