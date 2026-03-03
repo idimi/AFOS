@@ -644,13 +644,24 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Network Page — Production Ready + P2P Bridge + Peer Tooltip
 
-- [ ] Add relay bridge endpoints on Oracle VM to forward RFQs between Hyperswarm and IntercomSwap networks
+- [x] Add relay bridge endpoints on Oracle VM to forward RFQs between Hyperswarm and IntercomSwap networks
 - [x] Rewrite Network Topology tab: replace mock peers (GammaNode, AlphaNode, etc.) with live data from Oracle VM /api/peers
 - [x] Rewrite Network Topology stats (Online Peers, Active Channels, 24h Volume, Avg Latency) with live Oracle VM data
 - [x] Rewrite Peer Directory sidebar with live peer list from Oracle VM
 - [x] Rewrite Active Channels sidebar with live channel data from Oracle VM
-- [x] Rewrite Network LN Channels tab: replaced mock channels with empty state + real Open Channel form
+- [x] Rewrite Network Liquidity Channels tab: replaced mock channels with empty state + real Open Channel form (now wired to Oracle VM)
 - [x] Rewrite Network Invites tab: replaced mock invites with empty state + real Generate form
 - [x] Add "You (Light Peer)" row at top of Peer Directory when Light Peer is online
 - [x] Add peer count tooltip to header showing breakdown: "X Light Peer (you) · Y remote nodes"
 - [x] Remove all hardcoded mock data from Network page — all PEERS/CHANNELS arrays replaced with live Oracle VM + Light Peer data
+
+## Relay Bridge + Ping + Liquidity Channels
+
+- [x] Add /api/relay/announce endpoint on Oracle VM — accepts IntercomSwap Light Peer announcements and stores them in a relay registry
+- [x] Add /api/relay/peers endpoint on Oracle VM — returns merged list of Hyperswarm peers + relayed IntercomSwap peers
+- [x] Broadcast Oracle VM Hyperswarm peers to IntercomSwap DHT via relay bridge
+- [x] Add /api/peers/:id/ping endpoint on Oracle VM — probes a peer and returns latency in ms
+- [x] Add Ping button to each peer row in Peer Directory with real-time latency update
+- [x] Add /api/channels and /api/channels/open endpoints on Oracle VM for real channel management
+- [x] Wire Open Channel form in Network page Liquidity Channels tab to Oracle VM /api/channels/open
+- [x] Rename "LN Channels" → "Liquidity Channels" throughout the app (tab label, page title, all references)

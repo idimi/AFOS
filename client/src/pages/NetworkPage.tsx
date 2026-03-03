@@ -12,11 +12,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
-  GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff
+  GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
-import { getPeers, getAgentStatus, onSSEEvent, type OraclePeer } from "@/lib/afosApi";
+import {
+  getPeers, getAgentStatus, onSSEEvent, type OraclePeer,
+  getChannels, openChannel, closeChannel, pingPeer,
+  type LiquidityChannel,
+} from "@/lib/afosApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +38,7 @@ interface Peer {
   channels: number;
   liquidity: number; // BTC
   version: string;
+  fullKey?: string; // full public key for ping
 }
 
 interface Channel {
@@ -377,10 +382,12 @@ function NetworkStats({ peers, channels }: { peers: Peer[]; channels: Channel[] 
 
 // ─── Peer List ────────────────────────────────────────────────────────────────
 
-function PeerList({ peers, selectedId, onSelect }: {
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  pingResults: Record<string, { latencyMs: number | null; loading: boolean }>;
+  onPing: (peerId: string, fullKey: string) => void;
 }) {
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -421,26 +428,52 @@ function PeerList({ peers, selectedId, onSelect }: {
         })}
         {/* Remote peers */}
         {peers.filter(p => p.id !== "self").map(peer => {
-          const color = latencyColor(peer.latency);
+          const pingState = pingResults[peer.id];
+          const displayLatency = pingState?.latencyMs ?? peer.latency;
+          const color = latencyColor(displayLatency);
           const isSelected = selectedId === peer.id;
           return (
-            <button
+            <div
               key={peer.id}
-              onClick={() => onSelect(peer.id)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
+              className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors"
               style={{ background: isSelected ? "rgba(6,182,212,0.06)" : undefined }}
             >
-              <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-mono text-slate-200 truncate">{peer.alias}</div>
-                <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0] || "—"}</div>
-              </div>
-              <div className="text-right shrink-0">
-                <div className="text-[10px] font-mono" style={{ color }}>{`${peer.latency}ms`}</div>
-                <div className="text-[9px] text-slate-600">{peer.channels}ch</div>
-              </div>
-              <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
-            </button>
+              <button
+                onClick={() => onSelect(peer.id)}
+                className="flex items-center gap-3 flex-1 min-w-0 text-left"
+              >
+                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] font-mono text-slate-200 truncate">{peer.alias}</div>
+                  <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0] || "—"}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[10px] font-mono" style={{ color }}>
+                    {pingState?.loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin inline" />
+                    ) : (
+                      `${displayLatency}ms`
+                    )}
+                  </div>
+                  <div className="text-[9px] text-slate-600">{peer.channels}ch</div>
+                </div>
+              </button>
+              {/* Ping button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); if (peer.fullKey) onPing(peer.id, peer.fullKey); }}
+                disabled={pingState?.loading || !peer.fullKey}
+                title="Ping this peer"
+                className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all hover:opacity-80"
+                style={{
+                  background: pingState?.loading ? "rgba(6,182,212,0.08)" : "rgba(16,185,129,0.1)",
+                  border: `1px solid ${pingState?.loading ? "rgba(6,182,212,0.2)" : "rgba(16,185,129,0.25)"}`,
+                  color: pingState?.loading ? "#06b6d4" : "#10b981",
+                  opacity: (!peer.fullKey || pingState?.loading) ? 0.5 : 1,
+                }}>
+                {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
+                Ping
+              </button>
+            </div>
           );
         })}
         {/* Empty state when no remote peers */}
@@ -485,17 +518,6 @@ function EmptyTopology() {
 
 // ─── Main Network Page ────────────────────────────────────────────────────────
 
-interface LNChannel {
-  id: string;
-  peer: string;
-  pubkey: string;
-  localBal: number;
-  remoteBal: number;
-  capacity: number;
-  status: "active" | "inactive" | "pending";
-  feePpm: number;
-}
-
 export default function NetworkPage() {
   const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites">("topology");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -503,9 +525,13 @@ export default function NetworkPage() {
   const [liveChannels, setLiveChannels] = useState<Channel[]>([]);
   const [livePeers, setLivePeers] = useState<Peer[]>([]);
   const [lastActivity, setLastActivity] = useState<string>("Scanning P2P network...");
-  const [lnChannels, setLnChannels] = useState<LNChannel[]>([]);
+  // Liquidity Channels — wired to Oracle VM /api/channels
+  const [liquidityChannels, setLiquidityChannels] = useState<LiquidityChannel[]>([]);
   const [openChannelForm, setOpenChannelForm] = useState(false);
-  const [newChannel, setNewChannel] = useState({ peer: "", pubkey: "", amount: "" });
+  const [newChannel, setNewChannel] = useState({ peer: "", capacity: "", chain: "SOL" as "BTC" | "ETH" | "SOL", feeRate: "100" });
+  const [channelSubmitting, setChannelSubmitting] = useState(false);
+  // Ping state
+  const [pingResults, setPingResults] = useState<Record<string, { latencyMs: number | null; loading: boolean }>>({}); 
   const [inviteCode, setInviteCode] = useState("");
   const [invites, setInvites] = useState<{code: string; peer: string; created: Date; used: boolean}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -556,6 +582,7 @@ export default function NetworkPage() {
         channels: op.quotesReceived > 0 ? 1 : 0,
         liquidity: 0,
         version: "1.x",
+        fullKey: op.publicKey,
       };
     });
   }, []);
@@ -574,9 +601,10 @@ export default function NetworkPage() {
   /** Fetch live peer data from Oracle VM */
   const fetchLiveData = useCallback(async () => {
     try {
-      const [peersData, statusData] = await Promise.all([
+      const [peersData, statusData, channelsData] = await Promise.all([
         getPeers().catch(() => null),
         getAgentStatus().catch(() => null),
+        getChannels().catch(() => null),
       ]);
 
       const selfPeer = buildSelfPeer();
@@ -591,6 +619,10 @@ export default function NetworkPage() {
       if (peersData?.nodeKey) {
         setOracleNodeKey(peersData.nodeKey);
       }
+      // Update liquidity channels from Oracle VM
+      if (channelsData?.channels) {
+        setLiquidityChannels(channelsData.channels);
+      }
 
       setLivePeers(allPeers);
       setLiveChannels(channels);
@@ -602,6 +634,68 @@ export default function NetworkPage() {
       setLoading(false);
     }
   }, [buildSelfPeer, convertOraclePeers, buildChannels]);
+
+  /** Ping a remote peer and update latency display */
+  const handlePing = useCallback(async (peerId: string, fullKey: string) => {
+    setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true } }));
+    try {
+      const result = await pingPeer(fullKey);
+      setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false } }));
+      if (result.success && result.latencyMs !== null) {
+        toast.success(`Ping: ${result.latencyMs}ms${result.estimated ? ' (estimated)' : ''}`);
+      } else {
+        toast.error(result.error || 'Ping failed');
+      }
+    } catch {
+      setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false } }));
+      toast.error('Ping request failed');
+    }
+  }, []);
+
+  /** Open a new liquidity channel via Oracle VM */
+  const handleOpenChannel = useCallback(async () => {
+    if (!newChannel.peer || !newChannel.capacity) {
+      toast.error('Fill peer alias and capacity');
+      return;
+    }
+    const cap = parseFloat(newChannel.capacity);
+    if (isNaN(cap) || cap <= 0) {
+      toast.error('Capacity must be a positive number');
+      return;
+    }
+    setChannelSubmitting(true);
+    try {
+      const result = await openChannel({
+        peerAlias: newChannel.peer,
+        capacity: cap,
+        chain: newChannel.chain,
+        feeRatePpm: parseInt(newChannel.feeRate) || 100,
+      });
+      setLiquidityChannels(prev => [...prev, result.channel]);
+      setNewChannel({ peer: '', capacity: '', chain: 'SOL', feeRate: '100' });
+      setOpenChannelForm(false);
+      toast.success('Channel opening initiated', {
+        description: `${result.channel.name} on ${result.channel.chain} — activating...`,
+      });
+      // Refresh after 4s to pick up the activated status
+      setTimeout(() => fetchLiveData(), 4000);
+    } catch (err: any) {
+      toast.error('Failed to open channel', { description: err.message });
+    } finally {
+      setChannelSubmitting(false);
+    }
+  }, [newChannel, fetchLiveData]);
+
+  /** Close a liquidity channel via Oracle VM */
+  const handleCloseChannel = useCallback(async (channelId: string, peerAlias: string) => {
+    try {
+      await closeChannel(channelId);
+      setLiquidityChannels(prev => prev.map(c => c.id === channelId ? { ...c, status: 'closed' as const, closedAt: Date.now() } : c));
+      toast.info('Channel close initiated', { description: `Cooperative close with ${peerAlias}` });
+    } catch (err: any) {
+      toast.error('Failed to close channel', { description: err.message });
+    }
+  }, []);
 
   // Initial fetch + polling every 15s
   useEffect(() => {
@@ -686,7 +780,7 @@ export default function NetworkPage() {
       <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
         {([
           { id: "topology", label: "Topology", icon: <Activity className="w-3.5 h-3.5" /> },
-          { id: "channels", label: "LN Channels", icon: <GitBranch className="w-3.5 h-3.5" /> },
+          { id: "channels", label: "Liquidity Channels", icon: <GitBranch className="w-3.5 h-3.5" /> },
           { id: "invites", label: "Invites", icon: <Mail className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
@@ -702,14 +796,14 @@ export default function NetworkPage() {
         ))}
       </div>
 
-      {/* LN Channels Tab */}
+      {/* Liquidity Channels Tab */}
       {activeTab === "channels" && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground">
-              {lnChannels.length > 0
-                ? `${lnChannels.length} channels · ${lnChannels.filter(c => c.status === "active").length} active`
-                : "No payment channels open yet"}
+              {liquidityChannels.length > 0
+                ? `${liquidityChannels.length} channels · ${liquidityChannels.filter(c => c.status === "active").length} active`
+                : "No liquidity channels open yet"}
             </p>
             <button onClick={() => setOpenChannelForm(v => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
@@ -719,42 +813,67 @@ export default function NetworkPage() {
             </button>
           </div>
 
-          {/* Open channel form */}
+          {/* Open channel form — wired to Oracle VM /api/channels/open */}
           <AnimatePresence>
             {openChannelForm && (
               <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                 className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid rgba(6,182,212,0.3)" }}>
-                <p className="text-xs font-bold text-foreground">Open New LN Channel</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { label: "Peer alias", key: "peer", placeholder: "e.g. AlphaNode" },
-                    { label: "Pubkey", key: "pubkey", placeholder: "02a3b4c5..." },
-                    { label: "Amount (BTC)", key: "amount", placeholder: "0.05" },
-                  ].map(field => (
-                    <div key={field.key}>
-                      <label className="text-[10px] text-muted-foreground mb-1 block">{field.label}</label>
-                      <input
-                        value={newChannel[field.key as keyof typeof newChannel]}
-                        onChange={e => setNewChannel(prev => ({ ...prev, [field.key]: e.target.value }))}
-                        placeholder={field.placeholder}
-                        className="w-full px-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
-                        style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
-                      />
-                    </div>
-                  ))}
+                <p className="text-xs font-bold text-foreground">Open New Liquidity Channel</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Peer Alias</label>
+                    <input
+                      value={newChannel.peer}
+                      onChange={e => setNewChannel(prev => ({ ...prev, peer: e.target.value }))}
+                      placeholder="e.g. AlphaNode"
+                      className="w-full px-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Capacity</label>
+                    <input
+                      value={newChannel.capacity}
+                      onChange={e => setNewChannel(prev => ({ ...prev, capacity: e.target.value }))}
+                      placeholder="e.g. 1.5"
+                      type="number"
+                      step="0.01"
+                      className="w-full px-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Chain</label>
+                    <select
+                      value={newChannel.chain}
+                      onChange={e => setNewChannel(prev => ({ ...prev, chain: e.target.value as "BTC" | "ETH" | "SOL" }))}
+                      className="w-full px-3 py-2 rounded-lg text-xs text-foreground outline-none"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                      <option value="SOL">Solana (SOL)</option>
+                      <option value="ETH">Ethereum (ETH)</option>
+                      <option value="BTC">Bitcoin (BTC)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground mb-1 block">Fee Rate (ppm)</label>
+                    <input
+                      value={newChannel.feeRate}
+                      onChange={e => setNewChannel(prev => ({ ...prev, feeRate: e.target.value }))}
+                      placeholder="100"
+                      type="number"
+                      className="w-full px-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground/50 outline-none"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                    />
+                  </div>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => {
-                    if (!newChannel.peer || !newChannel.pubkey || !newChannel.amount) { toast.error("Fill all fields"); return; }
-                    const ch: LNChannel = { id: `ch_${Date.now()}`, peer: newChannel.peer, pubkey: newChannel.pubkey, localBal: parseFloat(newChannel.amount), remoteBal: 0, capacity: parseFloat(newChannel.amount), status: "pending", feePpm: 100 };
-                    setLnChannels(prev => [...prev, ch]);
-                    setNewChannel({ peer: "", pubkey: "", amount: "" });
-                    setOpenChannelForm(false);
-                    toast.success("Channel opening initiated", { description: `Funding tx broadcast for ${newChannel.peer}` });
-                  }}
-                    className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
-                    style={{ background: "rgba(6,182,212,0.15)", border: "1px solid rgba(6,182,212,0.35)", color: "#06b6d4" }}>
-                    Broadcast Funding Tx
+                  <button
+                    onClick={handleOpenChannel}
+                    disabled={channelSubmitting}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    style={{ background: "rgba(6,182,212,0.15)", border: "1px solid rgba(6,182,212,0.35)", color: "#06b6d4", opacity: channelSubmitting ? 0.6 : 1 }}>
+                    {channelSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                    {channelSubmitting ? 'Opening...' : 'Open Liquidity Channel'}
                   </button>
                   <button onClick={() => setOpenChannelForm(false)}
                     className="px-4 py-2 rounded-lg text-xs text-muted-foreground transition-all"
@@ -767,58 +886,66 @@ export default function NetworkPage() {
           </AnimatePresence>
 
           {/* Empty state for channels */}
-          {lnChannels.length === 0 && !openChannelForm && (
+          {liquidityChannels.length === 0 && !openChannelForm && (
             <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
               <GitBranch className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-sm font-semibold text-foreground mb-1">No Payment Channels</p>
+              <p className="text-sm font-semibold text-foreground mb-1">No Liquidity Channels</p>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                Open a payment channel with a peer to enable instant off-chain swaps with lower fees.
+                Open a liquidity channel with a peer to enable instant atomic swaps across SOL, ETH, and BTC.
                 Click "Open Channel" above to get started.
               </p>
             </div>
           )}
 
-          {lnChannels.map(ch => (
-            <div key={ch.id} className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.2)" : ch.status === "pending" ? "rgba(245,158,11,0.2)" : "var(--border)"}` }}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-bold text-foreground">{ch.peer}</span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
-                      style={{
-                        background: ch.status === "active" ? "rgba(16,185,129,0.12)" : ch.status === "pending" ? "rgba(245,158,11,0.12)" : "rgba(100,116,139,0.12)",
-                        border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.3)" : ch.status === "pending" ? "rgba(245,158,11,0.3)" : "rgba(100,116,139,0.2)"}`,
-                        color: ch.status === "active" ? "#10b981" : ch.status === "pending" ? "#f59e0b" : "#64748b",
-                      }}>{ch.status}</span>
-                  </div>
-                  <div className="text-[10px] font-mono text-muted-foreground/60 mb-3 truncate">{ch.pubkey}</div>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-[9px] text-muted-foreground mb-1">
-                      <span>Local: {ch.localBal} BTC</span>
-                      <span>Remote: {ch.remoteBal} BTC</span>
+          {liquidityChannels.map((ch: LiquidityChannel) => {
+            const chainColors: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', SOL: '#14f195' };
+            const chainColor = chainColors[ch.chain] || '#06b6d4';
+            return (
+              <div key={ch.id} className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.2)" : ch.status === "pending" ? "rgba(245,158,11,0.2)" : "var(--border)"}` }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-sm font-bold text-foreground">{ch.peerAlias}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
+                        style={{
+                          background: ch.status === "active" ? "rgba(16,185,129,0.12)" : ch.status === "pending" ? "rgba(245,158,11,0.12)" : "rgba(100,116,139,0.12)",
+                          border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.3)" : ch.status === "pending" ? "rgba(245,158,11,0.3)" : "rgba(100,116,139,0.2)"}`,
+                          color: ch.status === "active" ? "#10b981" : ch.status === "pending" ? "#f59e0b" : "#64748b",
+                        }}>{ch.status}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
+                        style={{ background: `${chainColor}18`, border: `1px solid ${chainColor}40`, color: chainColor }}>
+                        {ch.chain}
+                      </span>
                     </div>
-                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
-                      <div className="h-full rounded-full bg-cyan-400 transition-all"
-                        style={{ width: `${ch.capacity > 0 ? (ch.localBal / ch.capacity) * 100 : 0}%` }} />
+                    <div className="text-[10px] font-mono text-muted-foreground/60 mb-3 truncate">{ch.name}</div>
+                    <div className="mb-2">
+                      <div className="flex justify-between text-[9px] text-muted-foreground mb-1">
+                        <span>Local: {ch.localBalance.toFixed(4)} {ch.chain}</span>
+                        <span>Remote: {ch.remoteBalance.toFixed(4)} {ch.chain}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
+                        <div className="h-full rounded-full transition-all"
+                          style={{ width: `${ch.capacity > 0 ? (ch.localBalance / ch.capacity) * 100 : 0}%`, background: chainColor }} />
+                      </div>
+                    </div>
+                    <div className="flex gap-4">
+                      <div><div className="text-[9px] text-muted-foreground/60">Capacity</div><div className="text-[10px] font-mono">{ch.capacity} {ch.chain}</div></div>
+                      <div><div className="text-[9px] text-muted-foreground/60">Fee rate</div><div className="text-[10px] font-mono">{ch.feeRatePpm} ppm</div></div>
+                      <div><div className="text-[9px] text-muted-foreground/60">Opened</div><div className="text-[10px] font-mono">{new Date(ch.openedAt).toLocaleString()}</div></div>
                     </div>
                   </div>
-                  <div className="flex gap-4">
-                    <div><div className="text-[9px] text-muted-foreground/60">Capacity</div><div className="text-[10px] font-mono">{ch.capacity} BTC</div></div>
-                    <div><div className="text-[9px] text-muted-foreground/60">Fee rate</div><div className="text-[10px] font-mono">{ch.feePpm} ppm</div></div>
-                  </div>
+                  {ch.status !== 'closed' && (
+                    <button onClick={() => handleCloseChannel(ch.id, ch.peerAlias)}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all hover:text-red-400"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                      <Minus className="w-3 h-3" />
+                      Close
+                    </button>
+                  )}
                 </div>
-                <button onClick={() => {
-                  setLnChannels(prev => prev.filter(c => c.id !== ch.id));
-                  toast.info("Channel close initiated", { description: `Cooperative close with ${ch.peer}` });
-                }}
-                  className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all"
-                  style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-                  <Minus className="w-3 h-3" />
-                  Close
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -937,7 +1064,9 @@ export default function NetworkPage() {
 
         {/* Remote peers on mobile */}
         {livePeers.filter(p => p.id !== "self").map(peer => {
-          const color = latencyColor(peer.latency);
+          const pingState = pingResults[peer.id];
+          const displayLatency = pingState?.latencyMs ?? peer.latency;
+          const color = latencyColor(displayLatency);
           const isSelected = selectedId === peer.id;
           return (
             <motion.div
@@ -961,10 +1090,24 @@ export default function NetworkPage() {
                 <div className="flex items-center gap-3 shrink-0 ml-2">
                   <div className="text-right">
                     <div className="text-xs font-mono font-semibold" style={{ color }}>
-                      {peer.online ? `${peer.latency}ms` : "offline"}
+                      {pingState?.loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : peer.online ? `${displayLatency}ms` : "offline"}
                     </div>
                     <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
                   </div>
+                  {/* Mobile Ping button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (peer.fullKey) handlePing(peer.id, peer.fullKey); }}
+                    disabled={pingState?.loading || !peer.fullKey}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                    style={{
+                      background: "rgba(16,185,129,0.1)",
+                      border: "1px solid rgba(16,185,129,0.25)",
+                      color: "#10b981",
+                      opacity: (!peer.fullKey || pingState?.loading) ? 0.5 : 1,
+                    }}>
+                    {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
+                    Ping
+                  </button>
                 </div>
               </div>
               <AnimatePresence>
@@ -1088,7 +1231,7 @@ export default function NetworkPage() {
 
         {/* Right: Peer List + Info */}
         <div className="space-y-4">
-          <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} />
+          <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} pingResults={pingResults} onPing={handlePing} />
 
           {/* Active Channels summary */}
           <div className="rounded-2xl p-4"

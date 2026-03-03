@@ -524,6 +524,122 @@ export function mergeWithAllAssets(wallets: WalletAsset[]): WalletAsset[] {
   return result;
 }
 
+// ─── Relay Bridge ────────────────────────────────────────────────────────────
+
+export interface RelayPeer {
+  peerId: string;
+  shortId?: string;
+  alias?: string;
+  origin: 'hyperswarm' | 'intercomswap' | 'relay';
+  isConnected: boolean;
+  lastSeen: number;
+  quotesReceived?: number;
+  pairs?: string[];
+}
+
+export interface RelayPeersResponse {
+  success: boolean;
+  nodeKey: string;
+  hyperswarmPeers: RelayPeer[];
+  lightPeers: RelayPeer[];
+  total: number;
+  timestamp: number;
+}
+
+/** GET /api/relay/peers — merged Hyperswarm + Light Peer registry */
+export async function getRelayPeers(): Promise<RelayPeersResponse> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/relay/peers`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** POST /api/relay/announce — Light Peer announces itself to the relay */
+export async function announceToRelay(peerId: string, alias?: string, pairs?: string[]): Promise<{ success: boolean; relayedTo: number }> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/relay/announce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ peerId, alias, pairs, origin: 'intercomswap' }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ─── Peer Ping ────────────────────────────────────────────────────────────────
+
+export interface PingResult {
+  success: boolean;
+  latencyMs: number | null;
+  estimated?: boolean;
+  error?: string;
+}
+
+/** GET /api/peers/:id/ping — probe a peer and return RTT latency */
+export async function pingPeer(peerId: string): Promise<PingResult> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/peers/${encodeURIComponent(peerId)}/ping`, {}, 8000);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+// ─── Liquidity Channels ───────────────────────────────────────────────────────
+
+export interface LiquidityChannel {
+  id: string;
+  name: string;
+  peerAlias: string;
+  capacity: number;
+  chain: 'BTC' | 'ETH' | 'SOL';
+  feeRatePpm: number;
+  localBalance: number;
+  remoteBalance: number;
+  status: 'active' | 'pending' | 'closed';
+  openedAt: number;
+  closedAt?: number;
+}
+
+export interface ChannelsResponse {
+  success: boolean;
+  channels: LiquidityChannel[];
+  total: number;
+  active: number;
+}
+
+/** GET /api/channels — list all liquidity channels */
+export async function getChannels(): Promise<ChannelsResponse> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/channels`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** POST /api/channels/open — open a new liquidity channel */
+export async function openChannel(params: {
+  peerAlias: string;
+  capacity: number;
+  chain: 'BTC' | 'ETH' | 'SOL';
+  feeRatePpm?: number;
+}): Promise<{ success: boolean; channel: LiquidityChannel }> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/channels/open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error);
+  return data;
+}
+
+/** POST /api/channels/:id/close — close a liquidity channel */
+export async function closeChannel(channelId: string): Promise<{ success: boolean; channel: LiquidityChannel }> {
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/channels/${encodeURIComponent(channelId)}/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error);
+  return data;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
