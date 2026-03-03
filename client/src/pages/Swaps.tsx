@@ -9,7 +9,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowDownUp, Zap, Shield, Clock, ChevronDown,
+  ArrowDownUp, Zap, Shield, Clock, ChevronDown, ChevronUp,
   RefreshCw, AlertCircle, CheckCircle2, Loader2,
   Radio, Network, TrendingUp, TrendingDown,
   Lock, Unlock, ExternalLink, Copy,
@@ -1835,6 +1835,8 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [execMode, setExecMode] = useState<'manual' | 'agent'>('manual');
   const [lastTxHash, setLastTxHash] = useState<string | undefined>(undefined);
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
+  // Collapsible chart on mobile (hidden by default)
+  const [chartOpen, setChartOpen] = useState(false);
 
   // Fetch live prices on mount
   useEffect(() => {
@@ -2119,7 +2121,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">Agentic Swap</h1>
+          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">AFOS</h1>
           <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
             P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
           </p>
@@ -2183,77 +2185,13 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {activeTab === "swap" && <>
 
       {/* ── Main 2-Column DEX Layout ─────────────────────────────────────── */}
+      {/* Mobile order: Swap(1)→Chart(2)→OrderBook(3)→RecentSwaps(4)→LightPeers(5)→P2PPeers(6)→HTLC(7) */}
+      {/* DOM order = mobile order. On desktop (xl), explicit col/row placement overrides visual position. */}
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
 
-        {/* ═══ LEFT COLUMN: Chart + Order Book ═══ (below swap card on mobile) */}
-        <div className="space-y-3 min-w-0 order-2 xl:order-1">
-
-          {/* Price Ticker Bar */}
-          <ChainStatsBar />
-
-          {/* TradingView Chart */}
-          <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
-
-          {/* Live Order Book */}
-          <LiveOrderBook
-            fromToken={fromToken}
-            toToken={toToken}
-            onAccept={handleAcceptOrder}
-            ownQuote={(() => {
-              if (!lightPeer.isOnline || !lightPeer.prefs.enabled) return null;
-              const pair = `${fromToken.symbol}/${toToken.symbol}`;
-              if (!lightPeer.prefs.acceptedPairs.includes(pair)) return null;
-              const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
-              const spreadMultiplier = 1 + lightPeer.prefs.spreadBps / 10000;
-              const myRate = baseRate * spreadMultiplier;
-              const myFromAmount = Math.max(
-                lightPeer.prefs.minTradeUsd / (fromToken.usdPrice || 1),
-                0.001,
-              );
-              const myToAmount = parseFloat((myFromAmount * myRate).toFixed(6));
-              return {
-                id: `own_${lightPeer.peerId ?? 'lp'}`,
-                peer: lightPeer.peerAlias || 'You',
-                fromSymbol: fromToken.symbol,
-                toSymbol: toToken.symbol,
-                fromAmount: myFromAmount,
-                toAmount: myToAmount,
-                rate: myRate,
-                usdValue: myFromAmount * (fromToken.usdPrice || 0),
-                expiresIn: 999,
-                latency: 1,
-                reputation: 100,
-              } satisfies OrderBookEntry;
-            })()}
-          />
-
-          {/* HTLC Protocol Info — compact horizontal */}
-          <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-            <div className="flex items-center gap-2 mb-2">
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-xs font-semibold text-foreground">HTLC Escrow</span>
-              <span className="text-[10px] text-muted-foreground ml-auto">Atomic settlement — no counterparty risk</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[
-                { label: "Lock time", value: "10 min" },
-                { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
-                { label: "Escrow program", value: "Solana" },
-                { label: "Fee cap", value: `${feeBpsCap} bps` },
-              ].map(item => (
-                <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>
-                  <div className="text-[9px] text-muted-foreground">{item.label}</div>
-                  <div className="text-[11px] font-mono text-foreground mt-0.5">{item.value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ═══ RIGHT COLUMN: Swap Card + Peers + Recent Swaps ═══ (first on mobile) */}
-        <div className="space-y-3 order-1 xl:order-2">
-
-          {/* Swap Card */}
+        {/* ═ 1. SWAP CARD — mobile first, desktop col-2 row-1 (sticky) ═ */}
+        {/* xl:row-span-6 so the right column spans all left-column rows */}
+        <div className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
           <div
             className="rounded-2xl p-4"
             style={{
@@ -2699,9 +2637,9 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               )}
             </button>
 
-          </div>
+          </div>{/* end swap card inner */}
 
-          {/* Swap Progress */}
+          {/* Swap Progress — stays with swap card */}
           {swapPhase !== "idle" && (
             <SwapProgressTracker
               phase={swapPhase}
@@ -2715,18 +2653,101 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             />
           )}
 
-          {/* P2P Peers */}
-          <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
+        </div>{/* end swap card + progress (col-2 row-1) */}
 
-          {/* Light Peer — browser wallet as P2P quoting peer */}
-          <LightPeerPanel />
+        {/* ═ 2. PRICE TICKER + CHART — mobile second, desktop col-1 row-1 ═ */}
+        <div className="xl:col-start-1 xl:row-start-1 space-y-3">
+          <ChainStatsBar />
+          {/* Chart toggle button — mobile only */}
+          <button
+            onClick={() => setChartOpen(v => !v)}
+            className="xl:hidden w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition-all"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+          >
+            {chartOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            {chartOpen ? "Hide chart" : "Show chart ↓"}
+          </button>
+          {/* Chart — always on desktop, collapsible on mobile */}
+          <div className={!chartOpen ? 'hidden xl:block' : ''}>
+            <TradingViewChart fromToken={fromToken} toToken={toToken} theme={currentTheme} />
+          </div>
+        </div>
 
-          {/* Recent Swaps */}
+        {/* ═ 3. LIVE ORDER BOOK — mobile third, desktop col-1 row-2 ═ */}
+        <div className="xl:col-start-1 xl:row-start-2">
+          <LiveOrderBook
+            fromToken={fromToken}
+            toToken={toToken}
+            onAccept={handleAcceptOrder}
+            ownQuote={(() => {
+              if (!lightPeer.isOnline || !lightPeer.prefs.enabled) return null;
+              const pair = `${fromToken.symbol}/${toToken.symbol}`;
+              if (!lightPeer.prefs.acceptedPairs.includes(pair)) return null;
+              const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
+              const spreadMultiplier = 1 + lightPeer.prefs.spreadBps / 10000;
+              const myRate = baseRate * spreadMultiplier;
+              const myFromAmount = Math.max(
+                lightPeer.prefs.minTradeUsd / (fromToken.usdPrice || 1),
+                0.001,
+              );
+              const myToAmount = parseFloat((myFromAmount * myRate).toFixed(6));
+              return {
+                id: `own_${lightPeer.peerId ?? 'lp'}`,
+                peer: lightPeer.peerAlias || 'You',
+                fromSymbol: fromToken.symbol,
+                toSymbol: toToken.symbol,
+                fromAmount: myFromAmount,
+                toAmount: myToAmount,
+                rate: myRate,
+                usdValue: myFromAmount * (fromToken.usdPrice || 0),
+                expiresIn: 999,
+                latency: 1,
+                reputation: 100,
+              } satisfies OrderBookEntry;
+            })()}
+          />
+        </div>
+
+        {/* ═ 4. RECENT SWAPS — mobile fourth, desktop col-2 row-2 ═ */}
+        <div className="xl:col-start-2 xl:row-start-2">
           <RecentSwaps />
+        </div>
 
-        </div>{/* end right column */}
+        {/* ═ 5. LIGHT PEER — mobile fifth, desktop col-2 row-3 ═ */}
+        <div className="xl:col-start-2 xl:row-start-3">
+          <LightPeerPanel />
+        </div>
 
-      </div>{/* end 2-column grid */}
+        {/* ═ 6. P2P PEERS — mobile sixth, desktop col-2 row-4 ═ */}
+        <div className="xl:col-start-2 xl:row-start-4">
+          <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
+        </div>
+
+        {/* ═ 7. HTLC ESCROW — mobile last, desktop col-1 row-3 ═ */}
+        <div className="xl:col-start-1 xl:row-start-3">
+          <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs font-semibold text-foreground">HTLC Escrow</span>
+              <span className="text-[10px] text-muted-foreground ml-auto">Atomic settlement — no counterparty risk</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { label: "Lock time", value: "10 min" },
+                { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
+                { label: "Escrow program", value: "Solana" },
+                { label: "Fee cap", value: `${feeBpsCap} bps` },
+              ].map(item => (
+                <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>
+                  <div className="text-[9px] text-muted-foreground">{item.label}</div>
+                  <div className="text-[11px] font-mono text-foreground mt-0.5">{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+      </div>{/* end grid */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
       </div>{/* end max-w wrapper */}

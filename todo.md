@@ -739,3 +739,10 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Swaps Page Layout Reorder
 
 - [x] Move Swap form to the top of the Swaps page (before chart and order book) on mobile; desktop 2-col layout unchanged
+
+## Swaps Page Polish
+
+- [x] Rename page title "Agentic Swap" → "AFOS"
+- [x] Reorder mobile sections: Swap card, Chart (collapsible), Live Order Book, Recent Swaps, Light Peers, P2P Peers, HTLC Escrow
+- [x] Sticky swap card column on desktop (position: sticky, top offset)
+- [x] Collapsible chart on mobile with "Show chart ↓" toggle
