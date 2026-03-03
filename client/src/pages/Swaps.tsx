@@ -782,6 +782,31 @@ function TradingViewChart({ fromToken, toToken, theme }: {
   const [showCustomInput, setShowCustomInput] = useState(false);
   const customInputRef = useRef<HTMLInputElement>(null);
 
+  // Watchlist — persisted in localStorage
+  const WATCHLIST_KEY = "afos_chart_watchlist";
+  const [watchlist, setWatchlist] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(WATCHLIST_KEY);
+      return stored ? (JSON.parse(stored) as string[]) : [];
+    } catch { return []; }
+  });
+
+  function saveWatchlist(next: string[]) {
+    setWatchlist(next);
+    try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(next)); } catch { /* quota */ }
+  }
+
+  function addToWatchlist(symbol: string) {
+    if (!watchlist.includes(symbol)) saveWatchlist([...watchlist, symbol]);
+  }
+
+  function removeFromWatchlist(symbol: string) {
+    saveWatchlist(watchlist.filter(s => s !== symbol));
+  }
+
+  // Is the current custom symbol already watchlisted?
+  const isWatchlisted = !activePair && watchlist.includes(selectedSymbol);
+
   // When the custom input becomes visible, focus it
   useEffect(() => {
     if (showCustomInput && customInputRef.current) {
@@ -923,19 +948,79 @@ function TradingViewChart({ fromToken, toToken, theme }: {
               </button>
             );
           })}
-          {/* If a custom symbol is active (not in presets), show it as a removable pill */}
-          {!activePair && (
+          {/* Watchlist pills — saved custom symbols */}
+          {watchlist.map(sym => {
+            const label = sym.replace("BINANCE:", "").replace("BITSTAMP:", "");
+            const isActive = selectedSymbol === sym;
+            return (
+              <div
+                key={sym}
+                className="shrink-0 flex items-center gap-0.5"
+              >
+                <button
+                  onClick={() => setSelectedSymbol(sym)}
+                  className="px-2 py-0.5 rounded-l-full text-[10px] font-mono font-semibold transition-all"
+                  style={isActive ? {
+                    background: "rgba(168,85,247,0.25)",
+                    border: "1px solid rgba(168,85,247,0.6)",
+                    borderRight: "none",
+                    color: "#c084fc",
+                  } : {
+                    background: "rgba(168,85,247,0.08)",
+                    border: "1px solid rgba(168,85,247,0.25)",
+                    borderRight: "none",
+                    color: "#a855f7",
+                  }}
+                >
+                  ★ {label}
+                </button>
+                <button
+                  onClick={() => removeFromWatchlist(sym)}
+                  title="Remove from watchlist"
+                  className="px-1 py-0.5 rounded-r-full text-[9px] leading-none transition-all hover:opacity-100 opacity-60"
+                  style={isActive ? {
+                    background: "rgba(168,85,247,0.25)",
+                    border: "1px solid rgba(168,85,247,0.6)",
+                    borderLeft: "none",
+                    color: "#c084fc",
+                  } : {
+                    background: "rgba(168,85,247,0.08)",
+                    border: "1px solid rgba(168,85,247,0.25)",
+                    borderLeft: "none",
+                    color: "#a855f7",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          {/* If a custom symbol is active (not in presets, not in watchlist), show it as a removable pill with save button */}
+          {!activePair && !watchlist.includes(selectedSymbol) && (
             <div
-              className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold"
-              style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", color: "#c084fc" }}
+              className="shrink-0 flex items-center gap-0.5"
             >
-              <span>{pairLabel}</span>
+              <div
+                className="flex items-center gap-1 px-2 py-0.5 rounded-l-full text-[10px] font-mono font-semibold"
+                style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", borderRight: "none", color: "#c084fc" }}
+              >
+                <span>{pairLabel}</span>
+              </div>
+              <button
+                onClick={() => addToWatchlist(selectedSymbol)}
+                title="Save to watchlist"
+                className="px-1.5 py-0.5 text-[9px] font-mono transition-all hover:opacity-100 opacity-70"
+                style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", borderLeft: "none", borderRight: "none", color: "#c084fc" }}
+              >
+                ★
+              </button>
               <button
                 onClick={() => setSelectedSymbol(defaultSymbol)}
-                className="text-[9px] leading-none opacity-70 hover:opacity-100"
+                className="px-1.5 py-0.5 rounded-r-full text-[9px] leading-none opacity-70 hover:opacity-100"
                 title="Reset to swap pair"
+                style={{ background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.4)", borderLeft: "none", color: "#c084fc" }}
               >
-                ✕
+                ×
               </button>
             </div>
           )}
@@ -1023,9 +1108,18 @@ interface DexRefRate {
  * - Jupiter (jup.ag v6) for SOL-ecosystem pairs
  * - 1inch (v5.2, chain 1) for ETH-ecosystem pairs
  * - Returns null rate for BTC pairs (no on-chain DEX)
+ * @param inputAmount - actual human-readable input amount to quote (e.g. 0.001 BTC). Defaults to 0.001.
  */
-function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toUsdPrice: number): DexRefRate {
+function useDexRefRate(
+  fromSym: string,
+  toSym: string,
+  fromUsdPrice: number,
+  toUsdPrice: number,
+  inputAmount?: number,
+): DexRefRate {
   const [state, setState] = useState<DexRefRate>({ rate: null, source: "none", loading: false, error: null });
+  // Use the provided inputAmount or fall back to 0.001 as the canonical quote size
+  const quoteAmount = inputAmount && inputAmount > 0 ? inputAmount : 0.001;
 
   useEffect(() => {
     const from = fromSym.replace("-ETH", "").replace("-SOL", "");
@@ -1046,7 +1140,6 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
     setState(s => ({ ...s, loading: true, error: null }));
 
     if (isSolPair) {
-      // Jupiter v6 quote: 0.001 input amount (in lamports/smallest unit)
       const inputMint  = JUPITER_MINTS[from];
       const outputMint = JUPITER_MINTS[to];
       if (!inputMint || !outputMint) {
@@ -1054,7 +1147,7 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
         return;
       }
       const decimals = from === "SOL" ? 9 : 6;
-      const inAmount = Math.round(0.001 * Math.pow(10, decimals));
+      const inAmount = Math.round(quoteAmount * Math.pow(10, decimals));
       const outDecimals = to === "SOL" ? 9 : 6;
       fetch(`https://quote-api.jup.ag/v6/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${inAmount}&slippageBps=50`)
         .then(r => r.json())
@@ -1080,7 +1173,6 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
         setState({ rate: fallbackRate, source: "1inch", loading: false, error: "API key not configured" });
         return;
       }
-      // 1inch v5.2 quote on Ethereum mainnet (chain 1)
       const srcToken  = ONEINCH_TOKENS[from];
       const dstToken  = ONEINCH_TOKENS[to];
       if (!srcToken || !dstToken) {
@@ -1089,7 +1181,7 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
       }
       const srcDecimals = from === "ETH" ? 18 : 6;
       const dstDecimals = to === "ETH" ? 18 : 6;
-      const amount = (0.001 * Math.pow(10, srcDecimals)).toFixed(0);
+      const amount = Math.round(quoteAmount * Math.pow(10, srcDecimals)).toFixed(0);
       fetch(`https://api.1inch.dev/swap/v6.0/1/quote?src=${srcToken}&dst=${dstToken}&amount=${amount}`, {
         headers: { Authorization: `Bearer ${ONEINCH_API_KEY}` },
       })
@@ -1112,9 +1204,9 @@ function useDexRefRate(fromSym: string, toSym: string, fromUsdPrice: number, toU
     }
 
     return () => { cancelled = true; };
-  // Refresh every 30 seconds
+  // Re-fetch when pair or quoteAmount changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromSym, toSym]);
+  }, [fromSym, toSym, quoteAmount]);
 
   return state;
 }
@@ -1128,15 +1220,33 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
-  // DEX reference rate for best-rate badge
-  const dexRef = useDexRefRate(fromToken.symbol, toToken.symbol, fromToken.usdPrice, toToken.usdPrice);
 
-  // DEX depth: quoted output for the exact current swap size
-  // Uses the dexRef rate (already fetched) scaled to the actual input amount
+  // Debounce the fromAmount so the DEX quote only re-fetches 500ms after the user stops typing
+  const [debouncedFromAmount, setDebouncedFromAmount] = useState<number | undefined>(fromAmount);
+  const [isDebouncing, setIsDebouncing] = useState(false);
+  useEffect(() => {
+    if (fromAmount === debouncedFromAmount) return;
+    setIsDebouncing(true);
+    const timer = setTimeout(() => {
+      setDebouncedFromAmount(fromAmount);
+      setIsDebouncing(false);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [fromAmount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // DEX reference rate — re-fetches when pair OR debounced amount changes
+  const dexRef = useDexRefRate(fromToken.symbol, toToken.symbol, fromToken.usdPrice, toToken.usdPrice, debouncedFromAmount);
+
+  // DEX depth: quoted output equals rate * input (rate is already computed for the exact quoteAmount)
   const dexDepthOutput = useMemo(() => {
-    if (!dexRef.rate || !fromAmount || fromAmount <= 0) return null;
-    return dexRef.rate * fromAmount;
-  }, [dexRef.rate, fromAmount]);
+    if (!dexRef.rate || !debouncedFromAmount || debouncedFromAmount <= 0) return null;
+    // When useDexRefRate uses the actual quoteAmount, the returned rate is output/input
+    // so output = rate * input
+    return dexRef.rate * debouncedFromAmount;
+  }, [dexRef.rate, debouncedFromAmount]);
+
+  // Combined loading: debouncing or fetching
+  const dexLoading = isDebouncing || dexRef.loading;
   // Record quote events for reputation tracking
   const recordQuoteRef = useRef(recordQuote);
   recordQuoteRef.current = recordQuote;
@@ -1269,16 +1379,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
         </div>
         <div className="text-right">
           <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
-          {/* DEX depth row: quoted output for the exact swap size */}
-          {dexRef.loading ? (
+          {/* DEX depth row: quoted output for the exact swap size (debounced) */}
+          {dexLoading ? (
             <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
               <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              <span>Fetching {dexRef.source === "1inch" ? "1inch" : "Jupiter"}…</span>
+              <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "1inch" ? "1inch" : "Jupiter"}…`}</span>
             </div>
           ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
             <div className="text-right">
               <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : "#1470ef" }}>
-                {dexRef.source === "jupiter" ? "Jupiter" : "1inch"}: {fromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
+                {dexRef.source === "jupiter" ? "Jupiter" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
               </div>
               {beatsDex && dexBeatsPct !== null && (
                 <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>

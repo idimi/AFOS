@@ -760,3 +760,12 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Custom symbol input field in chart header — type any TradingView symbol (e.g. BINANCE:BNBUSDT) and press Enter to load
 - [x] DEX depth row in order book header — show Jupiter/1inch quoted output for the exact current swap size (apples-to-apples vs P2P offers)
+
+## Watchlist + Debounced DEX Depth
+
+- [x] Save to watchlist button next to active custom symbol pill (bookmark icon)
+- [x] Watchlist persisted in localStorage under key "afos_chart_watchlist"
+- [x] Watchlist symbols appear as extra preset pills in the chart header (after the 5 defaults)
+- [x] Remove from watchlist button on watchlist pills (×)
+- [x] Debounce DEX depth quote refresh — 500ms after fromAmount changes, re-fetch Jupiter/1inch quote
+- [x] Show loading spinner in DEX depth row while debounced fetch is in-flight
