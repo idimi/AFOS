@@ -583,3 +583,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add HTLC transaction history section to Admin panel showing recent lock/claim/refund transactions per chain
 - [x] Backend: tRPC htlcWallet.getHtlcHistory procedure queries htlc_swaps table with chain filter and limit
 - [x] Frontend: HTLC Tx History section in Admin Agent Wallet tab with All/BTC/ETH/SOL filter tabs, status badges, chain icons, timeAgo, and empty state
+
+## Oracle VM Hot Wallet Rename + Asset Expansion
+
+- [x] Rename "AFOS Agent Hot Wallet" to "AFOS Oracle VM Node Hot Wallet" in Admin panel
+- [x] Add mergeWithAllAssets() helper to afosApi.ts — fills in all 7 assets (SOL, USDT/SOL, USDC/SOL, BTC, ETH, USDT/ETH, USDC/ETH) with 0 balance for any not returned by Oracle VM
+- [x] Apply mergeWithAllAssets in Admin panel fetchNodeWallet and Analytics PlatformLiquidity fetchData

@@ -449,6 +449,34 @@ export function getBackendUrl(): string {
   return BACKEND_URL;
 }
 
+/**
+ * Merge Oracle VM wallet response with the full ASSET_REGISTRY.
+ * Any asset not returned by the Oracle VM is shown with 0 balance and live=false.
+ * This ensures all 7 supported assets are always visible in the UI.
+ */
+export function mergeWithAllAssets(wallets: WalletAsset[]): WalletAsset[] {
+  const result: WalletAsset[] = [];
+  for (const def of ASSET_REGISTRY) {
+    const existing = wallets.find(
+      w => w.asset.toUpperCase() === def.symbol.toUpperCase() && w.chain === def.chain
+    );
+    if (existing) {
+      result.push(existing);
+    } else {
+      result.push({
+        asset:   def.symbol,
+        network: def.chainLabel,
+        chain:   def.chain,
+        balance: def.decimals === 8 ? '0.00000000' : def.decimals === 18 ? '0.000000' : '0.000000',
+        usd:     '$0',
+        address: null,
+        live:    false,
+      });
+    }
+  }
+  return result;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**

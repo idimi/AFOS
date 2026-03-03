@@ -23,7 +23,7 @@ import {
   Trophy, Radio, BarChart3, Droplets,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { getWallet, type WalletAsset } from "@/lib/afosApi";
+import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -558,7 +558,7 @@ function PlatformLiquidity() {
     setLoading(true);
     try {
       const data = await getWallet();
-      setWallets(data.wallets);
+      setWallets(mergeWithAllAssets(data.wallets));
     } catch { /* keep empty */ }
     setLoading(false);
   };

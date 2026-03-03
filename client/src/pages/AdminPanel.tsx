@@ -14,7 +14,7 @@ import {
   GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
   Cpu
 } from "lucide-react";
-import { getWallet, type WalletAsset } from "@/lib/afosApi";
+import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -207,7 +207,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setNodeWalletLoading(true);
     try {
       const data = await getWallet();
-      setNodeWalletData(data.wallets);
+      setNodeWalletData(mergeWithAllAssets(data.wallets));
       setNodeKey(data.nodeKey);
     } catch { /* keep empty */ }
     setNodeWalletLoading(false);
@@ -816,7 +816,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <Cpu className="w-4 h-4 text-cyan-400" />
-                  <p className="text-sm font-bold text-foreground">AFOS Agent Hot Wallet</p>
+                  <p className="text-sm font-bold text-foreground">AFOS Oracle VM Node Hot Wallet</p>
                 </div>
                 <button onClick={fetchNodeWallet}
                   className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
@@ -849,7 +849,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   ))}
                 </div>
               ) : nodeWalletData.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No wallet data available. Ensure the Oracle VM is running.</p>
+                <p className="text-sm text-muted-foreground text-center py-6">No wallet data available. Ensure the Oracle VM is running at 141.253.123.101:4000.</p>
               ) : (
                 <div className="space-y-2">
                   {nodeWalletData.map((w, i) => {
