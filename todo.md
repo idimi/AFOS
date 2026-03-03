@@ -589,3 +589,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Rename "AFOS Agent Hot Wallet" to "AFOS Oracle VM Node Hot Wallet" in Admin panel
 - [x] Add mergeWithAllAssets() helper to afosApi.ts — fills in all 7 assets (SOL, USDT/SOL, USDC/SOL, BTC, ETH, USDT/ETH, USDC/ETH) with 0 balance for any not returned by Oracle VM
 - [x] Apply mergeWithAllAssets in Admin panel fetchNodeWallet and Analytics PlatformLiquidity fetchData
+
+## Admin Wallet Cards — Addresses, QR Codes, and HTLC Refund DB Write
+
+- [x] Add backend tRPC procedure (htlcWallet.getOracleVmAddresses) to derive all 7 wallet addresses from agent keys (SOL, USDT/SOL, USDC/SOL, BTC, ETH, USDT/ETH, USDC/ETH)
+- [x] Update Oracle VM Node Hot Wallet balance cards to show real addresses with copy + QR button + chain badge (matching HTLC card pattern)
+- [x] Add QR code modal (react-qr-code) to both Oracle VM and HTLC wallet cards — click QR icon to open modal with scannable code
+- [x] Wire HTLC monitor refund trigger to write htlc_swaps rows (confirmed already done in htlcMonitor.ts lines 229-235)
+- [x] Fix test timeout — added { timeout: 30_000 } to live RPC test (60 tests pass)

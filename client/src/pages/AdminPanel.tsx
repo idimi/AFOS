@@ -12,11 +12,12 @@ import {
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
   ArrowUpRight, ArrowDownRight, Server, Database,
   GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
-  Cpu
+  Cpu, QrCode, X
 } from "lucide-react";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import QRCode from "react-qr-code";
 
 // ─── Admin password (in production this would be server-side auth) ────────────
 const ADMIN_PASSWORD = "afos-admin-2024";
@@ -202,6 +203,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [nodeWalletData, setNodeWalletData] = useState<WalletAsset[]>([]);
   const [nodeKey, setNodeKey] = useState<string | null>(null);
   const [nodeWalletLoading, setNodeWalletLoading] = useState(false);
+
+  // Oracle VM wallet addresses derived from agent keys (for all 7 assets)
+  const { data: oracleVmAddresses } = trpc.htlcWallet.getOracleVmAddresses.useQuery(undefined, {
+    staleTime: 5 * 60_000,
+  });
+
+  // QR code modal state
+  const [qrModal, setQrModal] = useState<{ address: string; label: string; chainColor: string } | null>(null);
 
   const fetchNodeWallet = async () => {
     setNodeWalletLoading(true);
@@ -854,23 +863,56 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <div className="space-y-2">
                   {nodeWalletData.map((w, i) => {
                     const chainColor = w.chain === "solana" ? "#9945FF" : w.chain === "ethereum" ? "#627EEA" : "#F7931A";
+                    // Find the derived address for this asset+chain from agent keys
+                    const addrEntry = oracleVmAddresses?.find(
+                      a => a.asset.toUpperCase() === w.asset.toUpperCase() && a.chain === w.chain
+                    );
+                    const displayAddress = w.address || addrEntry?.address || null;
                     return (
                       <div key={`${w.asset}-${w.chain}-${i}`}
-                        className="flex items-center gap-3 p-3 rounded-xl"
+                        className="rounded-xl p-3"
                         style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}25` }}>
-                        <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono"
-                          style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
-                          {w.asset}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-mono font-semibold text-foreground">{w.balance}</p>
-                          <p className="text-[10px] text-muted-foreground">{w.network}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-mono text-foreground">{w.usd}</p>
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : "#6b7280" }} />
-                            <span className="text-[9px] text-muted-foreground">{w.live ? "live" : "offline"}</span>
+                        <div className="flex items-center gap-3">
+                          {/* Asset badge */}
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[10px] font-bold font-mono shrink-0"
+                            style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                            {w.asset}
+                          </div>
+                          {/* Balance + address */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-mono font-semibold text-foreground">{w.balance} {w.asset}</p>
+                              <span className="text-[10px] font-mono text-muted-foreground">{w.usd}</span>
+                            </div>
+                            {displayAddress ? (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[9px] font-mono text-muted-foreground truncate max-w-[180px]">
+                                  {displayAddress}
+                                </span>
+                                <button onClick={() => { navigator.clipboard.writeText(displayAddress); toast.success(`${w.asset} address copied`); }}
+                                  className="shrink-0 text-muted-foreground hover:text-foreground">
+                                  <Copy className="w-2.5 h-2.5" />
+                                </button>
+                                <button onClick={() => setQrModal({ address: displayAddress, label: `${w.asset} (${w.network})`, chainColor })}
+                                  className="shrink-0 hover:opacity-80"
+                                  style={{ color: chainColor }}>
+                                  <QrCode className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="text-[9px] text-amber-400 mt-0.5">{w.network} · address not available</p>
+                            )}
+                          </div>
+                          {/* Status + chain badge */}
+                          <div className="flex flex-col items-end gap-0.5 shrink-0">
+                            <div className="flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full" style={{ background: w.live ? "#10b981" : "#6b7280" }} />
+                              <span className="text-[9px] text-muted-foreground">{w.live ? "live" : "offline"}</span>
+                            </div>
+                            <span className="text-[8px] px-1 py-0.5 rounded font-mono"
+                              style={{ background: `${chainColor}15`, color: chainColor, border: `1px solid ${chainColor}30` }}>
+                              {w.chain}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -895,7 +937,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
 
             {/* HTLC Wallet Section */}
-            <HtlcWalletSection />
+            <HtlcWalletSection onShowQr={(address, label, chainColor) => setQrModal({ address, label, chainColor })} />
 
             {/* HTLC Transaction History */}
             <HtlcHistorySection />
@@ -904,6 +946,42 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         )}
 
       </div>
+
+      {/* QR Code Modal */}
+      {qrModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.75)" }}
+          onClick={() => setQrModal(null)}>
+          <div
+            className="rounded-2xl p-6 max-w-xs w-full"
+            style={{ background: "var(--card)", border: `1px solid ${qrModal.chainColor}40` }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-bold text-foreground">{qrModal.label}</p>
+              <button onClick={() => setQrModal(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* QR Code */}
+            <div className="flex justify-center mb-4">
+              <div className="p-3 rounded-xl bg-white">
+                <QRCode value={qrModal.address} size={180} />
+              </div>
+            </div>
+            {/* Address */}
+            <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <span className="text-[9px] font-mono text-foreground truncate flex-1">{qrModal.address}</span>
+              <button
+                onClick={() => { navigator.clipboard.writeText(qrModal.address); toast.success("Address copied"); }}
+                className="shrink-0 text-muted-foreground hover:text-foreground">
+                <Copy className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -916,7 +994,7 @@ const CHAIN_COLORS: Record<string, string> = {
   solana:   "#9945FF",
 };
 
-function HtlcWalletSection() {
+function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: string, chainColor: string) => void }) {
   const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcWallets.useQuery(undefined, {
     refetchInterval: 60_000,
     staleTime: 30_000,
@@ -999,6 +1077,11 @@ function HtlcWalletSection() {
                           <button onClick={() => { navigator.clipboard.writeText(w.address!); toast.success(`${w.asset} HTLC address copied`); }}
                             className="shrink-0 text-muted-foreground hover:text-foreground">
                             <Copy className="w-2.5 h-2.5" />
+                          </button>
+                          <button onClick={() => onShowQr(w.address!, `${w.asset} HTLC (${w.chain})`, chainColor)}
+                            className="shrink-0 hover:opacity-80"
+                            style={{ color: chainColor }}>
+                            <QrCode className="w-2.5 h-2.5" />
                           </button>
                         </div>
                       ) : (

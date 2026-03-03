@@ -37,7 +37,7 @@ describe("htlcWallet router", () => {
   });
 
   describe("response structure", () => {
-    it("should always return btc, eth, sol keys with expected fields", async () => {
+    it("should always return btc, eth, sol keys with expected fields", { timeout: 30_000 }, async () => {
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
 

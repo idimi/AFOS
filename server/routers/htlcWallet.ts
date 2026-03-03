@@ -269,6 +269,34 @@ export const htlcWalletRouter = router({
       }
     }),
 
+  /**
+   * Returns all 7 Oracle VM wallet addresses derived from stored agent keys.
+   * SOL/USDT-SOL/USDC-SOL share the same Solana address (from SOL_AGENT_KEY).
+   * ETH/USDT-ETH/USDC-ETH share the same Ethereum address (from ETH_AGENT_KEY).
+   * BTC uses the P2WPKH address derived from BTC_AGENT_WIF.
+   * Never exposes private keys.
+   */
+  getOracleVmAddresses: publicProcedure.query(async () => {
+    const [btc, eth, sol] = await Promise.all([
+      getBtcHtlcWallet(),
+      getEthHtlcWallet(),
+      getSolHtlcWallet(),
+    ]);
+
+    return [
+      // Solana chain — all SPL tokens share the same wallet address
+      { asset: 'SOL',  chain: 'solana'   as const, chainLabel: 'Solana',   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
+      { asset: 'USDT', chain: 'solana'   as const, chainLabel: 'Solana',   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
+      { asset: 'USDC', chain: 'solana'   as const, chainLabel: 'Solana',   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
+      // Ethereum chain — all ERC-20 tokens share the same wallet address
+      { asset: 'ETH',  chain: 'ethereum' as const, chainLabel: 'Ethereum', address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
+      { asset: 'USDT', chain: 'ethereum' as const, chainLabel: 'Ethereum', address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
+      { asset: 'USDC', chain: 'ethereum' as const, chainLabel: 'Ethereum', address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
+      // Bitcoin — native P2WPKH address
+      { asset: 'BTC',  chain: 'bitcoin'  as const, chainLabel: 'Bitcoin',  address: btc.address, configured: !!process.env.BTC_AGENT_WIF },
+    ];
+  }),
+
   getHtlcWallets: publicProcedure.query(async () => {
     const [btc, eth, sol] = await Promise.all([
       getBtcHtlcWallet(),
