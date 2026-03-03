@@ -727,3 +727,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add Invite button to each remote peer row — enabled only when reputation score >= 70
 - [x] Show tooltip on disabled Invite button explaining the score threshold
 - [x] Invite button opens Open Channel form pre-filled with that peer's ID
+
+## Overview Stat Cards Audit + Enhancement
+
+- [x] Enhance Active Peers card: show HW/IS dual-layer breakdown below the main count
+- [x] Audit Total Volume card: reads from Oracle VM /api/stats; shows 'no data' hint when zero
+- [x] Audit Fees Collected card: reads from Oracle VM /api/stats; shows 'no data' hint when zero
+- [x] Audit P2P Ratio card: reads from Oracle VM /api/stats; shows 'P2P vs DEX' hint when no swaps
+- [x] Fixed hardcoded +3.2%/+12.4% change badges; replaced with 'no data' / 'live' / 'earned' contextual labels

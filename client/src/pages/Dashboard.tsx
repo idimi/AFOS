@@ -25,7 +25,7 @@ import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, type RfqResult, type WalletAsset } from "../lib/afosApi";
+import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, getRelayPeers, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -817,91 +817,131 @@ function AgentStatusCard({ onNavigateToTerminal }: { onNavigateToTerminal: () =>
 }
 
 // ── Key Metrics Row ──────────────────────────────────────────────────────────
-function MetricsRow() {
+function MetricsRow({ onNavigate }: { onNavigate?: (page: NavPage) => void }) {
   const [metrics, setMetrics] = useState({
-    volume24h: 2840000,
-    feesEarned: 5680,
-    p2pRatio: 9.95,
-    activePeers: 7,
+    volume24h: 0,
+    feesEarned: 0,
+    p2pRatio: 0,
+    activePeers: 0,
+    totalSwaps: 0,
   });
+  const [layerCounts, setLayerCounts] = useState({ hw: 0, is: 0 });
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchAll = async () => {
       try {
-        const stats = await getStats();
-          setMetrics({
-            volume24h: stats.totalVolumeUsd,
-            feesEarned: stats.totalFeesUsd,
-            p2pRatio: stats.p2pRatio * 100,
-            activePeers: stats.activePeers,
-          });
+        const [stats, relay] = await Promise.all([getStats(), getRelayPeers()]);
+        setMetrics({
+          volume24h: stats.totalVolumeUsd,
+          feesEarned: stats.totalFeesUsd,
+          p2pRatio: stats.p2pRatio * 100,
+          activePeers: stats.activePeers,
+          totalSwaps: stats.totalSwaps,
+        });
+        setLayerCounts({
+          hw: relay.hyperswarmPeers?.length ?? 0,
+          is: relay.lightPeers?.length ?? 0,
+        });
+        setLoaded(true);
       } catch { /* keep current metrics */ }
     };
-    fetchStats();
-    const interval = setInterval(fetchStats, 60000);
+    fetchAll();
+    const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  const cards = [
-    {
-      label: "Total Volume",
-      value: `$${(metrics.volume24h / 1000000).toFixed(2)}M`,
-      change: "+3.2%",
-      positive: true,
-      icon: BarChart3,
-      color: "text-cyan-400",
-      bg: "bg-cyan-500/8",
-      border: "border-cyan-500/15",
-    },
-    {
-      label: "Fees Collected",
-      value: `$${metrics.feesEarned.toLocaleString()}`,
-      change: "+12.4%",
-      positive: true,
-      icon: TrendingUp,
-      color: "text-emerald-400",
-      bg: "bg-emerald-500/8",
-      border: "border-emerald-500/15",
-    },
-    {
-      label: "P2P Ratio",
-      value: `${metrics.p2pRatio.toFixed(1)}%`,
-      change: "live",
-      positive: true,
-      icon: Radio,
-      color: "text-violet-400",
-      bg: "bg-violet-500/8",
-      border: "border-violet-500/15",
-    },
-    {
-      label: "Active Peers",
-      value: String(metrics.activePeers),
-      change: "online",
-      positive: true,
-      icon: Users,
-      color: "text-amber-400",
-      bg: "bg-amber-500/8",
-      border: "border-amber-500/15",
-    },
-  ];
+  const hasVolume = metrics.volume24h > 0;
+  const hasFees = metrics.feesEarned > 0;
+  const hasSwaps = metrics.totalSwaps > 0;
+  const hasPeers = metrics.activePeers > 0 || layerCounts.hw > 0 || layerCounts.is > 0;
 
   return (
     <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-      {cards.map(card => {
-        const Icon = card.icon;
-        return (
-          <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-4`}>
-            <div className="flex items-center justify-between mb-2">
-              <Icon className={`w-4 h-4 ${card.color}`} />
-              <span className={`text-[10px] font-mono ${card.positive ? "text-emerald-400" : "text-red-400"}`}>
-                {card.change}
-              </span>
-            </div>
-            <p className="text-lg font-bold font-mono text-foreground">{card.value}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{card.label}</p>
-          </div>
-        );
-      })}
+      {/* Total Volume */}
+      <div className="rounded-xl border border-cyan-500/15 bg-cyan-500/8 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <BarChart3 className="w-4 h-4 text-cyan-400" />
+          <span className="text-[10px] font-mono text-muted-foreground/60">
+            {hasVolume ? "24h" : "no data"}
+          </span>
+        </div>
+        <p className="text-lg font-bold font-mono text-foreground">
+          {!loaded ? "—" : hasVolume ? `$${(metrics.volume24h / 1000000).toFixed(2)}M` : "$0.00"}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Total Volume</p>
+        {loaded && !hasVolume && (
+          <p className="text-[9px] text-muted-foreground/50 mt-1">Populates after first swap</p>
+        )}
+      </div>
+
+      {/* Fees Collected */}
+      <div className="rounded-xl border border-emerald-500/15 bg-emerald-500/8 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <TrendingUp className="w-4 h-4 text-emerald-400" />
+          <span className="text-[10px] font-mono text-muted-foreground/60">
+            {hasFees ? "earned" : "no data"}
+          </span>
+        </div>
+        <p className="text-lg font-bold font-mono text-foreground">
+          {!loaded ? "—" : `$${metrics.feesEarned.toLocaleString()}`}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Fees Collected</p>
+        {loaded && !hasFees && (
+          <p className="text-[9px] text-muted-foreground/50 mt-1">Populates after first swap</p>
+        )}
+      </div>
+
+      {/* P2P Ratio */}
+      <div className="rounded-xl border border-violet-500/15 bg-violet-500/8 p-4">
+        <div className="flex items-center justify-between mb-2">
+          <Radio className="w-4 h-4 text-violet-400" />
+          <span className="text-[10px] font-mono text-emerald-400">live</span>
+        </div>
+        <p className="text-lg font-bold font-mono text-foreground">
+          {!loaded ? "—" : hasSwaps ? `${metrics.p2pRatio.toFixed(1)}%` : "0.0%"}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">P2P Ratio</p>
+        {loaded && !hasSwaps && (
+          <p className="text-[9px] text-muted-foreground/50 mt-1">P2P vs DEX swap split</p>
+        )}
+      </div>
+
+      {/* Active Peers — with HW/IS breakdown */}
+      <div
+        className="rounded-xl border border-amber-500/15 bg-amber-500/8 p-4 cursor-pointer hover:border-amber-500/30 transition-colors"
+        onClick={() => onNavigate?.("network" as NavPage)}
+        title="View Network tab"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <Users className="w-4 h-4 text-amber-400" />
+          <span className="text-[10px] font-mono text-emerald-400">online</span>
+        </div>
+        <p className="text-lg font-bold font-mono text-foreground">
+          {!loaded ? "—" : String(metrics.activePeers || (layerCounts.hw + layerCounts.is))}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">Active Peers</p>
+        {/* DHT layer breakdown */}
+        <div className="flex items-center gap-2 mt-1.5">
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono"
+            style={{
+              background: 'rgba(16,185,129,0.12)',
+              border: '1px solid rgba(16,185,129,0.25)',
+              color: '#10b981',
+            }}
+          >{layerCounts.hw} HW</span>
+          <span className="text-[9px] text-muted-foreground/40">·</span>
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded font-bold font-mono"
+            style={{
+              background: 'rgba(6,182,212,0.12)',
+              border: '1px solid rgba(6,182,212,0.25)',
+              color: '#06b6d4',
+            }}
+          >{layerCounts.is} IS</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1975,56 +2015,102 @@ function MobilePortfolioStrip() {
 // ── Mobile Metric Strip (horizontal scroll) ───────────────────────────────
 function MobileMetricStrip() {
   const [metrics, setMetrics] = useState({
-    volume24h: 2840000,
-    feesEarned: 5680,
-    successRate: 98.7,
-    activePeers: 7,
-    p2pRatio: 9.95,
+    volume24h: 0,
+    feesEarned: 0,
+    activePeers: 0,
+    p2pRatio: 0,
+    totalSwaps: 0,
   });
+  const [layerCounts, setLayerCounts] = useState({ hw: 0, is: 0 });
+  const [mobileLoaded, setMobileLoaded] = useState(false);
+
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchAll = async () => {
       try {
-        const stats = await getStats();
-          setMetrics({
-            volume24h: stats.totalVolumeUsd,
-            feesEarned: stats.totalFeesUsd,
-            successRate: 98.7,
-            activePeers: stats.activePeers,
-            p2pRatio: stats.p2pRatio * 100,
-          });
+        const [stats, relay] = await Promise.all([getStats(), getRelayPeers()]);
+        setMetrics({
+          volume24h: stats.totalVolumeUsd,
+          feesEarned: stats.totalFeesUsd,
+          activePeers: stats.activePeers,
+          p2pRatio: stats.p2pRatio * 100,
+          totalSwaps: stats.totalSwaps,
+        });
+        setLayerCounts({
+          hw: relay.hyperswarmPeers?.length ?? 0,
+          is: relay.lightPeers?.length ?? 0,
+        });
+        setMobileLoaded(true);
       } catch { /* keep current metrics */ }
     };
-    fetchStats();
-    const t = setInterval(fetchStats, 60000);
+    fetchAll();
+    const t = setInterval(fetchAll, 30000);
     return () => clearInterval(t);
   }, []);
 
-  const cards = [
-    { label: "Total Volume", value: `$${(metrics.volume24h / 1000000).toFixed(2)}M`, change: "+3.2%", icon: BarChart3, color: "text-cyan-400", bg: "bg-cyan-500/8", border: "border-cyan-500/20" },
-    { label: "Fees Collected", value: `$${metrics.feesEarned.toLocaleString()}`, change: "+12.4%", icon: TrendingUp, color: "text-emerald-400", bg: "bg-emerald-500/8", border: "border-emerald-500/20" },
-    { label: "P2P Ratio", value: `${metrics.p2pRatio.toFixed(1)}%`, change: "live", icon: Radio, color: "text-violet-400", bg: "bg-violet-500/8", border: "border-violet-500/20" },
-    { label: "Active Peers", value: String(metrics.activePeers), change: "online", icon: Users, color: "text-amber-400", bg: "bg-amber-500/8", border: "border-amber-500/20" },
-  ];
+  const hasVolume = metrics.volume24h > 0;
+  const hasFees = metrics.feesEarned > 0;
+  const hasSwaps = metrics.totalSwaps > 0;
 
   return (
     <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none" style={{ scrollSnapType: "x mandatory" }}>
-      {cards.map(card => {
-        const Icon = card.icon;
-        return (
-          <div
-            key={card.label}
-            className={`rounded-xl border ${card.border} ${card.bg} p-3.5 shrink-0 w-[140px]`}
-            style={{ scrollSnapAlign: "start" }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <Icon className={`w-3.5 h-3.5 ${card.color}`} />
-              <span className="text-[9px] font-mono text-emerald-400">{card.change}</span>
-            </div>
-            <p className={`text-base font-bold font-mono ${card.color}`}>{card.value}</p>
-            <p className="text-[9px] text-muted-foreground mt-0.5">{card.label}</p>
-          </div>
-        );
-      })}
+      {/* Total Volume */}
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/8 p-3.5 shrink-0 w-[140px]" style={{ scrollSnapAlign: "start" }}>
+        <div className="flex items-center justify-between mb-2">
+          <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-[9px] font-mono text-muted-foreground/60">{hasVolume ? "24h" : "no data"}</span>
+        </div>
+        <p className="text-base font-bold font-mono text-cyan-400">
+          {!mobileLoaded ? "—" : hasVolume ? `$${(metrics.volume24h / 1000000).toFixed(2)}M` : "$0.00"}
+        </p>
+        <p className="text-[9px] text-muted-foreground mt-0.5">Total Volume</p>
+      </div>
+
+      {/* Fees Collected */}
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/8 p-3.5 shrink-0 w-[140px]" style={{ scrollSnapAlign: "start" }}>
+        <div className="flex items-center justify-between mb-2">
+          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-[9px] font-mono text-muted-foreground/60">{hasFees ? "earned" : "no data"}</span>
+        </div>
+        <p className="text-base font-bold font-mono text-emerald-400">
+          {!mobileLoaded ? "—" : `$${metrics.feesEarned.toLocaleString()}`}
+        </p>
+        <p className="text-[9px] text-muted-foreground mt-0.5">Fees Collected</p>
+      </div>
+
+      {/* P2P Ratio */}
+      <div className="rounded-xl border border-violet-500/20 bg-violet-500/8 p-3.5 shrink-0 w-[140px]" style={{ scrollSnapAlign: "start" }}>
+        <div className="flex items-center justify-between mb-2">
+          <Radio className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-[9px] font-mono text-emerald-400">live</span>
+        </div>
+        <p className="text-base font-bold font-mono text-violet-400">
+          {!mobileLoaded ? "—" : `${metrics.p2pRatio.toFixed(1)}%`}
+        </p>
+        <p className="text-[9px] text-muted-foreground mt-0.5">P2P Ratio</p>
+        {!hasSwaps && mobileLoaded && <p className="text-[8px] text-muted-foreground/40 mt-0.5">P2P vs DEX</p>}
+      </div>
+
+      {/* Active Peers — with HW/IS breakdown */}
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/8 p-3.5 shrink-0 w-[140px]" style={{ scrollSnapAlign: "start" }}>
+        <div className="flex items-center justify-between mb-2">
+          <Users className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[9px] font-mono text-emerald-400">online</span>
+        </div>
+        <p className="text-base font-bold font-mono text-amber-400">
+          {!mobileLoaded ? "—" : String(metrics.activePeers || (layerCounts.hw + layerCounts.is))}
+        </p>
+        <p className="text-[9px] text-muted-foreground mt-0.5">Active Peers</p>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span className="text-[8px] px-1 py-0.5 rounded font-bold font-mono"
+            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)', color: '#10b981' }}>
+            {layerCounts.hw} HW
+          </span>
+          <span className="text-[8px] px-1 py-0.5 rounded font-bold font-mono"
+            style={{ background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.25)', color: '#06b6d4' }}>
+            {layerCounts.is} IS
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2934,7 +3020,7 @@ export default function Dashboard() {
                 {/* LEFT col — Mini Chat + Metrics + Quick Actions + Market (with charts) */}
                 <div className="col-span-7 flex flex-col gap-4 min-h-0">
                   <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} />
-                  <MetricsRow />
+                  <MetricsRow onNavigate={setActivePage} />
                   <QuickActions onNavigate={setActivePage} />
                   <MarketTicker />
                 </div>
