@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, peerReputation, PeerReputation } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -90,3 +90,110 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // TODO: add feature queries here as your schema grows.
+
+// ─── Peer Reputation Helpers ──────────────────────────────────────────────────
+
+/**
+ * Compute a 0–100 reputation score from raw signals.
+ *  - Uptime (ping success rate): 40 pts
+ *  - Swap success count (capped at 30 swaps = full 40 pts): 40 pts
+ *  - Latency bonus (< 200ms avg = full 20 pts, scales linearly to 0 at 2000ms): 20 pts
+ */
+function computeScore(r: {
+  successfulPings: number;
+  failedPings: number;
+  successfulSwaps: number;
+  totalLatencyMs: number;
+}): number {
+  const totalPings = r.successfulPings + r.failedPings;
+  const uptimePct = totalPings > 0 ? r.successfulPings / totalPings : 0.5;
+  const uptimePts = Math.round(uptimePct * 40);
+
+  const swapPts = Math.min(r.successfulSwaps, 30) / 30 * 40;
+
+  const avgLatency = r.successfulPings > 0 ? r.totalLatencyMs / r.successfulPings : 1000;
+  const latencyPts = Math.max(0, Math.round((1 - Math.min(avgLatency, 2000) / 2000) * 20));
+
+  return Math.round(uptimePts + swapPts + latencyPts);
+}
+
+/** Upsert a peer record and record a ping result */
+export async function recordPeerPing(
+  peerId: string,
+  alias: string | undefined,
+  origin: string,
+  latencyMs: number | null,
+): Promise<PeerReputation | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const success = latencyMs !== null;
+  const existing = await db.select().from(peerReputation).where(eq(peerReputation.peerId, peerId)).limit(1);
+
+  if (existing.length === 0) {
+    // First time we see this peer — insert with initial values
+    const row = {
+      peerId,
+      alias: alias ?? null,
+      origin,
+      successfulPings: success ? 1 : 0,
+      failedPings: success ? 0 : 1,
+      successfulSwaps: 0,
+      totalLatencyMs: success && latencyMs ? latencyMs : 0,
+      score: success ? 55 : 45,
+      lastSeenAt: new Date(),
+    };
+    await db.insert(peerReputation).values(row);
+    return { ...row, id: 0, firstSeenAt: new Date(), updatedAt: new Date() } as PeerReputation;
+  }
+
+  const r = existing[0];
+  const updates: Partial<PeerReputation> = {
+    successfulPings: r.successfulPings + (success ? 1 : 0),
+    failedPings: r.failedPings + (success ? 0 : 1),
+    totalLatencyMs: r.totalLatencyMs + (success && latencyMs ? latencyMs : 0),
+    lastSeenAt: new Date(),
+  };
+  if (alias) updates.alias = alias;
+  updates.score = computeScore({ ...r, ...updates } as typeof r);
+
+  await db.update(peerReputation).set(updates).where(eq(peerReputation.peerId, peerId));
+  return { ...r, ...updates } as PeerReputation;
+}
+
+/** Record a successful swap for a peer (increments successfulSwaps + updates score) */
+export async function recordPeerSwap(peerId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  const existing = await db.select().from(peerReputation).where(eq(peerReputation.peerId, peerId)).limit(1);
+  if (existing.length === 0) return; // Peer not yet tracked — skip
+
+  const r = existing[0];
+  const updates = {
+    successfulSwaps: r.successfulSwaps + 1,
+    lastSeenAt: new Date(),
+    score: computeScore({ ...r, successfulSwaps: r.successfulSwaps + 1 }),
+  };
+  await db.update(peerReputation).set(updates).where(eq(peerReputation.peerId, peerId));
+}
+
+/** Get reputation for a list of peer IDs (returns map peerId → score) */
+export async function getPeerReputations(peerIds: string[]): Promise<Map<string, PeerReputation>> {
+  const db = await getDb();
+  const map = new Map<string, PeerReputation>();
+  if (!db || peerIds.length === 0) return map;
+
+  const rows = await db.select().from(peerReputation)
+    .where(sql`${peerReputation.peerId} IN (${sql.join(peerIds.map(id => sql`${id}`), sql`, `)})`);
+
+  for (const row of rows) map.set(row.peerId, row);
+  return map;
+}
+
+/** Get all peer reputations ordered by score descending */
+export async function getAllPeerReputations(): Promise<PeerReputation[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(peerReputation).orderBy(sql`score DESC`);
+}

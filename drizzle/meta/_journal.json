@@ -15,6 +15,13 @@
       "when": 1772433189481,
       "tag": "0001_easy_korg",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1772551819243,
+      "tag": "0002_clean_absorbing_man",
+      "breakpoints": true
     }
   ]
 }

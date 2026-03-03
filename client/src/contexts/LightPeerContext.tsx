@@ -25,7 +25,7 @@ import {
 } from "react";
 import { useWallet } from "./WalletContext";
 import { useMultiChainWallet } from "./MultiChainWalletContext";
-import { onSSEEvent, getPrices, BACKEND_URL } from "../lib/afosApi";
+import { onSSEEvent, getPrices, BACKEND_URL, announceToRelay } from "../lib/afosApi";
 import { toast } from "sonner";
 import {
   detectBtcProvider,
@@ -195,6 +195,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       setIsOnline(true);
       setLastHeartbeat(Date.now());
     }
+    // Also announce to the relay bridge so this Light Peer appears in the
+    // merged Hyperswarm + IntercomSwap peer list on the Network page.
+    // Best-effort — never blocks the main announce flow.
+    announceToRelay(id, alias, prefsRef.current.acceptedPairs).catch(() => {});
   }, []);
 
   const deannounce = useCallback(async (id: string) => {

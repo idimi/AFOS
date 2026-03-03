@@ -665,3 +665,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add /api/channels and /api/channels/open endpoints on Oracle VM for real channel management
 - [x] Wire Open Channel form in Network page Liquidity Channels tab to Oracle VM /api/channels/open
 - [x] Rename "LN Channels" → "Liquidity Channels" throughout the app (tab label, page title, all references)
+
+## Relay Auto-Announce + Peer Reputation + Channel Health
+
+- [x] Add relay auto-announce to LightPeerContext: announce on startup and re-announce every 60s
+- [x] Add relay auto-announce to Oracle VM oracle-server.js: announce Hyperswarm peers to relay registry on connect/disconnect
+- [x] Add peer reputation scoring: compute score from successful swaps, uptime, avg latency stored in DB
+- [x] Add reputation DB table and server-side update logic (increment on swap success, decrement on failure)
+- [x] Wire reputation score to Peer Directory badge (color-coded: green/amber/red)
+- [ ] Add sort/filter by reputation to Peer Directory (future)
+- [x] Add channel health heartbeat: ping each open channel every 30s from frontend
+- [x] Add /api/channels/:id/health endpoint on Oracle VM
+- [x] Show warning badge on unresponsive channels in Liquidity Channels tab
+- [ ] Add channel health status to Active Channels sidebar (future)

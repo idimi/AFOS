@@ -7,7 +7,8 @@
  * PRODUCTION: All data is live from Oracle VM /api/peers + SSE + LightPeerContext.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
@@ -382,12 +383,20 @@ function NetworkStats({ peers, channels }: { peers: Peer[]; channels: Channel[] 
 
 // ─── Peer List ────────────────────────────────────────────────────────────────
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing }: {
+function reputationColor(score: number): string {
+  if (score >= 80) return '#10b981'; // green
+  if (score >= 60) return '#f59e0b'; // amber
+  if (score >= 40) return '#f97316'; // orange
+  return '#ef4444';                  // red
+}
+
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   pingResults: Record<string, { latencyMs: number | null; loading: boolean }>;
   onPing: (peerId: string, fullKey: string) => void;
+  reputationScores: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }> | undefined;
 }) {
   return (
     <div className="rounded-2xl overflow-hidden"
@@ -432,6 +441,8 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing }: {
           const displayLatency = pingState?.latencyMs ?? peer.latency;
           const color = latencyColor(displayLatency);
           const isSelected = selectedId === peer.id;
+          const rep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
+          const repScore = rep?.score ?? null;
           return (
             <div
               key={peer.id}
@@ -444,7 +455,20 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing }: {
               >
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-mono text-slate-200 truncate">{peer.alias}</div>
+                  <div className="text-[11px] font-mono text-slate-200 truncate flex items-center gap-1.5">
+                    {peer.alias}
+                    {repScore !== null && (
+                      <span
+                        className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
+                        title={`Reputation: ${repScore}/100 · ${rep?.successfulSwaps ?? 0} swaps`}
+                        style={{
+                          background: `${reputationColor(repScore)}18`,
+                          border: `1px solid ${reputationColor(repScore)}40`,
+                          color: reputationColor(repScore),
+                        }}
+                      >{repScore}</span>
+                    )}
+                  </div>
                   <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0] || "—"}</div>
                 </div>
                 <div className="text-right shrink-0">
@@ -539,6 +563,22 @@ export default function NetworkPage() {
 
   const lightPeer = useLightPeer();
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
+
+  // ── Peer Reputation ────────────────────────────────────────────────────────
+  // Collect all remote peer IDs (short IDs used as keys in livePeers)
+  const remotePeerIds = useMemo(
+    () => livePeers.filter(p => p.id !== "self" && p.fullKey).map(p => p.fullKey!),
+    [livePeers]
+  );
+  const { data: reputationData, refetch: refetchReputation } = trpc.peerReputation.getScores.useQuery(
+    { peerIds: remotePeerIds },
+    { enabled: remotePeerIds.length > 0, refetchInterval: 60_000 }
+  );
+  const recordPingMutation = trpc.peerReputation.recordPing.useMutation();
+
+  // ── Channel Health ─────────────────────────────────────────────────────────
+  // channelHealth: channelId → { healthy: boolean; lastChecked: number }
+  const [channelHealth, setChannelHealth] = useState<Record<string, { healthy: boolean; lastChecked: number }>>({}); 
 
   const triggerPulse = useCallback((ids: string[]) => {
     setPulseIds(new Set(ids));
@@ -635,12 +675,22 @@ export default function NetworkPage() {
     }
   }, [buildSelfPeer, convertOraclePeers, buildChannels]);
 
-  /** Ping a remote peer and update latency display */
+  /** Ping a remote peer, update latency display, and persist result to reputation DB */
   const handlePing = useCallback(async (peerId: string, fullKey: string) => {
     setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true } }));
+    const peer = livePeers.find(p => p.id === peerId);
     try {
       const result = await pingPeer(fullKey);
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false } }));
+      // Persist ping result to reputation DB
+      recordPingMutation.mutate({
+        peerId: fullKey,
+        alias: peer?.alias,
+        origin: 'hyperswarm',
+        latencyMs: result.success ? result.latencyMs : null,
+      }, {
+        onSuccess: () => refetchReputation(),
+      });
       if (result.success && result.latencyMs !== null) {
         toast.success(`Ping: ${result.latencyMs}ms${result.estimated ? ' (estimated)' : ''}`);
       } else {
@@ -648,9 +698,11 @@ export default function NetworkPage() {
       }
     } catch {
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false } }));
+      // Record failed ping
+      recordPingMutation.mutate({ peerId: fullKey, alias: peer?.alias, origin: 'hyperswarm', latencyMs: null });
       toast.error('Ping request failed');
     }
-  }, []);
+  }, [livePeers, recordPingMutation, refetchReputation]);
 
   /** Open a new liquidity channel via Oracle VM */
   const handleOpenChannel = useCallback(async () => {
@@ -703,6 +755,34 @@ export default function NetworkPage() {
     const interval = setInterval(fetchLiveData, 15000);
     return () => clearInterval(interval);
   }, [fetchLiveData]);
+
+  // Channel health heartbeat — probe each active channel every 30s
+  useEffect(() => {
+    if (liquidityChannels.length === 0) return;
+    const checkHealth = async () => {
+      const activeChannels = liquidityChannels.filter(c => c.status === 'active');
+      for (const ch of activeChannels) {
+        try {
+          const res = await fetch(`/api/afos/api/channels/${encodeURIComponent(ch.id)}/health`, {
+            signal: AbortSignal.timeout(5000),
+          });
+          const data = await res.json().catch(() => ({}));
+          setChannelHealth(prev => ({
+            ...prev,
+            [ch.id]: { healthy: res.ok && data.healthy !== false, lastChecked: Date.now() },
+          }));
+        } catch {
+          setChannelHealth(prev => ({
+            ...prev,
+            [ch.id]: { healthy: false, lastChecked: Date.now() },
+          }));
+        }
+      }
+    };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30_000);
+    return () => clearInterval(interval);
+  }, [liquidityChannels]);
 
   // SSE event listeners for real-time updates
   useEffect(() => {
@@ -900,12 +980,22 @@ export default function NetworkPage() {
           {liquidityChannels.map((ch: LiquidityChannel) => {
             const chainColors: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', SOL: '#14f195' };
             const chainColor = chainColors[ch.chain] || '#06b6d4';
+            const health = channelHealth[ch.id];
+            const isUnhealthy = health && !health.healthy;
             return (
-              <div key={ch.id} className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${ch.status === "active" ? "rgba(16,185,129,0.2)" : ch.status === "pending" ? "rgba(245,158,11,0.2)" : "var(--border)"}` }}>
+              <div key={ch.id} className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${isUnhealthy ? "rgba(239,68,68,0.35)" : ch.status === "active" ? "rgba(16,185,129,0.2)" : ch.status === "pending" ? "rgba(245,158,11,0.2)" : "var(--border)"}` }}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-sm font-bold text-foreground">{ch.peerAlias}</span>
+                      {isUnhealthy && (
+                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold"
+                          style={{ background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444" }}
+                          title={`Channel unresponsive · Last checked: ${new Date(health.lastChecked).toLocaleTimeString()}`}>
+                          <AlertCircle className="w-2.5 h-2.5" />
+                          Unresponsive
+                        </span>
+                      )}
                       <span className="px-1.5 py-0.5 rounded text-[9px] font-bold font-mono"
                         style={{
                           background: ch.status === "active" ? "rgba(16,185,129,0.12)" : ch.status === "pending" ? "rgba(245,158,11,0.12)" : "rgba(100,116,139,0.12)",
@@ -1231,7 +1321,7 @@ export default function NetworkPage() {
 
         {/* Right: Peer List + Info */}
         <div className="space-y-4">
-          <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} pingResults={pingResults} onPing={handlePing} />
+          <PeerList peers={livePeers} selectedId={selectedId} onSelect={id => setSelectedId(prev => prev === id ? null : id)} pingResults={pingResults} onPing={handlePing} reputationScores={reputationData} />
 
           {/* Active Channels summary */}
           <div className="rounded-2xl p-4"

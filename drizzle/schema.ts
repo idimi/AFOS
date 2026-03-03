@@ -99,3 +99,35 @@ export const swapAnalytics = mysqlTable("swap_analytics", {
 
 export type SwapAnalytic = typeof swapAnalytics.$inferSelect;
 export type InsertSwapAnalytic = typeof swapAnalytics.$inferInsert;
+
+// ─── Peer Reputation ─────────────────────────────────────────────────────────
+// Tracks per-peer reputation signals: successful swaps, failed pings, uptime.
+// Score is computed 0–100 from these signals and shown as a badge in the
+// Network → Peer Directory tab.
+export const peerReputation = mysqlTable("peer_reputation", {
+  id:               int("id").autoincrement().primaryKey(),
+  /** Full peer public key (hex) or wallet address for Light Peers */
+  peerId:           varchar("peerId", { length: 128 }).notNull().unique(),
+  /** Human-readable alias (e.g. lp-abc123) */
+  alias:            varchar("alias", { length: 64 }),
+  /** Origin network: hyperswarm | intercomswap */
+  origin:           varchar("origin", { length: 32 }).default("hyperswarm").notNull(),
+  /** Number of swaps this peer successfully completed as counterparty */
+  successfulSwaps:  int("successfulSwaps").default(0).notNull(),
+  /** Number of failed or timed-out pings */
+  failedPings:      int("failedPings").default(0).notNull(),
+  /** Number of successful pings (used to compute uptime %) */
+  successfulPings:  int("successfulPings").default(0).notNull(),
+  /** Sum of all recorded latencies in ms (divide by successfulPings for avg) */
+  totalLatencyMs:   int("totalLatencyMs").default(0).notNull(),
+  /** Computed reputation score 0–100 (updated on each ping / swap event) */
+  score:            int("score").default(50).notNull(),
+  /** Timestamp of first sighting */
+  firstSeenAt:      timestamp("firstSeenAt").defaultNow().notNull(),
+  /** Timestamp of last successful interaction */
+  lastSeenAt:       timestamp("lastSeenAt").defaultNow().notNull(),
+  updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PeerReputation = typeof peerReputation.$inferSelect;
+export type InsertPeerReputation = typeof peerReputation.$inferInsert;
