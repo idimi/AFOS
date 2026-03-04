@@ -906,3 +906,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Settings page has "Admin Panel" link card pointing to /admin for operator config
 - [x] 129 tests passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## User Settings Persistence (DB-backed)
+
+- [x] Add userSettings table to drizzle/schema.ts (openId PK, maxTxAmountUsd, autoConfirm, slippagePct, preferredRoute, theme, updatedAt)
+- [x] Run pnpm db:push to migrate (migration 0005 applied successfully)
+- [x] Add getUserSettings / upsertUserSettings helpers to server/db.ts
+- [x] Add settings router (settings.get + settings.save) to server/routers/settings.ts
+- [x] Register settingsRouter in server/routers.ts
+- [x] Wire AgentSettings.tsx: load via trpc.settings.get on mount, save via trpc.settings.save with optimistic update
+- [x] Show loading skeleton while settings are fetching
+- [x] Auth gate: unauthenticated users see a "Connect Account" prompt instead of blank form
+- [x] Theme selector synced with next-themes setTheme on change
+- [x] Write 11 vitest tests for settings.get and settings.save procedures (all passing)
+- [x] 140 tests total passing, 0 TypeScript errors
+- [x] Save checkpoint

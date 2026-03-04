@@ -6,11 +6,11 @@
  *   - Preferred swap route
  *   - UI theme
  *
- * Operator/infrastructure config (LLM model, IntercomSwap node, Bitcoin node,
- * Solana RPC, Worker/Autopost, MoonPay) lives in Admin Panel → Operator Config.
+ * Settings are persisted to the database via trpc.settings.get / trpc.settings.save.
+ * Operator/infrastructure config lives in Admin Panel → Operator Config.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Settings2,
@@ -24,9 +24,13 @@ import {
   ToggleLeft,
   ToggleRight,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { getLoginUrl } from "@/const";
 
 // ─── Slippage options ──────────────────────────────────────────────────────────
 const SLIPPAGE_PRESETS = ["0.1", "0.5", "1.0", "2.0"];
@@ -54,12 +58,44 @@ const ROUTES = [
     badge: null,
     badgeColor: null,
   },
+  {
+    id: "best",
+    label: "Best Available",
+    description: "Automatically picks the route with the best rate and lowest fee",
+    badge: null,
+    badgeColor: null,
+  },
 ];
 
+// ─── Loading skeleton ──────────────────────────────────────────────────────────
+function SettingsSkeleton() {
+  return (
+    <div className="p-6 max-w-2xl mx-auto space-y-4 animate-pulse">
+      <div className="h-7 w-32 rounded-lg bg-muted mb-6" />
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="rounded-2xl p-5 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-muted" />
+            <div className="h-4 w-40 rounded bg-muted" />
+          </div>
+          <div className="h-10 rounded-xl bg-muted" />
+          <div className="h-10 rounded-xl bg-muted w-3/4" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Theme selector ─────────────────────────────────────────────────────────────
-function ThemeSelector() {
-  const { theme, setTheme } = useTheme();
-  const options = [
+function ThemeSelector({
+  value,
+  onChange,
+}: {
+  value: "dark" | "light" | "system";
+  onChange: (v: "dark" | "light" | "system") => void;
+}) {
+  const { setTheme } = useTheme();
+  const options: { id: "dark" | "light" | "system"; label: string; icon: React.ElementType }[] = [
     { id: "light", label: "Light", icon: Sun },
     { id: "dark", label: "Dark", icon: Moon },
     { id: "system", label: "System", icon: Monitor },
@@ -67,11 +103,11 @@ function ThemeSelector() {
   return (
     <div className="flex gap-2">
       {options.map(({ id, label, icon: Icon }) => {
-        const active = theme === id;
+        const active = value === id;
         return (
           <button
             key={id}
-            onClick={() => setTheme(id)}
+            onClick={() => { onChange(id); setTheme(id); }}
             className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all text-xs font-medium"
             style={{
               background: active ? "rgba(99,102,241,0.12)" : "var(--muted)",
@@ -177,19 +213,106 @@ function SectionCard({
 
 // ─── Main component ──────────────────────────────────────────────────────────────
 export default function AgentSettings() {
+  const { isAuthenticated, loading: authLoading } = useAuth();
+
+  // ── Remote state ──────────────────────────────────────────────────────────────
+  const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
+    undefined,
+    { enabled: isAuthenticated },
+  );
+
+  const utils = trpc.useUtils();
+  const saveMutation = trpc.settings.save.useMutation({
+    // Optimistic update: apply locally before the server responds
+    onMutate: async (patch) => {
+      await utils.settings.get.cancel();
+      const prev = utils.settings.get.getData();
+      utils.settings.get.setData(undefined, old =>
+        old ? { ...old, ...patch } : old,
+      );
+      return { prev };
+    },
+    onError: (_err, _patch, ctx) => {
+      if (ctx?.prev) utils.settings.get.setData(undefined, ctx.prev);
+      toast.error("Failed to save settings");
+    },
+    onSuccess: () => {
+      toast.success("Settings saved", {
+        description: "Your trading preferences have been updated.",
+      });
+    },
+    onSettled: () => {
+      utils.settings.get.invalidate();
+    },
+  });
+
+  // ── Local draft state (mirrors remote, editable before save) ─────────────────
   const [maxTxAmount, setMaxTxAmount] = useState("500");
   const [autoConfirm, setAutoConfirm] = useState(false);
   const [slippage, setSlippage] = useState("0.5");
   const [customSlippage, setCustomSlippage] = useState("");
-  const [preferredRoute, setPreferredRoute] = useState("intercomswap");
+  const [preferredRoute, setPreferredRoute] = useState<"intercomswap" | "jupiter" | "oneinch" | "best">("best");
+  const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+
+  // Populate local draft when remote data arrives
+  useEffect(() => {
+    if (!remoteSettings) return;
+    setMaxTxAmount(String(remoteSettings.maxTxAmountUsd));
+    setAutoConfirm(remoteSettings.autoConfirm as boolean);
+    const isPreset = SLIPPAGE_PRESETS.includes(remoteSettings.slippagePct);
+    if (isPreset) {
+      setSlippage(remoteSettings.slippagePct);
+      setCustomSlippage("");
+    } else {
+      setSlippage("0.5");
+      setCustomSlippage(remoteSettings.slippagePct);
+    }
+    setPreferredRoute(remoteSettings.preferredRoute as typeof preferredRoute);
+    setTheme(remoteSettings.theme as typeof theme);
+  }, [remoteSettings]);
+
+  const effectiveSlippage = customSlippage || slippage;
 
   const handleSave = () => {
-    toast.success("Settings saved", {
-      description: "Your trading preferences have been updated.",
+    const parsedMax = parseInt(maxTxAmount, 10);
+    if (isNaN(parsedMax) || parsedMax < 1) {
+      toast.error("Max transaction amount must be a positive number");
+      return;
+    }
+    const parsedSlippage = parseFloat(effectiveSlippage);
+    if (isNaN(parsedSlippage) || parsedSlippage <= 0) {
+      toast.error("Slippage must be a positive number");
+      return;
+    }
+    saveMutation.mutate({
+      maxTxAmountUsd: parsedMax,
+      autoConfirm,
+      slippagePct: effectiveSlippage,
+      preferredRoute,
+      theme,
     });
   };
 
-  const effectiveSlippage = customSlippage || slippage;
+  // ── Auth gate ─────────────────────────────────────────────────────────────────
+  if (authLoading) return <SettingsSkeleton />;
+  if (!isAuthenticated) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[50vh] gap-4">
+        <p className="text-sm text-muted-foreground text-center">
+          Connect your account to save and sync your settings across devices.
+        </p>
+        <a
+          href={getLoginUrl()}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
+        >
+          Connect Account
+        </a>
+      </div>
+    );
+  }
+
+  if (settingsLoading) return <SettingsSkeleton />;
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -305,7 +428,7 @@ export default function AgentSettings() {
               return (
                 <button
                   key={route.id}
-                  onClick={() => setPreferredRoute(route.id)}
+                  onClick={() => setPreferredRoute(route.id as typeof preferredRoute)}
                   className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all"
                   style={{
                     background: active ? "rgba(139,92,246,0.1)" : "var(--muted)",
@@ -355,7 +478,7 @@ export default function AgentSettings() {
             <label className="block text-xs font-medium text-foreground/70 mb-2">
               Theme
             </label>
-            <ThemeSelector />
+            <ThemeSelector value={theme} onChange={setTheme} />
           </div>
         </SectionCard>
 
@@ -389,11 +512,16 @@ export default function AgentSettings() {
       <div className="mt-6 flex justify-end">
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60"
           style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
         >
-          <Save className="w-4 h-4" />
-          Save Settings
+          {saveMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {saveMutation.isPending ? "Saving…" : "Save Settings"}
         </button>
       </div>
     </div>

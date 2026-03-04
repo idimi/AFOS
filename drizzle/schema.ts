@@ -141,3 +141,37 @@ export const peerReputation = mysqlTable("peer_reputation", {
 
 export type PeerReputation = typeof peerReputation.$inferSelect;
 export type InsertPeerReputation = typeof peerReputation.$inferInsert;
+
+// ─── User Settings ────────────────────────────────────────────────────────────
+// Stores per-user trading preferences, keyed by walletAddress.
+// A user can have multiple connected wallets; each wallet gets its own row.
+// Falls back to sensible defaults when no row exists yet.
+export const userSettings = mysqlTable("user_settings", {
+  id:               int("id").autoincrement().primaryKey(),
+  /** Manus OAuth openId — links to users.openId */
+  openId:           varchar("openId", { length: 64 }).notNull().unique(),
+  /** Maximum single-swap amount in USD the user will allow */
+  maxTxAmountUsd:   int("maxTxAmountUsd").default(500).notNull(),
+  /** When true the agent executes swaps without asking for confirmation */
+  autoConfirm:      int("autoConfirm").default(0).notNull(), // 0 = false, 1 = true (MySQL tinyint)
+  /** Slippage tolerance as a percentage, e.g. 0.5 means 0.5% */
+  slippagePct:      varchar("slippagePct", { length: 8 }).default("0.5").notNull(),
+  /** Preferred swap route: intercomswap | jupiter | oneinch | best */
+  preferredRoute:   mysqlEnum("preferredRoute", ["intercomswap", "jupiter", "oneinch", "best"]).default("best").notNull(),
+  /** Appearance theme preference: dark | light | system */
+  theme:            mysqlEnum("theme", ["dark", "light", "system"]).default("dark").notNull(),
+  createdAt:        timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UserSettings = typeof userSettings.$inferSelect;
+export type InsertUserSettings = typeof userSettings.$inferInsert;
+
+/** Default settings returned when no row exists yet for a user */
+export const DEFAULT_USER_SETTINGS = {
+  maxTxAmountUsd: 500,
+  autoConfirm: false,
+  slippagePct: "0.5",
+  preferredRoute: "best" as const,
+  theme: "dark" as const,
+};

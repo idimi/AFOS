@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, peerReputation, PeerReputation } from "../drizzle/schema";
+import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -87,6 +87,81 @@ export async function getUserByOpenId(openId: string) {
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
+}
+
+// ─── User Settings Helpers ───────────────────────────────────────────────────
+
+/**
+ * Returns the stored settings for a user, or the defaults if no row exists yet.
+ * Never throws — callers can safely use the returned object without null checks.
+ */
+export type UserSettingsResult = {
+  id?: number;
+  maxTxAmountUsd: number;
+  autoConfirm: boolean;
+  slippagePct: string;
+  preferredRoute: "intercomswap" | "jupiter" | "oneinch" | "best";
+  theme: "dark" | "light" | "system";
+};
+
+export async function getUserSettings(openId: string): Promise<UserSettingsResult> {
+  const db = await getDb();
+  if (!db) return { ...DEFAULT_USER_SETTINGS };
+
+  try {
+    const rows = await db.select().from(userSettings).where(eq(userSettings.openId, openId)).limit(1);
+    if (rows.length === 0) return { ...DEFAULT_USER_SETTINGS };
+    const row = rows[0];
+    return {
+      id: row.id,
+      maxTxAmountUsd: row.maxTxAmountUsd,
+      autoConfirm: row.autoConfirm === 1,
+      slippagePct: row.slippagePct,
+      preferredRoute: row.preferredRoute,
+      theme: row.theme,
+    };
+  } catch (err) {
+    console.warn("[DB] getUserSettings failed, returning defaults:", err);
+    return { ...DEFAULT_USER_SETTINGS };
+  }
+}
+
+/**
+ * Upsert user settings. Partial — only provided fields are updated.
+ */
+export async function upsertUserSettings(
+  openId: string,
+  patch: {
+    maxTxAmountUsd?: number;
+    autoConfirm?: boolean;
+    slippagePct?: string;
+    preferredRoute?: UserSettings["preferredRoute"];
+    theme?: UserSettings["theme"];
+  },
+): Promise<void> {
+  const db = await getDb();
+  if (!db) {
+    console.warn("[DB] upsertUserSettings: database not available");
+    return;
+  }
+
+  const insertValues = {
+    openId,
+    maxTxAmountUsd: patch.maxTxAmountUsd ?? DEFAULT_USER_SETTINGS.maxTxAmountUsd,
+    autoConfirm: (patch.autoConfirm ?? DEFAULT_USER_SETTINGS.autoConfirm) ? 1 : 0,
+    slippagePct: patch.slippagePct ?? DEFAULT_USER_SETTINGS.slippagePct,
+    preferredRoute: patch.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute,
+    theme: patch.theme ?? DEFAULT_USER_SETTINGS.theme,
+  };
+
+  const updateSet: Record<string, unknown> = {};
+  if (patch.maxTxAmountUsd !== undefined) updateSet.maxTxAmountUsd = patch.maxTxAmountUsd;
+  if (patch.autoConfirm !== undefined) updateSet.autoConfirm = patch.autoConfirm ? 1 : 0;
+  if (patch.slippagePct !== undefined) updateSet.slippagePct = patch.slippagePct;
+  if (patch.preferredRoute !== undefined) updateSet.preferredRoute = patch.preferredRoute;
+  if (patch.theme !== undefined) updateSet.theme = patch.theme;
+
+  await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });
 }
 
 // TODO: add feature queries here as your schema grows.
