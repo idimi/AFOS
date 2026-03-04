@@ -847,3 +847,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] All 3 chains send fromChain + toChain to Oracle VM RFQ for cross-chain discovery
 - [x] ChatPage: ChainPill shows cross-chain labels, fromChain/toChain passed to executeAgentSwap
 - [x] Add vitest cross-chain tests: 126 tests all passing (cross-chain routing, fee math, chain dispatch)
+
+## Fee Wallet Security Fix
+
+- [x] Remove unknown hardcoded fallback address from PLATFORM_FEE_ACCOUNT
+- [x] Replace with null/no-op: if PLATFORM_FEE_WALLET not set, feeAccount is omitted from Jupiter call
+- [x] Add server startup warning log when PLATFORM_FEE_WALLET is not configured
+- [x] Update feeModel.test.ts to reflect new no-op behavior (assert address NOT present)
+- [x] 126 tests passing, 0 TypeScript errors
+- [ ] Save checkpoint

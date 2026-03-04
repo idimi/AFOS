@@ -72,7 +72,19 @@ const JUPITER_QUOTE_URL = "https://lite-api.jup.ag/swap/v1/quote";
 const JUPITER_SWAP_URL  = "https://lite-api.jup.ag/swap/v1/swap";
 const PLATFORM_FEE_BPS  = 20;  // 0.20% — DEX fallback (Jupiter/1inch referral, collected on-chain)
 const P2P_FEE_BPS       = 15;  // 0.15% — P2P primary route (output-side deduction, cheaper to reward P2P)
-const PLATFORM_FEE_ACCOUNT = process.env.PLATFORM_FEE_WALLET ?? "8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump";
+
+// PLATFORM_FEE_ACCOUNT — the Solana wallet that receives Jupiter referral fees (0.20% per DEX swap).
+// MUST be set to your own Solana wallet address via the PLATFORM_FEE_WALLET environment variable.
+// If not set, feeAccount is omitted from Jupiter swap calls — Jupiter still executes the swap but
+// the platform fee is NOT collected. No fallback address is used to prevent fees going to an unknown wallet.
+const PLATFORM_FEE_ACCOUNT: string | null = process.env.PLATFORM_FEE_WALLET ?? null;
+if (!PLATFORM_FEE_ACCOUNT) {
+  console.warn(
+    "[AFOS] WARNING: PLATFORM_FEE_WALLET env var is not set. " +
+    "Jupiter DEX fees (0.20%) will NOT be collected. " +
+    "Set PLATFORM_FEE_WALLET to your Solana wallet address in project secrets to enable fee collection."
+  );
+}
 
 async function getJupiterQuote(
   fromAsset: AssetDef,
@@ -111,9 +123,11 @@ async function getJupiterSwapTx(
     body: JSON.stringify({
       quoteResponse,
       userPublicKey,
-      wrapAndUnwrapSol:         true,
-      feeAccount:               PLATFORM_FEE_ACCOUNT,
-      dynamicComputeUnitLimit:  true,
+      wrapAndUnwrapSol:          true,
+      // Only include feeAccount when PLATFORM_FEE_WALLET is explicitly set by the operator.
+      // Omitting it means Jupiter executes the swap without collecting a referral fee.
+      ...(PLATFORM_FEE_ACCOUNT ? { feeAccount: PLATFORM_FEE_ACCOUNT } : {}),
+      dynamicComputeUnitLimit:   true,
       prioritizationFeeLamports: "auto",
     }),
     signal: AbortSignal.timeout(15000),

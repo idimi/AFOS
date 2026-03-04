@@ -32,11 +32,17 @@ describe("Fee constants", () => {
     expect(Number(match![1])).toBe(20);
   });
 
-  it("should read PLATFORM_FEE_ACCOUNT from env with fallback", async () => {
+  it("should read PLATFORM_FEE_ACCOUNT from env with NO hardcoded fallback", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
+    // Must read from env var
     expect(src).toContain("process.env.PLATFORM_FEE_WALLET");
-    expect(src).toContain("8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump");
+    // Must NOT contain any hardcoded fallback address (security: no unknown wallet should receive fees)
+    expect(src).not.toContain("8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump");
+    // feeAccount is conditionally included only when PLATFORM_FEE_WALLET is set
+    expect(src).toContain("PLATFORM_FEE_ACCOUNT ? { feeAccount: PLATFORM_FEE_ACCOUNT }");
+    // Startup warning is emitted when PLATFORM_FEE_WALLET is not configured
+    expect(src).toContain("PLATFORM_FEE_WALLET env var is not set");
   });
 });
 
