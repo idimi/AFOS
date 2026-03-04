@@ -330,18 +330,20 @@ export async function markHtlcCompleted(secretHash: string, txId?: string): Prom
  * Record a swap in the analytics table.
  */
 export async function recordSwapAnalytic(params: {
-
-  fromChain:    "bitcoin" | "ethereum" | "solana";
-  toChain:      "bitcoin" | "ethereum" | "solana";
-  fromToken:    string;
-  toToken:      string;
-  amount:       string;
-  amountUsd?:   string;
-  route:        string;
-  status:       "completed" | "failed" | "refunded";
-  settlementMs?: number;
-  txId?:        string;
-  peerId?:      string;
+  fromChain:      "bitcoin" | "ethereum" | "solana";
+  toChain:        "bitcoin" | "ethereum" | "solana";
+  fromToken:      string;
+  toToken:        string;
+  amount:         string;
+  amountUsd?:     string;
+  route:          string;
+  status:         "completed" | "failed" | "refunded";
+  settlementMs?:  number;
+  txId?:          string;
+  peerId?:        string;
+  platformFeeUsd?: string;  // fee in USD
+  feeBps?:         number;  // 15 for P2P, 20 for DEX
+  feeAmountOut?:   string;  // fee in output token units
 }): Promise<void> {
   const db = await getDb();
   if (!db) return;

@@ -29,6 +29,8 @@ import { recordHtlcLock, recordSwapAnalytic } from "../htlcMonitor";
 import { buildHtlcLockTx } from "../ethHtlc";
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
+import { executeEthAgentSwap } from "../agentSwapEth";
+import { executeBtcAgentSwap } from "../agentSwapBtc";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -68,8 +70,9 @@ function defaultChain(symbol: string): SupportedChain {
 
 const JUPITER_QUOTE_URL = "https://lite-api.jup.ag/swap/v1/quote";
 const JUPITER_SWAP_URL  = "https://lite-api.jup.ag/swap/v1/swap";
-const PLATFORM_FEE_BPS  = 20; // 0.2%
-const PLATFORM_FEE_ACCOUNT = "8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump";
+const PLATFORM_FEE_BPS  = 20;  // 0.20% — DEX fallback (Jupiter/1inch referral, collected on-chain)
+const P2P_FEE_BPS       = 15;  // 0.15% — P2P primary route (output-side deduction, cheaper to reward P2P)
+const PLATFORM_FEE_ACCOUNT = process.env.PLATFORM_FEE_WALLET ?? "8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump";
 
 async function getJupiterQuote(
   fromAsset: AssetDef,
@@ -508,13 +511,17 @@ function resolveToken(llmSymbol: string, llmChain: SupportedChain | null | undef
 
 interface QuoteResult {
   fromAmount: number;
-  toAmount: number;
+  toAmount: number;        // gross output before platform fee
+  netToAmount: number;     // net output after platform fee (what user actually receives)
   fromAmountUsd: number;
   toAmountUsd: number;
   rate: number;
   priceImpact: number;
-  platformFee: number;
+  platformFee: number;     // fee in fromToken units (for display)
   platformFeeUsd: number;
+  platformFeeOut: number;  // fee in toToken units (output-side deduction amount)
+  feeBps: number;          // actual bps charged (15 for P2P, 20 for DEX)
+  feeToken: string;        // token symbol the fee is deducted from
   route: string;
   rawQuote: unknown;
 }
@@ -534,19 +541,26 @@ async function buildQuote(
     const quote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
     if (!quote) return { error: `Jupiter quote unavailable for ${fromAsset.symbol} → ${toAsset.symbol}. Please try again.` };
 
-    const toAmountHuman = parseInt(quote.outAmount as string) / Math.pow(10, toAsset.decimals);
-    const priceImpact   = parseFloat(quote.priceImpactPct as string) || 0;
-    const platformFee   = swapAmount * (PLATFORM_FEE_BPS / 10000);
+    const toAmountHuman  = parseInt(quote.outAmount as string) / Math.pow(10, toAsset.decimals);
+    const priceImpact    = parseFloat(quote.priceImpactPct as string) || 0;
+    // Jupiter DEX: 0.20% fee collected on-chain via referral — Jupiter deducts it automatically
+    const platformFeeOut = toAmountHuman * (PLATFORM_FEE_BPS / 10000);
+    const netToAmount    = toAmountHuman; // Jupiter referral handles deduction on-chain
+    const platformFee    = swapAmount * (PLATFORM_FEE_BPS / 10000);
 
     return {
       fromAmount:     swapAmount,
       toAmount:       toAmountHuman,
+      netToAmount,
       fromAmountUsd:  swapAmount * fromPrice,
-      toAmountUsd:    toAmountHuman * toPrice,
-      rate:           toAmountHuman / swapAmount,
+      toAmountUsd:    netToAmount * toPrice,
+      rate:           netToAmount / swapAmount,
       priceImpact,
       platformFee,
       platformFeeUsd: platformFee * fromPrice,
+      platformFeeOut,
+      feeBps:         PLATFORM_FEE_BPS,
+      feeToken:       toAsset.symbol,
       route:          "Jupiter DEX",
       rawQuote:       quote,
     };
@@ -558,42 +572,57 @@ async function buildQuote(
     const q1inch = await get1inchQuote(fromAsset, toAsset, amountRaw);
 
     if (q1inch) {
-      const toAmountHuman = parseInt(q1inch.toAmount) / Math.pow(10, toAsset.decimals);
-      const platformFee   = swapAmount * (PLATFORM_FEE_BPS / 10000);
+      const toAmountHuman  = parseInt(q1inch.toAmount) / Math.pow(10, toAsset.decimals);
+      // 1inch DEX: 0.20% fee via referral — collected on-chain, show for transparency
+      const platformFeeOut = toAmountHuman * (PLATFORM_FEE_BPS / 10000);
+      const netToAmount    = toAmountHuman;
+      const platformFee    = swapAmount * (PLATFORM_FEE_BPS / 10000);
       return {
         fromAmount:     swapAmount,
         toAmount:       toAmountHuman,
+        netToAmount,
         fromAmountUsd:  swapAmount * fromPrice,
-        toAmountUsd:    toAmountHuman * toPrice,
-        rate:           toAmountHuman / swapAmount,
+        toAmountUsd:    netToAmount * toPrice,
+        rate:           netToAmount / swapAmount,
         priceImpact:    0,
         platformFee,
         platformFeeUsd: platformFee * fromPrice,
+        platformFeeOut,
+        feeBps:         PLATFORM_FEE_BPS,
+        feeToken:       toAsset.symbol,
         route:          "1inch (Ethereum)",
         rawQuote:       q1inch,
       };
     }
 
-    // Fallback: estimate via prices if 1inch is unavailable
-    const estimatedOut  = (swapAmount * fromPrice) / (toPrice || 1);
-    const platformFee   = swapAmount * (PLATFORM_FEE_BPS / 10000);
+    // Fallback: estimate via prices if 1inch unavailable — P2P fee (0.15%) applies
+    const estimatedOut1   = (swapAmount * fromPrice) / (toPrice || 1);
+    const platformFeeOut1 = estimatedOut1 * (P2P_FEE_BPS / 10000);
+    const netToAmount1    = estimatedOut1 - platformFeeOut1;
+    const platformFee1    = swapAmount * (P2P_FEE_BPS / 10000);
     return {
       fromAmount:     swapAmount,
-      toAmount:       estimatedOut,
+      toAmount:       estimatedOut1,
+      netToAmount:    netToAmount1,
       fromAmountUsd:  swapAmount * fromPrice,
-      toAmountUsd:    estimatedOut * toPrice,
-      rate:           estimatedOut / swapAmount,
+      toAmountUsd:    netToAmount1 * toPrice,
+      rate:           netToAmount1 / swapAmount,
       priceImpact:    0.1,
-      platformFee,
-      platformFeeUsd: platformFee * fromPrice,
-      route:          "IntercomSwap (Ethereum)",
+      platformFee:    platformFee1,
+      platformFeeUsd: platformFee1 * fromPrice,
+      platformFeeOut: platformFeeOut1,
+      feeBps:         P2P_FEE_BPS,
+      feeToken:       toAsset.symbol,
+      route:          "IntercomSwap P2P (Ethereum)",
       rawQuote:       null,
     };
   }
 
-  // ── Cross-chain or Bitcoin: IntercomSwap P2P estimate ─────────────────────
-  const estimatedOut  = (swapAmount * fromPrice) / (toPrice || 1);
-  const platformFee   = swapAmount * (PLATFORM_FEE_BPS / 10000);
+  // ── Cross-chain or Bitcoin: IntercomSwap P2P — 0.15% output-side fee ────────
+  const estimatedOut   = (swapAmount * fromPrice) / (toPrice || 1);
+  const platformFeeOut = estimatedOut * (P2P_FEE_BPS / 10000);
+  const netToAmount    = estimatedOut - platformFeeOut;
+  const platformFee    = swapAmount * (P2P_FEE_BPS / 10000);
   const routeLabel = fromAsset.chain === "bitcoin" || toAsset.chain === "bitcoin"
     ? "IntercomSwap P2P (Bitcoin bridge)"
     : "IntercomSwap P2P (cross-chain)";
@@ -601,12 +630,16 @@ async function buildQuote(
   return {
     fromAmount:     swapAmount,
     toAmount:       estimatedOut,
+    netToAmount,
     fromAmountUsd:  swapAmount * fromPrice,
-    toAmountUsd:    estimatedOut * toPrice,
-    rate:           estimatedOut / swapAmount,
+    toAmountUsd:    netToAmount * toPrice,
+    rate:           netToAmount / swapAmount,
     priceImpact:    0.15,
     platformFee,
     platformFeeUsd: platformFee * fromPrice,
+    platformFeeOut,
+    feeBps:         P2P_FEE_BPS,
+    feeToken:       toAsset.symbol,
     route:          routeLabel,
     rawQuote:       null,
   };
@@ -625,12 +658,16 @@ export interface ChatMessage {
     toChain: SupportedChain;
     fromAmount: number;
     toAmount: number;
+    netToAmount: number;     // what user actually receives after fee
     fromAmountUsd: number;
     toAmountUsd: number;
     rate: number;
     priceImpact: number;
     platformFee: number;
     platformFeeUsd: number;
+    platformFeeOut: number;  // fee in toToken units
+    feeBps: number;          // 15 for P2P, 20 for DEX
+    feeToken: string;
     route: string;
     quoteResponse: unknown;
   };
@@ -717,12 +754,16 @@ export const chatRouter = router({
           toChain:        to.chain,
           fromAmount:     quoteResult.fromAmount,
           toAmount:       quoteResult.toAmount,
+          netToAmount:    quoteResult.netToAmount,
           fromAmountUsd:  quoteResult.fromAmountUsd,
           toAmountUsd:    quoteResult.toAmountUsd,
           rate:           quoteResult.rate,
           priceImpact:    quoteResult.priceImpact,
           platformFee:    quoteResult.platformFee,
           platformFeeUsd: quoteResult.platformFeeUsd,
+          platformFeeOut: quoteResult.platformFeeOut,
+          feeBps:         quoteResult.feeBps,
+          feeToken:       quoteResult.feeToken,
           route:          quoteResult.route,
           quoteResponse:  quoteResult.rawQuote,
         },
@@ -1268,17 +1309,19 @@ export const chatRouter = router({
     }),
 
   /**
-   * executeAgentSwap — Server-side autonomous swap
+   * executeAgentSwap — Server-side autonomous swap (multi-chain)
    *
-   * Routing priority (P2P first, DEX fallback):
-   *   1. Submit RFQ to IntercomSwap Oracle VM → get rfqId + route
-   *   2. Call /api/swap/execute on Oracle VM with rfqId + agentAddress
-   *      a. If Oracle VM returns route=p2p  → P2P HTLC coordinated by Oracle VM
-   *      b. If Oracle VM returns route=dex  → Oracle VM executed via Jupiter/aggregator
-   *      c. If Oracle VM unavailable        → Direct Jupiter sign+broadcast (SOL_AGENT_KEY)
-   *   3. Return { txHash, route, outAmount, solscanUrl } on success
+   * Dispatches to the appropriate chain handler based on `fromChain`:
+   *   solana   → Oracle VM RFQ → Jupiter DEX fallback (SOL_AGENT_KEY)
+   *   ethereum → Oracle VM RFQ → 1inch DEX fallback  (ETH_AGENT_KEY)
+   *   bitcoin  → Oracle VM RFQ → Direct HTLC fallback (BTC_AGENT_WIF)
    *
-   * Demo mode (no SOL_AGENT_KEY): returns a simulated response with instructions.
+   * All paths follow the same P2P-first routing:
+   *   1. Submit RFQ to IntercomSwap Oracle VM
+   *   2. Execute via Oracle VM (P2P HTLC or DEX)
+   *   3. Fall back to direct chain execution if Oracle VM unavailable
+   *
+   * Demo mode: returns simulated response when agent key is not configured.
    */
   executeAgentSwap: publicProcedure
     .input(
@@ -1290,12 +1333,66 @@ export const chatRouter = router({
         toChain:   z.string().default("solana"),
         /** Solana RPC URL — defaults to mainnet-beta */
         rpcUrl:    z.string().optional(),
+        /** Bitcoin network — defaults to mainnet */
+        btcNetwork: z.enum(["mainnet", "testnet"]).optional().default("mainnet"),
+        /** BTC HTLC expiry in hours — defaults to 24 */
+        btcExpiryHours: z.number().int().positive().optional().default(24),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl } = input;
-      const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
+      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl, btcNetwork, btcExpiryHours } = input;
 
+      // ── Chain dispatcher ──────────────────────────────────────────────────
+      const chain = fromChain.toLowerCase();
+
+      // ── Ethereum path ─────────────────────────────────────────────────────
+      if (chain === "ethereum") {
+        const ethResult = await executeEthAgentSwap({ fromToken, toToken, amount, fromChain, toChain });
+        return {
+          success:      ethResult.success,
+          demo:         ethResult.demo,
+          txHash:       ethResult.txHash,
+          outAmount:    ethResult.outAmount,
+          route:        ethResult.route,
+          agentAddress: ethResult.agentAddress,
+          solscanUrl:   ethResult.explorerUrl,  // reuse solscanUrl field for explorer URL
+          feeBps:       ethResult.feeBps,
+          feeAmountOut: ethResult.feeAmountOut,
+          chain:        "ethereum" as const,
+          message:      ethResult.message,
+        };
+      }
+
+      // ── Bitcoin path ──────────────────────────────────────────────────────
+      if (chain === "bitcoin") {
+        const btcResult = await executeBtcAgentSwap({
+          fromToken,
+          toToken,
+          amount,
+          toChain,
+          expiryHours: btcExpiryHours,
+          network:     btcNetwork,
+        });
+        return {
+          success:      btcResult.success,
+          demo:         btcResult.demo,
+          txHash:       btcResult.txid,
+          outAmount:    btcResult.outAmount,
+          route:        btcResult.route,
+          agentAddress: btcResult.agentAddress,
+          solscanUrl:   btcResult.explorerUrl,  // reuse solscanUrl field for explorer URL
+          feeBps:       btcResult.feeBps,
+          feeAmountOut: btcResult.feeAmountOut,
+          chain:        "bitcoin" as const,
+          htlcAddress:  btcResult.htlcAddress,
+          secretHash:   btcResult.secretHash,
+          nextStep:     btcResult.nextStep,
+          message:      btcResult.message,
+        };
+      }
+
+      // ── Solana path (default) ─────────────────────────────────────────────
+      const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
       const agentKeyRaw = process.env.SOL_AGENT_KEY;
 
       // ── Demo mode ─────────────────────────────────────────────────────────
@@ -1308,6 +1405,7 @@ export const chatRouter = router({
           route: "Demo (no SOL_AGENT_KEY)",
           agentAddress: null,
           solscanUrl: null,
+          chain: "solana" as const,
           message:
             `Agent swap demo mode: SOL_AGENT_KEY not configured. ` +
             `To execute a real swap, add SOL_AGENT_KEY to project secrets. ` +
@@ -1412,15 +1510,20 @@ export const chatRouter = router({
               const txHash = swap.txHash ?? null;
               const solscanUrl = txHash ? `https://solscan.io/tx/${txHash}` : null;
 
-              // Record analytics
+              // Record analytics with fee data
+              const isP2PRoute = swap.route === "p2p";
+              const feeBps = isP2PRoute ? 15 : 20;
+              const feeAmountOut = finalOutAmount * (feeBps / 10000);
               void recordSwapAnalytic({
-                fromChain: fromChain as "solana" | "ethereum" | "bitcoin",
-                toChain:   toChain   as "solana" | "ethereum" | "bitcoin",
-                fromToken: fromToken.toUpperCase(),
-                toToken:   toToken.toUpperCase(),
-                amount:    String(amount),
-                route:     finalRoute,
-                status:    "completed",
+                fromChain:      fromChain as "solana" | "ethereum" | "bitcoin",
+                toChain:        toChain   as "solana" | "ethereum" | "bitcoin",
+                fromToken:      fromToken.toUpperCase(),
+                toToken:        toToken.toUpperCase(),
+                amount:         String(amount),
+                route:          finalRoute,
+                status:         "completed",
+                feeBps,
+                feeAmountOut:   String(feeAmountOut.toFixed(8)),
               }).catch(() => {/* non-fatal */});
 
               console.log(`[Agent Swap] ✅ Oracle VM executed: ${amount} ${fromToken} → ${finalOutAmount} ${toToken} | route=${finalRoute}${txHash ? ` | tx=${txHash}` : ""}`);
@@ -1522,14 +1625,18 @@ export const chatRouter = router({
             message: `Transaction submitted but failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
           };
         }
+        // Jupiter DEX: 0.20% fee via referral
+        const jupFeeAmountOut = jupOutAmount * (PLATFORM_FEE_BPS / 10000);
         void recordSwapAnalytic({
-          fromChain: "solana",
-          toChain:   "solana",
-          fromToken: fromToken.toUpperCase(),
-          toToken:   toToken.toUpperCase(),
-          amount:    String(amount),
-          route:     "Jupiter DEX (agent direct)",
-          status:    "completed",
+          fromChain:    "solana",
+          toChain:      "solana",
+          fromToken:    fromToken.toUpperCase(),
+          toToken:      toToken.toUpperCase(),
+          amount:       String(amount),
+          route:        "Jupiter DEX (agent direct)",
+          status:       "completed",
+          feeBps:       PLATFORM_FEE_BPS,
+          feeAmountOut: String(jupFeeAmountOut.toFixed(8)),
         }).catch(() => {/* non-fatal */});
         console.log(`[Agent Swap] ✅ Direct Jupiter: ${amount} ${fromToken} → ${jupOutAmount.toFixed(4)} ${toToken} | Tx: ${txHash}`);
         return {

@@ -29,12 +29,16 @@ interface QuoteData {
   toChain?: SupportedChain;
   fromAmount: number;
   toAmount: number;
+  netToAmount?: number;    // what user actually receives after fee
   fromAmountUsd: number;
   toAmountUsd: number;
   rate: number;
   priceImpact: number;
   platformFee: number;
   platformFeeUsd: number;
+  platformFeeOut?: number; // fee in toToken units
+  feeBps?: number;         // 15 for P2P, 20 for DEX
+  feeToken?: string;
   route: string;
   quoteResponse: unknown;
 }
@@ -223,7 +227,7 @@ function QuoteCard({
           <div className="flex-1 rounded-xl p-3 text-center"
             style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
             <p className="text-[10px] text-muted-foreground mb-1">You receive</p>
-            <p className="text-xl font-bold text-emerald-400 font-mono">{data.toAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</p>
+            <p className="text-xl font-bold text-emerald-400 font-mono">{(data.netToAmount ?? data.toAmount).toLocaleString(undefined, { maximumFractionDigits: 6 })}</p>
             <div className="flex justify-center mt-1"><TokenBadge symbol={data.toToken} /></div>
             <p className="text-[10px] text-muted-foreground mt-1">${data.toAmountUsd.toFixed(2)}</p>
           </div>
@@ -234,13 +238,30 @@ function QuoteCard({
           {[
             { label: "Rate", value: `1 ${data.fromToken} = ${data.rate.toFixed(6)} ${data.toToken}` },
             { label: "Price Impact", value: `${data.priceImpact.toFixed(3)}%`, warn: data.priceImpact > 1 },
-            { label: "Platform Fee (0.2%)", value: `${data.platformFee.toFixed(6)} ${data.fromToken} ($${data.platformFeeUsd.toFixed(4)})` },
           ].map(row => (
             <div key={row.label} className="flex items-center justify-between">
               <span className="text-muted-foreground">{row.label}</span>
               <span className={row.warn ? "text-amber-400" : "text-foreground font-mono"}>{row.value}</span>
             </div>
           ))}
+          {/* Fee breakdown row */}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">
+              AFOS Fee ({data.feeBps != null ? `${(data.feeBps / 100).toFixed(2)}%` : "0.20%"})
+              {data.feeBps === 15 && (
+                <span className="ml-1 text-[9px] px-1 py-0.5 rounded" style={{ background: "rgba(20,241,149,0.15)", color: "#14F195" }}>P2P</span>
+              )}
+              {data.feeBps === 20 && (
+                <span className="ml-1 text-[9px] px-1 py-0.5 rounded" style={{ background: "rgba(153,69,255,0.15)", color: "#9945FF" }}>DEX</span>
+              )}
+            </span>
+            <span className="text-foreground font-mono">
+              {data.platformFeeOut != null
+                ? `${data.platformFeeOut.toFixed(6)} ${data.feeToken ?? data.toToken}`
+                : `${data.platformFee.toFixed(6)} ${data.fromToken}`}
+              {" "}(${data.platformFeeUsd.toFixed(4)})
+            </span>
+          </div>
         </div>
 
         {/* Warning for high price impact */}
@@ -293,13 +314,39 @@ function QuoteCard({
 }
 
 // ─── Tx Success Card ──────────────────────────────────────────────────────────
-function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount }: {
+function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain }: {
   txHash: string;
   fromToken: string;
   toToken: string;
   fromAmount: number;
   toAmount: number;
+  fromChain?: string;
 }) {
+  // Determine explorer URL and label based on chain
+  const chain = fromChain?.toLowerCase() ?? (fromToken === "BTC" ? "bitcoin" : fromToken === "ETH" ? "ethereum" : "solana");
+  const { explorerUrl, explorerLabel } = (() => {
+    if (chain === "bitcoin") {
+      // mempool.space for BTC txids; rfqIds won't be valid txids but show gracefully
+      const isTxid = /^[0-9a-f]{64}$/i.test(txHash);
+      return {
+        explorerUrl: isTxid ? `https://mempool.space/tx/${txHash}` : `https://mempool.space`,
+        explorerLabel: isTxid ? `View on mempool.space: ${txHash.slice(0, 8)}…${txHash.slice(-8)}` : "View on mempool.space",
+      };
+    }
+    if (chain === "ethereum") {
+      const isTxHash = /^0x[0-9a-f]{64}$/i.test(txHash);
+      return {
+        explorerUrl: isTxHash ? `https://etherscan.io/tx/${txHash}` : `https://etherscan.io`,
+        explorerLabel: isTxHash ? `View on Etherscan: ${txHash.slice(0, 10)}…${txHash.slice(-8)}` : "View on Etherscan",
+      };
+    }
+    // Solana default
+    return {
+      explorerUrl: `https://solscan.io/tx/${txHash}`,
+      explorerLabel: `View on Solscan: ${txHash.slice(0, 8)}…${txHash.slice(-8)}`,
+    };
+  })();
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -312,17 +359,17 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount }: {
         <span className="text-sm font-bold text-emerald-400">Swap Confirmed!</span>
       </div>
       <p className="text-xs text-muted-foreground mb-3">
-        Swapped {fromAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })} <strong className="text-foreground">{fromToken}</strong> →{" "}
+        Swapped {fromAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })} <strong className="text-foreground">{fromToken}</strong> {"→"}{" "}
         {toAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })} <strong className="text-foreground">{toToken}</strong>
       </p>
       <a
-        href={`https://solscan.io/tx/${txHash}`}
+        href={explorerUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
       >
         <ExternalLink className="w-3.5 h-3.5" />
-        View on Solscan: {txHash.slice(0, 8)}…{txHash.slice(-8)}
+        {explorerLabel}
       </a>
     </motion.div>
   );
@@ -396,6 +443,7 @@ function MessageBubble({
             toToken={msg.quoteData.toToken}
             fromAmount={msg.quoteData.fromAmount}
             toAmount={msg.quoteData.toAmount}
+            fromChain={msg.quoteData.fromChain}
           />
         )}
 
@@ -528,9 +576,16 @@ export default function ChatPage() {
   }, []);
 
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
-    // ── Agent mode: no wallet needed — server signs with SOL_AGENT_KEY ──────────
-    const isSolanaOnly = (quoteData.fromChain ?? "solana") === "solana" && (quoteData.toChain ?? "solana") === "solana";
-    if ((!connected || !publicKey) && isSolanaOnly) {
+    // ── Agent mode: server signs with chain-specific agent key ─────────────────
+    // Dispatches to executeAgentSwap which handles SOL (SOL_AGENT_KEY),
+    // ETH (ETH_AGENT_KEY), and BTC (BTC_AGENT_WIF) chains server-side.
+    const fromChainNorm = (quoteData.fromChain ?? "solana").toLowerCase();
+    const noWalletConnected =
+      !connected || !publicKey ||
+      (fromChainNorm === "ethereum" && !ethereum?.address) ||
+      (fromChainNorm === "bitcoin"  && !bitcoin?.address);
+
+    if (noWalletConnected) {
       setExecutingId(msgId);
       try {
         const agentResult = await executeAgentSwap.mutateAsync({
@@ -540,32 +595,46 @@ export default function ChatPage() {
           fromChain: (quoteData.fromChain ?? "solana") as string,
           toChain:   (quoteData.toChain   ?? "solana") as string,
         });
-        const agentSolscanUrl = (agentResult as { solscanUrl?: string | null }).solscanUrl;
+        const agentExplorerUrl = (agentResult as { solscanUrl?: string | null }).solscanUrl;
+        // Build chain-appropriate explorer label
+        const explorerLabel =
+          fromChainNorm === "bitcoin"  ? "View on mempool.space" :
+          fromChainNorm === "ethereum" ? "View on Etherscan" :
+          "View on Solscan";
         if (agentResult.success) {
           toast.success(`Swap executed via ${agentResult.route}!`, {
-            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}${agentResult.txHash ? ` · Tx: ${agentResult.txHash.slice(0, 12)}…` : ""}`,
-            action: agentSolscanUrl ? { label: "View on Solscan", onClick: () => window.open(agentSolscanUrl, "_blank") } : undefined,
+            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(6) ?? "?"} ${quoteData.toToken}${agentResult.txHash ? ` · Tx: ${agentResult.txHash.slice(0, 12)}…` : ""}`,
+            action: agentExplorerUrl ? { label: explorerLabel, onClick: () => window.open(agentExplorerUrl, "_blank") } : undefined,
           });
           setMessages(prev => prev.map(m =>
             m.id === msgId ? { ...m, type: "tx_success" as const, txHash: agentResult.txHash ?? undefined } : m
           ));
           const routeLabel = agentResult.route ?? "DEX";
           const txLine = agentResult.txHash
-            ? `\n\n**Tx:** \`${agentResult.txHash}\`\n\n[View on Solscan](${agentSolscanUrl ?? `https://solscan.io/tx/${agentResult.txHash}`})`
+            ? `\n\n**Tx:** \`${agentResult.txHash}\`\n\n[${explorerLabel}](${agentExplorerUrl ?? "#"})`
+            : "";
+          // BTC-specific: show HTLC address and next step
+          const btcExtra = (agentResult as { htlcAddress?: string | null; nextStep?: string }).htlcAddress
+            ? `\n\n**HTLC Address:** \`${(agentResult as { htlcAddress: string }).htlcAddress}\`\n\n${(agentResult as { nextStep?: string }).nextStep ?? ""}`
             : "";
           addMessage({
             role: "assistant",
-            content: `✅ Agent swap complete via **${routeLabel}**: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}${txLine}`,
+            content: `✅ Agent swap complete via **${routeLabel}**: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(6) ?? "?"} ${quoteData.toToken}${txLine}${btcExtra}`,
             type: "text",
           });
         } else if (agentResult.demo) {
+          // Chain-specific demo mode message
+          const keyHint =
+            fromChainNorm === "ethereum" ? "`ETH_AGENT_KEY` (hex Ethereum private key)" :
+            fromChainNorm === "bitcoin"  ? "`BTC_AGENT_WIF` (WIF-encoded Bitcoin private key)" :
+            "`SOL_AGENT_KEY` (base58 Solana private key)";
           toast.warning("Agent demo mode", {
-            description: "Set SOL_AGENT_KEY in project secrets to enable live agent swaps.",
+            description: `Add ${keyHint} to project secrets to enable live ${fromChainNorm.toUpperCase()} agent swaps.`,
             duration: 8000,
           });
           addMessage({
             role: "assistant",
-            content: `⚠️ **Agent demo mode** — ${agentResult.message}\n\nTo enable live swaps: add \`SOL_AGENT_KEY\` to project secrets, then fund the agent wallet with SOL for fees.`,
+            content: `⚠️ **Agent demo mode** — ${agentResult.message}\n\nTo enable live ${fromChainNorm.toUpperCase()} swaps: add ${keyHint} to project secrets.`,
             type: "text",
           });
         } else {

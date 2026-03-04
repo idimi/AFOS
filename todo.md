@@ -811,3 +811,28 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] All 5 server files already use process.env.ORACLE_API_URL || fallback — no code change needed
 - [x] Add ORACLE_API_URL to server/_core/env.ts as ENV.oracleApiUrl
 - [x] Vitest passes: secret set + Oracle VM reachable (status: active, uptime confirmed)
+
+## Platform Fee System (P2P Primary Route)
+
+- [x] Design fee architecture: P2P 0.15% (15 bps) + DEX 0.20% (20 bps) output-side deduction
+- [x] Add P2P_FEE_BPS (15) and PLATFORM_FEE_BPS (20) constants to chat.ts
+- [x] Apply output-side fee deduction in buildQuote: netToAmount = toAmount - fee
+- [x] Add fee breakdown display in quote card: AFOS Fee row with P2P/DEX badge, fee amount in output token
+- [x] Add fee revenue tracking: platformFeeUsd, feeBps, feeAmountOut columns in swap_analytics DB table
+- [x] Wire recordSwapAnalytic calls with fee data in executeAgentSwap (Oracle VM + direct Jupiter)
+- [x] Add analytics.feeRevenue tRPC procedure: total/P2P/DEX fee revenue, recent fee events
+- [x] Replace mock Revenue tab in AdminPanel with DB-backed RevenueTab component (KPIs, route split, volume by chain, recent fees)
+- [x] Replace placeholder PLATFORM_FEE_ACCOUNT with env var PLATFORM_FEE_WALLET (fallback to AFOS token address)
+- [x] Add vitest feeModel.test.ts: 14 tests covering constants, interfaces, schema, analytics, math
+- [ ] Add fee sweep logic: when fee account balance > threshold, sweep % to agent gas wallet
+
+## Multi-Chain Agentic Swap (ETH + BTC support)
+
+- [x] Audit executeAgentSwap and multi-chain swap helpers
+- [x] Implement ETH agent swap: Oracle VM RFQ → 1inch DEX fallback via ETH_AGENT_KEY (agentSwapEth.ts)
+- [x] Implement BTC agent swap: Oracle VM RFQ → Direct HTLC/PSBT fallback via BTC_AGENT_WIF (agentSwapBtc.ts)
+- [x] Update executeAgentSwap to dispatch by fromChain (solana/ethereum/bitcoin)
+- [x] Wire P2P_FEE_BPS (15) / PLATFORM_FEE_BPS (20) fee deduction for ETH and BTC paths
+- [x] Record fee analytics (feeBps, feeAmountOut) for all three chains via recordSwapAnalytic
+- [x] Update ChatPage: noWalletConnected check for all chains, chain-aware TxSuccessCard explorer links
+- [x] Add vitest multiChainAgentSwap.test.ts — 113 tests all passing (ETH, BTC, SOL paths)

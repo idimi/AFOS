@@ -41,28 +41,145 @@ interface FeeConfig {
   enabled: boolean;
 }
 
-// ─── Mock revenue data ────────────────────────────────────────────────────────
-const MOCK_REVENUE = {
-  totalUsd: 12847.50,
-  todayUsd: 284.20,
-  weekUsd: 1923.40,
-  monthUsd: 8341.80,
-  totalSwaps: 4821,
-  todaySwaps: 47,
-  activeUsers: 312,
-  avgSwapUsd: 2664,
-  byChain: [
-    { chain: "BTC/LN", volume: "$284K", fees: "$852", pct: 45 },
-    { chain: "SOL", volume: "$198K", fees: "$594", pct: 31 },
-    { chain: "ETH", volume: "$96K", fees: "$288", pct: 16 },
-    { chain: "Other", volume: "$38K", fees: "$114", pct: 8 },
-  ],
-  daily: [
-    { day: "Mon", fees: 180 }, { day: "Tue", fees: 240 }, { day: "Wed", fees: 195 },
-    { day: "Thu", fees: 310 }, { day: "Fri", fees: 284 }, { day: "Sat", fees: 220 },
-    { day: "Sun", fees: 175 },
-  ],
-};
+// ─── Revenue Tab (DB-backed) ─────────────────────────────────────────────────
+function RevenueTab() {
+  const [days, setDays] = useState(30);
+  const { data: feeData, isLoading } = trpc.analytics.feeRevenue.useQuery({ days }, { staleTime: 30_000 });
+  const { data: volumeData } = trpc.analytics.volumeByChain.useQuery({ days }, { staleTime: 30_000 });
+
+  const totalFee  = feeData?.totalFeeUsd ?? 0;
+  const p2pFee    = feeData?.p2pFeeUsd   ?? 0;
+  const dexFee    = feeData?.dexFeeUsd   ?? 0;
+  const totalSwps = feeData?.totalSwaps  ?? 0;
+  const p2pSwps   = feeData?.p2pSwaps    ?? 0;
+  const dexSwps   = feeData?.dexSwaps    ?? 0;
+  const avgFee    = feeData?.avgFeeUsd   ?? 0;
+  const p2pPct    = totalSwps > 0 ? ((p2pSwps / totalSwps) * 100).toFixed(1) : "0";
+
+  return (
+    <div className="space-y-4 max-w-4xl mx-auto">
+      {/* Time window selector */}
+      <div className="flex items-center gap-2 justify-end">
+        {[7, 30, 90, 365].map(d => (
+          <button key={d} onClick={() => setDays(d)}
+            className="px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all"
+            style={{
+              background: days === d ? "rgba(59,130,246,0.2)" : "var(--muted)",
+              color: days === d ? "#3b82f6" : "var(--muted-foreground)",
+              border: days === d ? "1px solid rgba(59,130,246,0.4)" : "1px solid var(--border)",
+            }}>
+            {d === 365 ? "1Y" : `${d}D`}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: "Total Fee Revenue", value: `$${totalFee.toFixed(2)}`, sub: `${days} days`, icon: DollarSign, color: "#10b981" },
+          { label: "P2P Revenue (0.15%)", value: `$${p2pFee.toFixed(2)}`, sub: `${p2pSwps} swaps`, icon: Zap, color: "#14F195" },
+          { label: "DEX Revenue (0.20%)", value: `$${dexFee.toFixed(2)}`, sub: `${dexSwps} swaps`, icon: Activity, color: "#9945FF" },
+          { label: "Avg Fee / Swap", value: `$${avgFee.toFixed(4)}`, sub: `${totalSwps} total swaps`, icon: TrendingUp, color: "#60a5fa" },
+        ].map(kpi => (
+          <div key={kpi.label} className="rounded-2xl p-4"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between mb-2">
+              <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
+              {isLoading && <RefreshCw className="w-3 h-3 text-muted-foreground animate-spin" />}
+            </div>
+            <p className="text-lg font-bold text-foreground font-mono">{kpi.value}</p>
+            <p className="text-[10px] text-muted-foreground">{kpi.label}</p>
+            <p className="text-[9px] text-muted-foreground mt-0.5">{kpi.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* P2P vs DEX split bar */}
+      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <p className="text-xs font-semibold text-foreground mb-3">Route Split</p>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="flex-1">
+            <div className="h-3 rounded-full overflow-hidden flex" style={{ background: "var(--muted)" }}>
+              <div className="h-full transition-all" style={{ width: `${p2pPct}%`, background: "#14F195" }} />
+              <div className="h-full transition-all" style={{ width: `${100 - parseFloat(p2pPct)}%`, background: "#9945FF" }} />
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between text-[10px]">
+          <span style={{ color: "#14F195" }}>P2P: {p2pPct}% ({p2pSwps} swaps) — 0.15% fee</span>
+          <span style={{ color: "#9945FF" }}>DEX: {(100 - parseFloat(p2pPct)).toFixed(1)}% ({dexSwps} swaps) — 0.20% fee</span>
+        </div>
+      </div>
+
+      {/* Volume by chain */}
+      {volumeData && (
+        <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <p className="text-xs font-semibold text-foreground mb-3">Volume by Chain ({days}D)</p>
+          <div className="space-y-3">
+            {volumeData.byChain.map(c => {
+              const maxUsd = Math.max(...volumeData.byChain.map(x => x.totalUsd), 1);
+              const pct = (c.totalUsd / maxUsd) * 100;
+              const chainLabel = c.chain === "bitcoin" ? "BTC" : c.chain === "ethereum" ? "ETH" : "SOL";
+              const chainColor = c.chain === "bitcoin" ? "#F7931A" : c.chain === "ethereum" ? "#627EEA" : "#9945FF";
+              return (
+                <div key={c.chain}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold" style={{ color: chainColor }}>{chainLabel}</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-[10px] text-muted-foreground">Vol: ${c.totalUsd.toFixed(2)}</p>
+                      <p className="text-[10px] font-semibold text-emerald-400">{c.swapCount} swaps</p>
+                    </div>
+                  </div>
+                  <div className="h-1.5 rounded-full" style={{ background: "var(--muted)" }}>
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: chainColor, opacity: 0.6 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent fee events */}
+      {feeData?.recentFees && feeData.recentFees.length > 0 && (
+        <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <p className="text-xs font-semibold text-foreground mb-3">Recent Fee Events</p>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {feeData.recentFees.map(fee => (
+              <div key={fee.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg text-[10px]"
+                style={{ background: "var(--muted)" }}>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-foreground">{fee.fromToken} → {fee.toToken}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold"
+                    style={{
+                      background: fee.feeBps === 15 ? "rgba(20,241,149,0.15)" : "rgba(153,69,255,0.15)",
+                      color: fee.feeBps === 15 ? "#14F195" : "#9945FF",
+                    }}>
+                    {fee.feeBps === 15 ? "P2P" : "DEX"} {((fee.feeBps ?? 0) / 100).toFixed(2)}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground">{fee.feeAmountOut ? `${parseFloat(fee.feeAmountOut).toFixed(6)} ${fee.toToken}` : "—"}</span>
+                  <span className="font-mono text-emerald-400">{fee.platformFeeUsd ? `$${parseFloat(fee.platformFeeUsd).toFixed(4)}` : "—"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && totalSwps === 0 && (
+        <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <DollarSign className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm font-semibold text-foreground">No fee revenue yet</p>
+          <p className="text-xs text-muted-foreground mt-1">Revenue will appear here after the first completed swap.</p>
+          <p className="text-[10px] text-muted-foreground mt-2">P2P swaps: 0.15% output-side fee · DEX swaps: 0.20% via referral</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const MOCK_NODE_STATUS = [
   { name: "IntercomSwap Node", status: "live", uptime: "99.8%", peers: 12 },
@@ -313,78 +430,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
 
         {/* ── Revenue Tab ── */}
-        {activeTab === "revenue" && (
-          <div className="space-y-4 max-w-4xl mx-auto">
-            {/* KPI cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Total Revenue", value: `$${MOCK_REVENUE.totalUsd.toLocaleString()}`, sub: "All time", icon: DollarSign, color: "#10b981", trend: "+12%" },
-                { label: "Today", value: `$${MOCK_REVENUE.todayUsd}`, sub: `${MOCK_REVENUE.todaySwaps} swaps`, icon: TrendingUp, color: "#60a5fa", trend: "+8%" },
-                { label: "This Month", value: `$${MOCK_REVENUE.monthUsd.toLocaleString()}`, sub: "30 days", icon: BarChart3, color: "#a78bfa", trend: "+23%" },
-                { label: "Active Users", value: MOCK_REVENUE.activeUsers.toString(), sub: "Last 30 days", icon: Users, color: "#f59e0b", trend: "+41%" },
-              ].map(kpi => (
-                <div key={kpi.label} className="rounded-2xl p-4"
-                  style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <kpi.icon className="w-4 h-4" style={{ color: kpi.color }} />
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: `${kpi.color}18`, color: kpi.color }}>
-                      {kpi.trend}
-                    </span>
-                  </div>
-                  <p className="text-lg font-bold text-foreground">{kpi.value}</p>
-                  <p className="text-[10px] text-muted-foreground">{kpi.label}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5">{kpi.sub}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Weekly bar chart */}
-            <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <p className="text-xs font-semibold text-foreground mb-4">Daily Fee Revenue (This Week)</p>
-              <div className="flex items-end gap-2 h-24">
-                {MOCK_REVENUE.daily.map(d => {
-                  const maxFee = Math.max(...MOCK_REVENUE.daily.map(x => x.fees));
-                  const pct = (d.fees / maxFee) * 100;
-                  return (
-                    <div key={d.day} className="flex-1 flex flex-col items-center gap-1">
-                      <p className="text-[9px] text-muted-foreground">${d.fees}</p>
-                      <div className="w-full rounded-t-lg transition-all"
-                        style={{
-                          height: `${pct}%`,
-                          background: "rgba(59,130,246,0.4)",
-                          border: "1px solid rgba(59,130,246,0.3)",
-                          minHeight: "4px",
-                        }} />
-                      <p className="text-[9px] text-muted-foreground">{d.day}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* By chain */}
-            <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <p className="text-xs font-semibold text-foreground mb-3">Revenue by Chain</p>
-              <div className="space-y-3">
-                {MOCK_REVENUE.byChain.map(c => (
-                  <div key={c.chain}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-semibold text-foreground">{c.chain}</p>
-                      <div className="flex items-center gap-3">
-                        <p className="text-[10px] text-muted-foreground">Vol: {c.volume}</p>
-                        <p className="text-[10px] font-semibold text-emerald-400">Fees: {c.fees}</p>
-                      </div>
-                    </div>
-                    <div className="h-1.5 rounded-full" style={{ background: "var(--muted)" }}>
-                      <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: "rgba(59,130,246,0.6)" }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === "revenue" && <RevenueTab />}
 
         {/* ── Fee Config Tab ── */}
         {activeTab === "fees" && (
@@ -794,7 +840,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               {[
                 { label: "Total Wallets", value: "1,284", icon: Wallet, color: "#60a5fa" },
                 { label: "Active (30d)", value: "312", icon: Activity, color: "#10b981" },
-                { label: "Avg Swap Size", value: `$${MOCK_REVENUE.avgSwapUsd.toLocaleString()}`, icon: ArrowUpRight, color: "#a78bfa" },
+                { label: "Avg Swap Size", value: "$—", icon: ArrowUpRight, color: "#a78bfa" },
                 { label: "Total Volume", value: "$616K", icon: Database, color: "#f59e0b" },
               ].map(stat => (
                 <div key={stat.label} className="rounded-2xl p-4"

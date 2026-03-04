@@ -427,4 +427,81 @@ export const analyticsRouter = router({
         totalUsd:   swaps.reduce((s, sw) => s + parseFloat(sw.amountUsd ?? '0'), 0),
       };
     }),
+
+  /**
+   * Platform fee revenue summary.
+   * Returns total fees collected, broken down by route type (P2P vs DEX) and time window.
+   */
+  feeRevenue: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return {
+        totalFeeUsd: 0, p2pFeeUsd: 0, dexFeeUsd: 0,
+        totalSwaps: 0, p2pSwaps: 0, dexSwaps: 0,
+        avgFeeUsd: 0, days: input.days,
+        recentFees: [],
+      };
+      const since = sinceMs(input.days);
+
+      // Total fee revenue
+      const [totals] = await db
+        .select({
+          totalSwaps:  count(swapAnalytics.id),
+          totalFeeUsd: sql<string>`COALESCE(SUM(CAST(${swapAnalytics.platformFeeUsd} AS DECIMAL(20,8))), 0)`,
+          p2pSwaps:    sql<string>`SUM(CASE WHEN ${swapAnalytics.feeBps} = 15 THEN 1 ELSE 0 END)`,
+          p2pFeeUsd:   sql<string>`COALESCE(SUM(CASE WHEN ${swapAnalytics.feeBps} = 15 THEN CAST(${swapAnalytics.platformFeeUsd} AS DECIMAL(20,8)) ELSE 0 END), 0)`,
+          dexSwaps:    sql<string>`SUM(CASE WHEN ${swapAnalytics.feeBps} = 20 THEN 1 ELSE 0 END)`,
+          dexFeeUsd:   sql<string>`COALESCE(SUM(CASE WHEN ${swapAnalytics.feeBps} = 20 THEN CAST(${swapAnalytics.platformFeeUsd} AS DECIMAL(20,8)) ELSE 0 END), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        );
+
+      // Recent fee events (last 20)
+      const recentFees = await db
+        .select({
+          id:            swapAnalytics.id,
+          fromToken:     swapAnalytics.fromToken,
+          toToken:       swapAnalytics.toToken,
+          amount:        swapAnalytics.amount,
+          route:         swapAnalytics.route,
+          feeBps:        swapAnalytics.feeBps,
+          feeAmountOut:  swapAnalytics.feeAmountOut,
+          platformFeeUsd: swapAnalytics.platformFeeUsd,
+          createdAt:     swapAnalytics.createdAt,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .orderBy(desc(swapAnalytics.createdAt))
+        .limit(20);
+
+      const totalSwaps  = Number(totals?.totalSwaps ?? 0);
+      const totalFeeUsd = parseFloat(totals?.totalFeeUsd ?? "0");
+      const p2pSwaps    = Number(totals?.p2pSwaps ?? 0);
+      const p2pFeeUsd   = parseFloat(totals?.p2pFeeUsd ?? "0");
+      const dexSwaps    = Number(totals?.dexSwaps ?? 0);
+      const dexFeeUsd   = parseFloat(totals?.dexFeeUsd ?? "0");
+
+      return {
+        totalFeeUsd,
+        p2pFeeUsd,
+        dexFeeUsd,
+        totalSwaps,
+        p2pSwaps,
+        dexSwaps,
+        avgFeeUsd: totalSwaps > 0 ? totalFeeUsd / totalSwaps : 0,
+        days: input.days,
+        recentFees,
+      };
+    }),
 });

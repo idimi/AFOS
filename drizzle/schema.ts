@@ -94,6 +94,12 @@ export const swapAnalytics = mysqlTable("swap_analytics", {
   txId:           varchar("txId", { length: 128 }),
   /** Peer ID if P2P route */
   peerId:         varchar("peerId", { length: 128 }),
+  /** Platform fee charged in USD (0.15% for P2P, 0.20% for DEX) */
+  platformFeeUsd: varchar("platformFeeUsd", { length: 32 }),
+  /** Fee basis points: 15 for P2P, 20 for DEX */
+  feeBps:         int("feeBps"),
+  /** Fee amount in output token units */
+  feeAmountOut:   varchar("feeAmountOut", { length: 32 }),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
 });
 
