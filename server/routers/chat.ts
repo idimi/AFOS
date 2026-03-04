@@ -27,6 +27,8 @@ import { publicProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { recordHtlcLock, recordSwapAnalytic } from "../htlcMonitor";
 import { buildHtlcLockTx } from "../ethHtlc";
+import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -1263,5 +1265,193 @@ export const chatRouter = router({
           },
         },
       };
+    }),
+
+  /**
+   * executeAgentSwap — Server-side autonomous Solana swap
+   *
+   * Uses SOL_AGENT_KEY to sign and broadcast a Jupiter swap transaction
+   * without requiring a user wallet. This is the core of the first agentic swap.
+   *
+   * Flow:
+   *   1. Fetch Jupiter quote for fromToken → toToken
+   *   2. Build the swap transaction (Jupiter /swap endpoint)
+   *   3. Deserialize, sign with SOL_AGENT_KEY, and broadcast to Solana RPC
+   *   4. Return { txHash, route, outAmount } on success
+   *
+   * Demo mode (no SOL_AGENT_KEY): returns a simulated response with instructions.
+   */
+  executeAgentSwap: publicProcedure
+    .input(
+      z.object({
+        fromToken: z.string().default("SOL"),
+        toToken:   z.string().default("USDT"),
+        amount:    z.number().positive(),
+        /** Solana RPC URL — defaults to mainnet-beta */
+        rpcUrl:    z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { fromToken, toToken, amount, rpcUrl } = input;
+
+      const agentKeyRaw = process.env.SOL_AGENT_KEY;
+
+      // ── Demo mode ─────────────────────────────────────────────────────────
+      if (!agentKeyRaw) {
+        return {
+          success: false,
+          demo: true,
+          txHash: null,
+          outAmount: null,
+          route: "Jupiter DEX (demo)",
+          agentAddress: null,
+          message:
+            `Agent swap demo mode: SOL_AGENT_KEY not configured. ` +
+            `To execute a real swap, add SOL_AGENT_KEY to project secrets. ` +
+            `The key should be a base58-encoded Solana private key (64 bytes). ` +
+            `Generate one with: solana-keygen new --no-bip39-passphrase`,
+        };
+      }
+
+      // ── Decode agent keypair ───────────────────────────────────────────────
+      let agentKeypair: Keypair;
+      try {
+        const keyBytes = bs58.decode(agentKeyRaw);
+        agentKeypair = Keypair.fromSecretKey(keyBytes);
+      } catch {
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount: null,
+          route: "Jupiter DEX",
+          agentAddress: null,
+          message: "SOL_AGENT_KEY is invalid — must be a base58-encoded 64-byte Solana private key.",
+        };
+      }
+
+      const agentAddress = agentKeypair.publicKey.toBase58();
+      const solRpcUrl = rpcUrl ?? process.env.SOL_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+      const connection = new Connection(solRpcUrl, "confirmed");
+
+      // ── Resolve assets ─────────────────────────────────────────────────────
+      const fromAsset = getAsset(fromToken.toUpperCase(), "solana");
+      const toAsset   = getAsset(toToken.toUpperCase(),   "solana");
+      if (!fromAsset || !toAsset) {
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount: null,
+          route: "Jupiter DEX",
+          agentAddress,
+          message: `Unsupported token pair: ${fromToken} → ${toToken}. Supported Solana tokens: SOL, USDT, USDC.`,
+        };
+      }
+
+      // ── Fetch Jupiter quote ────────────────────────────────────────────────
+      const amountRaw = Math.floor(amount * Math.pow(10, fromAsset.decimals));
+      const quote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
+      if (!quote) {
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount: null,
+          route: "Jupiter DEX",
+          agentAddress,
+          message: "Failed to fetch Jupiter quote. Check token addresses and try again.",
+        };
+      }
+
+      const outAmountRaw = Number((quote as Record<string, unknown>).outAmount ?? 0);
+      const outAmount = outAmountRaw / Math.pow(10, toAsset.decimals);
+
+      // ── Build swap transaction ─────────────────────────────────────────────
+      const swapResult = await getJupiterSwapTx(quote, agentAddress);
+      if (!swapResult?.swapTransaction) {
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount,
+          route: "Jupiter DEX",
+          agentAddress,
+          message: "Failed to build Jupiter swap transaction. The agent wallet may have insufficient SOL for fees.",
+        };
+      }
+
+      // ── Sign and broadcast ─────────────────────────────────────────────────
+      try {
+        const txBuffer = Buffer.from(swapResult.swapTransaction, "base64");
+        const tx = VersionedTransaction.deserialize(txBuffer);
+
+        // Get fresh blockhash to avoid expiry
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+        tx.message.recentBlockhash = blockhash;
+
+        // Sign with agent keypair
+        tx.sign([agentKeypair]);
+
+        // Broadcast
+        const rawTx = tx.serialize();
+        const txHash = await connection.sendRawTransaction(rawTx, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        });
+
+        // Wait for confirmation (up to 30s)
+        const confirmation = await connection.confirmTransaction(
+          { signature: txHash, blockhash, lastValidBlockHeight },
+          "confirmed"
+        );
+
+        if (confirmation.value.err) {
+          return {
+            success: false,
+            demo: false,
+            txHash,
+            outAmount,
+            route: "Jupiter DEX",
+            agentAddress,
+            message: `Transaction submitted but failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
+          };
+        }
+
+        // Record to analytics
+        void recordSwapAnalytic({
+          fromChain: "solana",
+          toChain:   "solana",
+          fromToken: fromToken.toUpperCase(),
+          toToken:   toToken.toUpperCase(),
+          amount:    String(amount),
+          route:     "Jupiter DEX (agent)",
+          status:    "completed",
+        }).catch(() => {/* non-fatal */});
+
+        console.log(`[Agent Swap] ✅ ${amount} ${fromToken} → ${outAmount.toFixed(4)} ${toToken} | Tx: ${txHash}`);
+
+        return {
+          success: true,
+          demo: false,
+          txHash,
+          outAmount,
+          route: "Jupiter DEX (agent)",
+          agentAddress,
+          message: `Agent swap executed: ${amount} ${fromToken} → ${outAmount.toFixed(4)} ${toToken}. Tx: ${txHash}`,
+        };
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error(`[Agent Swap] ❌ Broadcast failed: ${errMsg}`);
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount,
+          route: "Jupiter DEX",
+          agentAddress,
+          message: `Swap transaction failed: ${errMsg.slice(0, 200)}`,
+        };
+      }
     }),
 });

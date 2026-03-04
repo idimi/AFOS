@@ -972,7 +972,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
             {/* Actions */}
             <div className="flex gap-2">
-              <button onClick={() => toast.info("Fund agent wallet — send assets to the node address above")}
+              <button onClick={() => {
+                const solAddr = oracleVmAddresses?.find(a => a.chain === "solana" && a.asset === "SOL")?.address;
+                if (solAddr) {
+                  setQrModal({ address: solAddr, label: "SOL Agent Wallet", chainColor: "#9945FF" });
+                } else {
+                  toast.warning("SOL_AGENT_KEY not configured", {
+                    description: "Add SOL_AGENT_KEY to project secrets to generate the agent wallet address.",
+                    duration: 8000,
+                  });
+                }
+              }}
                 className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                 style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
                 <Plus className="w-3 h-3" /> Fund Wallet

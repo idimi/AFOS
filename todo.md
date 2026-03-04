@@ -783,3 +783,13 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Call navigator.vibrate(50) on Accept button tap in order book (mobile only)
 - [x] Also vibrate on Swap Now button tap in swap form
+
+## First Agentic Swap — Implementation
+
+- [x] Fix execute error handling: surface Oracle VM `success:false` as error state in Swaps.tsx
+- [x] Chain RFQ → execute immediately (remove setTimeout gap that causes RFQ expiry)
+- [x] Wire SOL_AGENT_KEY into server-side Jupiter swap signing (sign + broadcast server-side)
+- [x] Add tRPC procedure `chat.executeAgentSwap` that signs and broadcasts Jupiter tx using SOL_AGENT_KEY
+- [x] Add Fund Agent Wallet UI to HTLC Wallet panel (Fund Wallet button opens QR modal with SOL agent address)
+- [x] Verified SOL_AGENT_KEY is SET — agent wallet: DYsF9Dq3LnPpinsSUfRkRwEkvyQdFBGmJcYUpifJhC68
+- [ ] BLOCKER: Fund agent wallet with 0.01+ SOL before first swap (currently 0 SOL)

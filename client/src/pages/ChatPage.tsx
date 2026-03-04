@@ -434,6 +434,8 @@ export default function ChatPage() {
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
   const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
   const executeEthSwap = trpc.chat.executeEthSwap.useMutation();
+  // Agent-mode: server-side autonomous swap (no wallet required)
+  const executeAgentSwap = trpc.chat.executeAgentSwap.useMutation();
 
   // Read prefill from Swaps page "Send to Agent" button on mount
   // If afos_chat_autosend is set, auto-send the message immediately
@@ -526,6 +528,52 @@ export default function ChatPage() {
   }, []);
 
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
+    // ── Agent mode: no wallet needed — server signs with SOL_AGENT_KEY ──────────
+    const isSolanaOnly = (quoteData.fromChain ?? "solana") === "solana" && (quoteData.toChain ?? "solana") === "solana";
+    if ((!connected || !publicKey) && isSolanaOnly) {
+      setExecutingId(msgId);
+      try {
+        const agentResult = await executeAgentSwap.mutateAsync({
+          fromToken: quoteData.fromToken,
+          toToken:   quoteData.toToken,
+          amount:    quoteData.fromAmount,
+        });
+        if (agentResult.success && agentResult.txHash) {
+          toast.success("Agent swap executed!", {
+            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken} · Tx: ${agentResult.txHash.slice(0, 12)}…`,
+          });
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: agentResult.txHash! } : m
+          ));
+          addMessage({
+            role: "assistant",
+            content: `✅ Agent swap complete: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}\n\n**Tx:** \`${agentResult.txHash}\`\n\n[View on Solscan](https://solscan.io/tx/${agentResult.txHash})`,
+            type: "text",
+          });
+        } else if (agentResult.demo) {
+          toast.warning("Agent demo mode", {
+            description: "Set SOL_AGENT_KEY in project secrets to enable live agent swaps.",
+            duration: 8000,
+          });
+          addMessage({
+            role: "assistant",
+            content: `⚠️ **Agent demo mode** — ${agentResult.message}\n\nTo enable live swaps: add \`SOL_AGENT_KEY\` to project secrets, then fund the agent wallet with SOL for fees.`,
+            type: "text",
+          });
+        } else {
+          toast.error("Agent swap failed", { description: agentResult.message?.slice(0, 100) });
+          addMessage({ role: "assistant", content: `Swap failed: ${agentResult.message}`, type: "error" });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("Agent swap error", { description: msg.slice(0, 100) });
+        addMessage({ role: "assistant", content: `Swap error: ${msg.slice(0, 150)}`, type: "error" });
+      } finally {
+        setExecutingId(null);
+      }
+      return;
+    }
+
     if (!connected || !publicKey) {
       openWalletForChain(quoteData.fromToken, quoteData.fromChain);
       return;
@@ -746,7 +794,7 @@ export default function ChatPage() {
     } finally {
       setExecutingId(null);
     }
-  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum]);
+  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum]);
 
   const handleCancelSwap = useCallback((msgId: string) => {
     setCancelledIds(prev => { const next = new Set(prev); next.add(msgId); return next; });

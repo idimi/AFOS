@@ -2563,33 +2563,48 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
         setSwapPhase("negotiating");
 
         // Step 2: Execute the swap on-chain (HTLC lock + atomic settlement)
-        let realTxHash: string | undefined;
+         let realTxHash: string | undefined;
+        let execError: string | undefined;
         try {
           setSwapPhase("locking");
           const execResult = await executeSwap(
             rfqResult.rfqId,
             undefined, // wallet address optional — backend resolves from session
             (toToken.chain ?? "solana") as import("../lib/afosApi").SupportedChain,
-          ) as { txHash?: string; tx?: string; txid?: string; success?: boolean } | null;
-          realTxHash = execResult?.txHash ?? execResult?.tx ?? execResult?.txid;
-          if (realTxHash) setLastTxHash(realTxHash);
-          setSwapPhase("settling");
-        } catch {
-          // executeSwap may fail if backend doesn't have wallet keys — still show complete
-          setSwapPhase("settling");
+          ) as { txHash?: string; tx?: string; txid?: string; success?: boolean; error?: string } | null;
+          // Surface Oracle VM failures — don't silently continue if execute failed
+          if (execResult && execResult.success === false) {
+            execError = execResult.error ?? "Swap execution failed on Oracle VM";
+          } else {
+            realTxHash = execResult?.txHash ?? execResult?.tx ?? execResult?.txid;
+            if (realTxHash) setLastTxHash(realTxHash);
+          }
+          setSwapPhase(execError ? "settling" : "settling");
+        } catch (err) {
+          // Network error or missing agent keys — surface as a warning but still allow demo mode
+          execError = err instanceof Error ? err.message : "Execute request failed";
         }
-
         setTimeout(() => {
-          setSwapPhase("complete");
-          haptic.success();
           const route = rfqResult.route === 'p2p'
             ? `P2P IntercomSwap (${rfqResult.p2pQuotes} quotes)`
             : `DEX fallback (${rfqResult.dexRoute || 'Jupiter'})`;
-          toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${finalOut} ${toToken.symbol}`, {
-            description: realTxHash
-              ? `${route} · Tx: ${realTxHash.slice(0, 12)}…`
-              : `${route} · 0.2% platform fee collected`,
-          });
+          if (execError && !realTxHash) {
+            // Real failure — no tx hash returned
+            setSwapPhase("complete"); // still advance UI but show warning toast
+            haptic.success();
+            toast.warning(`Swap routed (no on-chain confirmation)`, {
+              description: `${route} · Agent keys not configured — set SOL_AGENT_KEY to enable live execution. Error: ${execError.slice(0, 80)}`,
+              duration: 8000,
+            });
+          } else {
+            setSwapPhase("complete");
+            haptic.success();
+            toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${finalOut} ${toToken.symbol}`, {
+              description: realTxHash
+                ? `${route} · Tx: ${realTxHash.slice(0, 12)}…`
+                : `${route} · 0.2% platform fee collected`,
+            });
+          }
         }, 1200);
       } else {
         runSwapAnimation();
