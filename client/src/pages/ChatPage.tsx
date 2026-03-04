@@ -576,9 +576,7 @@ export default function ChatPage() {
   }, []);
 
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
-    // ── Agent mode: server signs with chain-specific agent key ─────────────────
-    // Dispatches to executeAgentSwap which handles SOL (SOL_AGENT_KEY),
-    // ETH (ETH_AGENT_KEY), and BTC (BTC_AGENT_WIF) chains server-side.
+    // ── Wallet required — AFOS is non-custodial, user must connect their own wallet ──
     const fromChainNorm = (quoteData.fromChain ?? "solana").toLowerCase();
     const noWalletConnected =
       !connected || !publicKey ||
@@ -586,72 +584,8 @@ export default function ChatPage() {
       (fromChainNorm === "bitcoin"  && !bitcoin?.address);
 
     if (noWalletConnected) {
-      setExecutingId(msgId);
-      try {
-        const agentResult = await executeAgentSwap.mutateAsync({
-          fromToken: quoteData.fromToken,
-          toToken:   quoteData.toToken,
-          amount:    quoteData.fromAmount,
-          fromChain: (quoteData.fromChain ?? "solana") as string,
-          toChain:   (quoteData.toChain   ?? "solana") as string,
-        });
-        const agentExplorerUrl = (agentResult as { solscanUrl?: string | null }).solscanUrl;
-        // Build chain-appropriate explorer label
-        const explorerLabel =
-          fromChainNorm === "bitcoin"  ? "View on mempool.space" :
-          fromChainNorm === "ethereum" ? "View on Etherscan" :
-          "View on Solscan";
-        if (agentResult.success) {
-          toast.success(`Swap executed via ${agentResult.route}!`, {
-            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(6) ?? "?"} ${quoteData.toToken}${agentResult.txHash ? ` · Tx: ${agentResult.txHash.slice(0, 12)}…` : ""}`,
-            action: agentExplorerUrl ? { label: explorerLabel, onClick: () => window.open(agentExplorerUrl, "_blank") } : undefined,
-          });
-          setMessages(prev => prev.map(m =>
-            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: agentResult.txHash ?? undefined } : m
-          ));
-          const routeLabel = agentResult.route ?? "DEX";
-          const txLine = agentResult.txHash
-            ? `\n\n**Tx:** \`${agentResult.txHash}\`\n\n[${explorerLabel}](${agentExplorerUrl ?? "#"})`
-            : "";
-          // BTC-specific: show HTLC address and next step
-          const btcExtra = (agentResult as { htlcAddress?: string | null; nextStep?: string }).htlcAddress
-            ? `\n\n**HTLC Address:** \`${(agentResult as { htlcAddress: string }).htlcAddress}\`\n\n${(agentResult as { nextStep?: string }).nextStep ?? ""}`
-            : "";
-          addMessage({
-            role: "assistant",
-            content: `✅ Agent swap complete via **${routeLabel}**: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(6) ?? "?"} ${quoteData.toToken}${txLine}${btcExtra}`,
-            type: "text",
-          });
-        } else if (agentResult.demo) {
-          // Chain-specific demo mode message
-          const keyHint =
-            fromChainNorm === "ethereum" ? "`ETH_AGENT_KEY` (hex Ethereum private key)" :
-            fromChainNorm === "bitcoin"  ? "`BTC_AGENT_WIF` (WIF-encoded Bitcoin private key)" :
-            "`SOL_AGENT_KEY` (base58 Solana private key)";
-          toast.warning("Agent demo mode", {
-            description: `Add ${keyHint} to project secrets to enable live ${fromChainNorm.toUpperCase()} agent swaps.`,
-            duration: 8000,
-          });
-          addMessage({
-            role: "assistant",
-            content: `⚠️ **Agent demo mode** — ${agentResult.message}\n\nTo enable live ${fromChainNorm.toUpperCase()} swaps: add ${keyHint} to project secrets.`,
-            type: "text",
-          });
-        } else {
-          toast.error("Agent swap failed", { description: agentResult.message?.slice(0, 100) });
-          addMessage({ role: "assistant", content: `Swap failed: ${agentResult.message}`, type: "error" });
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error("Agent swap error", { description: msg.slice(0, 100) });
-        addMessage({ role: "assistant", content: `Swap error: ${msg.slice(0, 150)}`, type: "error" });
-      } finally {
-        setExecutingId(null);
-      }
-      return;
-    }
-
-    if (!connected || !publicKey) {
+      // Non-custodial: the agent cannot execute swaps on behalf of the user.
+      // Prompt the user to connect their wallet for the appropriate chain.
       openWalletForChain(quoteData.fromToken, quoteData.fromChain);
       return;
     }

@@ -116,26 +116,25 @@ export async function executeEthAgentSwap(params: {
   const ethKeyRaw  = process.env.ETH_AGENT_KEY;
   const ethRpcUrl  = process.env.ETH_RPC_URL   || "https://cloudflare-eth.com";
 
-  // ── Demo mode ────────────────────────────────────────────────────────────────
+  // ── ETH_AGENT_KEY required for HTLC signing ────────────────────────────────────
   if (!ethKeyRaw) {
     return {
       success: false,
-      demo: true,
+      demo: false,
       txHash: null,
       outAmount: null,
-      route: "Demo (no ETH_AGENT_KEY)",
+      route: "Error",
       agentAddress: null,
       explorerUrl: null,
       feeBps: PLATFORM_FEE_BPS,
       feeAmountOut: 0,
       message:
-        `ETH agent swap demo mode: ETH_AGENT_KEY not configured. ` +
-        `Add ETH_AGENT_KEY (hex private key) to project secrets to enable real ETH swaps. ` +
-        `The agent will use 1inch aggregator for ETH/ERC-20 swaps on Ethereum mainnet.`,
+        `ETH_AGENT_KEY is not configured. The platform operator must set this ` +
+        `secret for Ethereum HTLC escrow signing. Please contact the platform administrator.`,
     };
   }
 
-  // ── Derive agent wallet ───────────────────────────────────────────────────────
+  // ── Derive agent wallet ────────────────────────────────────────────────────────────────────────────────
   let wallet: ethers.Wallet;
   try {
     const keyHex = ethKeyRaw.startsWith("0x") ? ethKeyRaw : `0x${ethKeyRaw}`;

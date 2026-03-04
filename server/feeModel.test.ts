@@ -32,17 +32,25 @@ describe("Fee constants", () => {
     expect(Number(match![1])).toBe(20);
   });
 
-  it("should read PLATFORM_FEE_ACCOUNT from env with NO hardcoded fallback", async () => {
+  it("should read SOL_FEE_ACCOUNT from env (SOL_FEE_WALLET or SOL_AGENT_KEY fallback) with NO hardcoded address", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
-    // Must read from env var
-    expect(src).toContain("process.env.PLATFORM_FEE_WALLET");
+    // Must read from SOL_FEE_WALLET env var (renamed from PLATFORM_FEE_WALLET)
+    expect(src).toContain("process.env.SOL_FEE_WALLET");
+    // Must also support SOL_AGENT_KEY as fallback fee wallet
+    expect(src).toContain("process.env.SOL_AGENT_KEY");
     // Must NOT contain any hardcoded fallback address (security: no unknown wallet should receive fees)
     expect(src).not.toContain("8PqWJvFQKxXhzqJLGRhTWUZhB1Bwk9JtQxKmKZvKpump");
-    // feeAccount is conditionally included only when PLATFORM_FEE_WALLET is set
-    expect(src).toContain("PLATFORM_FEE_ACCOUNT ? { feeAccount: PLATFORM_FEE_ACCOUNT }");
-    // Startup warning is emitted when PLATFORM_FEE_WALLET is not configured
-    expect(src).toContain("PLATFORM_FEE_WALLET env var is not set");
+    // feeAccount is conditionally included only when SOL_FEE_ACCOUNT is available
+    expect(src).toContain("SOL_FEE_ACCOUNT ? { feeAccount: SOL_FEE_ACCOUNT }");
+    // ETH fee wallet derived from ETH_FEE_WALLET or ETH_AGENT_KEY
+    expect(src).toContain("process.env.ETH_FEE_WALLET");
+    expect(src).toContain("process.env.ETH_AGENT_KEY");
+    // BTC fee wallet derived from BTC_FEE_WALLET or BTC_AGENT_WIF
+    expect(src).toContain("process.env.BTC_FEE_WALLET");
+    expect(src).toContain("process.env.BTC_AGENT_WIF");
+    // Startup warning is emitted when neither SOL_FEE_WALLET nor SOL_AGENT_KEY is configured
+    expect(src).toContain("SOL_FEE_WALLET env var is not set");
   });
 });
 

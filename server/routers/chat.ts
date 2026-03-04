@@ -73,18 +73,71 @@ const JUPITER_SWAP_URL  = "https://lite-api.jup.ag/swap/v1/swap";
 const PLATFORM_FEE_BPS  = 20;  // 0.20% — DEX fallback (Jupiter/1inch referral, collected on-chain)
 const P2P_FEE_BPS       = 15;  // 0.15% — P2P primary route (output-side deduction, cheaper to reward P2P)
 
-// PLATFORM_FEE_ACCOUNT — the Solana wallet that receives Jupiter referral fees (0.20% per DEX swap).
-// MUST be set to your own Solana wallet address via the PLATFORM_FEE_WALLET environment variable.
-// If not set, feeAccount is omitted from Jupiter swap calls — Jupiter still executes the swap but
-// the platform fee is NOT collected. No fallback address is used to prevent fees going to an unknown wallet.
-const PLATFORM_FEE_ACCOUNT: string | null = process.env.PLATFORM_FEE_WALLET ?? null;
-if (!PLATFORM_FEE_ACCOUNT) {
-  console.warn(
-    "[AFOS] WARNING: PLATFORM_FEE_WALLET env var is not set. " +
-    "Jupiter DEX fees (0.20%) will NOT be collected. " +
-    "Set PLATFORM_FEE_WALLET to your Solana wallet address in project secrets to enable fee collection."
-  );
+// SOL_FEE_ACCOUNT — the Solana wallet that receives Jupiter referral fees (0.20% per DEX swap).
+// Set SOL_FEE_WALLET to your Solana fee wallet address in project secrets.
+// If not set, the SOL agent wallet address is used as fallback (derived from SOL_AGENT_KEY).
+// If neither is set, feeAccount is omitted from Jupiter calls — swaps still execute but fees are not collected.
+function deriveSolFeeAccount(): string | null {
+  if (process.env.SOL_FEE_WALLET) return process.env.SOL_FEE_WALLET;
+  // Derive from SOL_AGENT_KEY (Oracle VM Hot Wallet) as fallback fee wallet
+  try {
+    const keyRaw = process.env.SOL_AGENT_KEY;
+    if (!keyRaw) return null;
+    const keyBytes = bs58.decode(keyRaw);
+    const kp = Keypair.fromSecretKey(keyBytes);
+    return kp.publicKey.toBase58();
+  } catch {
+    return null;
+  }
 }
+const SOL_FEE_ACCOUNT: string | null = deriveSolFeeAccount();
+if (!SOL_FEE_ACCOUNT) {
+  console.warn(
+    "[AFOS] WARNING: SOL_FEE_WALLET env var is not set and SOL_AGENT_KEY is missing. " +
+    "Jupiter DEX fees (0.20%) will NOT be collected. " +
+    "Set SOL_FEE_WALLET to your Solana fee wallet address in project secrets."
+  );
+} else {
+  console.log(`[AFOS] SOL fee wallet: ${SOL_FEE_ACCOUNT}`);
+}
+
+// ETH_FEE_ACCOUNT — Ethereum address that receives ETH referral fees.
+// Set ETH_FEE_WALLET in project secrets, or falls back to the ETH agent wallet (ETH_AGENT_KEY).
+function deriveEthFeeAccount(): string | null {
+  if (process.env.ETH_FEE_WALLET) return process.env.ETH_FEE_WALLET;
+  try {
+    const keyRaw = process.env.ETH_AGENT_KEY;
+    if (!keyRaw) return null;
+    const { ethers } = require("ethers") as typeof import("ethers");
+    const keyHex = keyRaw.startsWith("0x") ? keyRaw : `0x${keyRaw}`;
+    return new ethers.Wallet(keyHex).address;
+  } catch {
+    return null;
+  }
+}
+const ETH_FEE_ACCOUNT: string | null = deriveEthFeeAccount();
+if (ETH_FEE_ACCOUNT) console.log(`[AFOS] ETH fee wallet: ${ETH_FEE_ACCOUNT}`);
+
+// BTC_FEE_ACCOUNT — Bitcoin address that receives BTC fees.
+// Set BTC_FEE_WALLET in project secrets, or falls back to the BTC agent wallet (BTC_AGENT_WIF).
+function deriveBtcFeeAccount(): string | null {
+  if (process.env.BTC_FEE_WALLET) return process.env.BTC_FEE_WALLET;
+  try {
+    const keyRaw = process.env.BTC_AGENT_WIF;
+    if (!keyRaw) return null;
+    const bitcoin = require("bitcoinjs-lib") as typeof import("bitcoinjs-lib");
+    const ECPairFactory = require("ecpair").ECPairFactory;
+    const ecc = require("tiny-secp256k1");
+    const ECPair = ECPairFactory(ecc);
+    const keyPair = ECPair.fromWIF(keyRaw, bitcoin.networks.bitcoin);
+    const { address } = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(keyPair.publicKey), network: bitcoin.networks.bitcoin });
+    return address ?? null;
+  } catch {
+    return null;
+  }
+}
+const BTC_FEE_ACCOUNT: string | null = deriveBtcFeeAccount();
+if (BTC_FEE_ACCOUNT) console.log(`[AFOS] BTC fee wallet: ${BTC_FEE_ACCOUNT}`);
 
 async function getJupiterQuote(
   fromAsset: AssetDef,
@@ -124,9 +177,9 @@ async function getJupiterSwapTx(
       quoteResponse,
       userPublicKey,
       wrapAndUnwrapSol:          true,
-      // Only include feeAccount when PLATFORM_FEE_WALLET is explicitly set by the operator.
+      // Only include feeAccount when SOL_FEE_WALLET (or SOL_AGENT_KEY fallback) is available.
       // Omitting it means Jupiter executes the swap without collecting a referral fee.
-      ...(PLATFORM_FEE_ACCOUNT ? { feeAccount: PLATFORM_FEE_ACCOUNT } : {}),
+      ...(SOL_FEE_ACCOUNT ? { feeAccount: SOL_FEE_ACCOUNT } : {}),
       dynamicComputeUnitLimit:   true,
       prioritizationFeeLamports: "auto",
     }),
@@ -1231,69 +1284,18 @@ export const chatRouter = router({
       const resolvedCounterpartyPubKey = p2pQuote?.counterpartyPubKey ?? input.counterpartyPubKey;
 
       if (!agentWif) {
-        // ── Demo mode ──────────────────────────────────────────────────────────────────
-        const demoTxid = `${secretHash.slice(0, 16)}${
-          Math.random().toString(36).slice(2, 10)
-        }${
-          Date.now().toString(36)
-        }`;
-        const demoHtlcAddr = `bc1q${secretHash.slice(0, 32)}`;
-
-        // Record BTC HTLC lock to DB (non-blocking)
-        void recordHtlcLock({
-          chain:        "bitcoin",
-          htlcAddress:  demoHtlcAddr,
-          secretHash,
-          lockTxId:     demoTxid,
-          amountRaw:    String(amountSats),
-          amountHuman:  String(amountBtc),
-          locktime,
-          peerId:       p2pQuote?.peerId ?? undefined,
-          rfqId:        p2pQuote?.rfqId  ?? undefined,
-          toToken:      toToken ?? undefined,
-          toChain:      (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana",
-          senderAddress,
-        }).catch(() => {/* non-fatal */});
-        void recordSwapAnalytic({
-          fromChain:  "bitcoin",
-          toChain:    (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana",
-          fromToken:  "BTC",
-          toToken:    toToken ?? "BTC",
-          amount:     String(amountBtc),
-          route:      p2pRoute,
-          status:     "completed",
-          txId:       demoTxid,
-          peerId:     p2pQuote?.peerId ?? undefined,
-        }).catch(() => {/* non-fatal */});
-
+        // ── BTC_AGENT_WIF required for HTLC signing ──────────────────────────
         return {
-          success: true,
-          demo: true,
+          success: false,
+          demo: false,
           route: p2pRoute,
           p2pQuote: p2pQuote ?? undefined,
-          htlcAddress: demoHtlcAddr,
-          txid: demoTxid,
-          secretHash,
-          secret,
-          locktime,
-          amountSats,
-          amountBtc,
-          expiryHours,
-          explorerUrl: `https://mempool.space/${network === "testnet" ? "testnet/" : ""}tx/${demoTxid}`,
+          txid: null,
+          htlcAddress: null,
+          nextStep: undefined,
           message:
-            `[DEMO] BTC HTLC lock via ${p2pRoute}: ${amountBtc} BTC (${amountSats.toLocaleString()} sats). ` +
-            (p2pQuote?.peerId ? `P2P peer: ${p2pQuote.peerId}. ` : "") +
-            (p2pQuote?.rate ? `Rate: ${p2pQuote.rate}. ` : "") +
-            `HTLC address: ${demoHtlcAddr}. ` +
-            `Secret hash: ${secretHash.slice(0, 16)}\u2026 ` +
-            `Expiry: ${expiryHours}h (~${Math.round(expiryHours * 6)} blocks). ` +
-            `Set BTC_AGENT_WIF env var to execute real on-chain transactions.`,
-          nextStep: p2pQuote
-            ? `P2P counterparty ${p2pQuote.peerId ?? "peer"} matched via IntercomSwap. ` +
-              "Waiting for counterparty to lock their funds on the destination chain. " +
-              "Once confirmed, the agent will reveal the secret to complete the atomic swap."
-            : "No P2P peer found — direct HTLC initiated via mempool.space. " +
-              "Waiting for counterparty to lock their funds on the destination chain.",
+            `BTC_AGENT_WIF is not configured. The platform operator must set this ` +
+            `secret for Bitcoin HTLC escrow signing. Please contact the platform administrator.`,
         };
       }
 
@@ -1303,6 +1305,9 @@ export const chatRouter = router({
         demo: false,
         route: p2pRoute,
         p2pQuote: p2pQuote ?? undefined,
+        txid: null as string | null,
+        htlcAddress: null as string | null,
+        nextStep: undefined as string | undefined,
         message:
           "Production BTC HTLC: call trpc.btcHtlc.htlcLock with senderAddress, senderPubKey, " +
           "recipientPubKey, amountSats, expiryHours, and network for full on-chain execution." +
@@ -1409,22 +1414,20 @@ export const chatRouter = router({
       const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
       const agentKeyRaw = process.env.SOL_AGENT_KEY;
 
-      // ── Demo mode ─────────────────────────────────────────────────────────
+      // ── SOL_AGENT_KEY required for HTLC signing ────────────────────────────
       if (!agentKeyRaw) {
         return {
           success: false,
-          demo: true,
+          demo: false,
           txHash: null,
           outAmount: null,
-          route: "Demo (no SOL_AGENT_KEY)",
+          route: "Error",
           agentAddress: null,
           solscanUrl: null,
           chain: "solana" as const,
           message:
-            `Agent swap demo mode: SOL_AGENT_KEY not configured. ` +
-            `To execute a real swap, add SOL_AGENT_KEY to project secrets. ` +
-            `The key should be a base58-encoded Solana private key (64 bytes). ` +
-            `Generate one with: solana-keygen new --no-bip39-passphrase`,
+            `SOL_AGENT_KEY is not configured. The platform operator must set this ` +
+            `secret for HTLC escrow signing. Please contact the platform administrator.`,
         };
       }
 

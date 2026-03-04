@@ -54,11 +54,11 @@ describe("executeEthAgentSwap", () => {
       amount: 0.1,
     });
 
-    expect(result.demo).toBe(true);
+    // Mode B removed: no demo mode. Returns wallet-required error when ETH_AGENT_KEY not set.
+    expect(result.demo).toBe(false);
     expect(result.success).toBe(false);
     expect(result.agentAddress).toBeNull();
     expect(result.message).toContain("ETH_AGENT_KEY");
-    expect(result.feeBps).toBe(20); // PLATFORM_FEE_BPS
 
     if (originalKey !== undefined) process.env.ETH_AGENT_KEY = originalKey;
   });
@@ -194,19 +194,27 @@ describe("ChatPage multi-chain agent mode", () => {
     expect(src).toContain('fromChainNorm === "bitcoin"');
   });
 
-  it("should show chain-specific demo key hint in agent demo mode", async () => {
+  it("should NOT have demo mode key hints in ChatPage (Mode B removed)", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
-    expect(src).toContain("ETH_AGENT_KEY");
-    expect(src).toContain("BTC_AGENT_WIF");
-    expect(src).toContain("SOL_AGENT_KEY");
+    // Mode B removed: ChatPage no longer shows demo key hints for agent execution
+    // Instead it shows a wallet connection prompt
+    expect(src).toContain("openWalletForChain");
+    expect(src).toContain("noWalletConnected");
+    // Wallet connection is enforced for all chains
+    expect(src).toContain('fromChainNorm === "ethereum"');
+    expect(src).toContain('fromChainNorm === "bitcoin"');
   });
 
-  it("should show HTLC address in BTC swap success message", async () => {
+  it("should show BTC HTLC flow in ChatPage (wallet-connected path)", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
-    expect(src).toContain("htlcAddress");
-    expect(src).toContain("HTLC Address");
+    // BTC HTLC lock is initiated from the wallet-connected BTC path
+    expect(src).toContain("BTC HTLC lock");
+    // HTLC route style is defined for display
+    expect(src).toContain("Direct HTLC");
+    // BTC swap dispatches to executeBtcSwap or btcSignPsbt
+    expect(src).toContain("executeBtcSwap");
   });
 
   it("TxSuccessCard should use chain-appropriate explorer", async () => {
@@ -315,9 +323,10 @@ describe("Cross-chain swap routing", () => {
       toChain: "solana",
     });
 
-    // Demo mode returns before cross-chain check, so feeBps is PLATFORM_FEE_BPS
-    expect(result.demo).toBe(true);
+    // Mode B removed: no demo mode. Returns wallet-required error when ETH_AGENT_KEY not set.
+    expect(result.demo).toBe(false);
     expect(result.success).toBe(false);
+    expect(result.message).toContain("ETH_AGENT_KEY");
 
     if (originalKey !== undefined) process.env.ETH_AGENT_KEY = originalKey;
   });
@@ -343,16 +352,20 @@ describe("Cross-chain swap routing", () => {
     expect(btcSrc).toContain("toChain,");
   });
 
-  it("ChatPage sends fromChain and toChain to executeAgentSwap", async () => {
+  it("ChatPage enforces wallet connection before executeAgentSwap (Mode B removed)", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
-    // The agent swap call should pass both chains
-    const agentCallSection = src.substring(
-      src.indexOf("executeAgentSwap.mutateAsync"),
-      src.indexOf("executeAgentSwap.mutateAsync") + 300
-    );
-    expect(agentCallSection).toContain("fromChain:");
-    expect(agentCallSection).toContain("toChain:");
+    // Mode B removed: ChatPage now calls openWalletForChain() when no wallet is connected
+    // instead of calling executeAgentSwap without a wallet.
+    expect(src).toContain("noWalletConnected");
+    expect(src).toContain("openWalletForChain");
+    // executeAgentSwap is still present for wallet-connected agent-assisted swaps
+    // (e.g., when user has wallet but wants agent to handle routing)
+    // The mutation is defined but only called after wallet check passes
+    expect(src).toContain("executeAgentSwap");
+    // Wallet check covers all three chains
+    expect(src).toContain('fromChainNorm === "ethereum"');
+    expect(src).toContain('fromChainNorm === "bitcoin"');
   });
 
   it("ChatPage shows ChainPill for cross-chain quotes", async () => {

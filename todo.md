@@ -856,3 +856,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update feeModel.test.ts to reflect new no-op behavior (assert address NOT present)
 - [x] 126 tests passing, 0 TypeScript errors
 - [ ] Save checkpoint
+
+## Mode B Removal + Fee Wallet Wiring
+
+- [x] Remove Mode B from executeAgentSwap (SOL path): return wallet-required error instead of fronting capital
+- [x] Remove Mode B from agentSwapEth.ts: return wallet-required error instead of demo mode
+- [x] Remove Mode B from agentSwapBtc.ts: return wallet-required error instead of demo mode
+- [x] Update ChatPage: noWalletConnected block now calls openWalletForChain() instead of executeAgentSwap
+- [x] Rename PLATFORM_FEE_WALLET → SOL_FEE_WALLET (env var + code + warning log)
+- [x] SOL_FEE_WALLET: derived from SOL_AGENT_KEY at startup (DYsF9Dq3… = HTLC Escrow Wallet)
+- [x] ETH_FEE_WALLET: derived from ETH_AGENT_KEY at startup (0xF548Dc3c… = HTLC Escrow Wallet)
+- [x] BTC_FEE_WALLET: derived from BTC_AGENT_WIF at startup (bc1qkuduxus7c6… = HTLC Escrow Wallet)
+- [x] Update feeModel.test.ts: renamed PLATFORM_FEE_WALLET → SOL_FEE_WALLET, added ETH/BTC fee wallet checks
+- [x] Update multiChainAgentSwap.test.ts: 5 tests updated to reflect Mode B removal
+- [x] 126 tests all passing, 0 TypeScript errors
+- [x] Save checkpoint
