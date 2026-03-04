@@ -7,4 +7,5 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  oracleApiUrl: process.env.ORACLE_API_URL ?? "http://141.253.123.101:4000",
 };

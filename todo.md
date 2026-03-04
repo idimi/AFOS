@@ -804,3 +804,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Pass fromChain/toChain to executeAgentSwap from ChatPage.tsx
 - [x] Add solscanUrl to success response and show "View on Solscan" action in toast
 - [x] Show route label in success message ("IntercomSwap P2P" vs "Jupiter DEX (Whirlpool → AlphaQ)")
+
+## ORACLE_API_URL Secret
+
+- [x] Add ORACLE_API_URL to project secrets (value: http://141.253.123.101:4000)
+- [x] All 5 server files already use process.env.ORACLE_API_URL || fallback — no code change needed
+- [x] Add ORACLE_API_URL to server/_core/env.ts as ENV.oracleApiUrl
+- [x] Vitest passes: secret set + Oracle VM reachable (status: active, uptime confirmed)
