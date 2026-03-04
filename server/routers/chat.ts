@@ -23,6 +23,7 @@
  */
 
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { recordHtlcLock, recordSwapAnalytic } from "../htlcMonitor";
@@ -31,6 +32,8 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap } from "../agentSwapBtc";
+import { getUserSettings } from "../db";
+import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -142,7 +145,9 @@ if (BTC_FEE_ACCOUNT) console.log(`[AFOS] BTC fee wallet: ${BTC_FEE_ACCOUNT}`);
 async function getJupiterQuote(
   fromAsset: AssetDef,
   toAsset: AssetDef,
-  amountRaw: number
+  amountRaw: number,
+  /** Slippage in basis points — default 50 (0.5%) */
+  slippageBps = 50,
 ): Promise<Record<string, unknown> | null> {
   if (!fromAsset.address || !toAsset.address) return null;
 
@@ -150,7 +155,7 @@ async function getJupiterQuote(
     inputMint:       fromAsset.address,
     outputMint:      toAsset.address,
     amount:          String(Math.floor(amountRaw)),
-    slippageBps:     "50",
+    slippageBps:     String(slippageBps),
     platformFeeBps:  String(PLATFORM_FEE_BPS),
   });
 
@@ -597,7 +602,9 @@ async function buildQuote(
   fromAsset: AssetDef,
   toAsset: AssetDef,
   swapAmount: number,
-  prices: Record<string, number>
+  prices: Record<string, number>,
+  /** Slippage in basis points — default 50 (0.5%) */
+  slippageBps = 50,
 ): Promise<QuoteResult | { error: string }> {
   const fromPrice = prices[fromAsset.symbol] ?? (fromAsset.isStable ? 1 : 0);
   const toPrice   = prices[toAsset.symbol]   ?? (toAsset.isStable   ? 1 : 0);
@@ -605,7 +612,7 @@ async function buildQuote(
   // ── Solana → Solana: Jupiter ──────────────────────────────────────────────
   if (fromAsset.chain === "solana" && toAsset.chain === "solana") {
     const amountRaw = Math.floor(swapAmount * Math.pow(10, fromAsset.decimals));
-    const quote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
+    const quote = await getJupiterQuote(fromAsset, toAsset, amountRaw, slippageBps);
     if (!quote) return { error: `Jupiter quote unavailable for ${fromAsset.symbol} → ${toAsset.symbol}. Please try again.` };
 
     const toAmountHuman  = parseInt(quote.outAmount as string) / Math.pow(10, toAsset.decimals);
@@ -754,10 +761,16 @@ export const chatRouter = router({
         history:        z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(20),
         walletAddress:  z.string().optional(),
         walletBalances: z.array(z.object({ symbol: z.string(), amount: z.string() })).optional(),
+        /** Manus OAuth openId — used to load user settings (max tx, slippage, preferred route) */
+        openId:         z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { message, history, walletBalances } = input;
+      const { message, history, walletBalances, openId } = input;
+
+      // Load user settings (non-blocking — falls back to defaults if DB unavailable)
+      const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
+      const slippageBps = Math.round(parseFloat(userPrefs.slippagePct) * 100); // e.g. 0.5% → 50 bps
 
       const { prices, source: priceSource } = await getTokenPricesWithSource();
       const intent = await parseIntent(message, history, prices, walletBalances, priceSource);
@@ -805,7 +818,22 @@ export const chatRouter = router({
         };
       }
 
-      const quoteResult = await buildQuote(fromAsset, toAsset, swapAmount, prices);
+      // ── Enforce maxTxAmountUsd (quote-time warning) ────────────────────────────────────────
+      // We estimate the USD value using prices already fetched above.
+      // This is a soft warning at quote time; the hard rejection happens at execution time.
+      const fromPriceForCheck = prices[from.symbol] ?? (from.symbol.includes("USD") ? 1 : 0);
+      const estimatedUsd = swapAmount * fromPriceForCheck;
+      if (estimatedUsd > userPrefs.maxTxAmountUsd) {
+        return {
+          type: "text" as const,
+          content:
+            `⚠️ This swap (~$${estimatedUsd.toFixed(2)}) exceeds your configured maximum transaction ` +
+            `amount of $${userPrefs.maxTxAmountUsd}. ` +
+            `Please reduce the amount or increase your limit in Settings.`,
+        };
+      }
+
+      const quoteResult = await buildQuote(fromAsset, toAsset, swapAmount, prices, slippageBps);
 
       if ("error" in quoteResult) {
         return { type: "text" as const, content: quoteResult.error };
@@ -863,10 +891,34 @@ export const chatRouter = router({
         amount:         z.number().positive().optional(),
         /** Skip IntercomSwap P2P and go straight to Jupiter */
         skipP2P:        z.boolean().optional().default(false),
+        /** Manus OAuth openId — used to enforce per-user settings */
+        openId:         z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, skipP2P } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId } = input;
+
+      // ── Load user settings & enforce limits ───────────────────────────────
+      const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
+
+      // Hard reject: amount exceeds user's maxTxAmountUsd
+      if (amount) {
+        const { prices: pricesForCheck } = await getTokenPricesWithSource();
+        const sym = (fromToken ?? "SOL").toUpperCase();
+        const fromPriceCheck = pricesForCheck[sym] ?? (sym.includes("USD") ? 1 : 0);
+        const estimatedUsd = amount * fromPriceCheck;
+        if (estimatedUsd > userPrefs.maxTxAmountUsd) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              `Swap amount (~$${estimatedUsd.toFixed(2)}) exceeds your maximum transaction limit ` +
+              `of $${userPrefs.maxTxAmountUsd}. Increase your limit in Settings or reduce the amount.`,
+          });
+        }
+      }
+
+      // Apply preferredRoute: if user prefers Jupiter, skip P2P
+      const skipP2P = input.skipP2P || userPrefs.preferredRoute === "jupiter";
 
       if (!userPublicKey) throw new Error("Wallet not connected");
 
@@ -973,14 +1025,38 @@ export const chatRouter = router({
         toChain:      z.enum(["solana", "ethereum", "bitcoin"]).optional().default("ethereum"),
         /** Human-readable amount to swap (e.g. 0.1 for 0.1 ETH) */
         amount:       z.number().positive(),
-        /** Allowed slippage in percent (default: 1%) */
+        /** Allowed slippage in percent (default: 1%) — overridden by user settings when openId is provided */
         slippage:     z.number().min(0.1).max(50).optional().default(1),
         /** Skip IntercomSwap P2P and go straight to 1inch */
         skipP2P:      z.boolean().optional().default(false),
+        /** Manus OAuth openId — used to enforce per-user settings */
+        openId:       z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, slippage, skipP2P } = input;
+      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId } = input;
+
+      // ── Load user settings & enforce limits ───────────────────────────────
+      const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
+
+      // Hard reject: amount exceeds user's maxTxAmountUsd
+      const { prices: pricesForCheck } = await getTokenPricesWithSource();
+      const sym = fromToken.toUpperCase();
+      const fromPriceCheck = pricesForCheck[sym] ?? (sym.includes("USD") ? 1 : 0);
+      const estimatedUsd = amount * fromPriceCheck;
+      if (estimatedUsd > userPrefs.maxTxAmountUsd) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            `Swap amount (~$${estimatedUsd.toFixed(2)}) exceeds your maximum transaction limit ` +
+            `of $${userPrefs.maxTxAmountUsd}. Increase your limit in Settings or reduce the amount.`,
+        });
+      }
+
+      // Use user's slippage setting (pct), falling back to input or default 1%
+      const slippage = parseFloat(userPrefs.slippagePct) || input.slippage || 1;
+      // Apply preferredRoute: if user prefers 1inch, skip P2P
+      const skipP2P = input.skipP2P || userPrefs.preferredRoute === "oneinch";
 
       // Resolve asset definitions
       const normaliseToken = (sym: string, chain: string): string => {
@@ -1357,13 +1433,38 @@ export const chatRouter = router({
         btcNetwork: z.enum(["mainnet", "testnet"]).optional().default("mainnet"),
         /** BTC HTLC expiry in hours — defaults to 24 */
         btcExpiryHours: z.number().int().positive().optional().default(24),
+        /** Manus OAuth openId — used to enforce per-user settings (maxTxAmountUsd, preferredRoute) */
+        openId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl, btcNetwork, btcExpiryHours } = input;
+      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl, btcNetwork, btcExpiryHours, openId } = input;
+
+      // ── Load user settings & enforce limits ───────────────────────────────
+      const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
+
+      // Hard reject: amount exceeds user's maxTxAmountUsd
+      const { prices: pricesForCheck } = await getTokenPricesWithSource();
+      const fromPriceCheck = pricesForCheck[fromToken.toUpperCase()] ?? (fromToken.toUpperCase().includes("USD") ? 1 : 0);
+      const estimatedUsd = amount * fromPriceCheck;
+      if (estimatedUsd > userPrefs.maxTxAmountUsd) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            `Swap amount (~$${estimatedUsd.toFixed(2)}) exceeds your maximum transaction limit ` +
+            `of $${userPrefs.maxTxAmountUsd}. Increase your limit in Settings or reduce the amount.`,
+        });
+      }
 
       // ── Chain dispatcher ──────────────────────────────────────────────────
       const chain = fromChain.toLowerCase();
+
+      // ── Apply preferredRoute: skip P2P when user prefers a specific DEX ────
+      // preferredRoute "best" = P2P-first (default behaviour)
+      // preferredRoute "jupiter"     = skip P2P, go straight to Jupiter (Solana only)
+      // preferredRoute "oneinch"     = skip P2P, go straight to 1inch (Ethereum only)
+      // preferredRoute "intercomswap" = force P2P, throw if no peer found
+      const preferredRoute = userPrefs.preferredRoute;
 
       // ── Ethereum path ─────────────────────────────────────────────────────
       if (chain === "ethereum") {
@@ -1456,12 +1557,21 @@ export const chatRouter = router({
       const connection = new Connection(solRpcUrl, "confirmed");
 
       // ── Step 1: Submit RFQ to Oracle VM (P2P discovery) ───────────────────
-      console.log(`[Agent Swap] Step 1: Submitting RFQ to Oracle VM — ${amount} ${fromToken} → ${toToken}`);
+      // Respect user's preferredRoute setting:
+      //   "jupiter"      → skip P2P entirely, go straight to Jupiter fallback
+      //   "intercomswap" → force P2P; throw if no peer found
+      //   "best" / "oneinch" → default P2P-first behaviour
+      const skipP2PForRoute = preferredRoute === "jupiter";
+      const forceP2P        = preferredRoute === "intercomswap";
+      // Slippage from user settings (pct → bps)
+      const userSlippageBps = Math.round(parseFloat(userPrefs.slippagePct) * 100);
+
+      console.log(`[Agent Swap] Step 1: Submitting RFQ to Oracle VM — ${amount} ${fromToken} → ${toToken} (preferredRoute=${preferredRoute})`);
       let rfqId: string | null = null;
       let oracleRoute: string | null = null;
       let oracleOutAmount: number | null = null;
 
-      try {
+      if (!skipP2PForRoute) try {
         const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1497,7 +1607,17 @@ export const chatRouter = router({
         console.warn("[Agent Swap] Oracle VM RFQ failed (will fall back to direct Jupiter):", err);
       }
 
-      // ── Step 2: Execute via Oracle VM (P2P or DEX) ────────────────────────
+         // ── forceP2P: if user requires IntercomSwap and no peer found, reject ───────
+      if (forceP2P && !rfqId) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message:
+            "Your preferred route is set to IntercomSwap P2P, but no peer was found for this swap. " +
+            "Try again in a moment or change your preferred route to \"Best Available\" in Settings.",
+        });
+      }
+
+      // ── Step 2: Execute via Oracle VM (P2P or DEX) ────────────────────
       if (rfqId) {
         console.log(`[Agent Swap] Step 2: Executing via Oracle VM — rfqId=${rfqId}, route=${oracleRoute}`);
         try {
@@ -1607,7 +1727,7 @@ export const chatRouter = router({
       }
 
       const amountRaw = Math.floor(amount * Math.pow(10, fromAsset.decimals));
-      const jupQuote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
+      const jupQuote = await getJupiterQuote(fromAsset, toAsset, amountRaw, userSlippageBps);
       if (!jupQuote) {
         return {
           success: false,

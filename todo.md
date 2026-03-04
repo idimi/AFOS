@@ -921,3 +921,17 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Write 11 vitest tests for settings.get and settings.save procedures (all passing)
 - [x] 140 tests total passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## Server-Side Settings Enforcement
+
+- [x] Audit chat.ts: identified 3 enforcement points (executeAgentSwap, executeEthSwap, buildSwapTx)
+- [x] Enforce maxTxAmountUsd in executeAgentSwap: loads user settings, fetches live prices, throws BAD_REQUEST if exceeded
+- [x] Enforce maxTxAmountUsd in executeEthSwap: same pattern, uses ETH live price
+- [x] Enforce maxTxAmountUsd in buildSwapTx: same pattern, uses fromToken live price
+- [x] Pass slippagePct (pct→bps) to getJupiterQuote in executeAgentSwap Jupiter fallback
+- [x] Pass slippagePct to get1inchSwapTx in executeEthSwap (overrides input.slippage)
+- [x] Apply preferredRoute in executeAgentSwap: skipP2P for "jupiter", forceP2P for "intercomswap" (PRECONDITION_FAILED if no peer)
+- [x] Apply preferredRoute in buildSwapTx: skipP2P for "jupiter"
+- [x] Apply preferredRoute in executeEthSwap: skipP2P for "oneinch"
+- [x] 7 new vitest tests in settingsEnforcement.test.ts — all 147 tests passing, 0 TypeScript errors
+- [x] Save checkpoint
