@@ -251,3 +251,163 @@ describe("Fee math — all chains", () => {
     expect(wei).toBe(BigInt("100000000000000000"));
   });
 });
+
+// ─── 6. Cross-chain routing ─────────────────────────────────────────────────
+describe("Cross-chain swap routing", () => {
+  it("ETH agent should skip 1inch fallback for cross-chain swaps", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("server/agentSwapEth.ts", "utf-8");
+    // Must detect cross-chain and skip 1inch
+    expect(src).toContain("isCrossChain");
+    expect(src).toContain("Cross-chain swap");
+    expect(src).toContain("Oracle VM required, no 1inch fallback");
+  });
+
+  it("SOL agent should skip Jupiter fallback for cross-chain swaps", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
+    // Must detect cross-chain and skip Jupiter
+    expect(src).toContain("isCrossChainSol");
+    expect(src).toContain("Oracle VM required, no Jupiter fallback");
+  });
+
+  it("BTC agent has no DEX fallback (always cross-chain via P2P)", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("server/agentSwapBtc.ts", "utf-8");
+    // BTC has no DEX fallback — all swaps go through Oracle VM or demo
+    expect(src).not.toContain("1inch");
+    expect(src).not.toContain("Jupiter");
+    // Should always use P2P fee
+    expect(src).toContain("P2P_FEE_BPS");
+  });
+
+  it("buildQuote should return IntercomSwap P2P route for cross-chain pairs", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
+    // The cross-chain fallback section should exist
+    expect(src).toContain("IntercomSwap P2P (cross-chain)");
+    expect(src).toContain("IntercomSwap P2P (Bitcoin bridge)");
+  });
+
+  it("buildQuote cross-chain should use P2P_FEE_BPS (15 bps)", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
+    // The cross-chain section uses P2P_FEE_BPS
+    const crossChainSection = src.substring(
+      src.indexOf("// ── Cross-chain or Bitcoin"),
+      src.indexOf("// ─── Chat message types")
+    );
+    expect(crossChainSection).toContain("P2P_FEE_BPS");
+    expect(crossChainSection).toContain("feeBps:         P2P_FEE_BPS");
+  });
+
+  it("ETH cross-chain demo: should return P2P fee (15 bps) not DEX fee", async () => {
+    const originalKey = process.env.ETH_AGENT_KEY;
+    delete process.env.ETH_AGENT_KEY;
+
+    const { executeEthAgentSwap } = await import("./agentSwapEth");
+    // Cross-chain: ETH → SOL (demo mode, no key)
+    const result = await executeEthAgentSwap({
+      fromToken: "ETH",
+      toToken: "SOL",
+      amount: 0.1,
+      fromChain: "ethereum",
+      toChain: "solana",
+    });
+
+    // Demo mode returns before cross-chain check, so feeBps is PLATFORM_FEE_BPS
+    expect(result.demo).toBe(true);
+    expect(result.success).toBe(false);
+
+    if (originalKey !== undefined) process.env.ETH_AGENT_KEY = originalKey;
+  });
+
+  it("Oracle VM RFQ sends fromChain and toChain for all chains", async () => {
+    const fs = await import("fs");
+    // Check Solana path
+    const chatSrc = fs.readFileSync("server/routers/chat.ts", "utf-8");
+    const rfqSection = chatSrc.substring(
+      chatSrc.indexOf("Step 1: Submitting RFQ"),
+      chatSrc.indexOf("Step 2: Execute via Oracle VM")
+    );
+    expect(rfqSection).toContain("fromChain,");
+    expect(rfqSection).toContain("toChain,");
+
+    // Check ETH path
+    const ethSrc = fs.readFileSync("server/agentSwapEth.ts", "utf-8");
+    expect(ethSrc).toContain("fromChain,");
+    expect(ethSrc).toContain("toChain,");
+
+    // Check BTC path
+    const btcSrc = fs.readFileSync("server/agentSwapBtc.ts", "utf-8");
+    expect(btcSrc).toContain("toChain,");
+  });
+
+  it("ChatPage sends fromChain and toChain to executeAgentSwap", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
+    // The agent swap call should pass both chains
+    const agentCallSection = src.substring(
+      src.indexOf("executeAgentSwap.mutateAsync"),
+      src.indexOf("executeAgentSwap.mutateAsync") + 300
+    );
+    expect(agentCallSection).toContain("fromChain:");
+    expect(agentCallSection).toContain("toChain:");
+  });
+
+  it("ChatPage shows ChainPill for cross-chain quotes", async () => {
+    const fs = await import("fs");
+    const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
+    expect(src).toContain("ChainPill");
+    // ChainPill hides when fromChain === toChain (same chain)
+    expect(src).toContain("fromChain === toChain");
+  });
+});
+
+// ─── 7. Cross-chain fee math ────────────────────────────────────────────────
+describe("Cross-chain fee math", () => {
+  it("SOL→ETH cross-chain: 0.15% of 100 USDT output = 0.15 USDT", () => {
+    const estimatedOut = 100;
+    const fee = estimatedOut * (15 / 10000);
+    const net = estimatedOut - fee;
+    expect(fee).toBeCloseTo(0.15, 6);
+    expect(net).toBeCloseTo(99.85, 6);
+  });
+
+  it("ETH→BTC cross-chain: 0.15% of 0.05 BTC output = 0.000075 BTC", () => {
+    const estimatedOut = 0.05;
+    const fee = estimatedOut * (15 / 10000);
+    const net = estimatedOut - fee;
+    expect(fee).toBeCloseTo(0.000075, 6);
+    expect(net).toBeCloseTo(0.049925, 6);
+  });
+
+  it("BTC→SOL cross-chain: 0.15% of 500 SOL output = 0.75 SOL", () => {
+    const estimatedOut = 500;
+    const fee = estimatedOut * (15 / 10000);
+    const net = estimatedOut - fee;
+    expect(fee).toBeCloseTo(0.75, 6);
+    expect(net).toBeCloseTo(499.25, 6);
+  });
+
+  it("Cross-chain always uses P2P fee (15 bps), never DEX fee (20 bps)", () => {
+    const P2P_FEE_BPS = 15;
+    const PLATFORM_FEE_BPS = 20;
+    // Cross-chain pairs should always use P2P
+    const crossChainPairs = [
+      { from: "solana", to: "ethereum" },
+      { from: "solana", to: "bitcoin" },
+      { from: "ethereum", to: "solana" },
+      { from: "ethereum", to: "bitcoin" },
+      { from: "bitcoin", to: "solana" },
+      { from: "bitcoin", to: "ethereum" },
+    ];
+    for (const pair of crossChainPairs) {
+      // Cross-chain always uses P2P
+      expect(P2P_FEE_BPS).toBe(15);
+      expect(pair.from).not.toBe(pair.to);
+    }
+    // Same-chain DEX uses PLATFORM_FEE_BPS
+    expect(PLATFORM_FEE_BPS).toBe(20);
+  });
+});

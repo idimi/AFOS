@@ -1548,7 +1548,28 @@ export const chatRouter = router({
         }
       }
 
-      // ── Step 3: Direct Jupiter fallback (Oracle VM unavailable/failed) ────
+      // ── Step 3: Direct Jupiter fallback (same-chain only) ───────────────────
+      // Cross-chain swaps (e.g., SOL→ETH, SOL→BTC) MUST go through Oracle VM P2P.
+      // Jupiter only supports same-chain (Solana→Solana) swaps.
+      const isCrossChainSol = fromChain.toLowerCase() !== toChain.toLowerCase();
+      if (isCrossChainSol) {
+        console.log(`[Agent Swap] Cross-chain swap (${fromChain}→${toChain}) — Oracle VM required, no Jupiter fallback`);
+        return {
+          success: false,
+          demo: false,
+          txHash: null,
+          outAmount: oracleOutAmount,
+          route: "IntercomSwap P2P (cross-chain)",
+          agentAddress,
+          solscanUrl: null,
+          chain: "solana" as const,
+          message:
+            `Cross-chain swap ${fromToken} (${fromChain}) → ${toToken} (${toChain}) requires IntercomSwap P2P. ` +
+            `The Oracle VM was unreachable or returned no match. Please try again in a moment — ` +
+            `the P2P network may need more peers for this pair.`,
+        };
+      }
+
       console.log(`[Agent Swap] Step 3: Falling back to direct Jupiter signing (Oracle VM unavailable)`);
 
       const fromAsset = getAsset(fromToken.toUpperCase(), "solana");

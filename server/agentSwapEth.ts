@@ -251,7 +251,29 @@ export async function executeEthAgentSwap(params: {
     }
   }
 
-  // ── Step 3: Direct 1inch fallback ────────────────────────────────────────────
+  // ── Step 3: Direct 1inch fallback (same-chain only) ──────────────────────────
+  // Cross-chain swaps (e.g., ETH→SOL, ETH→BTC) MUST go through Oracle VM P2P.
+  // 1inch only supports same-chain (Ethereum→Ethereum) swaps.
+  const isCrossChain = fromChain.toLowerCase() !== toChain.toLowerCase();
+  if (isCrossChain) {
+    console.log(`[ETH Agent Swap] Cross-chain swap (${fromChain}→${toChain}) — Oracle VM required, no 1inch fallback`);
+    return {
+      success: false,
+      demo: false,
+      txHash: null,
+      outAmount: oracleOutAmount,
+      route: "IntercomSwap P2P (cross-chain)",
+      agentAddress,
+      explorerUrl: null,
+      feeBps: P2P_FEE_BPS,
+      feeAmountOut: 0,
+      message:
+        `Cross-chain swap ${fromToken} (${fromChain}) → ${toToken} (${toChain}) requires IntercomSwap P2P. ` +
+        `The Oracle VM was unreachable or returned no match. Please try again in a moment — ` +
+        `the P2P network may need more peers for this pair.`,
+    };
+  }
+
   console.log("[ETH Agent Swap] Falling back to direct 1inch signing");
 
   const fromAsset = resolveEthToken(fromToken);

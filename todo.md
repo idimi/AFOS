@@ -836,3 +836,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Record fee analytics (feeBps, feeAmountOut) for all three chains via recordSwapAnalytic
 - [x] Update ChatPage: noWalletConnected check for all chains, chain-aware TxSuccessCard explorer links
 - [x] Add vitest multiChainAgentSwap.test.ts — 113 tests all passing (ETH, BTC, SOL paths)
+
+## Cross-Chain Agentic Swap (all 3 chains ↔ all 3 chains)
+
+- [x] Audit cross-chain routing: executeAgentSwap, buildQuote, and all 3 chain helpers
+- [x] buildQuote already returns IntercomSwap P2P quotes for cross-chain pairs (0.15% fee)
+- [x] ETH agent: skip 1inch fallback for cross-chain, return "Oracle VM required" message
+- [x] SOL agent: skip Jupiter fallback for cross-chain, return "Oracle VM required" message
+- [x] BTC agent: already cross-chain only (no DEX fallback, always P2P)
+- [x] All 3 chains send fromChain + toChain to Oracle VM RFQ for cross-chain discovery
+- [x] ChatPage: ChainPill shows cross-chain labels, fromChain/toChain passed to executeAgentSwap
+- [x] Add vitest cross-chain tests: 126 tests all passing (cross-chain routing, fee math, chain dispatch)
