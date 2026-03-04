@@ -537,17 +537,25 @@ export default function ChatPage() {
           fromToken: quoteData.fromToken,
           toToken:   quoteData.toToken,
           amount:    quoteData.fromAmount,
+          fromChain: (quoteData.fromChain ?? "solana") as string,
+          toChain:   (quoteData.toChain   ?? "solana") as string,
         });
-        if (agentResult.success && agentResult.txHash) {
-          toast.success("Agent swap executed!", {
-            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken} · Tx: ${agentResult.txHash.slice(0, 12)}…`,
+        const agentSolscanUrl = (agentResult as { solscanUrl?: string | null }).solscanUrl;
+        if (agentResult.success) {
+          toast.success(`Swap executed via ${agentResult.route}!`, {
+            description: `${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}${agentResult.txHash ? ` · Tx: ${agentResult.txHash.slice(0, 12)}…` : ""}`,
+            action: agentSolscanUrl ? { label: "View on Solscan", onClick: () => window.open(agentSolscanUrl, "_blank") } : undefined,
           });
           setMessages(prev => prev.map(m =>
-            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: agentResult.txHash! } : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: agentResult.txHash ?? undefined } : m
           ));
+          const routeLabel = agentResult.route ?? "DEX";
+          const txLine = agentResult.txHash
+            ? `\n\n**Tx:** \`${agentResult.txHash}\`\n\n[View on Solscan](${agentSolscanUrl ?? `https://solscan.io/tx/${agentResult.txHash}`})`
+            : "";
           addMessage({
             role: "assistant",
-            content: `✅ Agent swap complete: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}\n\n**Tx:** \`${agentResult.txHash}\`\n\n[View on Solscan](https://solscan.io/tx/${agentResult.txHash})`,
+            content: `✅ Agent swap complete via **${routeLabel}**: ${quoteData.fromAmount} ${quoteData.fromToken} → ${agentResult.outAmount?.toFixed(4) ?? "?"} ${quoteData.toToken}${txLine}`,
             type: "text",
           });
         } else if (agentResult.demo) {

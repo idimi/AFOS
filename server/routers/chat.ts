@@ -1268,16 +1268,15 @@ export const chatRouter = router({
     }),
 
   /**
-   * executeAgentSwap — Server-side autonomous Solana swap
+   * executeAgentSwap — Server-side autonomous swap
    *
-   * Uses SOL_AGENT_KEY to sign and broadcast a Jupiter swap transaction
-   * without requiring a user wallet. This is the core of the first agentic swap.
-   *
-   * Flow:
-   *   1. Fetch Jupiter quote for fromToken → toToken
-   *   2. Build the swap transaction (Jupiter /swap endpoint)
-   *   3. Deserialize, sign with SOL_AGENT_KEY, and broadcast to Solana RPC
-   *   4. Return { txHash, route, outAmount } on success
+   * Routing priority (P2P first, DEX fallback):
+   *   1. Submit RFQ to IntercomSwap Oracle VM → get rfqId + route
+   *   2. Call /api/swap/execute on Oracle VM with rfqId + agentAddress
+   *      a. If Oracle VM returns route=p2p  → P2P HTLC coordinated by Oracle VM
+   *      b. If Oracle VM returns route=dex  → Oracle VM executed via Jupiter/aggregator
+   *      c. If Oracle VM unavailable        → Direct Jupiter sign+broadcast (SOL_AGENT_KEY)
+   *   3. Return { txHash, route, outAmount, solscanUrl } on success
    *
    * Demo mode (no SOL_AGENT_KEY): returns a simulated response with instructions.
    */
@@ -1287,12 +1286,15 @@ export const chatRouter = router({
         fromToken: z.string().default("SOL"),
         toToken:   z.string().default("USDT"),
         amount:    z.number().positive(),
+        fromChain: z.string().default("solana"),
+        toChain:   z.string().default("solana"),
         /** Solana RPC URL — defaults to mainnet-beta */
         rpcUrl:    z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromToken, toToken, amount, rpcUrl } = input;
+      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl } = input;
+      const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
 
       const agentKeyRaw = process.env.SOL_AGENT_KEY;
 
@@ -1303,8 +1305,9 @@ export const chatRouter = router({
           demo: true,
           txHash: null,
           outAmount: null,
-          route: "Jupiter DEX (demo)",
+          route: "Demo (no SOL_AGENT_KEY)",
           agentAddress: null,
+          solscanUrl: null,
           message:
             `Agent swap demo mode: SOL_AGENT_KEY not configured. ` +
             `To execute a real swap, add SOL_AGENT_KEY to project secrets. ` +
@@ -1324,8 +1327,9 @@ export const chatRouter = router({
           demo: false,
           txHash: null,
           outAmount: null,
-          route: "Jupiter DEX",
+          route: "Error",
           agentAddress: null,
+          solscanUrl: null,
           message: "SOL_AGENT_KEY is invalid — must be a base58-encoded 64-byte Solana private key.",
         };
       }
@@ -1334,7 +1338,116 @@ export const chatRouter = router({
       const solRpcUrl = rpcUrl ?? process.env.SOL_RPC_URL ?? "https://api.mainnet-beta.solana.com";
       const connection = new Connection(solRpcUrl, "confirmed");
 
-      // ── Resolve assets ─────────────────────────────────────────────────────
+      // ── Step 1: Submit RFQ to Oracle VM (P2P discovery) ───────────────────
+      console.log(`[Agent Swap] Step 1: Submitting RFQ to Oracle VM — ${amount} ${fromToken} → ${toToken}`);
+      let rfqId: string | null = null;
+      let oracleRoute: string | null = null;
+      let oracleOutAmount: number | null = null;
+
+      try {
+        const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fromToken: fromToken.toUpperCase(),
+            toToken:   toToken.toUpperCase(),
+            amount,
+            fromChain,
+            toChain,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (rfqRes.ok) {
+          const rfqData = await rfqRes.json() as {
+            success?: boolean;
+            result?: {
+              rfqId?: string;
+              route?: string;
+              outAmount?: number;
+              p2pQuotes?: number;
+              dexRoute?: string;
+            };
+          };
+          if (rfqData?.success && rfqData?.result?.rfqId) {
+            rfqId          = rfqData.result.rfqId;
+            oracleRoute    = rfqData.result.route ?? "dex";
+            oracleOutAmount = rfqData.result.outAmount ?? null;
+            const p2pCount = rfqData.result.p2pQuotes ?? 0;
+            console.log(`[Agent Swap] RFQ ${rfqId} — route=${oracleRoute}, p2pQuotes=${p2pCount}, outAmount=${oracleOutAmount}`);
+          }
+        }
+      } catch (err) {
+        console.warn("[Agent Swap] Oracle VM RFQ failed (will fall back to direct Jupiter):", err);
+      }
+
+      // ── Step 2: Execute via Oracle VM (P2P or DEX) ────────────────────────
+      if (rfqId) {
+        console.log(`[Agent Swap] Step 2: Executing via Oracle VM — rfqId=${rfqId}, route=${oracleRoute}`);
+        try {
+          const execRes = await fetch(`${ORACLE_API}/api/swap/execute`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rfqId, userAddress: agentAddress }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (execRes.ok) {
+            const execData = await execRes.json() as {
+              success?: boolean;
+              swap?: {
+                rfqId?: string;
+                route?: string;
+                outAmount?: number;
+                txHash?: string;
+                status?: string;
+                dexRoute?: string;
+              };
+              error?: string;
+            };
+            if (execData?.success && execData?.swap) {
+              const swap = execData.swap;
+              const finalRoute = swap.route === "p2p"
+                ? "IntercomSwap P2P"
+                : `Jupiter DEX (${swap.dexRoute ?? "aggregator"})`;
+              const finalOutAmount = swap.outAmount ?? oracleOutAmount ?? 0;
+              const txHash = swap.txHash ?? null;
+              const solscanUrl = txHash ? `https://solscan.io/tx/${txHash}` : null;
+
+              // Record analytics
+              void recordSwapAnalytic({
+                fromChain: fromChain as "solana" | "ethereum" | "bitcoin",
+                toChain:   toChain   as "solana" | "ethereum" | "bitcoin",
+                fromToken: fromToken.toUpperCase(),
+                toToken:   toToken.toUpperCase(),
+                amount:    String(amount),
+                route:     finalRoute,
+                status:    "completed",
+              }).catch(() => {/* non-fatal */});
+
+              console.log(`[Agent Swap] ✅ Oracle VM executed: ${amount} ${fromToken} → ${finalOutAmount} ${toToken} | route=${finalRoute}${txHash ? ` | tx=${txHash}` : ""}`);
+
+              return {
+                success: true,
+                demo: false,
+                txHash,
+                outAmount: finalOutAmount,
+                route: finalRoute,
+                agentAddress,
+                solscanUrl,
+                message: txHash
+                  ? `Swap executed via ${finalRoute}: ${amount} ${fromToken} → ${finalOutAmount.toFixed(4)} ${toToken}. Tx: ${txHash}`
+                  : `Swap executed via ${finalRoute}: ${amount} ${fromToken} → ${finalOutAmount.toFixed(4)} ${toToken}. Status: ${swap.status ?? "completed"}.`,
+              };
+            }
+            console.warn(`[Agent Swap] Oracle VM execute returned error: ${execData?.error ?? "unknown"}`);
+          }
+        } catch (err) {
+          console.warn("[Agent Swap] Oracle VM execute failed (will fall back to direct Jupiter):", err);
+        }
+      }
+
+      // ── Step 3: Direct Jupiter fallback (Oracle VM unavailable/failed) ────
+      console.log(`[Agent Swap] Step 3: Falling back to direct Jupiter signing (Oracle VM unavailable)`);
+
       const fromAsset = getAsset(fromToken.toUpperCase(), "solana");
       const toAsset   = getAsset(toToken.toUpperCase(),   "solana");
       if (!fromAsset || !toAsset) {
@@ -1345,111 +1458,101 @@ export const chatRouter = router({
           outAmount: null,
           route: "Jupiter DEX",
           agentAddress,
-          message: `Unsupported token pair: ${fromToken} → ${toToken}. Supported Solana tokens: SOL, USDT, USDC.`,
+          solscanUrl: null,
+          message: `Unsupported token pair for direct Jupiter: ${fromToken} → ${toToken}. Supported: SOL, USDT, USDC.`,
         };
       }
 
-      // ── Fetch Jupiter quote ────────────────────────────────────────────────
       const amountRaw = Math.floor(amount * Math.pow(10, fromAsset.decimals));
-      const quote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
-      if (!quote) {
+      const jupQuote = await getJupiterQuote(fromAsset, toAsset, amountRaw);
+      if (!jupQuote) {
         return {
           success: false,
           demo: false,
           txHash: null,
-          outAmount: null,
+          outAmount: oracleOutAmount,
           route: "Jupiter DEX",
           agentAddress,
+          solscanUrl: null,
           message: "Failed to fetch Jupiter quote. Check token addresses and try again.",
         };
       }
 
-      const outAmountRaw = Number((quote as Record<string, unknown>).outAmount ?? 0);
-      const outAmount = outAmountRaw / Math.pow(10, toAsset.decimals);
+      const jupOutAmountRaw = Number((jupQuote as Record<string, unknown>).outAmount ?? 0);
+      const jupOutAmount = jupOutAmountRaw / Math.pow(10, toAsset.decimals);
 
-      // ── Build swap transaction ─────────────────────────────────────────────
-      const swapResult = await getJupiterSwapTx(quote, agentAddress);
+      const swapResult = await getJupiterSwapTx(jupQuote, agentAddress);
       if (!swapResult?.swapTransaction) {
         return {
           success: false,
           demo: false,
           txHash: null,
-          outAmount,
+          outAmount: jupOutAmount,
           route: "Jupiter DEX",
           agentAddress,
-          message: "Failed to build Jupiter swap transaction. The agent wallet may have insufficient SOL for fees.",
+          solscanUrl: null,
+          message: "Failed to build Jupiter swap transaction. The agent wallet may have insufficient SOL for fees (need ≥0.01 SOL).",
         };
       }
 
-      // ── Sign and broadcast ─────────────────────────────────────────────────
       try {
         const txBuffer = Buffer.from(swapResult.swapTransaction, "base64");
         const tx = VersionedTransaction.deserialize(txBuffer);
-
-        // Get fresh blockhash to avoid expiry
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
         tx.message.recentBlockhash = blockhash;
-
-        // Sign with agent keypair
         tx.sign([agentKeypair]);
-
-        // Broadcast
         const rawTx = tx.serialize();
         const txHash = await connection.sendRawTransaction(rawTx, {
           skipPreflight: false,
           preflightCommitment: "confirmed",
         });
-
-        // Wait for confirmation (up to 30s)
         const confirmation = await connection.confirmTransaction(
           { signature: txHash, blockhash, lastValidBlockHeight },
           "confirmed"
         );
-
         if (confirmation.value.err) {
           return {
             success: false,
             demo: false,
             txHash,
-            outAmount,
+            outAmount: jupOutAmount,
             route: "Jupiter DEX",
             agentAddress,
+            solscanUrl: `https://solscan.io/tx/${txHash}`,
             message: `Transaction submitted but failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
           };
         }
-
-        // Record to analytics
         void recordSwapAnalytic({
           fromChain: "solana",
           toChain:   "solana",
           fromToken: fromToken.toUpperCase(),
           toToken:   toToken.toUpperCase(),
           amount:    String(amount),
-          route:     "Jupiter DEX (agent)",
+          route:     "Jupiter DEX (agent direct)",
           status:    "completed",
         }).catch(() => {/* non-fatal */});
-
-        console.log(`[Agent Swap] ✅ ${amount} ${fromToken} → ${outAmount.toFixed(4)} ${toToken} | Tx: ${txHash}`);
-
+        console.log(`[Agent Swap] ✅ Direct Jupiter: ${amount} ${fromToken} → ${jupOutAmount.toFixed(4)} ${toToken} | Tx: ${txHash}`);
         return {
           success: true,
           demo: false,
           txHash,
-          outAmount,
-          route: "Jupiter DEX (agent)",
+          outAmount: jupOutAmount,
+          route: "Jupiter DEX (direct)",
           agentAddress,
-          message: `Agent swap executed: ${amount} ${fromToken} → ${outAmount.toFixed(4)} ${toToken}. Tx: ${txHash}`,
+          solscanUrl: `https://solscan.io/tx/${txHash}`,
+          message: `Swap executed via Jupiter DEX: ${amount} ${fromToken} → ${jupOutAmount.toFixed(4)} ${toToken}. Tx: ${txHash}`,
         };
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error(`[Agent Swap] ❌ Broadcast failed: ${errMsg}`);
+        console.error(`[Agent Swap] ❌ Direct Jupiter broadcast failed: ${errMsg}`);
         return {
           success: false,
           demo: false,
           txHash: null,
-          outAmount,
+          outAmount: jupOutAmount,
           route: "Jupiter DEX",
           agentAddress,
+          solscanUrl: null,
           message: `Swap transaction failed: ${errMsg.slice(0, 200)}`,
         };
       }

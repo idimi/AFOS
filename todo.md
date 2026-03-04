@@ -793,3 +793,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add Fund Agent Wallet UI to HTLC Wallet panel (Fund Wallet button opens QR modal with SOL agent address)
 - [x] Verified SOL_AGENT_KEY is SET — agent wallet: DYsF9Dq3LnPpinsSUfRkRwEkvyQdFBGmJcYUpifJhC68
 - [ ] BLOCKER: Fund agent wallet with 0.01+ SOL before first swap (currently 0 SOL)
+
+## P2P Primary + Jupiter Fallback Fix
+
+- [x] Fix executeAgentSwap: add IntercomSwap P2P check BEFORE Jupiter (P2P is primary, Jupiter is fallback)
+- [x] Diagnose Oracle VM connectivity from server (141.253.123.101:4000 is ONLINE, 10 pending RFQs confirmed)
+- [x] Add ORACLE_API_URL env var so Oracle VM URL is configurable (not hardcoded, falls back to IP)
+- [x] buildSwapTx (user wallet path) already routes P2P first via submitIntercomSwapRfq — confirmed correct
+- [x] Add clear logging: Step 1 (RFQ), Step 2 (Oracle VM execute), Step 3 (Jupiter direct fallback)
+- [x] Pass fromChain/toChain to executeAgentSwap from ChatPage.tsx
+- [x] Add solscanUrl to success response and show "View on Solscan" action in toast
+- [x] Show route label in success message ("IntercomSwap P2P" vs "Jupiter DEX (Whirlpool → AlphaQ)")
