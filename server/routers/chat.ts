@@ -833,6 +833,11 @@ export const chatRouter = router({
         };
       }
 
+      // Near-limit soft warning (90–99% of limit) — shown as banner inside QuoteCard
+      const nearLimitWarning = (estimatedUsd >= userPrefs.maxTxAmountUsd * 0.9 && estimatedUsd <= userPrefs.maxTxAmountUsd)
+        ? `This swap (~$${estimatedUsd.toFixed(2)}) is close to your $${userPrefs.maxTxAmountUsd} transaction limit.`
+        : undefined;
+
       const quoteResult = await buildQuote(fromAsset, toAsset, swapAmount, prices, slippageBps);
 
       if ("error" in quoteResult) {
@@ -842,6 +847,7 @@ export const chatRouter = router({
       return {
         type: "quote_card" as const,
         content: `Here's your swap quote for ${swapAmount} ${fromToken} → ${toToken}:`,
+        limitWarning: nearLimitWarning,
         quoteData: {
           fromToken:      from.symbol,
           fromChain:      from.chain,

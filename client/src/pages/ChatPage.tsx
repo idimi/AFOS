@@ -9,14 +9,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Wallet, ArrowLeftRight, CheckCircle2,
   Loader2, ExternalLink, AlertTriangle, Zap, RefreshCw,
-  TrendingUp, X, ChevronDown, Sparkles
+  TrendingUp, X, ChevronDown, Sparkles, ShieldAlert, Settings
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/contexts/WalletContext";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
+import { useAuth } from "@/_core/hooks/useAuth";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { Link } from "wouter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,10 +49,14 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error";
+  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
+  /** Soft warning: amount is near or over the user's maxTxAmountUsd */
+  limitWarning?: string;
+  /** For limit_exceeded messages: the blocked amount and the user's limit */
+  limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
 }
 
 // ─── Suggestion chips ─────────────────────────────────────────────────────────
@@ -174,19 +180,21 @@ function ChainPill({ fromChain, toChain }: { fromChain?: string; toChain?: strin
   );
 }
 
-// ─── Quote Card ───────────────────────────────────────────────────────────────
+// // ─── Quote Card ──────────────────────────────────────────────────────────
 function QuoteCard({
   data,
   onConfirm,
   onCancel,
   isExecuting,
   onRequestConnect,
+  limitWarning,
 }: {
   data: QuoteData;
   onConfirm: () => void;
   onCancel: () => void;
   isExecuting: boolean;
   onRequestConnect: () => void;
+  limitWarning?: string;
 }) {
   const { connected } = useWallet();
 
@@ -272,6 +280,18 @@ function QuoteCard({
             <span className="text-amber-300">High price impact. Consider splitting into smaller swaps.</span>
           </div>
         )}
+
+        {/* Near-limit warning banner */}
+        {limitWarning && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.25)" }}>
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="text-amber-300">{limitWarning}</span>
+              <Link href="/settings" className="ml-2 text-amber-400 underline hover:text-amber-300 transition-colors">Adjust limit</Link>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
@@ -309,6 +329,35 @@ function QuoteCard({
           </button>
         )}
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Limit Exceeded Card ────────────────────────────────────────────────────
+function LimitExceededCard({ blockedAmountUsd, limitUsd }: { blockedAmountUsd: number; limitUsd: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      className="rounded-2xl p-4 mt-2"
+      style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)" }}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
+        <span className="text-sm font-bold text-red-400">Transaction Limit Exceeded</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        This swap (~<strong className="text-foreground">${blockedAmountUsd.toFixed(2)}</strong>) exceeds your
+        configured maximum of <strong className="text-foreground">${limitUsd}</strong>.
+        Reduce the amount or raise your limit in Settings.
+      </p>
+      <Link
+        href="/settings"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+      >
+        <Settings className="w-3.5 h-3.5" />
+        Open Settings
+      </Link>
     </motion.div>
   );
 }
@@ -431,6 +480,17 @@ function MessageBubble({
               onCancel={() => onCancelSwap(msg.id)}
               isExecuting={executingId === msg.id}
               onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken, msg.quoteData!.fromChain)}
+              limitWarning={msg.limitWarning}
+            />
+          </div>
+        )}
+
+        {/* Limit exceeded card */}
+        {msg.type === "limit_exceeded" && msg.limitExceededData && (
+          <div className="w-full mt-1">
+            <LimitExceededCard
+              blockedAmountUsd={msg.limitExceededData.blockedAmountUsd}
+              limitUsd={msg.limitExceededData.limitUsd}
             />
           </div>
         )}
@@ -460,6 +520,8 @@ function MessageBubble({
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
   const { bitcoin, ethereum } = useMultiChainWallet();
+  const { user } = useAuth();
+  const openId = user?.openId;
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -540,6 +602,7 @@ export default function ChatPage() {
         history,
         walletAddress: publicKey?.toString(),
         walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
+        openId,
       });
 
       if (result.type === "quote_card" && result.quoteData) {
@@ -548,6 +611,7 @@ export default function ChatPage() {
           content: result.content,
           type: "quote_card",
           quoteData: result.quoteData as QuoteData,
+          limitWarning: (result as { limitWarning?: string }).limitWarning,
         });
       } else {
         addMessage({
@@ -658,6 +722,7 @@ export default function ChatPage() {
           toChain:     (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "ethereum",
           amount:      quoteData.fromAmount,
           slippage:    1,
+          openId,
         });
         toast.dismiss("eth-swap");
 
@@ -742,6 +807,7 @@ export default function ChatPage() {
         fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
         toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "solana",
         amount:        quoteData.fromAmount,
+        openId,
       });
 
       // P2P route matched: HTLC coordinated by LightPeerContext
@@ -798,6 +864,18 @@ export default function ChatPage() {
       if (msg.includes("User rejected") || msg.includes("rejected")) {
         toast.info("Swap cancelled");
         addMessage({ role: "assistant", content: "Swap cancelled. Let me know if you'd like to try again.", type: "text" });
+      } else if (msg.toLowerCase().includes("maximum transaction limit") || msg.toLowerCase().includes("exceeds your")) {
+        // Extract the blocked amount and limit from the error message if possible
+        const amountMatch = msg.match(/\$(\d+(?:\.\d+)?)/g);
+        const blockedAmountUsd = amountMatch ? parseFloat(amountMatch[0].replace("$", "")) : 0;
+        const limitUsd = amountMatch && amountMatch.length > 1 ? parseFloat(amountMatch[1].replace("$", "")) : 500;
+        toast.error("Transaction limit exceeded", { description: "Raise your limit in Settings." });
+        addMessage({
+          role: "assistant",
+          content: "This swap exceeds your configured transaction limit.",
+          type: "limit_exceeded",
+          limitExceededData: { blockedAmountUsd, limitUsd },
+        });
       } else {
         toast.error("Swap failed", { description: msg.slice(0, 100) });
         addMessage({ role: "assistant", content: `Swap failed: ${msg.slice(0, 150)}. Please try again.`, type: "error" });

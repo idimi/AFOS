@@ -25,6 +25,7 @@ import {
   ToggleRight,
   AlertTriangle,
   Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -273,6 +274,25 @@ export default function AgentSettings() {
 
   const effectiveSlippage = customSlippage || slippage;
 
+  const handleReset = () => {
+    setMaxTxAmount("500");
+    setAutoConfirm(false);
+    setSlippage("0.5");
+    setCustomSlippage("");
+    setPreferredRoute("best");
+    setTheme("dark");
+    // Also apply the theme to next-themes via ThemeSelector's onChange
+    // ThemeSelector handles next-themes internally; we trigger it via the state change
+    saveMutation.mutate({
+      maxTxAmountUsd: 500,
+      autoConfirm: false,
+      slippagePct: "0.5",
+      preferredRoute: "best",
+      theme: "dark",
+    });
+    toast.success("Settings reset to defaults");
+  };
+
   const handleSave = () => {
     const parsedMax = parseInt(maxTxAmount, 10);
     if (isNaN(parsedMax) || parsedMax < 1) {
@@ -508,8 +528,17 @@ export default function AgentSettings() {
 
       </div>
 
-      {/* Save button */}
-      <div className="mt-6 flex justify-end">
+      {/* Save / Reset buttons */}
+      <div className="mt-6 flex items-center justify-between gap-3">
+        <button
+          onClick={handleReset}
+          disabled={saveMutation.isPending}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-60 text-muted-foreground hover:text-foreground"
+          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          Reset to defaults
+        </button>
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending}

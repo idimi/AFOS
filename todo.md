@@ -935,3 +935,15 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Apply preferredRoute in executeEthSwap: skipP2P for "oneinch"
 - [x] 7 new vitest tests in settingsEnforcement.test.ts — all 147 tests passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## Chat UX — Limit Error Card + Quote Warning + Settings Reset
+
+- [x] Add inline LimitExceededCard component in ChatPage — shown when executeAgentSwap/executeEthSwap/buildSwapTx returns BAD_REQUEST "maximum transaction limit"
+- [x] LimitExceededCard shows: blocked amount (USD), user's current limit, link to Settings to raise it, animated ShieldAlert icon
+- [x] Wire LimitExceededCard: catch BAD_REQUEST in handleConfirmSwap, push limit_exceeded type message into thread
+- [x] Add limitWarning field to sendMessage quote_card response (server-side: checks 90% threshold)
+- [x] Surface limitWarning as yellow banner in QuoteCard (client-side: shown before Confirm button)
+- [x] Add "Reset to defaults" button to AgentSettings.tsx — calls settings.save with defaults, shows toast
+- [x] Pass openId from useAuth to sendMessage, buildSwapTx, executeEthSwap mutation calls
+- [x] 147 tests passing, 0 TypeScript errors
+- [x] Save checkpoint
