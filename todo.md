@@ -893,3 +893,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] 129 tests all passing, 0 TypeScript errors
 - [x] SOL_HTLC_KEY, ETH_HTLC_KEY, BTC_HTLC_WIF secrets added to project
 - [x] Save checkpoint
+
+## Settings Page Audit — Separate User Settings from Admin/Operator Config
+
+### Audit findings
+- ADMIN-ONLY → move to Admin Panel: AFOS Agent (LLM Model, System Prompt), IntercomSwap Node (Rendezvous Channel, Min/Max Swap, SC-Bridge Port, Peer Mode), Bitcoin Node (Host:Port, RPC Password, TLS Cert Path), Solana Wallet (RPC URL, Keypair Path, Escrow Program ID), Worker/Autopost (Autonomous Trading toggle, tick interval, HTLC refund windows), MoonPay Phase 2 stub
+- USER-FACING → keep in Settings: Max Transaction Amount (USD), Auto-confirm swaps toggle, theme toggle (dark/light), slippage tolerance, preferred swap route (IntercomSwap / Jupiter / 1inch)
+
+### Tasks
+- [x] Rewrite AgentSettings.tsx as clean user-facing Settings page (max tx amount, auto-confirm, theme, slippage, preferred route)
+- [x] Add "Operator Config" tab to AdminPanel.tsx containing all moved cards (AFOS Agent, IntercomSwap Node, Bitcoin Node, Solana Wallet, Worker/Autopost, MoonPay)
+- [x] Settings page has "Admin Panel" link card pointing to /admin for operator config
+- [x] 129 tests passing, 0 TypeScript errors
+- [x] Save checkpoint

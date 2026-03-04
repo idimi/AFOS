@@ -1,280 +1,399 @@
 /**
- * AFOS — Agent Settings Page
- * Configure OpenClaw agent, IntercomSwap node, Bitcoin, Solana wallet, and future MoonPay integration
+ * AFOS — User Settings Page
+ *
+ * Contains only settings that are meaningful to a regular user:
+ *   - Trade preferences (max amount, auto-confirm, slippage)
+ *   - Preferred swap route
+ *   - UI theme
+ *
+ * Operator/infrastructure config (LLM model, IntercomSwap node, Bitcoin node,
+ * Solana RPC, Worker/Autopost, MoonPay) lives in Admin Panel → Operator Config.
  */
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bot, Zap, Network, Wallet, Moon, Save, Eye, EyeOff, CheckCircle2, Clock, ToggleLeft, ToggleRight, Repeat } from "lucide-react";
+import {
+  Settings2,
+  ShieldCheck,
+  Route,
+  Sun,
+  Moon,
+  Monitor,
+  Save,
+  ChevronRight,
+  ToggleLeft,
+  ToggleRight,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
+import { useTheme } from "next-themes";
 
-interface Section {
-  id: string;
+// ─── Slippage options ──────────────────────────────────────────────────────────
+const SLIPPAGE_PRESETS = ["0.1", "0.5", "1.0", "2.0"];
+
+// ─── Route options ─────────────────────────────────────────────────────────────
+const ROUTES = [
+  {
+    id: "intercomswap",
+    label: "IntercomSwap P2P",
+    description: "Best rates via peer-to-peer atomic swaps (0.15% fee)",
+    badge: "Recommended",
+    badgeColor: "#10b981",
+  },
+  {
+    id: "jupiter",
+    label: "Jupiter (Solana)",
+    description: "Aggregated DEX liquidity on Solana (0.20% fee)",
+    badge: null,
+    badgeColor: null,
+  },
+  {
+    id: "oneinch",
+    label: "1inch (Ethereum)",
+    description: "Aggregated DEX liquidity on Ethereum (0.20% fee)",
+    badge: null,
+    badgeColor: null,
+  },
+];
+
+// ─── Theme selector ─────────────────────────────────────────────────────────────
+function ThemeSelector() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    { id: "light", label: "Light", icon: Sun },
+    { id: "dark", label: "Dark", icon: Moon },
+    { id: "system", label: "System", icon: Monitor },
+  ];
+  return (
+    <div className="flex gap-2">
+      {options.map(({ id, label, icon: Icon }) => {
+        const active = theme === id;
+        return (
+          <button
+            key={id}
+            onClick={() => setTheme(id)}
+            className="flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all text-xs font-medium"
+            style={{
+              background: active ? "rgba(99,102,241,0.12)" : "var(--muted)",
+              border: active ? "1px solid rgba(99,102,241,0.4)" : "1px solid var(--border)",
+              color: active ? "#818cf8" : "var(--muted-foreground)",
+            }}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Toggle row ─────────────────────────────────────────────────────────────────
+function ToggleRow({
+  label,
+  description,
+  value,
+  onChange,
+  warning,
+}: {
   label: string;
+  description?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  warning?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          )}
+        </div>
+        <button
+          onClick={() => onChange(!value)}
+          className="flex items-center gap-1.5 text-xs font-mono transition-colors shrink-0"
+          style={{ color: value ? "#10b981" : "var(--muted-foreground)" }}
+        >
+          {value ? (
+            <ToggleRight className="w-6 h-6 text-emerald-400" />
+          ) : (
+            <ToggleLeft className="w-6 h-6" />
+          )}
+          <span className="w-7 text-left">{value ? "ON" : "OFF"}</span>
+        </button>
+      </div>
+      {warning && value && (
+        <div className="flex items-start gap-2 p-2.5 rounded-lg"
+          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-300/80">{warning}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Section card ────────────────────────────────────────────────────────────────
+function SectionCard({
+  icon: Icon,
+  title,
+  color,
+  border,
+  bg,
+  children,
+  delay = 0,
+}: {
   icon: React.ElementType;
+  title: string;
   color: string;
   border: string;
   bg: string;
-}
-
-const SECTIONS: Section[] = [
-  { id: "openclaw", label: "AFOS Agent", icon: Bot, color: "text-cyan-400", border: "border-cyan-500/20", bg: "bg-cyan-500/5" },
-  { id: "intercomswap", label: "IntercomSwap Node", icon: Network, color: "text-emerald-400", border: "border-emerald-500/20", bg: "bg-emerald-500/5" },
-  { id: "lnd", label: "Bitcoin (on-chain)", icon: Zap, color: "text-amber-400", border: "border-amber-500/20", bg: "bg-amber-500/5" },
-  { id: "solana", label: "Solana Wallet", icon: Wallet, color: "text-purple-400", border: "border-purple-500/20", bg: "bg-purple-500/5" },
-  { id: "worker", label: "Worker / Autopost", icon: Repeat, color: "text-violet-400", border: "border-violet-500/20", bg: "bg-violet-500/5" },
-  { id: "moonpay", label: "MoonPay (Phase 2)", icon: Moon, color: "text-foreground/70", border: "border-border", bg: "bg-muted" },
-];
-
-function WorkerConfigSection() {
-  const [tradeauto, setTradeauto] = useState(false);
-  const [maxAmount, setMaxAmount] = useState("0.01");
-  const [feeBpsCap, setFeeBpsCap] = useState("50");
-  const [tickInterval, setTickInterval] = useState("3800");
-  const [minRefundHours, setMinRefundHours] = useState("20");
-  const [maxRefundHours, setMaxRefundHours] = useState("40");
-
+  children: React.ReactNode;
+  delay?: number;
+}) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-        <div>
-          <p className="text-xs font-semibold text-foreground">Autonomous Trading (tradeauto)</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Worker auto-accepts matching quotes without manual approval</p>
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="rounded-2xl p-5 space-y-4"
+      style={{ background: bg, border: `1px solid ${border}` }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ background: bg, border: `1px solid ${border}` }}
+        >
+          <Icon className={`w-4 h-4 ${color}`} />
         </div>
-        <button onClick={() => setTradeauto(v => !v)}
-          className="flex items-center gap-1.5 text-xs font-mono transition-colors"
-          style={{ color: tradeauto ? "#10b981" : "var(--muted-foreground)" }}>
-          {tradeauto ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5" />}
-          {tradeauto ? "ON" : "OFF"}
-        </button>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
       </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {[
-          { label: "Max trade amount (BTC)", value: maxAmount, set: setMaxAmount, placeholder: "0.01", mono: true },
-          { label: "Max fee cap (bps)", value: feeBpsCap, set: setFeeBpsCap, placeholder: "50", mono: true },
-          { label: "Tick interval (ms)", value: tickInterval, set: setTickInterval, placeholder: "3800", mono: true },
-          { label: "Min HTLC refund (hours)", value: minRefundHours, set: setMinRefundHours, placeholder: "20", mono: true },
-          { label: "Max HTLC refund (hours)", value: maxRefundHours, set: setMaxRefundHours, placeholder: "40", mono: true },
-        ].map(field => (
-          <div key={field.label}>
-            <label className="block text-xs text-foreground/70 mb-1.5">{field.label}</label>
-            <input
-              value={field.value}
-              onChange={e => field.set(e.target.value)}
-              placeholder={field.placeholder}
-              className={`w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-violet-500/35 transition-colors font-mono`}
-            />
-          </div>
-        ))}
-      </div>
-
-      <div className="p-3 rounded-xl" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }}>
-        <p className="text-[10px] font-mono text-violet-300/70">
-          Worker polls the IntercomSwap rendezvous channel every {tickInterval}ms.
-          When tradeauto is ON, it auto-accepts quotes below {feeBpsCap} bps fee and under {maxAmount} BTC.
-          HTLC refund window: {minRefundHours}–{maxRefundHours}h.
-        </p>
-      </div>
-    </div>
+      {children}
+    </motion.div>
   );
 }
 
-function Field({ label, value, onChange, type = "text", mono = false, placeholder = "", disabled = false }: {
-  label: string; value: string; onChange: (v: string) => void;
-  type?: string; mono?: boolean; placeholder?: string; disabled?: boolean;
-}) {
-  const [show, setShow] = useState(false);
-  const isPassword = type === "password";
-  return (
-    <div>
-      <label className="block text-xs text-foreground/70 mb-1.5">{label}</label>
-      <div className="relative">
-        <input
-          type={isPassword && !show ? "password" : "text"}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          className={`w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-cyan-500/35 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${mono ? "font-mono" : ""}`}
-        />
-        {isPassword && (
-          <button onClick={() => setShow(!show)} className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/70 hover:text-foreground/70 transition-colors">
-            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function Toggle({ label, description, value, onChange, disabled = false }: {
-  label: string; description?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm text-foreground/70">{label}</p>
-        {description && <p className="text-xs text-foreground/70 mt-0.5">{description}</p>}
-      </div>
-      <button
-        onClick={() => !disabled && onChange(!value)}
-        disabled={disabled}
-        className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 disabled:opacity-30 disabled:cursor-not-allowed ${value ? "bg-cyan-500/60" : "bg-muted"}`}
-      >
-        <motion.div
-          animate={{ x: value ? 18 : 2 }}
-          transition={{ duration: 0.15 }}
-          className="absolute top-0.5 w-4 h-4 rounded-full bg-white shadow"
-        />
-      </button>
-    </div>
-  );
-}
-
+// ─── Main component ──────────────────────────────────────────────────────────────
 export default function AgentSettings() {
-  const [settings, setSettings] = useState({
-    // OpenClaw
-    llmModel: "kimi-k2-turbo",
-    systemPrompt: "You are an autonomous financial agent. Execute swaps via IntercomSwap when instructed.",
-    autoConfirm: true,
-    maxTxAmount: "500",
-    // IntercomSwap
-    rendezvousChannel: "0000intercomswapbtcusdt",
-    peerMode: "maker-taker",
-    minSwapUsdt: "10",
-    maxSwapUsdt: "1000",
-    scBridgePort: "49222",
-    // Bitcoin
-    lndHost: "localhost:8332",
-    lndMacaroon: "",
-    lndTlsCert: "",
-    // Solana
-    solanaRpc: "https://api.mainnet-beta.solana.com",
-    solanaKeypairPath: "onchain/solana/keypair.json",
-    escrowProgramId: "4RS6xpspM1V2K7FKSqeSH6VVaZbtzHzhJqacwrz8gJrF",
-    // MoonPay (future)
-    moonpayApiKey: "",
-    moonpayWallet: "",
-  });
-
-  const set = (key: string) => (v: string | boolean) =>
-    setSettings(prev => ({ ...prev, [key]: v }));
+  const [maxTxAmount, setMaxTxAmount] = useState("500");
+  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [slippage, setSlippage] = useState("0.5");
+  const [customSlippage, setCustomSlippage] = useState("");
+  const [preferredRoute, setPreferredRoute] = useState("intercomswap");
 
   const handleSave = () => {
-    toast.success("Settings saved", { description: "Agent configuration updated" });
+    toast.success("Settings saved", {
+      description: "Your trading preferences have been updated.",
+    });
   };
 
+  const effectiveSlippage = customSlippage || slippage;
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto">
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-foreground">Agent Settings</h1>
-        <p className="text-sm text-foreground/70 mt-1">Configure your OpenClaw agent and IntercomSwap node</p>
+        <h1 className="text-xl font-bold text-foreground">Settings</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Your personal trading preferences and UI options.
+        </p>
       </div>
 
       <div className="space-y-4">
-        {SECTIONS.map((section, si) => {
-          const Icon = section.icon;
-          const isPlanned = section.id === "moonpay";
-          return (
-            <motion.div key={section.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: si * 0.07 }}
-              className={`rounded-2xl border ${section.border} ${section.bg} p-5`}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${section.bg} border ${section.border}`}>
-                  <Icon className={`w-4 h-4 ${section.color}`} />
-                </div>
-                <p className={`text-sm font-semibold ${isPlanned ? "text-foreground/70" : "text-foreground"}`}>{section.label}</p>
-                {isPlanned && (
-                  <div className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
-                    <Clock className="w-3 h-3 text-amber-400" />
-                    <span className="text-xs text-amber-400 font-mono">Phase 2</span>
-                  </div>
-                )}
+
+        {/* ── Trade Preferences ─────────────────────────────────────────────── */}
+        <SectionCard
+          icon={Settings2}
+          title="Trade Preferences"
+          color="text-cyan-400"
+          border="rgba(6,182,212,0.2)"
+          bg="rgba(6,182,212,0.04)"
+          delay={0}
+        >
+          {/* Max transaction amount */}
+          <div>
+            <label className="block text-xs font-medium text-foreground/70 mb-1.5">
+              Max Transaction Amount (USD)
+            </label>
+            <div className="relative">
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-mono">$</span>
+              <input
+                type="number"
+                value={maxTxAmount}
+                onChange={e => setMaxTxAmount(e.target.value)}
+                placeholder="500"
+                className="w-full bg-muted border border-border rounded-xl pl-8 pr-4 py-2.5 text-sm text-foreground font-mono focus:outline-none focus:border-cyan-500/40 transition-colors"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              The agent will not execute any single swap above this amount.
+            </p>
+          </div>
+
+          {/* Slippage tolerance */}
+          <div>
+            <label className="block text-xs font-medium text-foreground/70 mb-1.5">
+              Slippage Tolerance
+            </label>
+            <div className="flex gap-2 mb-2">
+              {SLIPPAGE_PRESETS.map(p => (
+                <button
+                  key={p}
+                  onClick={() => { setSlippage(p); setCustomSlippage(""); }}
+                  className="flex-1 py-2 rounded-xl text-xs font-mono border transition-all"
+                  style={{
+                    background: slippage === p && !customSlippage ? "rgba(6,182,212,0.12)" : "var(--muted)",
+                    border: slippage === p && !customSlippage ? "1px solid rgba(6,182,212,0.4)" : "1px solid var(--border)",
+                    color: slippage === p && !customSlippage ? "#22d3ee" : "var(--muted-foreground)",
+                  }}
+                >
+                  {p}%
+                </button>
+              ))}
+            </div>
+            <div className="relative">
+              <input
+                type="number"
+                value={customSlippage}
+                onChange={e => setCustomSlippage(e.target.value)}
+                placeholder="Custom %"
+                className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground font-mono focus:outline-none focus:border-cyan-500/40 transition-colors"
+              />
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+            </div>
+            {parseFloat(effectiveSlippage) > 1 && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <AlertTriangle className="w-3 h-3 text-amber-400" />
+                <p className="text-[11px] text-amber-300/80">High slippage — you may receive a worse rate.</p>
               </div>
+            )}
+          </div>
+        </SectionCard>
 
-              {section.id === "openclaw" && (
-                <div className="space-y-4">
-                  <Field label="LLM Model" value={settings.llmModel} onChange={set("llmModel")} placeholder="kimi-k2-turbo" />
-                  <div>
-                    <label className="block text-xs text-foreground/70 mb-1.5">System Prompt</label>
-                    <textarea value={settings.systemPrompt} onChange={e => set("systemPrompt")(e.target.value)} rows={3}
-                      className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground placeholder:text-foreground/70 focus:outline-none focus:border-cyan-500/35 resize-none" />
-                  </div>
-                  <Field label="Max Transaction Amount (USD)" value={settings.maxTxAmount} onChange={set("maxTxAmount")} placeholder="500" />
-                  <Toggle label="Auto-confirm swaps" description="Agent executes without asking for confirmation" value={settings.autoConfirm} onChange={set("autoConfirm") as (v: boolean) => void} />
-                </div>
-              )}
+        {/* ── Swap Execution ────────────────────────────────────────────────── */}
+        <SectionCard
+          icon={ShieldCheck}
+          title="Swap Execution"
+          color="text-emerald-400"
+          border="rgba(16,185,129,0.2)"
+          bg="rgba(16,185,129,0.04)"
+          delay={0.07}
+        >
+          <ToggleRow
+            label="Auto-confirm swaps"
+            description="Agent executes swaps without asking for your confirmation each time."
+            value={autoConfirm}
+            onChange={setAutoConfirm}
+            warning="Auto-confirm is ON. The agent will execute swaps up to your max transaction limit without prompting you."
+          />
+        </SectionCard>
 
-              {section.id === "intercomswap" && (
-                <div className="space-y-4">
-                  <Field label="Rendezvous Channel" value={settings.rendezvousChannel} onChange={set("rendezvousChannel")} mono placeholder="0000intercomswapbtcusdt" />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Min Swap (USDT)" value={settings.minSwapUsdt} onChange={set("minSwapUsdt")} placeholder="10" />
-                    <Field label="Max Swap (USDT)" value={settings.maxSwapUsdt} onChange={set("maxSwapUsdt")} placeholder="1000" />
+        {/* ── Preferred Route ───────────────────────────────────────────────── */}
+        <SectionCard
+          icon={Route}
+          title="Preferred Swap Route"
+          color="text-violet-400"
+          border="rgba(139,92,246,0.2)"
+          bg="rgba(139,92,246,0.04)"
+          delay={0.14}
+        >
+          <div className="space-y-2">
+            {ROUTES.map(route => {
+              const active = preferredRoute === route.id;
+              return (
+                <button
+                  key={route.id}
+                  onClick={() => setPreferredRoute(route.id)}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all"
+                  style={{
+                    background: active ? "rgba(139,92,246,0.1)" : "var(--muted)",
+                    border: active ? "1px solid rgba(139,92,246,0.35)" : "1px solid var(--border)",
+                  }}
+                >
+                  <div
+                    className="w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center"
+                    style={{ borderColor: active ? "#a78bfa" : "var(--muted-foreground)" }}
+                  >
+                    {active && <div className="w-2 h-2 rounded-full bg-violet-400" />}
                   </div>
-                  <Field label="SC-Bridge Port" value={settings.scBridgePort} onChange={set("scBridgePort")} mono placeholder="49222" />
-                  <div>
-                    <label className="block text-xs text-foreground/70 mb-1.5">Peer Mode</label>
-                    <div className="flex gap-2">
-                      {["maker", "taker", "maker-taker"].map(mode => (
-                        <button key={mode} onClick={() => set("peerMode")(mode)}
-                          className={`flex-1 py-2 rounded-xl text-xs font-mono border transition-all ${
-                            settings.peerMode === mode
-                              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                              : "border-border bg-muted text-foreground/70 hover:border-border"
-                          }`}>
-                          {mode}
-                        </button>
-                      ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">{route.label}</span>
+                      {route.badge && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${route.badgeColor}18`, color: route.badgeColor!, border: `1px solid ${route.badgeColor}30` }}
+                        >
+                          {route.badge}
+                        </span>
+                      )}
                     </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{route.description}</p>
                   </div>
-                </div>
-              )}
+                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            The agent will try your preferred route first and fall back automatically if liquidity is unavailable.
+          </p>
+        </SectionCard>
 
-              {section.id === "lnd" && (
-                <div className="space-y-4">
-                  <Field label="Bitcoin Node Host:Port" value={settings.lndHost} onChange={set("lndHost")} mono placeholder="localhost:8332" />
-                  <Field label="RPC Password" value={settings.lndMacaroon} onChange={set("lndMacaroon")} type="password" mono placeholder="rpcpassword" />
-                  <Field label="TLS Cert Path" value={settings.lndTlsCert} onChange={set("lndTlsCert")} mono placeholder="/root/.lnd/tls.cert" />
-                </div>
-              )}
+        {/* ── Appearance ────────────────────────────────────────────────────── */}
+        <SectionCard
+          icon={Sun}
+          title="Appearance"
+          color="text-amber-400"
+          border="rgba(245,158,11,0.2)"
+          bg="rgba(245,158,11,0.04)"
+          delay={0.21}
+        >
+          <div>
+            <label className="block text-xs font-medium text-foreground/70 mb-2">
+              Theme
+            </label>
+            <ThemeSelector />
+          </div>
+        </SectionCard>
 
-              {section.id === "solana" && (
-                <div className="space-y-4">
-                  <Field label="RPC URL" value={settings.solanaRpc} onChange={set("solanaRpc")} mono placeholder="https://api.mainnet-beta.solana.com" />
-                  <Field label="Keypair Path" value={settings.solanaKeypairPath} onChange={set("solanaKeypairPath")} mono placeholder="onchain/solana/keypair.json" />
-                  <div>
-                    <label className="block text-xs text-foreground/70 mb-1.5">Escrow Program ID</label>
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-muted border border-border">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span className="text-xs font-mono text-foreground/70 truncate">{settings.escrowProgramId}</span>
-                    </div>
-                    <p className="text-[10px] text-foreground/70 mt-1 font-mono">Deployed on Solana mainnet — do not modify</p>
-                  </div>
-                </div>
-              )}
+        {/* ── Admin link ────────────────────────────────────────────────────── */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.28 }}
+          className="rounded-2xl p-4 flex items-center justify-between"
+          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+        >
+          <div>
+            <p className="text-sm font-medium text-foreground">Operator Configuration</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              LLM model, IntercomSwap node, Bitcoin/Solana RPC, Worker settings — admin only.
+            </p>
+          </div>
+          <a
+            href="/admin"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0"
+            style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "#818cf8" }}
+          >
+            Admin Panel
+            <ChevronRight className="w-3.5 h-3.5" />
+          </a>
+        </motion.div>
 
-              {section.id === "worker" && (
-                <WorkerConfigSection />
-              )}
-
-              {section.id === "moonpay" && (
-                <div className="space-y-4 opacity-40 pointer-events-none">
-                  <Field label="API Key" value={settings.moonpayApiKey} onChange={set("moonpayApiKey")} type="password" placeholder="pk_live_…" disabled />
-                  <Field label="Destination Wallet Address" value={settings.moonpayWallet} onChange={set("moonpayWallet")} mono placeholder="bc1q…" disabled />
-                  <p className="text-xs text-foreground/70 font-mono">MoonPay fiat on-ramp will be integrated in Phase 2 to auto-fund the agent wallet before executing swaps.</p>
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
       </div>
 
+      {/* Save button */}
       <div className="mt-6 flex justify-end">
-        <button onClick={handleSave}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-cyan-500/15 border border-cyan-500/25 text-cyan-300 hover:bg-cyan-500/25 transition-all font-semibold text-sm">
+        <button
+          onClick={handleSave}
+          className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all"
+          style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
+        >
           <Save className="w-4 h-4" />
-          Save Configuration
+          Save Settings
         </button>
       </div>
     </div>

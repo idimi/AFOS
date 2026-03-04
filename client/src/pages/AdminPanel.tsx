@@ -4,7 +4,7 @@
  * Design: Dark terminal aesthetic, data-dense, operator-focused
  */
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Eye, EyeOff, Shield, DollarSign, Wallet, Settings,
@@ -12,7 +12,7 @@ import {
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
   ArrowUpRight, ArrowDownRight, Server, Database,
   GitBranch, Layers, Droplets, Route, ToggleLeft, ToggleRight, ChevronDown, ChevronUp,
-  Cpu, QrCode, X
+  Cpu, QrCode, X, Bot, Network, Repeat, Moon
 } from "lucide-react";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
@@ -270,7 +270,7 @@ function PasswordGate({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users" | "agent_wallet";
+type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users" | "agent_wallet" | "operator_config";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -386,6 +386,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     { id: "nodes", label: "Node Health", icon: Server },
     { id: "users", label: "Users", icon: Users },
     { id: "agent_wallet", label: "Agent Wallet", icon: Cpu },
+    { id: "operator_config", label: "Operator Config", icon: Settings },
   ];
 
   return (
@@ -874,6 +875,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
 
+        {/* ── Operator Config Tab ── */}
+        {activeTab === "operator_config" && (
+          <OperatorConfigTab />
+        )}
+
         {/* ── Agent Wallet Tab ── */}
         {activeTab === "agent_wallet" && (
           <div className="space-y-4 max-w-lg mx-auto">
@@ -1086,6 +1092,225 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Operator Config Tab ────────────────────────────────────────────────────
+
+function OperatorConfigField({
+  label, value, onChange, type = "text", mono = false, placeholder = "", disabled = false, hint,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  type?: string; mono?: boolean; placeholder?: string; disabled?: boolean; hint?: string;
+}) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === "password";
+  return (
+    <div>
+      <label className="block text-[10px] text-muted-foreground mb-1">{label}</label>
+      <div className="relative">
+        <input
+          type={isPassword && !show ? "password" : "text"}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={`w-full px-3 py-2 rounded-xl text-xs text-foreground outline-none transition-all disabled:opacity-40 disabled:cursor-not-allowed ${mono ? "font-mono" : ""}`}
+          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+        />
+        {isPassword && (
+          <button type="button" onClick={() => setShow(s => !s)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
+            {show ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+          </button>
+        )}
+      </div>
+      {hint && <p className="text-[9px] text-muted-foreground mt-0.5 font-mono">{hint}</p>}
+    </div>
+  );
+}
+
+function OperatorConfigToggle({ label, description, value, onChange }: {
+  label: string; description?: string; value: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <p className="text-xs font-medium text-foreground">{label}</p>
+        {description && <p className="text-[10px] text-muted-foreground mt-0.5">{description}</p>}
+      </div>
+      <button
+        onClick={() => onChange(!value)}
+        className="flex items-center gap-1 text-[10px] font-mono transition-colors shrink-0"
+        style={{ color: value ? "#10b981" : "var(--muted-foreground)" }}
+      >
+        {value ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5" />}
+        <span className="w-6 text-left">{value ? "ON" : "OFF"}</span>
+      </button>
+    </div>
+  );
+}
+
+function OperatorConfigCard({
+  icon: Icon, title, color, children,
+}: {
+  icon: React.ElementType; title: string; color: string; children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl p-4 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className={`w-4 h-4 ${color}`} />
+        <p className="text-xs font-bold text-foreground">{title}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function OperatorConfigTab() {
+  const [cfg, setCfg] = useState({
+    // AFOS Agent
+    llmModel: "kimi-k2-turbo",
+    systemPrompt: "You are an autonomous financial agent. Execute swaps via IntercomSwap when instructed.",
+    // IntercomSwap Node
+    rendezvousChannel: "0000intercomswapbtcusdt",
+    peerMode: "maker-taker" as "maker" | "taker" | "maker-taker",
+    minSwapUsdt: "10",
+    maxSwapUsdt: "1000",
+    scBridgePort: "49222",
+    // Bitcoin Node
+    btcHost: "localhost:8332",
+    btcRpcPassword: "",
+    btcTlsCert: "/root/.lnd/tls.cert",
+    // Solana
+    solanaRpc: "https://api.mainnet-beta.solana.com",
+    solanaKeypairPath: "onchain/solana/keypair.json",
+    escrowProgramId: "4RS6xpspM1V2K7FKSqeSH6VVaZbtzHzhJqacwrz8gJrF",
+    // Worker
+    tradeauto: false,
+    maxTradeBtc: "0.01",
+    feeBpsCap: "50",
+    tickInterval: "3800",
+    minRefundHours: "20",
+    maxRefundHours: "40",
+    // MoonPay
+    moonpayApiKey: "",
+    moonpayWallet: "",
+  });
+
+  const set = (key: string) => (v: string | boolean) =>
+    setCfg(prev => ({ ...prev, [key]: v }));
+
+  return (
+    <div className="space-y-4 max-w-2xl mx-auto">
+      <div className="rounded-2xl p-4" style={{ background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)" }}>
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-red-400">Operator-only configuration</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              These settings control the AFOS Oracle VM infrastructure. Changes affect all users. Do not expose to end users.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* AFOS Agent */}
+      <OperatorConfigCard icon={Bot} title="AFOS Agent" color="text-cyan-400">
+        <OperatorConfigField label="LLM Model" value={cfg.llmModel} onChange={set("llmModel")} placeholder="kimi-k2-turbo" />
+        <div>
+          <label className="block text-[10px] text-muted-foreground mb-1">System Prompt</label>
+          <textarea value={cfg.systemPrompt} onChange={e => set("systemPrompt")(e.target.value)} rows={3}
+            className="w-full px-3 py-2 rounded-xl text-xs text-foreground outline-none resize-none"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }} />
+        </div>
+      </OperatorConfigCard>
+
+      {/* IntercomSwap Node */}
+      <OperatorConfigCard icon={Network} title="IntercomSwap Node" color="text-emerald-400">
+        <OperatorConfigField label="Rendezvous Channel" value={cfg.rendezvousChannel} onChange={set("rendezvousChannel")} mono placeholder="0000intercomswapbtcusdt" />
+        <div className="grid grid-cols-2 gap-2">
+          <OperatorConfigField label="Min Swap (USDT)" value={cfg.minSwapUsdt} onChange={set("minSwapUsdt")} placeholder="10" />
+          <OperatorConfigField label="Max Swap (USDT)" value={cfg.maxSwapUsdt} onChange={set("maxSwapUsdt")} placeholder="1000" />
+        </div>
+        <OperatorConfigField label="SC-Bridge Port" value={cfg.scBridgePort} onChange={set("scBridgePort")} mono placeholder="49222" />
+        <div>
+          <label className="block text-[10px] text-muted-foreground mb-1">Peer Mode</label>
+          <div className="flex gap-2">
+            {(["maker", "taker", "maker-taker"] as const).map(mode => (
+              <button key={mode} onClick={() => set("peerMode")(mode)}
+                className="flex-1 py-1.5 rounded-xl text-[10px] font-mono border transition-all"
+                style={{
+                  background: cfg.peerMode === mode ? "rgba(16,185,129,0.12)" : "var(--muted)",
+                  border: cfg.peerMode === mode ? "1px solid rgba(16,185,129,0.4)" : "1px solid var(--border)",
+                  color: cfg.peerMode === mode ? "#34d399" : "var(--muted-foreground)",
+                }}>{mode}</button>
+            ))}
+          </div>
+        </div>
+      </OperatorConfigCard>
+
+      {/* Bitcoin Node */}
+      <OperatorConfigCard icon={Zap} title="Bitcoin Node (on-chain)" color="text-amber-400">
+        <OperatorConfigField label="Node Host:Port" value={cfg.btcHost} onChange={set("btcHost")} mono placeholder="localhost:8332" />
+        <OperatorConfigField label="RPC Password" value={cfg.btcRpcPassword} onChange={set("btcRpcPassword")} type="password" mono placeholder="rpcpassword" />
+        <OperatorConfigField label="TLS Cert Path" value={cfg.btcTlsCert} onChange={set("btcTlsCert")} mono placeholder="/root/.lnd/tls.cert" />
+      </OperatorConfigCard>
+
+      {/* Solana Wallet */}
+      <OperatorConfigCard icon={Wallet} title="Solana Wallet" color="text-purple-400">
+        <OperatorConfigField label="RPC URL" value={cfg.solanaRpc} onChange={set("solanaRpc")} mono placeholder="https://api.mainnet-beta.solana.com" />
+        <OperatorConfigField label="Keypair Path" value={cfg.solanaKeypairPath} onChange={set("solanaKeypairPath")} mono placeholder="onchain/solana/keypair.json" />
+        <div>
+          <label className="block text-[10px] text-muted-foreground mb-1">Escrow Program ID</label>
+          <div className="flex items-center gap-2 p-2 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="text-[10px] font-mono text-foreground/70 truncate">{cfg.escrowProgramId}</span>
+          </div>
+          <p className="text-[9px] text-muted-foreground mt-0.5 font-mono">Deployed on Solana mainnet — do not modify</p>
+        </div>
+      </OperatorConfigCard>
+
+      {/* Worker / Autopost */}
+      <OperatorConfigCard icon={Repeat} title="Worker / Autopost" color="text-violet-400">
+        <OperatorConfigToggle
+          label="Autonomous Trading (tradeauto)"
+          description="Worker auto-accepts matching quotes without manual approval"
+          value={cfg.tradeauto}
+          onChange={v => set("tradeauto")(v)}
+        />
+        <div className="grid grid-cols-2 gap-2">
+          <OperatorConfigField label="Max trade amount (BTC)" value={cfg.maxTradeBtc} onChange={set("maxTradeBtc")} mono placeholder="0.01" />
+          <OperatorConfigField label="Max fee cap (bps)" value={cfg.feeBpsCap} onChange={set("feeBpsCap")} mono placeholder="50" />
+          <OperatorConfigField label="Tick interval (ms)" value={cfg.tickInterval} onChange={set("tickInterval")} mono placeholder="3800" />
+          <OperatorConfigField label="Min HTLC refund (hours)" value={cfg.minRefundHours} onChange={set("minRefundHours")} mono placeholder="20" />
+          <OperatorConfigField label="Max HTLC refund (hours)" value={cfg.maxRefundHours} onChange={set("maxRefundHours")} mono placeholder="40" />
+        </div>
+        <div className="p-2.5 rounded-xl" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }}>
+          <p className="text-[9px] font-mono text-violet-300/70">
+            Worker polls IntercomSwap every {cfg.tickInterval}ms. When tradeauto is ON, auto-accepts quotes below {cfg.feeBpsCap} bps and under {cfg.maxTradeBtc} BTC. HTLC refund window: {cfg.minRefundHours}–{cfg.maxRefundHours}h.
+          </p>
+        </div>
+      </OperatorConfigCard>
+
+      {/* MoonPay Phase 2 */}
+      <OperatorConfigCard icon={Moon} title="MoonPay Fiat On-ramp (Phase 2)" color="text-foreground/50">
+        <div className="opacity-40 pointer-events-none space-y-3">
+          <OperatorConfigField label="API Key" value={cfg.moonpayApiKey} onChange={set("moonpayApiKey")} type="password" placeholder="pk_live_…" disabled />
+          <OperatorConfigField label="Destination Wallet Address" value={cfg.moonpayWallet} onChange={set("moonpayWallet")} mono placeholder="bc1q…" disabled />
+          <p className="text-[10px] text-muted-foreground font-mono">MoonPay fiat on-ramp will be integrated in Phase 2 to auto-fund the agent wallet before executing swaps.</p>
+        </div>
+      </OperatorConfigCard>
+
+      <button
+        onClick={() => toast.success("Operator configuration saved")}
+        className="w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+        style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}
+      >
+        <Save className="w-3.5 h-3.5" />
+        Save Operator Config
+      </button>
     </div>
   );
 }
