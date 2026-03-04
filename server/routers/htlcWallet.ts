@@ -1,14 +1,19 @@
 /**
- * HTLC Wallet Router — Derives HTLC signing addresses from stored agent keys
+ * HTLC Wallet Router — Derives HTLC signing addresses from stored HTLC escrow keys
  * and fetches their on-chain balances across all 7 supported assets:
  *   Solana:   SOL, USDT (SPL), USDC (SPL)
  *   Ethereum: ETH, USDT (ERC-20), USDC (ERC-20)
  *   Bitcoin:  BTC
  *
- * Keys are read from environment variables (server-side only):
- *   BTC_AGENT_WIF  — Bitcoin WIF private key
- *   ETH_AGENT_KEY  — Ethereum hex private key (with or without 0x)
- *   SOL_AGENT_KEY  — Solana base58 or JSON-array private key
+ * HTLC Escrow Keys (dedicated to atomic swap lock/claim/refund):
+ *   BTC_HTLC_WIF  — Bitcoin WIF private key for HTLC escrow
+ *   ETH_HTLC_KEY  — Ethereum hex private key for HTLC escrow
+ *   SOL_HTLC_KEY  — Solana base58 private key for HTLC escrow
+ *
+ * Fee Collection Keys (Oracle VM Hot Wallet — separate from escrow):
+ *   BTC_AGENT_WIF  — Bitcoin WIF private key (fee wallet)
+ *   ETH_AGENT_KEY  — Ethereum hex private key (fee wallet)
+ *   SOL_AGENT_KEY  — Solana base58 private key (fee wallet)
  */
 
 import { publicProcedure, router } from "../_core/trpc";
@@ -113,10 +118,10 @@ export interface HtlcChainWallet {
   error?: string;
 }
 
-/** Derive BTC P2WPKH address + balance from WIF key */
+/** Derive BTC P2WPKH address + balance from HTLC WIF key */
 async function getBtcHtlcWallet(): Promise<HtlcChainWallet> {
-  const wif = process.env.BTC_AGENT_WIF;
-  if (!wif) return { chain: "bitcoin", asset: "BTC", address: null, balance: "0.00000000", usd: "$0", live: false, configured: false, error: "BTC_AGENT_WIF not set" };
+  const wif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF; // fallback to agent key if HTLC key not set
+  if (!wif) return { chain: "bitcoin", asset: "BTC", address: null, balance: "0.00000000", usd: "$0", live: false, configured: false, error: "BTC_HTLC_WIF not set" };
 
   try {
     const keyPair = ECPair.fromWIF(wif, bitcoin.networks.bitcoin);
@@ -163,11 +168,11 @@ async function getBtcHtlcWallet(): Promise<HtlcChainWallet> {
   }
 }
 
-/** Derive ETH address + ETH/USDT/USDC balances from hex private key */
+/** Derive ETH address + ETH/USDT/USDC balances from HTLC hex private key */
 async function getEthHtlcWallets(): Promise<HtlcChainWallet[]> {
-  let rawKey = process.env.ETH_AGENT_KEY ?? "";
+  let rawKey = process.env.ETH_HTLC_KEY ?? process.env.ETH_AGENT_KEY ?? ""; // fallback to agent key if HTLC key not set
   if (!rawKey) {
-    const noKey = { address: null, balance: "0.000000", usd: "$0", live: false, configured: false, error: "ETH_AGENT_KEY not set" };
+    const noKey = { address: null, balance: "0.000000", usd: "$0", live: false, configured: false, error: "ETH_HTLC_KEY not set" };
     return [
       { chain: "ethereum", asset: "ETH",  ...noKey },
       { chain: "ethereum", asset: "USDT", ...noKey },
@@ -243,11 +248,11 @@ async function getEthHtlcWallets(): Promise<HtlcChainWallet[]> {
   }
 }
 
-/** Derive SOL address + SOL/USDT/USDC balances from base58 or JSON-array private key */
+/** Derive SOL address + SOL/USDT/USDC balances from HTLC base58 private key */
 async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
-  const rawKey = process.env.SOL_AGENT_KEY ?? "";
+  const rawKey = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY ?? ""; // fallback to agent key if HTLC key not set
   if (!rawKey) {
-    const noKey = { address: null, balance: "0.000000", usd: "$0", live: false, configured: false, error: "SOL_AGENT_KEY not set" };
+    const noKey = { address: null, balance: "0.000000", usd: "$0", live: false, configured: false, error: "SOL_HTLC_KEY not set" };
     return [
       { chain: "solana", asset: "SOL",  ...noKey },
       { chain: "solana", asset: "USDT", ...noKey },
@@ -400,11 +405,11 @@ export const htlcWalletRouter = router({
       { asset: "SOL",  chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
       { asset: "USDT", chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
       { asset: "USDC", chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
-      // Ethereum chain — all ERC-20 tokens share the same wallet address
+      // Ethereum chain — all ERC-20 tokens share the same fee wallet address
       { asset: "ETH",  chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
       { asset: "USDT", chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
       { asset: "USDC", chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
-      // Bitcoin — native P2WPKH address
+      // Bitcoin — native P2WPKH fee wallet address
       { asset: "BTC",  chain: "bitcoin"  as const, chainLabel: "Bitcoin",  address: btc.address, configured: !!process.env.BTC_AGENT_WIF },
     ];
   }),

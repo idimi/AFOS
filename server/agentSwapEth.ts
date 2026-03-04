@@ -113,10 +113,11 @@ export async function executeEthAgentSwap(params: {
   const toChain   = params.toChain   ?? "ethereum";
 
   const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
-  const ethKeyRaw  = process.env.ETH_AGENT_KEY;
+  // ETH_HTLC_KEY is the dedicated HTLC escrow key; fall back to ETH_AGENT_KEY for backwards compatibility
+  const ethKeyRaw  = process.env.ETH_HTLC_KEY ?? process.env.ETH_AGENT_KEY;
   const ethRpcUrl  = process.env.ETH_RPC_URL   || "https://cloudflare-eth.com";
 
-  // ── ETH_AGENT_KEY required for HTLC signing ────────────────────────────────────
+  // ── ETH_HTLC_KEY required for HTLC signing ────────────────────────────────────
   if (!ethKeyRaw) {
     return {
       success: false,
@@ -129,12 +130,12 @@ export async function executeEthAgentSwap(params: {
       feeBps: PLATFORM_FEE_BPS,
       feeAmountOut: 0,
       message:
-        `ETH_AGENT_KEY is not configured. The platform operator must set this ` +
+        `ETH_HTLC_KEY is not configured. The platform operator must set this ` +
         `secret for Ethereum HTLC escrow signing. Please contact the platform administrator.`,
     };
   }
 
-  // ── Derive agent wallet ────────────────────────────────────────────────────────────────────────────────
+  // ── Derive HTLC escrow wallet ─────────────────────────────────────────────────
   let wallet: ethers.Wallet;
   try {
     const keyHex = ethKeyRaw.startsWith("0x") ? ethKeyRaw : `0x${ethKeyRaw}`;
@@ -151,7 +152,7 @@ export async function executeEthAgentSwap(params: {
       explorerUrl: null,
       feeBps: PLATFORM_FEE_BPS,
       feeAmountOut: 0,
-      message: "ETH_AGENT_KEY is invalid — must be a 32-byte hex private key.",
+      message: "ETH_HTLC_KEY is invalid — must be a 32-byte hex private key.",
     };
   }
 

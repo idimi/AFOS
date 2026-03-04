@@ -1,6 +1,11 @@
 /**
  * Tests for the HTLC Wallet router — verifies address derivation from keys,
  * graceful handling when keys are missing, and the new 7-asset flat array.
+ *
+ * After the dual-key split:
+ *   - HTLC escrow wallets use SOL_HTLC_KEY / ETH_HTLC_KEY / BTC_HTLC_WIF
+ *   - Fee collection wallets use SOL_AGENT_KEY / ETH_AGENT_KEY / BTC_AGENT_WIF
+ *   - getHtlcWallets() reads HTLC keys first, falls back to agent keys
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -20,14 +25,23 @@ function createTestContext(): TrpcContext {
   };
 }
 
-// Save original env values
+// Save original env values (both HTLC keys and agent keys)
+const origBtcHtlcWif = process.env.BTC_HTLC_WIF;
+const origEthHtlcKey = process.env.ETH_HTLC_KEY;
+const origSolHtlcKey = process.env.SOL_HTLC_KEY;
 const origBtcWif = process.env.BTC_AGENT_WIF;
 const origEthKey = process.env.ETH_AGENT_KEY;
 const origSolKey = process.env.SOL_AGENT_KEY;
 
 describe("htlcWallet router", () => {
   afterEach(() => {
-    // Restore original env
+    // Restore original env — both HTLC keys and agent keys
+    if (origBtcHtlcWif !== undefined) process.env.BTC_HTLC_WIF = origBtcHtlcWif;
+    else delete process.env.BTC_HTLC_WIF;
+    if (origEthHtlcKey !== undefined) process.env.ETH_HTLC_KEY = origEthHtlcKey;
+    else delete process.env.ETH_HTLC_KEY;
+    if (origSolHtlcKey !== undefined) process.env.SOL_HTLC_KEY = origSolHtlcKey;
+    else delete process.env.SOL_HTLC_KEY;
     if (origBtcWif !== undefined) process.env.BTC_AGENT_WIF = origBtcWif;
     else delete process.env.BTC_AGENT_WIF;
     if (origEthKey !== undefined) process.env.ETH_AGENT_KEY = origEthKey;
@@ -122,8 +136,9 @@ describe("htlcWallet router", () => {
     });
   });
 
-  describe("missing keys", () => {
-    it("should report not configured when BTC_AGENT_WIF is unset", { timeout: 30_000 }, async () => {
+  describe("missing keys — HTLC keys take priority, agent keys as fallback", () => {
+    it("should report not configured when both BTC_HTLC_WIF and BTC_AGENT_WIF are unset", { timeout: 30_000 }, async () => {
+      delete process.env.BTC_HTLC_WIF;
       delete process.env.BTC_AGENT_WIF;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -137,7 +152,8 @@ describe("htlcWallet router", () => {
       expect(btcAsset?.configured).toBe(false);
     });
 
-    it("should report not configured when ETH_AGENT_KEY is unset", { timeout: 30_000 }, async () => {
+    it("should report not configured when both ETH_HTLC_KEY and ETH_AGENT_KEY are unset", { timeout: 30_000 }, async () => {
+      delete process.env.ETH_HTLC_KEY;
       delete process.env.ETH_AGENT_KEY;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -154,7 +170,8 @@ describe("htlcWallet router", () => {
       }
     });
 
-    it("should report not configured when SOL_AGENT_KEY is unset", { timeout: 30_000 }, async () => {
+    it("should report not configured when both SOL_HTLC_KEY and SOL_AGENT_KEY are unset", { timeout: 30_000 }, async () => {
+      delete process.env.SOL_HTLC_KEY;
       delete process.env.SOL_AGENT_KEY;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
@@ -170,12 +187,39 @@ describe("htlcWallet router", () => {
         expect(a.configured).toBe(false);
       }
     });
+
+    it("should use BTC_AGENT_WIF as fallback when BTC_HTLC_WIF is unset", { timeout: 30_000 }, async () => {
+      // Only agent key set (no dedicated HTLC key)
+      delete process.env.BTC_HTLC_WIF;
+      // BTC_AGENT_WIF stays as-is (whatever was originally set)
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      // If agent key was set, wallet should still be configured
+      if (origBtcWif) {
+        expect(result.btc.configured).toBe(true);
+      }
+    });
+
+    it("should prefer ETH_HTLC_KEY over ETH_AGENT_KEY when both are set", { timeout: 30_000 }, async () => {
+      // Set HTLC key to Hardhat account #0 (known address)
+      process.env.ETH_HTLC_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      // Set agent key to Hardhat account #1 (different address)
+      process.env.ETH_AGENT_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      // Should use HTLC key address (Hardhat #0), not agent key address (Hardhat #1)
+      expect(result.eth.configured).toBe(true);
+      expect(result.eth.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+    });
   });
 
   describe("ETH address derivation", () => {
-    it("should derive correct ETH address from a known test private key", { timeout: 30_000 }, async () => {
+    it("should derive correct ETH address from a known test private key (via ETH_HTLC_KEY)", { timeout: 30_000 }, async () => {
       // Well-known Hardhat account #0 private key (DO NOT use in production)
-      process.env.ETH_AGENT_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      process.env.ETH_HTLC_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      delete process.env.ETH_AGENT_KEY; // ensure HTLC key is used
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
 
@@ -189,8 +233,19 @@ describe("htlcWallet router", () => {
       expect(ethUsdc?.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     });
 
+    it("should derive correct ETH address from ETH_AGENT_KEY fallback (no ETH_HTLC_KEY)", { timeout: 30_000 }, async () => {
+      delete process.env.ETH_HTLC_KEY;
+      process.env.ETH_AGENT_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+
+      expect(result.eth.configured).toBe(true);
+      expect(result.eth.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
+    });
+
     it("should handle ETH key without 0x prefix", { timeout: 30_000 }, async () => {
-      process.env.ETH_AGENT_KEY = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      process.env.ETH_HTLC_KEY = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+      delete process.env.ETH_AGENT_KEY;
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
 

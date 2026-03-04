@@ -11,7 +11,8 @@
  *   HTLC route → P2P_FEE_BPS  = 15 (0.15%) — BTC swaps always use P2P pricing
  *
  * Environment variables:
- *   BTC_AGENT_WIF  — Bitcoin WIF-encoded private key (mainnet or testnet)
+ *   BTC_HTLC_WIF   — Bitcoin WIF-encoded private key for HTLC escrow (mainnet or testnet)
+ *   BTC_AGENT_WIF  — Bitcoin WIF-encoded private key for fee collection (fallback if HTLC key not set)
  *   ORACLE_API_URL — IntercomSwap Oracle VM base URL
  */
 
@@ -165,7 +166,8 @@ export async function executeBtcAgentSwap(params: {
   } = params;
 
   const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
-  const agentWif   = process.env.BTC_AGENT_WIF;
+  // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+  const agentWif   = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
   const amountSats = Math.round(amount * 1e8);
 
   // ── Step 1: Oracle VM RFQ ─────────────────────────────────────────────────
@@ -337,7 +339,7 @@ export async function executeBtcAgentSwap(params: {
         (p2pPeerId ? `P2P peer: ${p2pPeerId}. ` : "") +
         `HTLC: ${demoHtlcAddr}. Secret hash: ${secretHash.slice(0, 16)}… ` +
         `Expiry: ${expiryHours}h (~${Math.round(expiryHours * 6)} blocks). ` +
-        `Set BTC_AGENT_WIF to execute real on-chain transactions.`,
+        `Set BTC_HTLC_WIF to execute real on-chain transactions.`,
       nextStep:
         p2pPeerId
           ? `P2P peer ${p2pPeerId} matched. Waiting for counterparty to lock on destination chain.`
@@ -365,7 +367,7 @@ export async function executeBtcAgentSwap(params: {
       explorerUrl: null,
       feeBps: P2P_FEE_BPS,
       feeAmountOut: 0,
-      message: "BTC_AGENT_WIF is invalid — must be a valid WIF-encoded Bitcoin private key.",
+      message: "BTC_HTLC_WIF is invalid — must be a valid WIF-encoded Bitcoin private key.",
     };
   }
 

@@ -12,8 +12,9 @@
  *   - Agent (server): uses this router — builds raw tx, signs with WIF key (from env),
  *     broadcasts via mempool.space REST API
  *
- * The agent wallet private key is stored as BTC_AGENT_WIF in environment variables.
- * If not set, procedures return a simulation response for demo purposes.
+ * The HTLC escrow private key is stored as BTC_HTLC_WIF in environment variables.
+ * Falls back to BTC_AGENT_WIF for backwards compatibility.
+ * If neither is set, procedures return a simulation response for demo purposes.
  */
 
 import { z } from "zod";
@@ -199,8 +200,8 @@ export const btcHtlcRouter = router({
       const witnessScript = buildHtlcScript({ secretHash, recipientPubKey, senderPubKey, locktime });
       const htlcAddress = htlcScriptToAddress(witnessScript, network);
 
-      // Check if agent WIF key is configured
-      const agentWif = process.env.BTC_AGENT_WIF;
+      // Check if HTLC escrow WIF key is configured (BTC_HTLC_WIF preferred; BTC_AGENT_WIF as fallback)
+      const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
 
       if (!agentWif) {
         // Demo mode: return simulated response
@@ -216,7 +217,7 @@ export const btcHtlcRouter = router({
           locktime,
           amountSats,
           explorerUrl: `https://mempool.space/${network === "testnet" ? "testnet/" : ""}tx/${demoTx}`,
-          message: `[DEMO] BTC HTLC lock simulated. Set BTC_AGENT_WIF env var to execute real transactions. HTLC address: ${htlcAddress}`,
+          message: `[DEMO] BTC HTLC lock simulated. Set BTC_HTLC_WIF env var to execute real transactions. HTLC address: ${htlcAddress}`,
         };
       }
 
@@ -304,7 +305,8 @@ export const btcHtlcRouter = router({
       const secretBytes = hexToBytes(secret);
       const computedHash = bytesToHex(sha256(secretBytes));
 
-      const agentWif = process.env.BTC_AGENT_WIF;
+      // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+      const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
 
       if (!agentWif) {
         // Demo mode
@@ -401,7 +403,8 @@ export const btcHtlcRouter = router({
     .mutation(async ({ input }) => {
       const { htlcAddress, witnessScript, senderAddress, network, locktime } = input;
 
-      const agentWif = process.env.BTC_AGENT_WIF;
+      // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+      const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
 
       if (!agentWif) {
         const demoTx = demoTxid("htlc_refund");

@@ -871,3 +871,25 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update multiChainAgentSwap.test.ts: 5 tests updated to reflect Mode B removal
 - [x] 126 tests all passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## Fee Wallet vs HTLC Escrow Wallet Separation
+
+- [x] Wire SOL_FEE_WALLET to derive from SOL_AGENT_KEY (Oracle VM Hot Wallet = fee collection)
+- [x] Wire ETH_FEE_WALLET to derive from ETH_AGENT_KEY (Oracle VM Hot Wallet = fee collection)
+- [x] Wire BTC_FEE_WALLET to derive from BTC_AGENT_WIF (Oracle VM Hot Wallet = fee collection)
+- [x] Add SOL_HTLC_KEY, ETH_HTLC_KEY, BTC_HTLC_WIF as dedicated HTLC escrow signing keys
+- [x] htlcWallet.ts getHtlcWallets: reads SOL_HTLC_KEY/ETH_HTLC_KEY/BTC_HTLC_WIF (fallback to agent keys)
+- [x] chat.ts executeAgentSwap (SOL path): uses SOL_HTLC_KEY ?? SOL_AGENT_KEY for HTLC signing
+- [x] chat.ts executeBtcSwap: uses BTC_HTLC_WIF ?? BTC_AGENT_WIF for HTLC signing
+- [x] agentSwapEth.ts: uses ETH_HTLC_KEY ?? ETH_AGENT_KEY for HTLC signing
+- [x] agentSwapBtc.ts: uses BTC_HTLC_WIF ?? BTC_AGENT_WIF for HTLC signing
+- [x] htlcMonitor.ts: uses HTLC keys (with agent key fallback) for refund signing
+- [x] btcHtlc.ts: uses BTC_HTLC_WIF ?? BTC_AGENT_WIF for all HTLC procedures
+- [x] Update Admin Panel: "Fee Collection Wallet Balances" label for agent key wallets
+- [x] Update Admin Panel: "HTLC Escrow Wallet" label + description for HTLC key wallets
+- [x] Update Admin Panel: Oracle VM Hot Wallet description clarifies fee collection role
+- [x] htlcWallet.test.ts: 12 tests updated — dual-key priority + fallback logic verified
+- [x] multiChainAgentSwap.test.ts: 3 tests updated to reference new HTLC key env vars
+- [x] 129 tests all passing, 0 TypeScript errors
+- [x] SOL_HTLC_KEY, ETH_HTLC_KEY, BTC_HTLC_WIF secrets added to project
+- [x] Save checkpoint

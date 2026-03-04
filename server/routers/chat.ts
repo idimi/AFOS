@@ -1149,7 +1149,7 @@ export const chatRouter = router({
    * Initiate a Bitcoin HTLC atomic swap via the agent.
    * Called when user confirms a BTC quote card in the chat.
    *
-   * In demo mode (no BTC_AGENT_WIF env var), returns a simulated HTLC lock
+   * In demo mode (no BTC_HTLC_WIF env var), returns a simulated HTLC lock
    * with a demo txid so the full UI flow can be demonstrated.
    *
    * In production mode, delegates to trpc.btcHtlc.htlcLock which builds
@@ -1277,14 +1277,15 @@ export const chatRouter = router({
       const hashBuffer = await crypto.subtle.digest("SHA-256", secretBytes);
       const secretHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
 
-      const agentWif = process.env.BTC_AGENT_WIF;
+      // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+      const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
       const p2pRoute = p2pQuote ? "IntercomSwap P2P" : "Direct HTLC (no P2P peer)";
 
       // Resolve counterparty pubkey: prefer P2P peer, then manual input
       const resolvedCounterpartyPubKey = p2pQuote?.counterpartyPubKey ?? input.counterpartyPubKey;
 
       if (!agentWif) {
-        // ── BTC_AGENT_WIF required for HTLC signing ──────────────────────────
+        // ── BTC_HTLC_WIF required for HTLC signing ────────────────────────────────────
         return {
           success: false,
           demo: false,
@@ -1294,7 +1295,7 @@ export const chatRouter = router({
           htlcAddress: null,
           nextStep: undefined,
           message:
-            `BTC_AGENT_WIF is not configured. The platform operator must set this ` +
+            `BTC_HTLC_WIF is not configured. The platform operator must set this ` +
             `secret for Bitcoin HTLC escrow signing. Please contact the platform administrator.`,
         };
       }
@@ -1331,9 +1332,9 @@ export const chatRouter = router({
    * executeAgentSwap — Server-side autonomous swap (multi-chain)
    *
    * Dispatches to the appropriate chain handler based on `fromChain`:
-   *   solana   → Oracle VM RFQ → Jupiter DEX fallback (SOL_AGENT_KEY)
-   *   ethereum → Oracle VM RFQ → 1inch DEX fallback  (ETH_AGENT_KEY)
-   *   bitcoin  → Oracle VM RFQ → Direct HTLC fallback (BTC_AGENT_WIF)
+   *   solana   → Oracle VM RFQ → Jupiter DEX fallback (SOL_HTLC_KEY)
+   *   ethereum → Oracle VM RFQ → 1inch DEX fallback  (ETH_HTLC_KEY)
+   *   bitcoin  → Oracle VM RFQ → Direct HTLC fallback (BTC_HTLC_WIF)
    *
    * All paths follow the same P2P-first routing:
    *   1. Submit RFQ to IntercomSwap Oracle VM
@@ -1412,9 +1413,10 @@ export const chatRouter = router({
 
       // ── Solana path (default) ─────────────────────────────────────────────
       const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
-      const agentKeyRaw = process.env.SOL_AGENT_KEY;
+      // SOL_HTLC_KEY is the dedicated HTLC escrow key; fall back to SOL_AGENT_KEY for backwards compatibility
+      const agentKeyRaw = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY;
 
-      // ── SOL_AGENT_KEY required for HTLC signing ────────────────────────────
+      // ── SOL_HTLC_KEY required for HTLC signing ────────────────────────────
       if (!agentKeyRaw) {
         return {
           success: false,
@@ -1426,12 +1428,12 @@ export const chatRouter = router({
           solscanUrl: null,
           chain: "solana" as const,
           message:
-            `SOL_AGENT_KEY is not configured. The platform operator must set this ` +
+            `SOL_HTLC_KEY is not configured. The platform operator must set this ` +
             `secret for HTLC escrow signing. Please contact the platform administrator.`,
         };
       }
 
-      // ── Decode agent keypair ───────────────────────────────────────────────
+      // ── Decode HTLC escrow keypair ─────────────────────────────────────────
       let agentKeypair: Keypair;
       try {
         const keyBytes = bs58.decode(agentKeyRaw);
@@ -1445,7 +1447,7 @@ export const chatRouter = router({
           route: "Error",
           agentAddress: null,
           solscanUrl: null,
-          message: "SOL_AGENT_KEY is invalid — must be a base58-encoded 64-byte Solana private key.",
+          message: "SOL_HTLC_KEY is invalid — must be a base58-encoded 64-byte Solana private key.",
         };
       }
 

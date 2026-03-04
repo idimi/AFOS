@@ -29,8 +29,9 @@ describe("executeAgentSwap chain dispatcher", () => {
 
   it("should fall through to Solana path for any other chain", async () => {
     const src = (await import("fs")).readFileSync("server/routers/chat.ts", "utf-8");
-    // Solana path uses SOL_AGENT_KEY
-    expect(src).toContain("const agentKeyRaw = process.env.SOL_AGENT_KEY;");
+    // Solana path uses SOL_HTLC_KEY (with SOL_AGENT_KEY fallback)
+    expect(src).toContain("SOL_HTLC_KEY");
+    expect(src).toContain("SOL_AGENT_KEY"); // fallback
   });
 
   it("should accept btcNetwork and btcExpiryHours in input schema", async () => {
@@ -42,9 +43,11 @@ describe("executeAgentSwap chain dispatcher", () => {
 
 // ─── 2. ETH agent swap helper ─────────────────────────────────────────────────
 describe("executeEthAgentSwap", () => {
-  it("should return demo mode when ETH_AGENT_KEY is not set", async () => {
-    // Ensure key is not set
+  it("should return error when ETH_HTLC_KEY and ETH_AGENT_KEY are both not set", async () => {
+    // Ensure both keys are not set
+    const originalHtlcKey = process.env.ETH_HTLC_KEY;
     const originalKey = process.env.ETH_AGENT_KEY;
+    delete process.env.ETH_HTLC_KEY;
     delete process.env.ETH_AGENT_KEY;
 
     const { executeEthAgentSwap } = await import("./agentSwapEth");
@@ -54,12 +57,13 @@ describe("executeEthAgentSwap", () => {
       amount: 0.1,
     });
 
-    // Mode B removed: no demo mode. Returns wallet-required error when ETH_AGENT_KEY not set.
+    // Mode B removed: no demo mode. Returns wallet-required error when HTLC key not set.
     expect(result.demo).toBe(false);
     expect(result.success).toBe(false);
     expect(result.agentAddress).toBeNull();
-    expect(result.message).toContain("ETH_AGENT_KEY");
+    expect(result.message).toContain("ETH_HTLC_KEY");
 
+    if (originalHtlcKey !== undefined) process.env.ETH_HTLC_KEY = originalHtlcKey;
     if (originalKey !== undefined) process.env.ETH_AGENT_KEY = originalKey;
   });
 
@@ -104,8 +108,10 @@ describe("executeEthAgentSwap", () => {
 
 // ─── 3. BTC agent swap helper ─────────────────────────────────────────────────
 describe("executeBtcAgentSwap", () => {
-  it("should return demo mode when BTC_AGENT_WIF is not set", async () => {
+  it("should return demo mode when BTC_HTLC_WIF and BTC_AGENT_WIF are both not set", async () => {
+    const originalHtlcKey = process.env.BTC_HTLC_WIF;
     const originalKey = process.env.BTC_AGENT_WIF;
+    delete process.env.BTC_HTLC_WIF;
     delete process.env.BTC_AGENT_WIF;
 
     const { executeBtcAgentSwap } = await import("./agentSwapBtc");
@@ -125,6 +131,7 @@ describe("executeBtcAgentSwap", () => {
     expect(result.feeBps).toBe(15); // P2P_FEE_BPS
     expect(result.message).toContain("DEMO");
 
+    if (originalHtlcKey !== undefined) process.env.BTC_HTLC_WIF = originalHtlcKey;
     if (originalKey !== undefined) process.env.BTC_AGENT_WIF = originalKey;
   });
 
@@ -309,12 +316,14 @@ describe("Cross-chain swap routing", () => {
     expect(crossChainSection).toContain("feeBps:         P2P_FEE_BPS");
   });
 
-  it("ETH cross-chain demo: should return P2P fee (15 bps) not DEX fee", async () => {
+  it("ETH cross-chain demo: should return error when ETH_HTLC_KEY and ETH_AGENT_KEY are both not set", async () => {
+    const originalHtlcKey = process.env.ETH_HTLC_KEY;
     const originalKey = process.env.ETH_AGENT_KEY;
+    delete process.env.ETH_HTLC_KEY;
     delete process.env.ETH_AGENT_KEY;
 
     const { executeEthAgentSwap } = await import("./agentSwapEth");
-    // Cross-chain: ETH → SOL (demo mode, no key)
+    // Cross-chain: ETH → SOL (no key set)
     const result = await executeEthAgentSwap({
       fromToken: "ETH",
       toToken: "SOL",
@@ -323,11 +332,12 @@ describe("Cross-chain swap routing", () => {
       toChain: "solana",
     });
 
-    // Mode B removed: no demo mode. Returns wallet-required error when ETH_AGENT_KEY not set.
+    // Mode B removed: no demo mode. Returns wallet-required error when HTLC key not set.
     expect(result.demo).toBe(false);
     expect(result.success).toBe(false);
-    expect(result.message).toContain("ETH_AGENT_KEY");
+    expect(result.message).toContain("ETH_HTLC_KEY");
 
+    if (originalHtlcKey !== undefined) process.env.ETH_HTLC_KEY = originalHtlcKey;
     if (originalKey !== undefined) process.env.ETH_AGENT_KEY = originalKey;
   });
 

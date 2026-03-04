@@ -100,13 +100,14 @@ async function fetchAllChainHeights(): Promise<ChainHeights> {
 /**
  * Attempt BTC HTLC refund via mempool.space.
  * In production: calls btcHtlc.htlcRefund with the stored secretHash.
- * In demo mode (no BTC_AGENT_WIF): logs the expiry and marks as expired.
+ * In demo mode (no BTC_HTLC_WIF): logs the expiry and marks as expired.
  */
 async function triggerBtcRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<string | null> {
-  const agentWif = process.env.BTC_AGENT_WIF;
+  // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+  const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
   if (!agentWif) {
     // Demo mode — no real refund possible, just mark expired
-    console.log(`[HTLC Monitor] [BTC] Demo mode: HTLC ${htlc.htlcAddress} expired (no BTC_AGENT_WIF). Marking as expired.`);
+    console.log(`[HTLC Monitor] [BTC] Demo mode: HTLC ${htlc.htlcAddress} expired (no BTC_HTLC_WIF). Marking as expired.`);
     return `demo-refund-${htlc.secretHash.slice(0, 16)}`;
   }
   // Production: delegate to btcHtlc router logic
@@ -121,12 +122,13 @@ async function triggerBtcRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
 
 /**
  * Attempt ETH HTLC refund by calling the HTLC contract's refund() function.
- * In demo mode (no ETH_AGENT_KEY): logs the expiry and marks as expired.
+ * In demo mode (no ETH_HTLC_KEY): logs the expiry and marks as expired.
  */
 async function triggerEthRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<string | null> {
-  const agentKey = process.env.ETH_AGENT_KEY;
+  // ETH_HTLC_KEY is the dedicated HTLC escrow key; fall back to ETH_AGENT_KEY for backwards compatibility
+  const agentKey = process.env.ETH_HTLC_KEY ?? process.env.ETH_AGENT_KEY;
   if (!agentKey) {
-    console.log(`[HTLC Monitor] [ETH] Demo mode: HTLC ${htlc.htlcAddress} expired (no ETH_AGENT_KEY). Marking as expired.`);
+    console.log(`[HTLC Monitor] [ETH] Demo mode: HTLC ${htlc.htlcAddress} expired (no ETH_HTLC_KEY). Marking as expired.`);
     return `demo-eth-refund-${htlc.secretHash.slice(0, 16)}`;
   }
   console.log(
@@ -138,12 +140,13 @@ async function triggerEthRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
 
 /**
  * Attempt SOL HTLC refund by closing the PDA after timelock expiry.
- * In demo mode (no SOL_AGENT_KEY): logs the expiry and marks as expired.
+ * In demo mode (no SOL_HTLC_KEY): logs the expiry and marks as expired.
  */
 async function triggerSolRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<string | null> {
-  const agentKey = process.env.SOL_AGENT_KEY;
+  // SOL_HTLC_KEY is the dedicated HTLC escrow key; fall back to SOL_AGENT_KEY for backwards compatibility
+  const agentKey = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY;
   if (!agentKey) {
-    console.log(`[HTLC Monitor] [SOL] Demo mode: HTLC PDA ${htlc.htlcAddress} expired (no SOL_AGENT_KEY). Marking as expired.`);
+    console.log(`[HTLC Monitor] [SOL] Demo mode: HTLC PDA ${htlc.htlcAddress} expired (no SOL_HTLC_KEY). Marking as expired.`);
     return `demo-sol-refund-${htlc.secretHash.slice(0, 16)}`;
   }
   console.log(

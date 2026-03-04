@@ -891,7 +891,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   Refresh
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground mb-2">Node hot wallet used for autonomous swaps. Fund this wallet to enable agent-executed trades.</p>
+              <p className="text-[10px] text-muted-foreground mb-2">Fee collection wallets (SOL_AGENT_KEY / ETH_AGENT_KEY / BTC_AGENT_WIF). Receives 0.15% P2P and 0.20% DEX platform fees. Separate from HTLC escrow wallets.</p>
               {nodeKey ? (
                 <div className="flex items-center gap-2 p-2 rounded-lg" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
                   <span className="text-[10px] font-mono text-foreground truncate">{nodeKey}</span>
@@ -944,7 +944,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
             {/* Wallet Balances */}
             <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-              <p className="text-xs font-semibold text-foreground mb-3">Agent Wallet Balances</p>
+              <p className="text-xs font-semibold text-foreground mb-3">Fee Collection Wallet Balances</p>
               {nodeWalletLoading && nodeWalletData.length === 0 ? (
                 <div className="space-y-2">
                   {[1,2,3].map(i => (
@@ -1122,7 +1122,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Lock className="w-4 h-4 text-amber-400" />
-            <p className="text-sm font-bold text-foreground">AFOS Agent HTLC Wallet</p>
+            <p className="text-sm font-bold text-foreground">HTLC Escrow Wallet</p>
           </div>
           <button onClick={() => refetch()}
             className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
@@ -1132,7 +1132,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground mb-3">
-          HTLC signing wallets derived from agent private keys. Used to lock, claim, and refund atomic swaps across all 3 chains.
+          Dedicated HTLC escrow wallets (SOL_HTLC_KEY / ETH_HTLC_KEY / BTC_HTLC_WIF). Used exclusively to lock, claim, and refund atomic swaps. Separate from the fee collection wallets.
         </p>
 
         {/* Total value — always visible */}
@@ -1143,7 +1143,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           ) : (
             <>
               <span className="text-xs font-mono font-bold text-foreground">${totalUsd.toFixed(2)}</span>
-              <span className="text-[10px] text-muted-foreground">total across all 7 HTLC assets</span>
+              <span className="text-[10px] text-muted-foreground">total across all 7 HTLC escrow assets</span>
             </>
           )}
         </div>
