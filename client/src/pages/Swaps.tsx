@@ -2816,6 +2816,16 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   )}
                 </button>
               </div>
+              {/* Balance too low warning */}
+              {(connected || ethWallet?.connected || btcWallet?.connected) &&
+                parseFloat(fromAmount) > 0 &&
+                parseFloat(fromAmount) > getTokenBalance(fromToken) && (
+                <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium"
+                  style={{ background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', color: 'var(--warning-foreground)' }}>
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--warning-icon)' }} />
+                  <span>Insufficient balance — you have <strong>{getTokenBalance(fromToken).toLocaleString(undefined, { maximumFractionDigits: 8 })} {fromToken.symbol}</strong></span>
+                </div>
+              )}
             </div>
 
             {/* Flip Button — compact */}
@@ -2895,11 +2905,10 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               {/* Price Impact Warning */}
               {liveQuote && liveQuote.priceImpact > 1 && (
                 <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-medium"
-                  style={{
-                    background: liveQuote.priceImpact > 5 ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
-                    border: `1px solid ${liveQuote.priceImpact > 5 ? 'rgba(239,68,68,0.3)' : 'rgba(245,158,11,0.3)'}`,
-                    color: liveQuote.priceImpact > 5 ? '#ef4444' : '#f59e0b',
-                  }}>
+                  style={liveQuote.priceImpact > 5
+                    ? { background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--destructive)' }
+                    : { background: 'var(--warning-bg)', border: '1px solid var(--warning-border)', color: 'var(--warning-foreground)' }
+                  }>
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>
                     Price impact: <strong>{liveQuote.priceImpact.toFixed(2)}%</strong>
@@ -2924,11 +2933,21 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
 
             {/* Advanced Settings */}
             <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
+              onClick={() => {
+                if (!(connected || ethWallet?.connected || btcWallet?.connected)) {
+                  setShowWalletModal(true);
+                  return;
+                }
+                setShowAdvanced(!showAdvanced);
+              }}
               className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-slate-400 transition-colors w-full"
+              title={!(connected || ethWallet?.connected || btcWallet?.connected) ? 'Connect a wallet to access advanced settings' : undefined}
             >
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
               Advanced settings
+              {!(connected || ethWallet?.connected || btcWallet?.connected) && (
+                <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}>Connect wallet to unlock</span>
+              )}
             </button>
 
             <AnimatePresence>
@@ -3086,9 +3105,16 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             {swapPhase === "idle" && onNavigateToChat && (
               <div className="mt-5 flex items-center justify-end">
                 <button
-                  onClick={() => setExecMode(execMode === 'manual' ? 'agent' : 'manual')}
-                  className="flex items-center gap-2 group"
+                  onClick={() => {
+                    if (!(connected || ethWallet?.connected || btcWallet?.connected)) {
+                      setShowWalletModal(true);
+                      return;
+                    }
+                    setExecMode(execMode === 'manual' ? 'agent' : 'manual');
+                  }}
+                  className={`flex items-center gap-2 group ${!(connected || ethWallet?.connected || btcWallet?.connected) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-label="Toggle agent mode"
+                  title={!(connected || ethWallet?.connected || btcWallet?.connected) ? 'Connect a wallet to enable agent mode' : undefined}
                 >
                   <span className="text-[11px] text-slate-500 group-hover:text-slate-400 flex items-center gap-1 transition-colors">
                     <Bot className="w-3 h-3" />

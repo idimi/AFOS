@@ -216,6 +216,7 @@ function SectionCard({
 export default function AgentSettings() {
   const { isAuthenticated, loading: authLoading } = useAuth();
   const [savedFlash, setSavedFlash] = useState(false);
+  const [resetFlash, setResetFlash] = useState(false);
 
   // ── Remote state ──────────────────────────────────────────────────────────────
   const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
@@ -294,6 +295,8 @@ export default function AgentSettings() {
       theme: "dark",
     });
     toast.success("Settings reset to defaults");
+    setResetFlash(true);
+    setTimeout(() => setResetFlash(false), 2000);
   };
 
   const handleSave = () => {
@@ -514,19 +517,25 @@ export default function AgentSettings() {
         <button
           onClick={handleReset}
           disabled={saveMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-60 text-muted-foreground hover:text-foreground"
-          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-60"
+          style={resetFlash
+            ? { background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success-foreground)' }
+            : { background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }
+          }
         >
-          <RotateCcw className="w-3.5 h-3.5" />
-          Reset to defaults
+          {resetFlash
+            ? <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 8 6 12 14 4" /></svg>
+            : <RotateCcw className="w-3.5 h-3.5" />
+          }
+          {resetFlash ? 'Reset ✓' : 'Reset to defaults'}
         </button>
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending}
           className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60"
           style={savedFlash
-            ? { background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.45)", color: "#34d399" }
-            : { background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }
+            ? { background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success-foreground)' }
+            : { background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.3)', color: '#22d3ee' }
           }
         >
           {saveMutation.isPending ? (

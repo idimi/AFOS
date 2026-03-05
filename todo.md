@@ -979,3 +979,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Centralise SUPPORTED_WALLETS_TEXT constant in shared/const.ts
 - [x] Update ChatPage to use the shared constant (only consumer found)
 - [x] Save checkpoint
+
+## Six UX & Polish Improvements (Swaps + Settings)
+- [x] Add --success-foreground/--success-bg CSS variables to index.css (dark + light)
+- [x] Extend --warning-* to Swaps page high-slippage warning (replace hardcoded amber colour)
+- [x] Disable/overlay Advanced Settings panel on Swaps page when no wallet connected
+- [x] Auto-select chain tab in wallet modal based on currently selected sell token (already implemented via defaultChain prop)
+- [x] Show "Balance too low" warning below Sell amount field when amount exceeds wallet balance
+- [x] Apply --success-* variables to Save button flash in AgentSettings.tsx
+- [x] Add Reset button resetFlash pattern (brief "Reset ✓" state after reset completes)
+- [x] Save checkpoint
