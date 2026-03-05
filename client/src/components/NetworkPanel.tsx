@@ -396,9 +396,13 @@ function LivePeersTab({ fromToken, toToken, livePeers, activePeerCount }: {
   return (
     <div className="space-y-3">
       {displayPeers.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground text-center py-6">
-          Waiting for peers to announce…
-        </p>
+        <div className="flex flex-col items-center justify-center py-6 gap-2">
+          <Users className="w-5 h-5 text-slate-400" />
+          <p className="text-xs text-slate-300 font-medium">
+            Waiting for peers to announce…
+          </p>
+          <p className="text-[10px] text-slate-500">Peers will appear once DHT connects</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {displayPeers.map(peer => (
@@ -420,9 +424,11 @@ function LivePeersTab({ fromToken, toToken, livePeers, activePeerCount }: {
           ))}
         </div>
       )}
-      <div className="pt-2 border-t border-border flex items-center justify-between">
-        <span className="text-[10px] text-slate-600">IntercomSwap DHT</span>
-        <span className="text-[10px] font-mono text-cyan-500">
+      <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+        <span className="text-[10px] text-slate-400 font-medium">IntercomSwap DHT</span>
+        <span className={`text-[10px] font-mono font-semibold ${
+          activePeerCount > 0 ? "text-cyan-400" : "text-amber-400"
+        }`}>
           {activePeerCount > 0 ? `${activePeerCount} total peers` : "Connecting…"}
         </span>
       </div>

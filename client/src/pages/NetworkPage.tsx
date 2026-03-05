@@ -21,6 +21,7 @@ import { useLightPeer } from "@/contexts/LightPeerContext";
 import {
   getPeers, getAgentStatus, onSSEEvent, type OraclePeer,
   getChannels, openChannel, closeChannel, pingPeer,
+  getRelayPeers,
   type LiquidityChannel,
 } from "@/lib/afosApi";
 
@@ -826,23 +827,62 @@ export default function NetworkPage() {
     }));
   }, []);
 
-  /** Fetch live peer data from Oracle VM */
+  /** Fetch live peer data from Oracle VM + relay light peers */
   const fetchLiveData = useCallback(async () => {
     try {
-      const [peersData, statusData, channelsData] = await Promise.all([
+      const [peersData, statusData, channelsData, relayData] = await Promise.all([
         getPeers().catch(() => null),
         getAgentStatus().catch(() => null),
         getChannels().catch(() => null),
+        getRelayPeers().catch(() => null),
       ]);
 
       const selfPeer = buildSelfPeer();
       const remotePeers = peersData ? convertOraclePeers(peersData.peers) : [];
-      const allPeers = [selfPeer, ...remotePeers];
-      const channels = buildChannels(remotePeers);
+
+      // Merge relay light peers (browser wallets that announced themselves)
+      // Exclude self by matching the actual peerId from LightPeerContext
+      const myRelayPeerId = lightPeer.peerId; // wallet public key / address
+      const lightPeers: Peer[] = relayData
+        ? [...relayData.hyperswarmPeers, ...relayData.lightPeers]
+            .filter(rp => {
+              // Exclude our own peer from the remote list
+              if (myRelayPeerId && rp.peerId === myRelayPeerId) return false;
+              return true;
+            })
+            .map((rp, index) => {
+              const pos = peerPosition(rp.peerId, remotePeers.length + index, remotePeers.length + (relayData.hyperswarmPeers.length + relayData.lightPeers.length));
+              return {
+                id: rp.peerId.slice(0, 16),
+                alias: rp.alias || `lp-${rp.peerId.slice(0, 8)}`,
+                region: "Light Peer",
+                lat: pos.lat,
+                lng: pos.lng,
+                latency: 0,
+                volume24h: 0,
+                pairs: rp.pairs || ["BTC/USDT", "SOL/USDT"],
+                online: rp.isConnected,
+                reputation: 99,
+                channels: 0,
+                liquidity: 0,
+                version: "2.0.0",
+                fullKey: rp.peerId,
+                origin: 'intercomswap' as const,
+              };
+            })
+        : [];
+
+      // Deduplicate: prefer Oracle peers over relay peers for same ID
+      const seenIds = new Set(remotePeers.map(p => p.id));
+      const newLightPeers = lightPeers.filter(p => !seenIds.has(p.id));
+      const allRemotePeers = [...remotePeers, ...newLightPeers];
+
+      const allPeers = [selfPeer, ...allRemotePeers];
+      const channels = buildChannels(allRemotePeers);
 
       // Update self peer with Oracle VM data
       if (statusData) {
-        selfPeer.channels = remotePeers.length;
+        selfPeer.channels = allRemotePeers.length;
       }
       if (peersData?.nodeKey) {
         setOracleNodeKey(peersData.nodeKey);
@@ -861,7 +901,7 @@ export default function NetworkPage() {
       setLiveChannels([]);
       setLoading(false);
     }
-  }, [buildSelfPeer, convertOraclePeers, buildChannels]);
+  }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId]);
 
   /** Ping a remote peer, update latency display, and persist result to reputation DB */
   const handlePing = useCallback(async (peerId: string, fullKey: string) => {

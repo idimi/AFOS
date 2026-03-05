@@ -24,7 +24,7 @@ import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
-import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
+import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
@@ -2309,18 +2309,38 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch live peers from getAgentStatus + SSE events
+  // Fetch live peers from relay registry + getAgentStatus + SSE events
   useEffect(() => {
     const fetchPeers = async () => {
       try {
-        const status = await getAgentStatus();
-        setActivePeerCount(status.activePeers || 0);
-      } catch { /* keep previous */ }
+        // Fetch the relay peer registry (includes all announced light peers + hyperswarm peers)
+        const relayData = await getRelayPeers();
+        const relayPeers: LivePeer[] = [
+          ...relayData.hyperswarmPeers,
+          ...relayData.lightPeers,
+        ].map(rp => ({
+          id: rp.peerId,
+          alias: rp.alias || rp.shortId || rp.peerId.slice(0, 10),
+          latency: 0,
+          pairs: rp.pairs || [],
+          online: rp.isConnected,
+          reputation: 99,
+        }));
+        setLivePeers(relayPeers);
+        setActivePeerCount(relayPeers.filter(p => p.online).length);
+      } catch {
+        // Fallback: use agent status for peer count only
+        try {
+          const status = await getAgentStatus();
+          setActivePeerCount(status.activePeers || 0);
+        } catch { /* keep previous */ }
+      }
     };
     fetchPeers();
-    const interval = setInterval(fetchPeers, 30000);
+    // Poll every 15 seconds so newly announced peers appear quickly
+    const interval = setInterval(fetchPeers, 15000);
 
-    // Listen for SSE peer events
+    // Listen for SSE peer events (real-time updates on top of polling)
     const unsubConnect = onSSEEvent('peer_connected', (data: unknown) => {
       const d = data as { peer_id?: string; alias?: string; latency?: number; pairs?: string[]; reputation?: number };
       if (!d.peer_id) return;
