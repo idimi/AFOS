@@ -1129,3 +1129,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add Block/Unblock button in PeerDetail overlay panel
 - [x] Show visual indicator (red tint / lock icon) on blocked peer nodes in topology canvas and Peer Directory
 - [x] Add Blocked Peers section in Settings page with unblock button
+
+## Unified Multi-Chain Peer Identity
+
+- [x] Audit peer ID generation — understand how lp-eth-XXXX vs lp-XXXX IDs are created
+- [x] Fix peer ID to always use stable signaling node key (not wallet address) so one user = one peer ID
+- [x] Add walletAddresses JSON field to peer profile (SOL, ETH, BTC addresses as metadata)
+- [x] Update LightPeerContext to broadcast wallet addresses as peer metadata on connect/wallet-change
+- [x] Update PeerDetail overlay to show chain address badges (SOL/ETH/BTC) for the peer
+- [x] Update Peer Directory rows to show chain icons instead of chain-prefixed peer IDs
+- [ ] Clean up old lp-eth-XXXX duplicate entries from peerReputation table (manual DB cleanup)

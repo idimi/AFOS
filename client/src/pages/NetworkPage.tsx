@@ -45,6 +45,12 @@ interface Peer {
   fullKey?: string; // full public key for ping
   origin?: 'hyperswarm' | 'intercomswap'; // which DHT layer this peer came from
   lastSeen?: number; // Unix ms timestamp — only set for relay light peers
+  /** Multi-chain wallet addresses broadcast by the peer on connect */
+  walletAddresses?: {
+    solana?: string;
+    ethereum?: string;
+    bitcoin?: string;
+  };
 }
 
 interface Channel {
@@ -798,6 +804,39 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
           </div>
         )}
 
+        {/* Multi-chain wallet addresses — shown when peer has broadcast wallet metadata */}
+        {peer.walletAddresses && Object.keys(peer.walletAddresses).some(k => peer.walletAddresses![k as keyof typeof peer.walletAddresses]) && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Connected Wallets</div>
+            <div className="flex flex-col gap-1">
+              {peer.walletAddresses.solana && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-mono px-1 py-0.5 rounded" style={{ background: 'rgba(153,69,255,0.15)', color: '#9945FF', border: '1px solid rgba(153,69,255,0.25)' }}>SOL</span>
+                  <span className="text-[9px] font-mono text-muted-foreground truncate" title={peer.walletAddresses.solana}>
+                    {peer.walletAddresses.solana.slice(0, 8)}...{peer.walletAddresses.solana.slice(-4)}
+                  </span>
+                </div>
+              )}
+              {peer.walletAddresses.ethereum && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-mono px-1 py-0.5 rounded" style={{ background: 'rgba(98,126,234,0.15)', color: '#627EEA', border: '1px solid rgba(98,126,234,0.25)' }}>ETH</span>
+                  <span className="text-[9px] font-mono text-muted-foreground truncate" title={peer.walletAddresses.ethereum}>
+                    {peer.walletAddresses.ethereum.slice(0, 6)}...{peer.walletAddresses.ethereum.slice(-4)}
+                  </span>
+                </div>
+              )}
+              {peer.walletAddresses.bitcoin && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-mono px-1 py-0.5 rounded" style={{ background: 'rgba(247,147,26,0.15)', color: '#F7931A', border: '1px solid rgba(247,147,26,0.25)' }}>BTC</span>
+                  <span className="text-[9px] font-mono text-muted-foreground truncate" title={peer.walletAddresses.bitcoin}>
+                    {peer.walletAddresses.bitcoin.slice(0, 8)}...{peer.walletAddresses.bitcoin.slice(-4)}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
           <div className="flex flex-wrap gap-1">
@@ -1247,6 +1286,20 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                     <span>{peer.channels}ch</span>
                     <span className="text-muted-foreground/40">·</span>
                     <span>{peer.pairs[0] || '—'}</span>
+                    {/* Chain icons — shown when peer has broadcast wallet addresses */}
+                    {peer.walletAddresses && (
+                      <>
+                        {peer.walletAddresses.solana && (
+                          <span className="text-[8px] font-mono px-0.5 rounded" style={{ color: '#9945FF', background: 'rgba(153,69,255,0.12)', border: '1px solid rgba(153,69,255,0.2)' }} title={`SOL: ${peer.walletAddresses.solana}`}>SOL</span>
+                        )}
+                        {peer.walletAddresses.ethereum && (
+                          <span className="text-[8px] font-mono px-0.5 rounded" style={{ color: '#627EEA', background: 'rgba(98,126,234,0.12)', border: '1px solid rgba(98,126,234,0.2)' }} title={`ETH: ${peer.walletAddresses.ethereum}`}>ETH</span>
+                        )}
+                        {peer.walletAddresses.bitcoin && (
+                          <span className="text-[8px] font-mono px-0.5 rounded" style={{ color: '#F7931A', background: 'rgba(247,147,26,0.12)', border: '1px solid rgba(247,147,26,0.2)' }} title={`BTC: ${peer.walletAddresses.bitcoin}`}>₿</span>
+                        )}
+                      </>
+                    )}
                     {peer.origin === 'intercomswap' && peer.lastSeen && (
                       <LastSeenBadge lastSeen={peer.lastSeen} />
                     )}
@@ -1675,6 +1728,10 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
 
   /** Build the "You" (self) peer from LightPeer context + Oracle VM */
   const buildSelfPeer = useCallback((): Peer => {
+    const wa: Peer['walletAddresses'] = {};
+    if (lightPeer.solanaAddress) wa.solana = lightPeer.solanaAddress;
+    if (lightPeer.ethereumAddress) wa.ethereum = lightPeer.ethereumAddress;
+    if (lightPeer.bitcoinAddress) wa.bitcoin = lightPeer.bitcoinAddress;
     return {
       id: "self",
       alias: lightPeer.isOnline ? `You (${lightPeer.peerAlias || "Light Peer"})` : "You (AFOS Agent)",
@@ -1690,8 +1747,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       liquidity: 0,
       version: "2.0.0",
       origin: 'intercomswap' as const,
+      walletAddresses: Object.keys(wa).length > 0 ? wa : undefined,
     };
-  }, [lightPeer.isOnline, lightPeer.peerAlias, lightPeer.totalVolumeUsd, lightPeer.prefs?.acceptedPairs]);
+  }, [lightPeer.isOnline, lightPeer.peerAlias, lightPeer.totalVolumeUsd, lightPeer.prefs?.acceptedPairs, lightPeer.solanaAddress, lightPeer.ethereumAddress, lightPeer.bitcoinAddress]);
 
   /** Convert Oracle VM peers to our Peer type */
   const convertOraclePeers = useCallback((oraclePeers: OraclePeer[]): Peer[] => {
@@ -1801,6 +1859,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             fullKey: sp.peerId,
             origin: 'intercomswap' as const,
             lastSeen: sp.lastHeartbeat ?? sp.connectedAt,
+            walletAddresses: sp.walletAddresses,
           };
         });
 

@@ -92,6 +92,10 @@ export interface LightPeerState {
   signalingConnected: boolean;
   /** Count of peers with direct WebRTC data channels */
   directPeerCount: number;
+  /** Connected wallet addresses for multi-chain display */
+  solanaAddress: string | null;
+  ethereumAddress: string | null;
+  bitcoinAddress: string | null;
   // Actions
   setPrefs: (prefs: Partial<LightPeerPrefs>) => void;
   acceptRfq: (rfqId: string) => Promise<void>;
@@ -134,9 +138,33 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const phantomSolAddress = phantomMultiChain?.solanaAddress;
   const solConnected = solAdapterConnected || !!phantomSolAddress;
 
-  // ── Peer identity ──────────────────────────────────────────────────────────
-  const [peerId, setPeerId] = useState<string | null>(null);
-  const [peerAlias, setPeerAlias] = useState("light-peer");
+  // ── Peer identity — stable device-local key (wallet-agnostic) ───────────────
+  // Generate once and persist in localStorage so the peer ID never changes
+  // regardless of which wallet(s) are connected. Wallet addresses are broadcast
+  // as metadata alongside this stable ID.
+  const [peerId] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem("afos_peer_id");
+      if (stored) return stored;
+      // Generate a new stable ID: 8 random hex chars prefixed with 'lp-'
+      const rand = Array.from(crypto.getRandomValues(new Uint8Array(5)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      const newId = `lp-${rand}`;
+      localStorage.setItem("afos_peer_id", newId);
+      return newId;
+    } catch {
+      return null;
+    }
+  });
+  const [peerAlias, setPeerAlias] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem("afos_peer_alias");
+      return stored || "light-peer";
+    } catch {
+      return "light-peer";
+    }
+  });
   const [isRegistered, setIsRegistered] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [lastHeartbeat, setLastHeartbeat] = useState<number | null>(null);
@@ -170,30 +198,22 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
 
-  // ── Derive peer ID from connected wallet ──────────────────────────────────
+  // ── Update alias from stable peer ID (never changes) ──────────────────────
+  // The alias is derived from the stable peer ID, not from wallet addresses.
+  // It is set once on mount and persisted so it stays consistent across sessions.
   useEffect(() => {
-    let id: string | null = null;
-    let alias = "light-peer";
-
-    if (solAdapterConnected && solPubkey) {
-      // Standard Solana wallet adapter (Solflare, etc.)
-      id = solPubkey.toString();
-      alias = `lp-${id.slice(0, 6)}`;
-    } else if (phantomSolAddress) {
-      // Phantom multi-chain: use the Solana address from the multi-chain context
-      id = phantomSolAddress;
-      alias = `lp-${id.slice(0, 6)}`;
-    } else if (ethereum?.address) {
-      id = ethereum.address.toLowerCase();
-      alias = `lp-eth-${id.slice(2, 8)}`;
-    } else if (bitcoin?.address) {
-      id = bitcoin.address;
-      alias = `lp-btc-${id.slice(0, 6)}`;
+    if (!peerId) return;
+    const stored = localStorage.getItem("afos_peer_alias");
+    if (stored && stored !== "light-peer") {
+      setPeerAlias(stored);
+      return;
     }
-
-    setPeerId(id);
+    // Derive alias from stable peer ID suffix
+    const alias = peerId; // e.g. "lp-a3f9c1b2" — already short and readable
+    localStorage.setItem("afos_peer_alias", alias);
     setPeerAlias(alias);
-  }, [solAdapterConnected, solPubkey, phantomSolAddress, ethereum?.address, bitcoin?.address]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId]);
 
   // ── Announce / heartbeat (legacy HTTP — kept as fallback) ─────────────────
   const announce = useCallback(async (id: string, alias: string) => {
@@ -779,6 +799,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       dismissHtlc,
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
+      solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
+      ethereumAddress: ethereum?.address ?? null,
+      bitcoinAddress: bitcoin?.address ?? null,
     }}>
       {children}
     </LightPeerContext.Provider>
