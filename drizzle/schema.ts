@@ -242,3 +242,39 @@ export const peerMutes = mysqlTable("peer_mutes", {
 });
 export type PeerMute = typeof peerMutes.$inferSelect;
 export type InsertPeerMute = typeof peerMutes.$inferInsert;
+
+// ─── Admin Config ─────────────────────────────────────────────────────────────
+// Singleton table (id = 1) storing operator-level platform configuration.
+// Fee parameters, kill switch, and treasury wallet list are all persisted here.
+export const adminConfig = mysqlTable("admin_config", {
+  id:              int("id").autoincrement().primaryKey(),
+  /** Platform fee enabled toggle */
+  feeEnabled:      int("feeEnabled").default(1).notNull(),  // 1 = true, 0 = false
+  /** Swap fee in basis points (e.g. 20 = 0.20%) */
+  swapFeeBps:      int("swapFeeBps").default(20).notNull(),
+  /** Express routing premium in basis points */
+  expressFeeBps:   int("expressFeeBps").default(5).notNull(),
+  /** Flat fee per bot/autopost task in USD cents (e.g. 10 = $0.10) */
+  botFeeCents:     int("botFeeCents").default(10).notNull(),
+  /** Minimum trade size in USD cents (e.g. 1000 = $10.00) */
+  minTradeUsdCents: int("minTradeUsdCents").default(1000).notNull(),
+  /** Maximum trade size in USD cents (e.g. 100000 = $1000.00) */
+  maxTradeUsdCents: int("maxTradeUsdCents").default(100000).notNull(),
+  /** JSON-encoded array of TreasuryWallet objects */
+  treasuryWallets: text("treasuryWallets"),
+  createdAt:       timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:       timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AdminConfig = typeof adminConfig.$inferSelect;
+export type InsertAdminConfig = typeof adminConfig.$inferInsert;
+
+export const DEFAULT_ADMIN_CONFIG = {
+  feeEnabled: true,
+  swapFeeBps: 20,
+  expressFeeBps: 5,
+  botFeeCents: 10,
+  minTradeUsdCents: 1000,
+  maxTradeUsdCents: 100000,
+  treasuryWallets: [] as Array<{ id: string; label: string; chain: "solana" | "ethereum" | "bitcoin"; address: string; splitPercent: number }>,
+};

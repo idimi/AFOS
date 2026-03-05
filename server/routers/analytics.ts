@@ -504,4 +504,87 @@ export const analyticsRouter = router({
         recentFees,
       };
     }),
+
+  /**
+   * Top trading pairs by swap count and volume.
+   * Returns the top N fromToken→toToken pairs for the given time window.
+   */
+  topPairs: publicProcedure
+    .input(z.object({
+      days:  z.number().int().min(1).max(365).default(30),
+      limit: z.number().int().min(1).max(20).default(10),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          fromToken: swapAnalytics.fromToken,
+          toToken:   swapAnalytics.toToken,
+          swapCount: count(swapAnalytics.id),
+          totalUsd:  sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .groupBy(swapAnalytics.fromToken, swapAnalytics.toToken)
+        .orderBy(desc(count(swapAnalytics.id)))
+        .limit(input.limit);
+
+      const totalSwaps = rows.reduce((s, r) => s + Number(r.swapCount), 0);
+      return rows.map(r => ({
+        pair:      `${r.fromToken} \u2192 ${r.toToken}`,
+        fromToken: r.fromToken,
+        toToken:   r.toToken,
+        swapCount: Number(r.swapCount),
+        totalUsd:  parseFloat(r.totalUsd ?? "0"),
+        pct:       totalSwaps > 0 ? Math.round((Number(r.swapCount) / totalSwaps) * 100) : 0,
+      }));
+    }),
+
+  /**
+   * Platform-wide user stats.
+   * Returns unique wallet count (active in last 30d), total wallets ever seen,
+   * and average swap size.
+   */
+  userStats: publicProcedure
+    .input(z.object({ days: z.number().int().min(1).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { totalWallets: 0, activeWallets: 0, avgSwapUsd: 0 };
+      const since = sinceMs(input.days);
+
+      // Total unique wallets seen in swap analytics (via peerId as proxy)
+      const [totRow] = await db
+        .select({
+          totalWallets: sql<string>`COUNT(DISTINCT ${swapAnalytics.peerId})`,
+          avgSwapUsd:   sql<string>`COALESCE(AVG(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(eq(swapAnalytics.status, "completed"));
+
+      const [activeRow] = await db
+        .select({
+          activeWallets: sql<string>`COUNT(DISTINCT ${swapAnalytics.peerId})`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        );
+
+      return {
+        totalWallets:  Number(totRow?.totalWallets ?? 0),
+        activeWallets: Number(activeRow?.activeWallets ?? 0),
+        avgSwapUsd:    parseFloat(totRow?.avgSwapUsd ?? "0"),
+      };
+    }),
 });

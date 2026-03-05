@@ -13,6 +13,7 @@ import { peerBlocksRouter } from "./routers/peerBlocks";
 import { peerReportsRouter } from "./routers/peerReports";
 import { peerMutesRouter } from "./routers/peerMutes";
 import { settingsRouter } from "./routers/settings";
+import { adminConfigRouter } from "./routers/adminConfig";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -28,6 +29,7 @@ export const appRouter = router({
   peerReports: peerReportsRouter,
   peerMutes: peerMutesRouter,
   settings: settingsRouter,
+  adminConfig: adminConfigRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {

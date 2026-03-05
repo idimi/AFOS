@@ -1192,3 +1192,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Write vitest tests for 0x API integration (3 tests passing)
 - [x] Update multiChainAgentSwap test for new cross-chain message
 - [x] All 208 tests passing across 15 test files
+
+## Admin Panel — Remove Mock Data & Wire Live Data
+
+- [x] Add `adminConfig` table to schema (fee config + treasury wallets as JSON)
+- [x] Add `analytics.topPairs` tRPC procedure (aggregate by fromToken→toToken)
+- [x] Add `adminConfig` tRPC router (get/save fee config, get/save treasury wallets)
+- [x] Wire Users tab to live analytics (summary + routeDistribution + topPairs)
+- [x] Replace MOCK_NODE_STATUS with live health checks (Oracle VM + RPC pings)
+- [x] Wire Fee Config tab to DB via adminConfig.saveFeeConfig
+- [x] Wire Treasury tab to DB via adminConfig.saveTreasury
+- [x] Remove LP Node tab (no backing system)
+- [x] Remove Routing tab (no backing system)
+- [x] Run all tests after changes (216 tests pass)

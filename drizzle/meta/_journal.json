@@ -71,6 +71,13 @@
       "when": 1772724886444,
       "tag": "0009_luxuriant_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1772727402947,
+      "tag": "0010_fat_bedlam",
+      "breakpoints": true
     }
   ]
 }
