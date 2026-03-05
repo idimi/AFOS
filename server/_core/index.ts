@@ -201,6 +201,22 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
+    // ── Hourly fee revenue alert ───────────────────────────────────────────────
+    // Run once on startup (after a 10s warm-up delay), then every hour.
+    // The job is idempotent — it only fires one notification per calendar day.
+    const runFeeAlert = async () => {
+      try {
+        const { runFeeRevenueAlert } = await import("../jobs/feeRevenueAlert");
+        const result = await runFeeRevenueAlert();
+        if (result.alerted) {
+          console.log(`[FeeAlert] Notification sent — $${result.totalFeeUsd.toFixed(2)} today (threshold $${result.thresholdUsd.toFixed(2)})`);
+        }
+      } catch (err) {
+        console.error("[FeeAlert] Error running fee revenue alert:", err);
+      }
+    };
+    setTimeout(runFeeAlert, 10_000);          // initial run after DB pool warms up
+    setInterval(runFeeAlert, 60 * 60 * 1000); // repeat every hour
   });
 }
 

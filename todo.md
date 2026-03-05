@@ -1266,3 +1266,26 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Give IntercomSwap P2P an "Active" badge (indigo, matching Jupiter and 0x)
 - [ ] Wire preferred route setting from DB to swap engine tRPC procedure
 - [ ] Add "Test Connection" ping button per route with latency/availability feedback
+
+## Logo Integration
+
+- [ ] Remove dark background from AFOS logo to make transparent PNG
+- [ ] Upload transparent logo and replace placeholder icon in sidebar/header
+
+## Logo Integration (Completed)
+
+- [x] Remove dark background from AFOS logo to make transparent PNG
+- [x] Upload transparent logo and replace placeholder icon in sidebar/header
+- [x] Add favicon using the AFOS icon
+- [x] Replace Bot/Zap placeholder icons with AFOS logo in chat message bubbles and agent CTA
+
+## Settings — Route Testing Enhancements (Completed)
+
+- [x] Auto-run Test Connection on Settings page load (staggered 300ms per route)
+- [x] Add "Last tested" timestamp display below each route ping result
+
+## Fee Alert Scheduling (Completed)
+
+- [x] Schedule fee revenue alert to run hourly via setInterval in server/_core/index.ts
+- [x] Initial run 10s after server startup (DB pool warm-up delay)
+- [x] Idempotent: only one notification per calendar day (UTC)

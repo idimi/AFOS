@@ -321,13 +321,13 @@ export default function AgentSettings() {
   });
 
   // ── Test route connection ──────────────────────────────────────────────────────
-  const [routePingState, setRoutePingState] = useState<Record<string, { loading: boolean; ok?: boolean; latencyMs?: number; message?: string }>>({});
+  const [routePingState, setRoutePingState] = useState<Record<string, { loading: boolean; ok?: boolean; latencyMs?: number; message?: string; lastTestedAt?: Date }>>({}); 
   const testRouteMutation = trpc.settings.testRouteConnection.useMutation({
     onSuccess: (result, variables) => {
-      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ...result } }));
+      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ...result, lastTestedAt: new Date() } }));
     },
     onError: (err, variables) => {
-      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ok: false, message: err.message } }));
+      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ok: false, message: err.message, lastTestedAt: new Date() } }));
     },
   });
 
@@ -336,6 +336,19 @@ export default function AgentSettings() {
     setRoutePingState(prev => ({ ...prev, [routeId]: { loading: true } }));
     testRouteMutation.mutate({ routeId: routeId as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best" });
   };
+
+  // Auto-run Test Connection on mount for all testable routes (not "best")
+  useEffect(() => {
+    const testableRoutes = ROUTES.filter(r => r.id !== "best");
+    // Stagger requests by 300ms to avoid hammering all endpoints simultaneously
+    testableRoutes.forEach((route, i) => {
+      setTimeout(() => {
+        setRoutePingState(prev => ({ ...prev, [route.id]: { loading: true } }));
+        testRouteMutation.mutate({ routeId: route.id as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best" });
+      }, i * 300);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Local draft state (mirrors remote, editable before save) ─────────────────
   const [maxTxAmount, setMaxTxAmount] = useState("500");
@@ -578,11 +591,18 @@ export default function AgentSettings() {
                       )}
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{route.description}</p>
-                    {/* Ping result */}
+                    {/* Ping result + last tested */}
                     {routePingState[route.id] && !routePingState[route.id].loading && (
-                      <p className={`text-[10px] mt-1 font-medium ${routePingState[route.id].ok ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {routePingState[route.id].ok ? '✓' : '✗'} {routePingState[route.id].message}
-                      </p>
+                      <div className="mt-1 space-y-0.5">
+                        <p className={`text-[10px] font-medium ${routePingState[route.id].ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {routePingState[route.id].ok ? '✓' : '✗'} {routePingState[route.id].message}
+                        </p>
+                        {routePingState[route.id].lastTestedAt && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Last tested: {routePingState[route.id].lastTestedAt!.toLocaleTimeString()}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                   {/* Test Connection button */}
