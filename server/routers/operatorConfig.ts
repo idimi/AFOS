@@ -10,6 +10,7 @@ import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { operatorConfig, DEFAULT_OPERATOR_CONFIG } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { writeAuditLog, diffObjects } from "../lib/auditLog";
 
 // ─── Admin guard middleware ───────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -98,12 +99,36 @@ export const operatorConfigRouter = router({
    */
   save: adminProcedure
     .input(saveSchema)
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return null;
 
-      // Ensure row exists
-      await getOrCreate();
+      // Snapshot before state
+      const before = await getOrCreate();
+      if (!before) return null;
+
+      // Build a plain-object snapshot of the before state (normalise tradeauto to boolean)
+      const beforeSnap: Record<string, unknown> = {
+        llmModel:          before.llmModel,
+        systemPrompt:      before.systemPrompt,
+        rendezvousChannel: before.rendezvousChannel,
+        peerMode:          before.peerMode,
+        minSwapUsdt:       before.minSwapUsdt,
+        maxSwapUsdt:       before.maxSwapUsdt,
+        scBridgePort:      before.scBridgePort,
+        btcHost:           before.btcHost,
+        // Never log the actual password — use a sentinel
+        btcRpcPassword:    before.btcRpcPassword ? "[set]" : "[empty]",
+        btcTlsCert:        before.btcTlsCert,
+        solanaRpc:         before.solanaRpc,
+        solanaKeypairPath: before.solanaKeypairPath,
+        tradeauto:         before.tradeauto === 1,
+        maxTradeBtc:       before.maxTradeBtc,
+        feeBpsCap:         before.feeBpsCap,
+        tickInterval:      before.tickInterval,
+        minRefundHours:    before.minRefundHours,
+        maxRefundHours:    before.maxRefundHours,
+      };
 
       const patch: Record<string, unknown> = {};
       if (input.llmModel          !== undefined) patch.llmModel          = input.llmModel;
@@ -131,6 +156,25 @@ export const operatorConfigRouter = router({
       if (Object.keys(patch).length > 0) {
         await db.update(operatorConfig).set(patch).where(eq(operatorConfig.id, 1));
       }
+
+      // Build after snapshot for diff (use input values, normalise tradeauto)
+      const afterSnap: Record<string, unknown> = { ...beforeSnap };
+      for (const [k, v] of Object.entries(input)) {
+        if (v === undefined) continue;
+        if (k === "tradeauto") { afterSnap.tradeauto = v; continue; }
+        if (k === "btcRpcPassword") {
+          afterSnap.btcRpcPassword = (v && v !== "••••••••") ? "[set]" : beforeSnap.btcRpcPassword;
+          continue;
+        }
+        afterSnap[k] = v;
+      }
+
+      await writeAuditLog({
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
+        section:  "operator_config",
+        changes:  diffObjects(beforeSnap, afterSnap),
+      });
 
       const [updated] = await db.select().from(operatorConfig).where(eq(operatorConfig.id, 1)).limit(1);
       if (!updated) return null;

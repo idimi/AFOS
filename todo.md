@@ -1215,3 +1215,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add `adminProcedure` guard to operatorConfig router
 - [x] Add fee revenue threshold alert via notifyOwner (daily check, first $1 earned)
 - [x] Run all tests after changes (222 tests pass)
+
+## Admin Audit Log
+
+- [x] Add `admin_audit_log` table to schema (userId, action, section, fieldName, oldValue, newValue, createdAt)
+- [x] Add `writeAuditLog` server helper function
+- [x] Wire audit logging into `adminConfig.saveFeeConfig`
+- [x] Wire audit logging into `adminConfig.saveTreasury`
+- [x] Wire audit logging into `operatorConfig.save`
+- [x] Add `adminConfig.getAuditLog` tRPC procedure (paginated, filterable by section)
+- [x] Add Audit Log tab to Admin Panel (table with filters, pagination, diff view)
+- [x] Run tests after changes (228 tests pass)

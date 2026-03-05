@@ -7,16 +7,18 @@
  * Covers:
  *   - Fee configuration (swap fee bps, express fee, bot fee, min/max trade size, kill switch)
  *   - Treasury wallet list (JSON-encoded array persisted in the DB)
+ *   - Audit log read access
  *
  * get is public so the UI can load config without auth.
- * saveFeeConfig and saveTreasury require admin role.
+ * saveFeeConfig, saveTreasury, and getAuditLog require admin role.
  */
 import { z } from "zod";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
-import { adminConfig, DEFAULT_ADMIN_CONFIG } from "../../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { adminConfig, adminAuditLog, DEFAULT_ADMIN_CONFIG } from "../../drizzle/schema";
+import { eq, desc, and, like } from "drizzle-orm";
+import { writeAuditLog, diffObjects } from "../lib/auditLog";
 
 // ─── Admin guard middleware ───────────────────────────────────────────────────
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
@@ -59,6 +61,19 @@ async function getOrCreateConfig() {
   return created ?? null;
 }
 
+/** Normalise a DB row into a plain object suitable for diffing */
+function rowToFeeSnapshot(row: NonNullable<Awaited<ReturnType<typeof getOrCreateConfig>>>) {
+  return {
+    feeEnabled:             row.feeEnabled === 1,
+    swapFeeBps:             row.swapFeeBps,
+    expressFeeBps:          row.expressFeeBps,
+    botFeeCents:            row.botFeeCents,
+    minTradeUsdCents:       row.minTradeUsdCents,
+    maxTradeUsdCents:       row.maxTradeUsdCents,
+    feeAlertThresholdCents: row.feeAlertThresholdCents,
+  } as Record<string, unknown>;
+}
+
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const adminConfigRouter = router({
   /**
@@ -75,6 +90,8 @@ export const adminConfigRouter = router({
       botFeeCents:      DEFAULT_ADMIN_CONFIG.botFeeCents,
       minTradeUsdCents: DEFAULT_ADMIN_CONFIG.minTradeUsdCents,
       maxTradeUsdCents: DEFAULT_ADMIN_CONFIG.maxTradeUsdCents,
+      feeAlertThresholdCents: 100,
+      feeAlertLastNotifiedDate: null as string | null,
       treasuryWallets:  DEFAULT_ADMIN_CONFIG.treasuryWallets,
     };
 
@@ -97,6 +114,7 @@ export const adminConfigRouter = router({
   /**
    * Save fee configuration fields — admin only.
    * Accepts a partial patch — only provided fields are written.
+   * Writes one audit log row per changed field.
    */
   saveFeeConfig: adminProcedure
     .input(z.object({
@@ -108,11 +126,14 @@ export const adminConfigRouter = router({
       maxTradeUsdCents:       z.number().int().min(100).max(100_000_000).optional(),
       feeAlertThresholdCents: z.number().int().min(0).max(100_000_000).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return { success: false };
 
-      await getOrCreateConfig(); // ensure row exists
+      // Snapshot before state
+      const before = await getOrCreateConfig();
+      if (!before) return { success: false };
+      const beforeSnap = rowToFeeSnapshot(before);
 
       const patch: Record<string, unknown> = {};
       if (input.feeEnabled             !== undefined) patch.feeEnabled             = input.feeEnabled ? 1 : 0;
@@ -126,25 +147,107 @@ export const adminConfigRouter = router({
       if (Object.keys(patch).length > 0) {
         await db.update(adminConfig).set(patch).where(eq(adminConfig.id, 1));
       }
+
+      // Build after snapshot from input (normalise feeEnabled to boolean for diff)
+      const afterSnap: Record<string, unknown> = { ...beforeSnap };
+      if (input.feeEnabled             !== undefined) afterSnap.feeEnabled             = input.feeEnabled;
+      if (input.swapFeeBps             !== undefined) afterSnap.swapFeeBps             = input.swapFeeBps;
+      if (input.expressFeeBps          !== undefined) afterSnap.expressFeeBps          = input.expressFeeBps;
+      if (input.botFeeCents            !== undefined) afterSnap.botFeeCents            = input.botFeeCents;
+      if (input.minTradeUsdCents       !== undefined) afterSnap.minTradeUsdCents       = input.minTradeUsdCents;
+      if (input.maxTradeUsdCents       !== undefined) afterSnap.maxTradeUsdCents       = input.maxTradeUsdCents;
+      if (input.feeAlertThresholdCents !== undefined) afterSnap.feeAlertThresholdCents = input.feeAlertThresholdCents;
+
+      await writeAuditLog({
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
+        section:  "fee_config",
+        changes:  diffObjects(beforeSnap, afterSnap),
+      });
+
       return { success: true };
     }),
 
   /**
    * Save treasury wallet list — admin only.
    * Replaces the entire list (client sends the full array after add/remove/edit).
+   * Writes a single audit log row with the full before/after JSON.
    */
   saveTreasury: adminProcedure
     .input(z.object({
       wallets: z.array(treasuryWalletSchema),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) return { success: false };
 
-      await getOrCreateConfig(); // ensure row exists
+      // Snapshot before state
+      const before = await getOrCreateConfig();
+      const oldWallets = (() => {
+        try { return JSON.parse(before?.treasuryWallets ?? "[]"); }
+        catch { return []; }
+      })();
+
       await db.update(adminConfig)
         .set({ treasuryWallets: JSON.stringify(input.wallets) })
         .where(eq(adminConfig.id, 1));
+
+      await writeAuditLog({
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
+        section:  "treasury",
+        changes:  diffObjects(
+          { treasuryWallets: oldWallets },
+          { treasuryWallets: input.wallets },
+        ),
+      });
+
       return { success: true };
+    }),
+
+  /**
+   * Read the audit log — admin only.
+   * Returns the most recent entries, optionally filtered by section.
+   * Paginated: page 1 = most recent.
+   */
+  getAuditLog: adminProcedure
+    .input(z.object({
+      section: z.enum(["fee_config", "treasury", "operator_config", "all"]).default("all"),
+      page:    z.number().int().min(1).default(1),
+      limit:   z.number().int().min(1).max(100).default(50),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { entries: [], total: 0, page: input.page, limit: input.limit };
+
+      const offset = (input.page - 1) * input.limit;
+
+      const baseQuery = db
+        .select()
+        .from(adminAuditLog)
+        .orderBy(desc(adminAuditLog.createdAt));
+
+      const rows = input.section === "all"
+        ? await baseQuery.limit(input.limit).offset(offset)
+        : await db
+            .select()
+            .from(adminAuditLog)
+            .where(eq(adminAuditLog.section, input.section))
+            .orderBy(desc(adminAuditLog.createdAt))
+            .limit(input.limit)
+            .offset(offset);
+
+      // Count total for pagination
+      const [countRow] = await db
+        .select({ count: adminAuditLog.id })
+        .from(adminAuditLog);
+      const total = countRow ? Number(countRow.count) : 0;
+
+      return {
+        entries: rows,
+        total,
+        page:    input.page,
+        limit:   input.limit,
+      };
     }),
 });

@@ -338,3 +338,27 @@ export const DEFAULT_OPERATOR_CONFIG = {
   minRefundHours: "20",
   maxRefundHours: "40",
 };
+
+// ─── Admin Audit Log ──────────────────────────────────────────────────────────
+// Immutable append-only log of every admin configuration change.
+// Records who changed what, in which section, and what the old/new values were.
+export const adminAuditLog = mysqlTable("admin_audit_log", {
+  id:        int("id").autoincrement().primaryKey(),
+  /** ID of the user who made the change (null for system-initiated changes) */
+  userId:    int("userId"),
+  /** Display name of the user at the time of the change */
+  userName:  varchar("userName", { length: 128 }),
+  /** Which config section was changed: "fee_config" | "treasury" | "operator_config" */
+  section:   varchar("section", { length: 64 }).notNull(),
+  /** Specific field that changed (e.g. "swapFeeBps", "tradeauto") */
+  fieldName: varchar("fieldName", { length: 128 }).notNull(),
+  /** Serialized previous value (JSON string or plain string) */
+  oldValue:  text("oldValue"),
+  /** Serialized new value (JSON string or plain string) */
+  newValue:  text("newValue"),
+  /** ISO timestamp of when the change was made */
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
+export type InsertAdminAuditLog = typeof adminAuditLog.$inferInsert;

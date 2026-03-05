@@ -194,6 +194,78 @@ describe("operatorConfig.save — admin guard", () => {
   });
 });
 
+describe("adminConfig.getAuditLog", () => {
+  it("returns the expected shape (graceful when DB unavailable)", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.adminConfig.getAuditLog({ section: "all", page: 1, limit: 20 });
+    expect(result).toHaveProperty("entries");
+    expect(result).toHaveProperty("total");
+    expect(result).toHaveProperty("page");
+    expect(result).toHaveProperty("limit");
+    expect(Array.isArray(result.entries)).toBe(true);
+    expect(typeof result.total).toBe("number");
+  });
+
+  it("rejects non-admin users", async () => {
+    const ctx: import("./_core/context").TrpcContext = {
+      user: {
+        id: 2,
+        openId: "regular-user",
+        email: "user@afos.io",
+        name: "Regular User",
+        loginMethod: "manus",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+      req: { protocol: "https", headers: {} } as import("./_core/context").TrpcContext["req"],
+      res: { clearCookie: () => {} } as import("./_core/context").TrpcContext["res"],
+    };
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.adminConfig.getAuditLog({ section: "all", page: 1, limit: 20 })
+    ).rejects.toThrow();
+  });
+
+  it("filters by section without throwing", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.adminConfig.getAuditLog({ section: "fee_config", page: 1, limit: 10 });
+    expect(Array.isArray(result.entries)).toBe(true);
+  });
+});
+
+describe("auditLog.diffObjects", () => {
+  it("detects changed fields", async () => {
+    const { diffObjects } = await import("./lib/auditLog");
+    const before = { a: 1, b: "hello", c: true };
+    const after  = { a: 2, b: "hello", c: false };
+    const changes = diffObjects(before, after);
+    expect(changes).toHaveLength(2);
+    const fieldNames = changes.map(c => c.fieldName);
+    expect(fieldNames).toContain("a");
+    expect(fieldNames).toContain("c");
+  });
+
+  it("returns empty array when nothing changed", async () => {
+    const { diffObjects } = await import("./lib/auditLog");
+    const obj = { x: 42, y: "same" };
+    const changes = diffObjects(obj, { ...obj });
+    expect(changes).toHaveLength(0);
+  });
+
+  it("detects new keys", async () => {
+    const { diffObjects } = await import("./lib/auditLog");
+    const changes = diffObjects({ a: 1 }, { a: 1, b: 2 });
+    expect(changes).toHaveLength(1);
+    expect(changes[0].fieldName).toBe("b");
+    expect(changes[0].oldValue).toBeUndefined();
+    expect(changes[0].newValue).toBe(2);
+  });
+});
+
 describe("analytics.checkFeeAlert", () => {
   it("resolves without throwing (graceful when DB unavailable)", async () => {
     const ctx = createAdminContext();
