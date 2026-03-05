@@ -133,7 +133,7 @@ describe("executeBtcAgentSwap", () => {
 
     if (originalHtlcKey !== undefined) process.env.BTC_HTLC_WIF = originalHtlcKey;
     if (originalKey !== undefined) process.env.BTC_AGENT_WIF = originalKey;
-  });
+  }, 20_000); // BTC demo mode may take up to 20s in CI
 
   it("should use P2P fee (15 bps) for all BTC swaps", async () => {
     const fs = await import("fs");

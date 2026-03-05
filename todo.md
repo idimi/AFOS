@@ -1226,3 +1226,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add `adminConfig.getAuditLog` tRPC procedure (paginated, filterable by section)
 - [x] Add Audit Log tab to Admin Panel (table with filters, pagination, diff view)
 - [x] Run tests after changes (228 tests pass)
+
+## Admin Panel — Security Hardening
+
+- [x] Change `adminConfig.get` from `publicProcedure` to `adminProcedure`
+- [x] Change `operatorConfig.get` from `publicProcedure` to `adminProcedure`
+- [x] Replace frontend password gate with real OAuth + `role === 'admin'` check
+- [x] Remove hardcoded `ADMIN_PASSWORD` constant from client bundle
+- [x] Remove `sessionStorage` auth bypass vector
+- [x] Run all tests after changes (228 pass)

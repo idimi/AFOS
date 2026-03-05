@@ -1,11 +1,11 @@
 /**
  * Operator Config Router
  * Persists AFOS Oracle VM infrastructure settings to the DB.
- * All write procedures are admin-only.
+ * All procedures are admin-only.
  */
 
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { operatorConfig, DEFAULT_OPERATOR_CONFIG } from "../../drizzle/schema";
@@ -80,10 +80,10 @@ const saveSchema = z.object({
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const operatorConfigRouter = router({
   /**
-   * Get operator config (readable by any authenticated user so the UI can load it).
+   * Get operator config — admin only.
    * Sensitive fields (btcRpcPassword) are masked before returning.
    */
-  get: publicProcedure.query(async () => {
+  get: adminProcedure.query(async () => {
     const row = await getOrCreate();
     if (!row) return null;
     return {

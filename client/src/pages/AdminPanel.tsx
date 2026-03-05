@@ -1,6 +1,7 @@
 /**
  * AdminPanel — Hidden operator dashboard at /admin
- * NOT linked from consumer UI. Password protected.
+ * NOT linked from consumer UI.
+ * Access requires Manus OAuth login + role = 'admin' (server-enforced).
  * Design: Dark terminal aesthetic, data-dense, operator-focused
  */
 
@@ -12,16 +13,14 @@ import {
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
   ArrowUpRight, Server, Database,
   Cpu, QrCode, X, Bot, Network, Repeat, Moon, ToggleLeft, ToggleRight,
-  ClipboardList, ChevronLeft, ChevronRight
+  ClipboardList, ChevronLeft, ChevronRight, LogIn, Loader2
 } from "lucide-react";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import QRCode from "react-qr-code";
-
-// ─── Admin password (in production this would be server-side auth) ────────────
-const ADMIN_PASSWORD = "afos-admin-2024";
-const ADMIN_SESSION_KEY = "afos_admin_session";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { getLoginUrl } from "@/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TreasuryWallet {
@@ -857,28 +856,10 @@ function UsersTab() {
   );
 }
 
-// ─── Password Gate ────────────────────────────────────────────────────────────
-function PasswordGate({ onAuth }: { onAuth: () => void }) {
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    await new Promise(r => setTimeout(r, 600));
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
-      onAuth();
-    } else {
-      setError(true);
-      setPassword("");
-      toast.error("Invalid admin password");
-    }
-    setLoading(false);
-  };
-
+// ─── Auth Gate (replaces the old password gate) ───────────────────────────────
+// Shows a login prompt if not authenticated, or a "not admin" screen if logged
+// in but not an admin. The real enforcement happens server-side via adminProcedure.
+function AuthGate({ state }: { state: "loading" | "unauthenticated" | "not_admin" }) {
   return (
     <div className="min-h-screen flex items-center justify-center px-4"
       style={{ background: "var(--background)" }}>
@@ -891,46 +872,47 @@ function PasswordGate({ onAuth }: { onAuth: () => void }) {
           <div className="px-6 py-5 text-center" style={{ borderBottom: "1px solid var(--border)" }}>
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-3"
               style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)" }}>
-              <Lock className="w-6 h-6 text-red-400" />
+              {state === "loading" ? (
+                <Loader2 className="w-6 h-6 text-red-400 animate-spin" />
+              ) : state === "not_admin" ? (
+                <Shield className="w-6 h-6 text-red-400" />
+              ) : (
+                <Lock className="w-6 h-6 text-red-400" />
+              )}
             </div>
             <p className="text-sm font-bold text-foreground">AFOS Admin Panel</p>
             <p className="text-[10px] text-muted-foreground mt-1">Operator access only · Not visible to users</p>
           </div>
-          <form onSubmit={handleSubmit} className="p-5 space-y-4">
-            <div>
-              <label className="text-[10px] font-mono text-muted-foreground uppercase tracking-widest block mb-1.5">
-                Admin Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPw ? "text" : "password"}
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError(false); }}
-                  placeholder="Enter admin password"
-                  className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm font-mono text-foreground outline-none transition-all"
-                  style={{
-                    background: "var(--muted)",
-                    border: `1px solid ${error ? "rgba(239,68,68,0.5)" : "var(--border)"}`,
-                  }}
-                  autoFocus
-                />
-                <button type="button" onClick={() => setShowPw(!showPw)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              {error && <p className="text-[10px] text-red-400 mt-1">Incorrect password</p>}
-            </div>
-            <button type="submit" disabled={!password || loading}
-              className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
-              style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.4)", color: "#60a5fa" }}>
-              {loading ? "Authenticating…" : "Enter Admin Panel"}
-            </button>
-          </form>
-          <div className="px-5 pb-4 text-center">
-            <p className="text-[9px] text-muted-foreground">
-              Demo password: <span className="font-mono text-foreground/60">afos-admin-2024</span>
-            </p>
+          <div className="p-6 text-center space-y-4">
+            {state === "loading" && (
+              <p className="text-xs text-muted-foreground">Verifying session…</p>
+            )}
+            {state === "unauthenticated" && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Sign in with your Manus account to continue.<br />
+                  Only accounts with <span className="text-red-400 font-semibold">admin</span> role can access this panel.
+                </p>
+                <a
+                  href={getLoginUrl()}
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-bold transition-all"
+                  style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.4)", color: "#60a5fa" }}>
+                  <LogIn className="w-4 h-4" />
+                  Sign in with Manus
+                </a>
+              </>
+            )}
+            {state === "not_admin" && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Your account does not have admin privileges.<br />
+                  Contact the system owner to request access.
+                </p>
+                <p className="text-[9px] font-mono text-muted-foreground/50">
+                  Access is controlled via the <code>role</code> field in the users table.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </motion.div>
@@ -2133,13 +2115,17 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function AdminPanel() {
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem(ADMIN_SESSION_KEY) === "true");
+  const { user, loading, logout } = useAuth();
 
-  const handleLogout = () => {
-    sessionStorage.removeItem(ADMIN_SESSION_KEY);
-    setAuthed(false);
-  };
+  // Still loading session
+  if (loading) return <AuthGate state="loading" />;
 
-  if (!authed) return <PasswordGate onAuth={() => setAuthed(true)} />;
-  return <AdminDashboard onLogout={handleLogout} />;
+  // Not logged in at all → show login prompt
+  if (!user) return <AuthGate state="unauthenticated" />;
+
+  // Logged in but not admin → show access denied
+  if (user.role !== "admin") return <AuthGate state="not_admin" />;
+
+  // Authenticated admin → show the dashboard
+  return <AdminDashboard onLogout={logout} />;
 }

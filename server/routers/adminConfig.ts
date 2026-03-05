@@ -9,11 +9,10 @@
  *   - Treasury wallet list (JSON-encoded array persisted in the DB)
  *   - Audit log read access
  *
- * get is public so the UI can load config without auth.
- * saveFeeConfig, saveTreasury, and getAuditLog require admin role.
+ * All procedures require admin role — no public access to admin config.
  */
 import { z } from "zod";
-import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { adminConfig, adminAuditLog, DEFAULT_ADMIN_CONFIG } from "../../drizzle/schema";
@@ -77,11 +76,10 @@ function rowToFeeSnapshot(row: NonNullable<Awaited<ReturnType<typeof getOrCreate
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const adminConfigRouter = router({
   /**
-   * Load the current admin config.
+   * Load the current admin config — admin only.
    * Returns defaults when no row exists yet (auto-creates the singleton row).
-   * Public so the admin panel can load without auth.
    */
-  get: publicProcedure.query(async () => {
+  get: adminProcedure.query(async () => {
     const row = await getOrCreateConfig();
     if (!row) return {
       feeEnabled:       DEFAULT_ADMIN_CONFIG.feeEnabled,
