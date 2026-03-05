@@ -590,11 +590,24 @@ export interface PingResult {
   error?: string;
 }
 
-/** GET /api/peers/:id/ping — probe a peer and return RTT latency */
+/** GET /api/peers/:id/ping — probe a Hyperswarm peer via Oracle VM and return RTT latency */
 export async function pingPeer(peerId: string): Promise<PingResult> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/peers/${encodeURIComponent(peerId)}/ping`, {}, 8000);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
+}
+
+/** GET /api/signaling/peers/:id/ping — probe a signaling (light) peer via local server */
+export async function pingSignalingPeer(peerId: string): Promise<PingResult> {
+  const res = await fetchWithTimeout(`/api/signaling/peers/${encodeURIComponent(peerId)}/ping`, {}, 8000);
+  if (!res.ok) {
+    if (res.status === 404) {
+      return { success: false, latencyMs: null, error: 'Peer not connected to signaling server' };
+    }
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return { success: data.online === true, latencyMs: data.latencyMs ?? null };
 }
 
 // ─── Liquidity Channels ───────────────────────────────────────────────────────

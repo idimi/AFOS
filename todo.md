@@ -1086,3 +1086,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## PeerDetail Panel Layout Fix
 
 - [x] Fix PeerDetail panel: now uses flex-col with max-height calc(100%-2rem) and overflow-y-auto scrollable body, sticky header stays fixed while content scrolls
+
+## Ping Bug Fix
+
+- [x] Fix "Peer not connected" error when pinging light peers: added /api/signaling/peers/:id/ping REST endpoint with real WebSocket ping/pong RTT, frontend now routes signaling peers (origin=intercomswap) to local endpoint instead of Oracle VM

@@ -414,3 +414,45 @@ export function getSignalingPeerCount(): number {
 export function getSignalingPeerList() {
   return getPeerList();
 }
+
+/**
+ * Ping a specific peer via WebSocket native ping/pong and return RTT latency.
+ * Returns null if the peer is not found or the ping times out.
+ */
+export function pingSignalingPeer(peerId: string, timeoutMs = 5000): Promise<number | null> {
+  return new Promise((resolve) => {
+    const peer = peers.get(peerId);
+    if (!peer || peer.ws.readyState !== WebSocket.OPEN) {
+      resolve(null);
+      return;
+    }
+
+    const start = Date.now();
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null); // timeout
+      }
+    }, timeoutMs);
+
+    peer.ws.once('pong', () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(Date.now() - start);
+      }
+    });
+
+    try {
+      peer.ws.ping();
+    } catch {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(null);
+      }
+    }
+  });
+}

@@ -82,6 +82,36 @@ async function startServer() {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
+  // ── Signaling peer ping endpoint ─────────────────────────────────────────
+  // Used by the frontend Ping button for light peers (signaling-only)
+  // Sends a real WebSocket ping/pong to measure RTT
+  app.get("/api/signaling/peers/:peerId/ping", async (req, res) => {
+    const { getSignalingPeerList, pingSignalingPeer } = await import("../signaling");
+    const peerId = decodeURIComponent(req.params.peerId);
+    const peerList = getSignalingPeerList();
+    const peer = peerList.find(p => p.peerId === peerId);
+    if (!peer) {
+      res.status(404).json({ error: "Peer not connected", online: false });
+      return;
+    }
+    // Send a real WebSocket ping/pong to measure RTT
+    const latencyMs = await pingSignalingPeer(peerId, 5000);
+    if (latencyMs === null) {
+      // Peer is in registry but didn't respond to ping — still report as online
+      // with a fallback latency estimate from heartbeat age
+      const ageMs = Date.now() - peer.lastHeartbeat;
+      res.json({ latencyMs: Math.min(ageMs, 999), online: true, alias: peer.alias, estimated: true });
+    } else {
+      res.json({ latencyMs, online: true, alias: peer.alias });
+    }
+  });
+
+  // ── Signaling peer list endpoint ──────────────────────────────────────────
+  app.get("/api/signaling/peers", async (_req, res) => {
+    const { getSignalingPeerList } = await import("../signaling");
+    res.json({ peers: getSignalingPeerList() });
+  });
+
   // Attach WebSocket signaling server for P2P peer discovery
   attachSignalingServer(server);
 

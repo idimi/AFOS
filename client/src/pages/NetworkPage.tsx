@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
 import {
   getPeers, getAgentStatus, onSSEEvent, type OraclePeer,
-  getChannels, openChannel, closeChannel, pingPeer,
+  getChannels, openChannel, closeChannel, pingPeer, pingSignalingPeer,
   getRelayPeers,
   type LiquidityChannel,
 } from "@/lib/afosApi";
@@ -1488,14 +1488,20 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   const handlePing = useCallback(async (peerId: string, fullKey: string) => {
     setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true } }));
     const peer = livePeers.find(p => p.id === peerId);
+    // Route to correct ping endpoint based on peer origin:
+    // - 'intercomswap' (signaling/light peers) → local signaling server
+    // - 'hyperswarm' or undefined → Oracle VM
+    const isSignalingPeer = peer?.origin === 'intercomswap';
     try {
-      const result = await pingPeer(fullKey);
+      const result = isSignalingPeer
+        ? await pingSignalingPeer(fullKey)
+        : await pingPeer(fullKey);
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false } }));
       // Persist ping result to reputation DB
       recordPingMutation.mutate({
         peerId: fullKey,
         alias: peer?.alias,
-        origin: 'hyperswarm',
+        origin: isSignalingPeer ? 'intercomswap' : 'hyperswarm',
         latencyMs: result.success ? result.latencyMs : null,
       }, {
         onSuccess: () => refetchReputation(),
@@ -1508,7 +1514,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
     } catch {
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false } }));
       // Record failed ping
-      recordPingMutation.mutate({ peerId: fullKey, alias: peer?.alias, origin: 'hyperswarm', latencyMs: null });
+      recordPingMutation.mutate({ peerId: fullKey, alias: peer?.alias, origin: isSignalingPeer ? 'intercomswap' : 'hyperswarm', latencyMs: null });
       toast.error('Ping request failed');
     }
   }, [livePeers, recordPingMutation, refetchReputation]);
