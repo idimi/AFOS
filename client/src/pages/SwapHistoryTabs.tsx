@@ -1,16 +1,44 @@
 /**
  * AFOS — Open Trades and Refunds tabs for SwapHistory
- * Production: pulls live data from getSwaps() API
+ * Production: pulls live data from tRPC history procedures (wallet-scoped)
  */
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2 } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet } from "lucide-react";
 import { toast } from "sonner";
-import { getSwaps, type RfqResult } from "../lib/afosApi";
+import { trpc } from "@/lib/trpc";
+
+// ─── Shared Props ─────────────────────────────────────────────────────────────
+
+interface TabProps {
+  walletAddresses: string[];
+}
+
+// ─── HtlcSwap row type (mirrors drizzle schema) ───────────────────────────────
+
+interface HtlcSwapRow {
+  id: number;
+  chain: "bitcoin" | "ethereum" | "solana";
+  htlcAddress: string;
+  secretHash: string;
+  lockTxId: string | null;
+  amountRaw: string;
+  amountHuman: string;
+  locktime: number;
+  status: "pending" | "completed" | "refunded" | "expired";
+  peerId: string | null;
+  rfqId: string | null;
+  toToken: string | null;
+  toChain: "bitcoin" | "ethereum" | "solana" | null;
+  refundTxId: string | null;
+  senderAddress: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  refundedAt: Date | null;
+}
 
 // ─── Open Trades ──────────────────────────────────────────────────────────────
 
-export interface OpenTrade {
+interface OpenTrade {
   id: string;
   direction: "buy_btc" | "sell_btc";
   fromSymbol: string;
@@ -27,75 +55,70 @@ export interface OpenTrade {
   expiresIn: number;
 }
 
-const PHASE_LABELS: Record<OpenTrade["phase"], string> = {
+const PHASE_LABELS = {
   rfq_sent: "RFQ Sent",
   quote_received: "Quote Received",
   htlc_locked: "HTLC Locked",
   awaiting_settle: "Awaiting Settlement",
-};
+} as const;
 
-const PHASE_COLORS: Record<OpenTrade["phase"], string> = {
+const PHASE_COLORS = {
   rfq_sent: "#f59e0b",
   quote_received: "#8b5cf6",
   htlc_locked: "#10b981",
   awaiting_settle: "#06b6d4",
-};
+} as const;
 
-function mapRfqToOpenTrade(rfq: RfqResult): OpenTrade {
-  const isBuy = rfq.toToken === "BTC";
-  const ageMs = Date.now() - rfq.timestamp;
-  const rate = rfq.inAmount > 0 ? rfq.outAmount / rfq.inAmount : 0;
-  // Map route to a phase heuristic
+function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
+  const ageMs = Date.now() - row.createdAt.getTime();
+  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL";
+  const toSymbol = row.toToken ?? "USDT";
+  const fromAmount = parseFloat(row.amountHuman);
+  const toAmount = 0; // not stored in HTLC row — shown as 0 until settled
+  const isBuy = toSymbol === "BTC";
+
   let phase: OpenTrade["phase"] = "rfq_sent";
-  if (rfq.route === "p2p" && rfq.p2pQuotes > 0) phase = "quote_received";
-  if (ageMs > 30_000) phase = "htlc_locked";
+  if (row.lockTxId) phase = "htlc_locked";
   if (ageMs > 60_000) phase = "awaiting_settle";
 
+  const expiresIn = Math.max(0, Math.round((600_000 - ageMs) / 1000));
+
   return {
-    id: rfq.rfqId,
+    id: String(row.id),
     direction: isBuy ? "buy_btc" : "sell_btc",
-    fromSymbol: rfq.fromToken,
-    toSymbol: rfq.toToken,
-    fromAmount: rfq.inAmount,
-    toAmount: rfq.outAmount,
-    rate,
-    feeBps: rfq.platformFeeBps ?? 0,
-    peer: rfq.dexRoute || "P2P Network",
-    htlcExpiry: ageMs < 60_000 ? `${Math.max(0, Math.round((600_000 - ageMs) / 1000))}s` : "Expired",
+    fromSymbol,
+    toSymbol,
+    fromAmount,
+    toAmount,
+    rate: 0,
+    feeBps: 20,
+    peer: row.peerId ?? "P2P Network",
+    htlcExpiry: expiresIn > 0 ? `${expiresIn}s` : "Expired",
     refundWindow: "20-40h",
     phase,
-    receivedAt: new Date(rfq.timestamp),
-    expiresIn: Math.max(0, Math.round((600_000 - ageMs) / 1000)),
+    receivedAt: row.createdAt,
+    expiresIn,
   };
 }
 
-export function OpenTradesTab() {
-  const [trades, setTrades] = useState<OpenTrade[]>([]);
-  const [loading, setLoading] = useState(true);
+export function OpenTradesTab({ walletAddresses }: TabProps) {
+  const { data, isLoading } = trpc.history.openTrades.useQuery(
+    { walletAddresses },
+    { refetchInterval: 15000 }
+  );
 
-  useEffect(() => {
-    const fetchTrades = async () => {
-      try {
-        const data = await getSwaps();
-        setTrades(data.pending.map(mapRfqToOpenTrade));
-      } catch { /* keep previous */ } finally { setLoading(false); }
-    };
-    fetchTrades();
-    const t = setInterval(fetchTrades, 15000);
-    return () => clearInterval(t);
-  }, []);
+  const trades: OpenTrade[] = (data?.trades ?? []).map(mapHtlcToOpenTrade);
+  const hasWallet = walletAddresses.length > 0;
 
-  const acceptTrade = (id: string) => {
-    setTrades(prev => prev.map(t => t.id === id ? { ...t, phase: "htlc_locked" as const } : t));
+  const acceptTrade = (_id: string) => {
     toast.success("Quote accepted — HTLC locking...", { description: "Atomic escrow initiated on Solana" });
   };
 
-  const rejectTrade = (id: string) => {
-    setTrades(prev => prev.filter(t => t.id !== id));
+  const rejectTrade = (_id: string) => {
     toast.info("Trade rejected", { description: "RFQ cancelled, no funds moved" });
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
@@ -105,6 +128,19 @@ export function OpenTradesTab() {
 
   return (
     <div className="space-y-3">
+      {/* Wallet scope banner */}
+      {!hasWallet && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+        >
+          <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+          <span className="text-cyan-300/80">
+            Connect a wallet to see your open trades. Showing all network trades (operator view).
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">{trades.length} active trade{trades.length !== 1 ? "s" : ""} in progress</p>
         <div className="flex items-center gap-1.5">
@@ -117,12 +153,15 @@ export function OpenTradesTab() {
         <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
           <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No open trades</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">Active swaps will appear here for approval</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            {hasWallet ? "Your active swaps will appear here" : "Active swaps will appear here for approval"}
+          </p>
         </div>
       )}
 
       {trades.map(trade => {
-        const phaseColor = PHASE_COLORS[trade.phase];
+        const phase = trade.phase;
+        const phaseColor = PHASE_COLORS[phase];
         const isUrgent = trade.expiresIn < 120;
         return (
           <motion.div key={trade.id} layout
@@ -132,7 +171,7 @@ export function OpenTradesTab() {
                 <div className="flex items-center gap-2 mb-3">
                   <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
                     style={{ background: `${phaseColor}18`, border: `1px solid ${phaseColor}40`, color: phaseColor }}>
-                    {PHASE_LABELS[trade.phase]}
+                    {PHASE_LABELS[phase]}
                   </span>
                   <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
                     style={{
@@ -153,8 +192,8 @@ export function OpenTradesTab() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mb-3">
                   {[
                     { label: "You send", value: `${trade.fromAmount.toLocaleString()} ${trade.fromSymbol}` },
-                    { label: "You receive", value: `${trade.toAmount} ${trade.toSymbol}` },
-                    { label: "Rate", value: `1 BTC = $${trade.rate.toLocaleString()}` },
+                    { label: "You receive", value: trade.toAmount > 0 ? `${trade.toAmount} ${trade.toSymbol}` : "Pending settlement" },
+                    { label: "Rate", value: trade.rate > 0 ? `1 BTC = $${trade.rate.toLocaleString()}` : "Awaiting quote" },
                     { label: "Fee", value: `${trade.feeBps} bps` },
                     { label: "Peer", value: trade.peer },
                     { label: "HTLC expiry", value: trade.htlcExpiry },
@@ -180,7 +219,7 @@ export function OpenTradesTab() {
                 </div>
               </div>
 
-              {trade.phase === "quote_received" && (
+              {phase === "quote_received" && (
                 <div className="flex flex-col gap-2 shrink-0">
                   <button onClick={() => acceptTrade(trade.id)}
                     className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
@@ -194,7 +233,7 @@ export function OpenTradesTab() {
                   </button>
                 </div>
               )}
-              {trade.phase === "htlc_locked" && (
+              {phase === "htlc_locked" && (
                 <div className="shrink-0">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                     style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
@@ -227,49 +266,51 @@ interface RefundRecord {
   escrowPda: string;
 }
 
-function mapRfqToRefund(rfq: RfqResult): RefundRecord {
+// Rough USD price estimates for display purposes
+const PRICE_ESTIMATES: Record<string, number> = {
+  BTC: 95000, ETH: 3000, SOL: 150, USDT: 1, USDC: 1,
+};
+
+function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
+  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL";
+  const toSymbol = row.toToken ?? "USDT";
+  const amount = parseFloat(row.amountHuman);
+  const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
+  const usdValue = amount * price;
+  const status: RefundRecord["status"] = row.status === "refunded" ? "claimed" : "claimable";
+
   return {
-    id: rfq.rfqId,
-    fromSymbol: rfq.fromToken,
-    toSymbol: rfq.toToken,
-    amount: rfq.inAmount,
-    usdValue: rfq.inAmount * (rfq.fromToken === "BTC" ? 65000 : rfq.fromToken === "ETH" ? 1900 : rfq.fromToken === "SOL" ? 83 : 1),
-    peer: rfq.dexRoute || "P2P Network",
-    failReason: "Peer timeout — no settlement received",
-    htlcExpiry: new Date(rfq.timestamp),
-    status: "claimable",
-    txHash: rfq.rfqId.slice(0, 16) + "...",
-    escrowPda: "N/A",
+    id: String(row.id),
+    fromSymbol,
+    toSymbol,
+    amount,
+    usdValue,
+    peer: row.peerId ?? "P2P Network",
+    failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
+    htlcExpiry: row.refundedAt ?? row.updatedAt,
+    status,
+    txHash: row.refundTxId ?? row.lockTxId ?? row.secretHash.slice(0, 16) + "...",
+    escrowPda: row.htlcAddress.length > 20 ? row.htlcAddress.slice(0, 12) + "..." : row.htlcAddress,
   };
 }
 
-export function RefundsTab() {
-  const [refunds, setRefunds] = useState<RefundRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+export function RefundsTab({ walletAddresses }: TabProps) {
+  const { data, isLoading } = trpc.history.refunds.useQuery(
+    { walletAddresses },
+    { refetchInterval: 30000 }
+  );
 
-  useEffect(() => {
-    const fetchRefunds = async () => {
-      try {
-        const data = await getSwaps();
-        // Failed/refundable swaps — those with 0 outAmount or negative rate indicate failures
-        const failed = data.completed.filter(s => s.outAmount <= 0 || s.rate <= 0);
-        setRefunds(failed.map(mapRfqToRefund));
-      } catch { /* keep previous */ } finally { setLoading(false); }
-    };
-    fetchRefunds();
-    const t = setInterval(fetchRefunds, 30000);
-    return () => clearInterval(t);
-  }, []);
+  const refunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
+  const hasWallet = walletAddresses.length > 0;
 
-  const claimRefund = (id: string) => {
-    setRefunds(prev => prev.map(r => r.id === id ? { ...r, status: "claimed" as const } : r));
+  const claimRefund = (_id: string) => {
     toast.success("Refund claimed", { description: "HTLC escrow unlocked — funds returned to wallet" });
   };
 
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
@@ -279,11 +320,24 @@ export function RefundsTab() {
 
   return (
     <div className="space-y-4">
+      {/* Wallet scope banner */}
+      {!hasWallet && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+          style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+        >
+          <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+          <span className="text-cyan-300/80">
+            Connect a wallet to see your refunds. Showing all network refunds (operator view).
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
           { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
-          { label: "Total Value", value: `$${refunds.filter(r => r.status === "claimable").reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
+          { label: "Total Value", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
         ].map(stat => (
           <div key={stat.label} className="rounded-xl p-3 text-center"
             style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>

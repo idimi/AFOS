@@ -2,18 +2,22 @@
  * AFOS — Swap History Page
  * Design: Glassmorphism + Agentic Sci-Fi
  * Features: Full transaction table, pair/status/date filters, chain explorer links, stats summary
+ * Data: Real live data from trpc.history.list — wallet-scoped when wallet connected, global operator view otherwise
  */
 
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Activity, Filter, ExternalLink, Copy, ChevronDown,
+  Activity, ExternalLink, Copy, ChevronDown,
   CheckCircle2, XCircle, Clock, Loader2, Search,
   ArrowDownUp, TrendingUp, TrendingDown, BarChart3,
-  Calendar, RefreshCw, Download, ChevronLeft, ChevronRight,
-  Zap, Globe, Shield, AlertTriangle, RotateCcw, History
+  RefreshCw, Download, ChevronLeft, ChevronRight,
+  Shield, AlertTriangle, RotateCcw, History, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
+import { useWallet } from "../contexts/WalletContext";
+import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { OpenTradesTab, RefundsTab } from "./SwapHistoryTabs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -54,44 +58,68 @@ const TOKEN_COLORS: Record<string, string> = {
   USDT: "#26a17b", USDC: "#2775ca", WBTC: "#f7931a",
 };
 
-// ─── Mock Transaction Data ────────────────────────────────────────────────────
+// ─── DB Row → SwapRecord mapper ───────────────────────────────────────────────
 
-function makeHash(): string {
-  return "0x" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+function guessChain(token: string): ChainId {
+  if (token === "BTC" || token === "WBTC") return "bitcoin";
+  if (token === "ETH" || token === "USDC" || token === "USDT") return "ethereum";
+  return "solana";
 }
 
-function makeLnHash(): string {
-  return Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+function mapDbRowToSwapRecord(row: {
+  id: number;
+  fromChain: "bitcoin" | "ethereum" | "solana";
+  toChain: "bitcoin" | "ethereum" | "solana";
+  fromToken: string;
+  toToken: string;
+  amount: string;
+  amountUsd: string | null;
+  route: string;
+  status: "completed" | "failed" | "refunded";
+  settlementMs: number | null;
+  txId: string | null;
+  peerId: string | null;
+  platformFeeUsd: string | null;
+  feeBps: number | null;
+  feeAmountOut: string | null;
+  outAmount: string | null;
+  walletAddress: string | null;
+  createdAt: Date;
+}): SwapRecord {
+  const fromSymbol = row.fromToken;
+  const toSymbol = row.toToken;
+  const fromAmount = parseFloat(row.amount);
+  const toAmount = parseFloat(row.outAmount ?? "0");
+  const fromUsd = parseFloat(row.amountUsd ?? "0");
+  const fee = parseFloat(row.platformFeeUsd ?? "0");
+  const feeBps = row.feeBps ?? 0;
+  const settlementTime = row.settlementMs ?? (feeBps === 15 ? 600000 : feeBps === 20 ? 15000 : 0);
+  const rawStatus = row.status;
+  const status: SwapStatus = rawStatus === "completed" ? "complete" : rawStatus as SwapStatus;
+  const protocol = row.route === "p2p" ? "IntercomSwap" : row.route === "dex" ? "DEX Aggregator" : (row.route ?? "Unknown");
+  const peer = row.peerId ?? "P2P Network";
+  const txHash = row.txId ?? "";
+
+  return {
+    id: String(row.id),
+    timestamp: row.createdAt,
+    fromSymbol,
+    toSymbol,
+    fromChain: row.fromChain,
+    toChain: row.toChain,
+    fromAmount,
+    toAmount,
+    fromUsd,
+    toUsd: fromUsd, // approximation
+    status,
+    protocol,
+    peer,
+    txHash,
+    fee,
+    settlementTime,
+    agentExecuted: true,
+  };
 }
-
-const RAW_SWAPS: Omit<SwapRecord, "id" | "txHash">[] = [
-  { timestamp: new Date(Date.now() - 2 * 60000), fromSymbol: "BTC", toSymbol: "USDT", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.0023, toAmount: 99.86, fromUsd: 99.86, toUsd: 99.86, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 0.50, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 18 * 60000), fromSymbol: "ETH", toSymbol: "SOL", fromChain: "ethereum", toChain: "solana", fromAmount: 0.12, toAmount: 24.01, fromUsd: 359.76, toUsd: 360.15, status: "complete", protocol: "EVM ↔ Solana Bridge", peer: "BetaSwap", fee: 2.16, settlementTime: 19200, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 1 * 3600000), fromSymbol: "SOL", toSymbol: "USDT", fromChain: "solana", toChain: "solana", fromAmount: 5.0, toAmount: 749.25, fromUsd: 750.00, toUsd: 749.25, status: "complete", protocol: "Solana SPL Swap", peer: "AlphaNode", fee: 2.25, settlementTime: 420, agentExecuted: false },
-  { timestamp: new Date(Date.now() - 3 * 3600000), fromSymbol: "BTC", toSymbol: "ETH", fromChain: "bitcoin", toChain: "ethereum", fromAmount: 0.005, toAmount: 0.0718, fromUsd: 217.09, toUsd: 215.24, status: "failed", protocol: "IntercomSwap", peer: "DeltaNode", fee: 0, settlementTime: 0, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 5 * 3600000), fromSymbol: "USDC", toSymbol: "SOL", fromChain: "ethereum", toChain: "solana", fromAmount: 300.00, toAmount: 1.99, fromUsd: 300.00, toUsd: 298.50, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 0.90, settlementTime: 14500, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 8 * 3600000), fromSymbol: "BTC", toSymbol: "USDT", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.0115, toAmount: 499.30, fromUsd: 499.30, toUsd: 499.30, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 2.50, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 12 * 3600000), fromSymbol: "ETH", toSymbol: "USDC", fromChain: "ethereum", toChain: "ethereum", fromAmount: 0.5, toAmount: 1497.50, fromUsd: 1499.00, toUsd: 1497.50, status: "complete", protocol: "EVM DEX Route", peer: "BetaSwap", fee: 4.50, settlementTime: 11800, agentExecuted: false },
-  { timestamp: new Date(Date.now() - 16 * 3600000), fromSymbol: "SOL", toSymbol: "BTC", fromChain: "solana", toChain: "bitcoin", fromAmount: 20.0, toAmount: 0.0691, fromUsd: 3000.00, toUsd: 2998.72, status: "complete", protocol: "IntercomSwap", peer: "AlphaNode", fee: 9.00, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 22 * 3600000), fromSymbol: "BTC", toSymbol: "USDT", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.003, toAmount: 130.25, fromUsd: 130.25, toUsd: 130.25, status: "refunded", protocol: "IntercomSwap", peer: "EpsilonPeer", fee: 0, settlementTime: 0, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 26 * 3600000), fromSymbol: "USDT", toSymbol: "SOL", fromChain: "solana", toChain: "solana", fromAmount: 450.00, toAmount: 2.99, fromUsd: 450.00, toUsd: 448.50, status: "complete", protocol: "Solana SPL Swap", peer: "AlphaNode", fee: 1.35, settlementTime: 380, agentExecuted: false },
-  { timestamp: new Date(Date.now() - 30 * 3600000), fromSymbol: "ETH", toSymbol: "BTC", fromChain: "ethereum", toChain: "bitcoin", fromAmount: 0.25, toAmount: 0.01726, fromUsd: 749.50, toUsd: 748.89, status: "complete", protocol: "IntercomSwap", peer: "BetaSwap", fee: 5.99, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 36 * 3600000), fromSymbol: "BTC", toSymbol: "SOL", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.008, toAmount: 23.09, fromUsd: 347.34, toUsd: 346.35, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 2.43, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 2 * 86400000), fromSymbol: "SOL", toSymbol: "USDC", fromChain: "solana", toChain: "ethereum", fromAmount: 8.0, toAmount: 1198.40, fromUsd: 1200.00, toUsd: 1198.40, status: "complete", protocol: "Solana ↔ EVM Bridge", peer: "BetaSwap", fee: 7.20, settlementTime: 22100, agentExecuted: false },
-  { timestamp: new Date(Date.now() - 2.5 * 86400000), fromSymbol: "BTC", toSymbol: "USDT", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.023, toAmount: 998.14, fromUsd: 998.14, toUsd: 998.14, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 4.99, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 3 * 86400000), fromSymbol: "ETH", toSymbol: "SOL", fromChain: "ethereum", toChain: "solana", fromAmount: 0.8, toAmount: 159.68, fromUsd: 2398.40, toUsd: 2395.20, status: "failed", protocol: "EVM ↔ Solana Bridge", peer: "DeltaNode", fee: 0, settlementTime: 0, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 4 * 86400000), fromSymbol: "USDT", toSymbol: "BTC", fromChain: "solana", toChain: "bitcoin", fromAmount: 2000.00, toAmount: 0.04608, fromUsd: 2000.00, toUsd: 1999.60, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 10.00, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 5 * 86400000), fromSymbol: "SOL", toSymbol: "ETH", fromChain: "solana", toChain: "ethereum", fromAmount: 15.0, toAmount: 0.7497, fromUsd: 2250.00, toUsd: 2248.59, status: "complete", protocol: "Solana ↔ EVM Bridge", peer: "BetaSwap", fee: 13.50, settlementTime: 19800, agentExecuted: false },
-  { timestamp: new Date(Date.now() - 6 * 86400000), fromSymbol: "BTC", toSymbol: "USDT", fromChain: "bitcoin", toChain: "solana", fromAmount: 0.046, toAmount: 1997.23, fromUsd: 1997.23, toUsd: 1997.23, status: "complete", protocol: "IntercomSwap", peer: "AlphaNode", fee: 9.99, settlementTime: 600000, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 7 * 86400000), fromSymbol: "ETH", toSymbol: "USDT", fromChain: "ethereum", toChain: "solana", fromAmount: 1.2, toAmount: 3597.60, fromUsd: 3597.60, toUsd: 3597.60, status: "pending", protocol: "EVM ↔ Solana Bridge", peer: "BetaSwap", fee: 10.79, settlementTime: 0, agentExecuted: true },
-  { timestamp: new Date(Date.now() - 8 * 86400000), fromSymbol: "SOL", toSymbol: "BTC", fromChain: "solana", toChain: "bitcoin", fromAmount: 50.0, toAmount: 0.1728, fromUsd: 7500.00, toUsd: 7499.23, status: "complete", protocol: "IntercomSwap", peer: "GammaNode", fee: 37.50, settlementTime: 600000, agentExecuted: true },
-];
-
-const SWAP_HISTORY: SwapRecord[] = RAW_SWAPS.map((s, i) => ({
-  ...s,
-  id: `swap_${i.toString().padStart(4, "0")}`,
-  txHash: s.fromChain === "bitcoin" ? makeLnHash() : makeHash(),
-}));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -112,6 +140,7 @@ function formatSettlement(ms: number): string {
 }
 
 function truncateHash(hash: string): string {
+  if (!hash || hash.length < 12) return hash || "—";
   if (hash.startsWith("0x")) return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
   return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
@@ -124,7 +153,7 @@ function StatusBadge({ status }: { status: SwapStatus }) {
     failed: { icon: <XCircle className="w-3 h-3" />, label: "Failed", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.35)", color: "#ef4444" },
     pending: { icon: <Loader2 className="w-3 h-3 animate-spin" />, label: "Pending", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.35)", color: "#3b82f6" },
     refunded: { icon: <RefreshCw className="w-3 h-3" />, label: "Refunded", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", color: "#f59e0b" },
-  }[status];
+  }[status] ?? { icon: null, label: status, bg: "var(--muted)", border: "var(--border)", color: "var(--muted-foreground)" };
 
   return (
     <span
@@ -153,26 +182,16 @@ function ChainTag({ chain }: { chain: ChainId }) {
 
 // ─── Mobile Summary Stats (horizontal scroll strip) ─────────────────────────
 
-function MobileSummaryStats({ swaps }: { swaps: SwapRecord[] }) {
-  const completed = swaps.filter(s => s.status === "complete");
-  const totalVolume = completed.reduce((acc, s) => acc + s.fromUsd, 0);
-  const totalFees = completed.reduce((acc, s) => acc + s.fee, 0);
-  const avgSettlement = completed.length > 0
-    ? completed.reduce((acc, s) => acc + s.settlementTime, 0) / completed.length
-    : 0;
-  const successRate = swaps.length > 0 ? (completed.length / swaps.length) * 100 : 0;
-
-  const stats = [
-    { label: "Volume", value: `$${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: "text-amber-400" },
-    { label: "Txns", value: String(swaps.length), color: "text-cyan-400" },
-    { label: "Fees", value: `$${totalFees.toFixed(2)}`, color: "text-violet-400" },
-    { label: "Success", value: `${successRate.toFixed(1)}%`, color: "text-emerald-400" },
-    { label: "Avg Speed", value: formatSettlement(avgSettlement), color: "text-sky-400" },
+function MobileSummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string } }) {
+  const items = [
+    { label: "Volume", value: `$${stats.totalVolumeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: "text-amber-400" },
+    { label: "Txns", value: String(stats.totalSwaps), color: "text-cyan-400" },
+    { label: "Fees", value: `$${stats.totalFeesUsd.toFixed(2)}`, color: "text-violet-400" },
+    { label: "Success", value: `${stats.successRate}%`, color: "text-emerald-400" },
   ];
-
   return (
     <div className="sm:hidden flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
-      {stats.map(s => (
+      {items.map(s => (
         <div
           key={s.label}
           className="flex-shrink-0 rounded-xl px-3 py-2.5 min-w-[90px]"
@@ -188,36 +207,23 @@ function MobileSummaryStats({ swaps }: { swaps: SwapRecord[] }) {
 
 // ─── Summary Stats ────────────────────────────────────────────────────────────
 
-function SummaryStats({ swaps }: { swaps: SwapRecord[] }) {
-  const completed = swaps.filter(s => s.status === "complete");
-  const totalVolume = completed.reduce((acc, s) => acc + s.fromUsd, 0);
-  const totalFees = completed.reduce((acc, s) => acc + s.fee, 0);
-  const avgSettlement = completed.length > 0
-    ? completed.reduce((acc, s) => acc + s.settlementTime, 0) / completed.length
-    : 0;
-  const successRate = swaps.length > 0 ? (completed.length / swaps.length) * 100 : 0;
-
-  const stats = [
-    { label: "Total Volume", value: `$${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: <TrendingUp className="w-3.5 h-3.5" />, color: "text-amber-400", glow: "#f59e0b" },
-    { label: "Transactions", value: String(swaps.length), icon: <BarChart3 className="w-3.5 h-3.5" />, color: "text-cyan-400", glow: "#06b6d4" },
-    { label: "Fees Paid", value: `$${totalFees.toFixed(2)}`, icon: <Shield className="w-3.5 h-3.5" />, color: "text-violet-400", glow: "#7c3aed" },
-    { label: "Success Rate", value: `${successRate.toFixed(1)}%`, icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-emerald-400", glow: "#10b981" },
-    { label: "Avg Settlement", value: formatSettlement(avgSettlement), icon: <Clock className="w-3.5 h-3.5" />, color: "text-sky-400", glow: "#38bdf8" },
+function SummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string } }) {
+  const items = [
+    { label: "Total Volume", value: `$${stats.totalVolumeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: <TrendingUp className="w-3.5 h-3.5" />, color: "text-amber-400" },
+    { label: "Transactions", value: String(stats.totalSwaps), icon: <BarChart3 className="w-3.5 h-3.5" />, color: "text-cyan-400" },
+    { label: "Fees Paid", value: `$${stats.totalFeesUsd.toFixed(2)}`, icon: <Shield className="w-3.5 h-3.5" />, color: "text-violet-400" },
+    { label: "Success Rate", value: `${stats.successRate}%`, icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-emerald-400" },
   ];
-
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-      {stats.map((s, i) => (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {items.map((s, i) => (
         <motion.div
           key={s.label}
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.06 }}
           className="rounded-xl px-4 py-3"
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-          }}
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
         >
           <div className={`flex items-center gap-1.5 mb-1.5 ${s.color}`}>
             {s.icon}
@@ -232,36 +238,79 @@ function SummaryStats({ swaps }: { swaps: SwapRecord[] }) {
 
 // ─── Filters ─────────────────────────────────────────────────────────────────
 
-const ALL_PAIRS = Array.from(new Set(SWAP_HISTORY.map(s => `${s.fromSymbol}/${s.toSymbol}`))).sort();
-const ALL_STATUSES: SwapStatus[] = ["complete", "failed", "pending", "refunded"];
 const DATE_RANGES = ["All time", "Last 24h", "Last 7d", "Last 30d"];
 
 interface Filters {
   search: string;
-  pair: string;
   status: string;
   dateRange: string;
-  chain: string;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SwapHistory() {
+  // Wallet context — collect all connected wallet addresses
+  const { publicKey } = useWallet();
+  const { bitcoin, ethereum } = useMultiChainWallet();
+
+  const walletAddresses = useMemo(() => {
+    const addrs: string[] = [];
+    if (publicKey) addrs.push(publicKey.toString());
+    if (bitcoin?.address) addrs.push(bitcoin.address);
+    if (ethereum?.address) addrs.push(ethereum.address);
+    return addrs;
+  }, [publicKey, bitcoin?.address, ethereum?.address]);
+
+  const hasWallet = walletAddresses.length > 0;
+
   const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
   const [filters, setFilters] = useState<Filters>({
-    search: "", pair: "All", status: "All", dateRange: "All time", chain: "All"
+    search: "", status: "All", dateRange: "All time",
   });
-  const [sortField, setSortField] = useState<"timestamp" | "fromUsd" | "fee" | "settlementTime">("timestamp");
+  const [sortField, setSortField] = useState<"timestamp" | "fromUsd" | "fee">("timestamp");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
   const PAGE_SIZE = 8;
 
-  const filtered = useMemo(() => {
-    let result = [...SWAP_HISTORY];
+  // Compute days from dateRange filter
+  const days = filters.dateRange === "Last 24h" ? 1
+    : filters.dateRange === "Last 7d" ? 7
+    : filters.dateRange === "Last 30d" ? 30
+    : 90;
 
-    // Search
+  // Map status filter to tRPC enum
+  const statusParam = filters.status === "All" ? "all"
+    : filters.status === "complete" ? "completed"
+    : filters.status === "failed" ? "failed"
+    : filters.status === "refunded" ? "refunded"
+    : "all";
+
+  // Fetch real data from tRPC
+  const { data: historyData, isLoading: historyLoading, refetch } = trpc.history.list.useQuery({
+    walletAddresses,
+    status: statusParam as "all" | "completed" | "failed" | "refunded",
+    days,
+    limit: 200,
+    offset: 0,
+  }, { refetchInterval: 30000 });
+
+  const { data: statsData } = trpc.history.stats.useQuery({
+    walletAddresses,
+    days,
+  }, { refetchInterval: 30000 });
+
+  // Map DB rows to SwapRecord
+  const allSwaps: SwapRecord[] = useMemo(() => {
+    if (!historyData?.rows) return [];
+    return historyData.rows.map(mapDbRowToSwapRecord);
+  }, [historyData]);
+
+  const stats = statsData ?? { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
+
+  // Client-side search filter
+  const filtered = useMemo(() => {
+    let result = [...allSwaps];
     if (filters.search) {
       const q = filters.search.toLowerCase();
       result = result.filter(s =>
@@ -272,37 +321,13 @@ export default function SwapHistory() {
         s.protocol.toLowerCase().includes(q)
       );
     }
-
-    // Pair
-    if (filters.pair !== "All") {
-      result = result.filter(s => `${s.fromSymbol}/${s.toSymbol}` === filters.pair);
-    }
-
-    // Status
-    if (filters.status !== "All") {
-      result = result.filter(s => s.status === filters.status);
-    }
-
-    // Chain
-    if (filters.chain !== "All") {
-      result = result.filter(s => s.fromChain === filters.chain || s.toChain === filters.chain);
-    }
-
-    // Date range
-    const now = Date.now();
-    if (filters.dateRange === "Last 24h") result = result.filter(s => now - s.timestamp.getTime() < 86400000);
-    if (filters.dateRange === "Last 7d") result = result.filter(s => now - s.timestamp.getTime() < 7 * 86400000);
-    if (filters.dateRange === "Last 30d") result = result.filter(s => now - s.timestamp.getTime() < 30 * 86400000);
-
-    // Sort
     result.sort((a, b) => {
       const va = sortField === "timestamp" ? a.timestamp.getTime() : a[sortField];
       const vb = sortField === "timestamp" ? b.timestamp.getTime() : b[sortField];
       return sortDir === "desc" ? (vb as number) - (va as number) : (va as number) - (vb as number);
     });
-
     return result;
-  }, [filters, sortField, sortDir]);
+  }, [allSwaps, filters.search, sortField, sortDir]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -319,14 +344,40 @@ export default function SwapHistory() {
   };
 
   const copyHash = (hash: string) => {
+    navigator.clipboard.writeText(hash).catch(() => {});
     toast.success("Hash copied", { description: truncateHash(hash) });
   };
 
   const openExplorer = (swap: SwapRecord) => {
+    if (!swap.txHash) { toast.info("No transaction hash available"); return; }
     const chain = CHAIN_CONFIG[swap.fromChain];
     const url = chain.explorer + swap.txHash;
-    toast.info("Opening explorer", { description: url });
     window.open(url, "_blank");
+  };
+
+  const exportCsv = () => {
+    const rows = [
+      ["Time", "From", "To", "Protocol", "Peer", "USD Value", "Fee", "Status", "Tx Hash"],
+      ...filtered.map(s => [
+        s.timestamp.toISOString(),
+        `${s.fromAmount} ${s.fromSymbol}`,
+        `${s.toAmount} ${s.toSymbol}`,
+        s.protocol,
+        s.peer,
+        s.fromUsd.toFixed(2),
+        s.fee.toFixed(2),
+        s.status,
+        s.txHash,
+      ]),
+    ];
+    const csv = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `afos-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -336,12 +387,14 @@ export default function SwapHistory() {
         <div>
           <h1 className="text-xl font-bold text-foreground tracking-tight">History</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Swaps · Open trades · Refunds
+            {hasWallet
+              ? `Your swaps · Open trades · Refunds`
+              : `All network swaps · Open trades · Refunds`}
           </p>
         </div>
         {activeTab === "history" && (
           <button
-            onClick={() => toast.info("Export coming soon")}
+            onClick={exportCsv}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
@@ -350,6 +403,19 @@ export default function SwapHistory() {
           </button>
         )}
       </div>
+
+      {/* Wallet scope banner */}
+      {!hasWallet && (
+        <div
+          className="flex items-center gap-2 px-3 py-2 rounded-xl mb-4 text-xs"
+          style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+        >
+          <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+          <span className="text-cyan-300/80">
+            Connect a wallet to see only your transactions. Currently showing all network swaps (operator view).
+          </span>
+        </div>
+      )}
 
       {/* Tab bar */}
       <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
@@ -372,352 +438,295 @@ export default function SwapHistory() {
       </div>
 
       {/* Open Trades Tab */}
-      {activeTab === "open" && <OpenTradesTab />}
+      {activeTab === "open" && <OpenTradesTab walletAddresses={walletAddresses} />}
 
       {/* Refunds Tab */}
-      {activeTab === "refunds" && <RefundsTab />}
+      {activeTab === "refunds" && <RefundsTab walletAddresses={walletAddresses} />}
 
       {/* History Tab */}
       {activeTab === "history" && <>
-      {/* Summary Stats — horizontal scroll on mobile */}
-      <div className="hidden sm:block"><SummaryStats swaps={filtered} /></div>
-      <MobileSummaryStats swaps={filtered} />
+        {/* Summary Stats */}
+        <div className="hidden sm:block"><SummaryStats stats={stats} /></div>
+        <MobileSummaryStats stats={stats} />
 
-      {/* Filters */}
-      <div
-        className="rounded-2xl p-4 mb-4"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        {/* Mobile filter toggle */}
-        <div className="sm:hidden flex items-center justify-between mb-3">
-          <div className="relative flex-1 mr-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search pair, peer, hash..."
-              value={filters.search}
-              onChange={e => setFilter("search", e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none"
-              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+        {/* Filters */}
+        <div
+          className="rounded-2xl p-4 mb-4"
+          style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+        >
+          <div className="flex flex-col sm:flex-row gap-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search pair, peer, hash..."
+                value={filters.search}
+                onChange={e => setFilter("search", e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-lg text-xs bg-transparent text-foreground placeholder:text-muted-foreground outline-none"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              />
+            </div>
+            {/* Status filter */}
+            <FilterSelect
+              label="Status"
+              value={filters.status}
+              options={["All", "complete", "failed", "refunded"]}
+              onChange={v => setFilter("status", v)}
             />
-          </div>
-          <button
-            onClick={() => setShowFilters(f => !f)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs flex-shrink-0"
-            style={{
-              background: showFilters ? "rgba(6,182,212,0.12)" : "var(--muted)",
-              border: `1px solid ${showFilters ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
-              color: showFilters ? "#06b6d4" : "var(--muted-foreground)",
-            }}
-          >
-            <Filter className="w-3.5 h-3.5" />
-            Filters
-          </button>
-        </div>
-        {/* Mobile collapsible filters */}
-        {showFilters && (
-          <div className="sm:hidden flex flex-wrap gap-2 mb-3">
-            <FilterSelect label="Pair" value={filters.pair} options={["All", ...ALL_PAIRS]} onChange={v => setFilter("pair", v)} />
-            <FilterSelect label="Status" value={filters.status} options={["All", ...ALL_STATUSES]} onChange={v => setFilter("status", v)} />
-            <FilterSelect label="Chain" value={filters.chain} options={["All", "bitcoin", "ethereum", "solana"]} onChange={v => setFilter("chain", v)} />
-            <FilterSelect label="Date" value={filters.dateRange} options={DATE_RANGES} onChange={v => setFilter("dateRange", v)} />
-            <button onClick={() => { setFilters({ search: "", pair: "All", status: "All", dateRange: "All time", chain: "All" }); setPage(1); setShowFilters(false); }}
-              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 px-2 py-1.5 rounded-lg"
-              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-              <RefreshCw className="w-3 h-3" /> Reset
+            {/* Date range filter */}
+            <FilterSelect
+              label="Range"
+              value={filters.dateRange}
+              options={DATE_RANGES}
+              onChange={v => setFilter("dateRange", v)}
+            />
+            {/* Refresh */}
+            <button
+              onClick={() => refetch()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </div>
-        )}
-        {/* Desktop filters */}
-        <div className="hidden sm:flex flex-wrap gap-3 items-center">
-          {/* Search */}
-          <div className="relative flex-1 min-w-[180px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search pair, peer, hash..."
-              value={filters.search}
-              onChange={e => setFilter("search", e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg text-xs text-foreground placeholder:text-muted-foreground outline-none"
-              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-            />
-          </div>
+        </div>
 
-          {/* Pair filter */}
-          <FilterSelect
-            label="Pair"
-            value={filters.pair}
-            options={["All", ...ALL_PAIRS]}
-            onChange={v => setFilter("pair", v)}
-          />
-
-          {/* Status filter */}
-          <FilterSelect
-            label="Status"
-            value={filters.status}
-            options={["All", ...ALL_STATUSES]}
-            onChange={v => setFilter("status", v)}
-          />
-
-          {/* Chain filter */}
-          <FilterSelect
-            label="Chain"
-            value={filters.chain}
-            options={["All", "bitcoin", "ethereum", "solana"]}
-            onChange={v => setFilter("chain", v)}
-          />
-
-          {/* Date range */}
-          <FilterSelect
-            label="Date"
-            value={filters.dateRange}
-            options={DATE_RANGES}
-            onChange={v => setFilter("dateRange", v)}
-          />
-
-          {/* Reset */}
-          <button
-            onClick={() => { setFilters({ search: "", pair: "All", status: "All", dateRange: "All time", chain: "All" }); setPage(1); }}
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
+        {/* Table */}
+        <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          {/* Desktop header */}
+          <div
+            className="hidden sm:grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
+            style={{
+              gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr",
+              borderColor: "var(--border)",
+            }}
           >
-            <RefreshCw className="w-3 h-3" />
-            Reset
-          </button>
-        </div>
-      </div>
-
-      {/* Desktop Table / Mobile Cards */}
-      <div
-        className="rounded-2xl overflow-hidden"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        {/* ── Desktop table header (hidden on mobile) ── */}
-        <div
-          className="hidden sm:grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
-          style={{
-            gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
-            borderColor: "var(--border)",
-          }}
-        >
-          <SortHeader label="Time" field="timestamp" current={sortField} dir={sortDir} onClick={handleSort} />
-          <span>Swap</span>
-          <span>Protocol</span>
-          <SortHeader label="Value" field="fromUsd" current={sortField} dir={sortDir} onClick={handleSort} />
-          <SortHeader label="Fee" field="fee" current={sortField} dir={sortDir} onClick={handleSort} />
-          <SortHeader label="Speed" field="settlementTime" current={sortField} dir={sortDir} onClick={handleSort} />
-          <span>Status</span>
-          <span>Tx</span>
-        </div>
-
-        {/* ── Rows ── */}
-        <AnimatePresence mode="popLayout">
-          {paginated.length === 0 ? (
-            <div className="py-16 text-center text-slate-600 text-sm">
-              No transactions match your filters
-            </div>
-          ) : (
-            paginated.map((swap, i) => (
-              <motion.div key={swap.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ delay: i * 0.03 }}
-              >
-                {/* ── Desktop row (hidden on mobile) ── */}
-                <div
-                  className="hidden sm:grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
-                  style={{
-                    gridTemplateColumns: "1fr 1.4fr 1fr 0.8fr 0.8fr 0.7fr 0.8fr 0.6fr",
-                    borderColor: "var(--border)",
-                  }}
-                  onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
-                >
-                  <div>
-                    <div className="text-xs text-muted-foreground">{formatTime(swap.timestamp)}</div>
-                    <div className="text-[9px] text-slate-600 mt-0.5">
-                      {swap.timestamp.toLocaleDateString()} {swap.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
-                      {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.fromSymbol}
-                    </span>
-                    <span className="text-slate-600">→</span>
-                    <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
-                      {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toSymbol}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="text-[10px] text-muted-foreground leading-tight">{swap.protocol}</div>
-                    <div className="text-[9px] text-slate-600 mt-0.5">{swap.peer}</div>
-                  </div>
-                  <div className="text-xs font-mono text-amber-400 font-semibold">
-                    ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                  </div>
-                  <div className="text-xs font-mono text-muted-foreground">
-                    {swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}
-                  </div>
-                  <div className="text-xs font-mono text-muted-foreground">
-                    {formatSettlement(swap.settlementTime)}
-                  </div>
-                  <StatusBadge status={swap.status} />
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-mono text-muted-foreground">{truncateHash(swap.txHash)}</span>
-                    <button onClick={e => { e.stopPropagation(); copyHash(swap.txHash); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><Copy className="w-3 h-3" /></button>
-                    <button onClick={e => { e.stopPropagation(); openExplorer(swap); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><ExternalLink className="w-3 h-3" /></button>
-                  </div>
-                </div>
-
-                {/* ── Mobile card (visible only on mobile) ── */}
-                <div
-                  className="sm:hidden px-3 py-3 cursor-pointer border-b active:bg-muted transition-colors"
-                  style={{ borderColor: "var(--border)" }}
-                  onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
-                >
-                  {/* Row 1: pair amounts (left) + status badge (right) */}
-                  <div className="flex items-start justify-between gap-2 mb-1.5">
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
-                          {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.fromSymbol}
-                        </span>
-                        <span className="text-muted-foreground text-xs">→</span>
-                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
-                          {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.toSymbol}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-muted-foreground truncate mt-0.5">{swap.protocol}</div>
-                    </div>
-                    <StatusBadge status={swap.status} />
-                  </div>
-                  {/* Row 2: USD value + peer + time + chevron */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-mono text-amber-400 font-semibold">
-                        ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                      </span>
-                      <span className="text-[10px] text-slate-600">{swap.peer}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-muted-foreground">{formatTime(swap.timestamp)}</span>
-                      <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${expandedId === swap.id ? "rotate-180" : ""}`} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Expanded detail (shared desktop + mobile) ── */}
-                <AnimatePresence>
-                  {expandedId === swap.id && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div
-                        className="px-4 sm:px-5 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
-                        style={{
-                          background: "var(--muted)",
-                          borderColor: "var(--border)",
-                        }}
-                      >
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">From Chain</div>
-                          <ChainTag chain={swap.fromChain} />
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">To Chain</div>
-                          <ChainTag chain={swap.toChain} />
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Executed By</div>
-                          <span className={`text-xs font-semibold ${swap.agentExecuted ? "text-cyan-400" : "text-muted-foreground"}`}>
-                            {swap.agentExecuted ? "🤖 AFOS Agent" : "👤 Manual"}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Peer</div>
-                          <span className="text-xs font-mono text-foreground">{swap.peer}</span>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Fee</div>
-                          <span className="text-xs font-mono text-foreground">{swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}</span>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Speed</div>
-                          <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>
-                          <span className="text-xs font-mono text-foreground">
-                            1 {swap.fromSymbol} = {swap.fromAmount > 0 ? (swap.toAmount / swap.fromAmount).toFixed(4) : '—'} {swap.toSymbol}
-                          </span>
-                        </div>
-                        <div>
-                          <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Tx Hash</div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">{truncateHash(swap.txHash)}</span>
-                            <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><Copy className="w-3 h-3" /></button>
-                            <button onClick={() => openExplorer(swap)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><ExternalLink className="w-3 h-3" /></button>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            ))
-          )}
-        </AnimatePresence>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3">
-            <span className="text-[10px] text-slate-600">
-              Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className="w-7 h-7 rounded-lg text-xs font-mono transition-all"
-                  style={{
-                    background: p === page ? "rgba(59,130,246,0.15)" : "var(--muted)",
-                    border: `1px solid ${p === page ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
-                    color: p === page ? "#3b82f6" : "var(--muted-foreground)",
-                  }}
-                >
-                  {p}
-                </button>
-              ))}
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
-                style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <SortHeader label="Time" field="timestamp" current={sortField} dir={sortDir} onClick={handleSort} />
+            <span>Swap</span>
+            <span>Protocol</span>
+            <SortHeader label="Value" field="fromUsd" current={sortField} dir={sortDir} onClick={handleSort} />
+            <SortHeader label="Fee" field="fee" current={sortField} dir={sortDir} onClick={handleSort} />
+            <span>Status</span>
+            <span>Tx</span>
           </div>
-        )}
-      </div>
-      </> }
+
+          {/* Loading state */}
+          {historyLoading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-5 h-5 text-muted-foreground animate-spin mr-2" />
+              <span className="text-xs text-muted-foreground">Loading transactions…</span>
+            </div>
+          )}
+
+          {/* Rows */}
+          {!historyLoading && (
+            <AnimatePresence mode="popLayout">
+              {paginated.length === 0 ? (
+                <div className="py-16 text-center">
+                  <History className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    {hasWallet ? "No transactions found for your wallet" : "No transactions match your filters"}
+                  </p>
+                  {hasWallet && (
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      Your swap history will appear here once you execute trades through AFOS
+                    </p>
+                  )}
+                </div>
+              ) : (
+                paginated.map((swap, i) => (
+                  <motion.div key={swap.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                  >
+                    {/* Desktop row */}
+                    <div
+                      className="hidden sm:grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
+                      style={{
+                        gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr",
+                        borderColor: "var(--border)",
+                      }}
+                      onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
+                    >
+                      <div>
+                        <div className="text-xs text-muted-foreground">{formatTime(swap.timestamp)}</div>
+                        <div className="text-[9px] text-slate-600 mt-0.5">
+                          {swap.timestamp.toLocaleDateString()} {swap.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
+                          {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.fromSymbol}
+                        </span>
+                        <span className="text-slate-600">→</span>
+                        <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
+                          {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toSymbol}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-muted-foreground leading-tight">{swap.protocol}</div>
+                        <div className="text-[9px] text-slate-600 mt-0.5">{swap.peer}</div>
+                      </div>
+                      <div className="text-xs font-mono text-amber-400 font-semibold">
+                        ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs font-mono text-muted-foreground">
+                        {swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}
+                      </div>
+                      <StatusBadge status={swap.status} />
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-mono text-muted-foreground">{truncateHash(swap.txHash)}</span>
+                        {swap.txHash && <>
+                          <button onClick={e => { e.stopPropagation(); copyHash(swap.txHash); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><Copy className="w-3 h-3" /></button>
+                          <button onClick={e => { e.stopPropagation(); openExplorer(swap); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><ExternalLink className="w-3 h-3" /></button>
+                        </>}
+                      </div>
+                    </div>
+
+                    {/* Mobile card */}
+                    <div
+                      className="sm:hidden px-3 py-3 cursor-pointer border-b active:bg-muted transition-colors"
+                      style={{ borderColor: "var(--border)" }}
+                      onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromSymbol] ?? "#94a3b8" }}>
+                              {swap.fromAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.fromSymbol}
+                            </span>
+                            <span className="text-muted-foreground text-xs">→</span>
+                            <span className="text-xs font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
+                              {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {swap.toSymbol}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-muted-foreground truncate mt-0.5">{swap.protocol}</div>
+                        </div>
+                        <StatusBadge status={swap.status} />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono text-amber-400 font-semibold">
+                            ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </span>
+                          <span className="text-[10px] text-slate-600">{swap.peer}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground">{formatTime(swap.timestamp)}</span>
+                          <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${expandedId === swap.id ? "rotate-180" : ""}`} />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded detail */}
+                    <AnimatePresence>
+                      {expandedId === swap.id && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div
+                            className="px-4 sm:px-5 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
+                            style={{ background: "var(--muted)", borderColor: "var(--border)" }}
+                          >
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">From Chain</div>
+                              <ChainTag chain={swap.fromChain} />
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">To Chain</div>
+                              <ChainTag chain={swap.toChain} />
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Executed By</div>
+                              <span className="text-xs font-semibold text-cyan-400">🤖 AFOS Agent</span>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Peer</div>
+                              <span className="text-xs font-mono text-foreground">{swap.peer}</span>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Fee</div>
+                              <span className="text-xs font-mono text-foreground">{swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}</span>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Settlement</div>
+                              <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>
+                              <span className="text-xs font-mono text-foreground">
+                                1 {swap.fromSymbol} = {swap.fromAmount > 0 ? (swap.toAmount / swap.fromAmount).toFixed(4) : "—"} {swap.toSymbol}
+                              </span>
+                            </div>
+                            <div>
+                              <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Tx Hash</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">{truncateHash(swap.txHash)}</span>
+                                {swap.txHash && <>
+                                  <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><Copy className="w-3 h-3" /></button>
+                                  <button onClick={() => openExplorer(swap)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><ExternalLink className="w-3 h-3" /></button>
+                                </>}
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                ))
+              )}
+            </AnimatePresence>
+          )}
+
+          {/* Pagination */}
+          {!historyLoading && totalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-3">
+              <span className="text-[10px] text-slate-600">
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className="w-7 h-7 rounded-lg text-xs font-mono transition-all"
+                    style={{
+                      background: p === page ? "rgba(59,130,246,0.15)" : "var(--muted)",
+                      border: `1px solid ${p === page ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                      color: p === page ? "#3b82f6" : "var(--muted-foreground)",
+                    }}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
+                  style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </>}
     </div>
   );
 }
@@ -733,10 +742,7 @@ function FilterSelect({ label, value, options, onChange }: {
         value={value}
         onChange={e => onChange(e.target.value)}
         className="appearance-none pl-3 pr-7 py-2 rounded-lg text-xs text-foreground outline-none cursor-pointer"
-        style={{
-          background: "var(--card)",
-          border: "1px solid var(--border)",
-        }}
+        style={{ background: "var(--card)", border: "1px solid var(--border)" }}
       >
         {options.map(o => <option key={o} value={o}>{label}: {o}</option>)}
       </select>
@@ -747,10 +753,10 @@ function FilterSelect({ label, value, options, onChange }: {
 
 function SortHeader({ label, field, current, dir, onClick }: {
   label: string;
-  field: "timestamp" | "fromUsd" | "fee" | "settlementTime";
+  field: "timestamp" | "fromUsd" | "fee";
   current: string;
   dir: "asc" | "desc";
-  onClick: (f: "timestamp" | "fromUsd" | "fee" | "settlementTime") => void;
+  onClick: (f: "timestamp" | "fromUsd" | "fee") => void;
 }) {
   const active = current === field;
   return (

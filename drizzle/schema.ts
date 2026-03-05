@@ -100,6 +100,10 @@ export const swapAnalytics = mysqlTable("swap_analytics", {
   feeBps:         int("feeBps"),
   /** Fee amount in output token units */
   feeAmountOut:   varchar("feeAmountOut", { length: 32 }),
+  /** Output amount in human-readable units (e.g. 24.01 SOL) */
+  outAmount:      varchar("outAmount", { length: 32 }),
+  /** Wallet address of the user who initiated the swap (for per-user history filtering) */
+  walletAddress:  varchar("walletAddress", { length: 128 }),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
 });
 
