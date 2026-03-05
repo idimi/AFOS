@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -162,6 +163,10 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
+  const labelColor = isDark ? "rgba(255,255,255,0.55)" : "rgba(15,23,42,0.75)";
+  const labelColorOffline = isDark ? "rgba(255,255,255,0.2)" : "rgba(15,23,42,0.3)";
 
   useEffect(() => {
     const obs = new ResizeObserver(entries => {
@@ -328,7 +333,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               x={x} y={y + r + 14}
               textAnchor="middle"
               fontSize={9}
-              fill={peer.online ? "rgba(255,255,255,0.55)" : "rgba(255,255,255,0.2)"}
+              fill={peer.online ? labelColor : labelColorOffline}
               fontFamily="monospace"
             >
               {peer.alias.split(" ")[0]}
@@ -413,7 +418,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; oth
     <div className="mt-3 pt-3 border-t border-border">
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between text-[9px] text-slate-500 uppercase tracking-widest hover:text-slate-300 transition-colors"
+        className="w-full flex items-center justify-between text-[9px] text-muted-foreground uppercase tracking-widest hover:text-foreground/70 transition-colors"
       >
         <span className="flex items-center gap-1">
           <MessageSquare className="w-3 h-3" />
@@ -543,7 +548,7 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
       </div>
 
       <div className="mt-3 pt-3 border-t border-border">
-        <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Active Pairs</div>
+        <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
         <div className="flex flex-wrap gap-1">
           {peer.pairs.map(pair => (
             <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
@@ -556,7 +561,7 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
       {/* Copy Invite Link — only for remote peers with a fullKey */}
       {peer.id !== 'self' && peer.fullKey && (
         <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Share</div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Share</div>
           <CopyInviteLinkButton peerId={peer.fullKey} />
         </div>
       )}
@@ -571,7 +576,7 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
       {/* My Invite Link — only for self peer when wallet is connected */}
       {peer.id === 'self' && selfPeerId && (
         <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">My Invite Link</div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
           <p className="text-[9px] text-muted-foreground mb-2">
             Share this link so others can connect to you directly.
           </p>
@@ -580,7 +585,7 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
       )}
       {peer.id === 'self' && !selfPeerId && (
         <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">My Invite Link</div>
+          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
           <p className="text-[9px] text-muted-foreground">
             Connect a wallet to generate your invite link.
           </p>
@@ -832,12 +837,12 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                   {peer.alias}
                   <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
                 </div>
-                <div className="text-[9px] text-slate-600">{peer.region}</div>
+                <div className="text-[9px] text-muted-foreground">{peer.region}</div>
               </div>
               <div className="text-right shrink-0">
                 <div className="text-[10px] font-mono text-cyan-400">local</div>
               </div>
-              <ChevronRight className="w-3 h-3 text-slate-600 shrink-0" />
+              <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
             </button>
           );
         })}
@@ -861,7 +866,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
               >
                 <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] font-mono text-slate-200 truncate flex items-center gap-1.5">
+                  <div className="text-[11px] font-mono text-foreground truncate flex items-center gap-1.5">
                     {peer.alias}
                     {/* Peer type badge — Hyperswarm full node vs IntercomSwap light peer */}
                     <span
@@ -895,7 +900,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       >{repScore}</span>
                     )}
                   </div>
-                  <div className="text-[9px] text-slate-600 flex items-center gap-1.5">
+                  <div className="text-[9px] text-muted-foreground flex items-center gap-1.5">
                     {peer.region} · {peer.pairs[0] || "—"}
                     {peer.origin === 'intercomswap' && peer.lastSeen && (
                       <LastSeenBadge lastSeen={peer.lastSeen} />
@@ -910,7 +915,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       `${displayLatency}ms`
                     )}
                   </div>
-                  <div className="text-[9px] text-slate-600">{peer.channels}ch</div>
+                  <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
                 </div>
               </button>
               {/* Ping button */}
@@ -1846,7 +1851,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             <div className="flex-1 min-w-0">
               {invitedPeer ? (
                 <>
-                  <p className="text-[11px] font-semibold text-cyan-300">
+                  <p className="text-[11px] font-semibold text-cyan-500 dark:text-cyan-300">
                     Peer found via invite link
                   </p>
                   <p className="text-[10px] text-muted-foreground truncate">
@@ -1861,7 +1866,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                 </>
               ) : (
                 <>
-                  <p className="text-[11px] font-semibold text-slate-300">
+                  <p className="text-[11px] font-semibold text-foreground/80">
                     Waiting for peer to come online…
                   </p>
                   <p className="text-[10px] text-muted-foreground font-mono truncate">
@@ -1934,7 +1939,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-cyan-300 truncate flex items-center gap-1.5">
+                  <div className="text-sm font-bold text-cyan-500 dark:text-cyan-300 truncate flex items-center gap-1.5">
                     {peer.alias}
                     <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
                   </div>
@@ -2143,7 +2148,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               key={lastActivity}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-[10px] font-mono text-cyan-300/70 truncate"
+              className="text-[10px] font-mono text-cyan-500/70 dark:text-cyan-300/70 truncate"
             >
               {lastActivity}
             </motion.span>
@@ -2216,7 +2221,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                         </span>
                       </div>
                       <div className="text-right shrink-0 ml-2">
-                        <div className="text-[9px] text-slate-600">{ch.pair}</div>
+                         <div className="text-[9px] text-muted-foreground">{ch.pair}</div>
                       </div>
                     </div>
                   );

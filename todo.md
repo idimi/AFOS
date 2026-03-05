@@ -1061,3 +1061,4 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Write tests for signaling server and peer discovery
 - [x] Fix page refresh loop: moved signaling WebSocket to /api/ws/signaling, switched to noServer mode with manual upgrade handling, added MAX_RECONNECT_ATTEMPTS=5, stabilized useEffect deps
 - [x] Fix StacksProvider redefine property error (Phantom wallet extension bug — not our code, harmless)
+- [x] Fix Network page topology canvas: node labels and latency text invisible in light mode
