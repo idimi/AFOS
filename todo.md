@@ -1142,16 +1142,17 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Peer Moderation — Report, Block with Reason, Mute
 
-- [ ] Add peerReports DB table (reporterId, reportedId, reason, details, createdAt)
-- [ ] Add peerMutes DB table (muterPeerId, mutedPeerId, createdAt)
-- [ ] Run db:push migration
-- [ ] Add report/listReports tRPC procedures (report stores to DB; listReports for admin)
-- [ ] Add mute/unmute/isMuted/listMuted tRPC procedures
-- [ ] Update block procedure to accept reason field (Spam / Suspicious activity / Other)
-- [ ] Update PeerDetail: replace plain Block button with confirmation dialog (reason dropdown + confirm)
-- [ ] Add Mute/Unmute button in PeerDetail (below Block button)
-- [ ] Add Report button in PeerDetail (opens report dialog with reason + optional details textarea)
-- [ ] Suppress toast notifications for muted peers (check mutedPeerIds in new-message effect)
-- [ ] Show muted badge in Peer Directory rows
-- [ ] Add Muted Peers section in Settings page with Unmute button
-- [ ] Add Peer Reports section in Admin Panel (table: reporter, reported, reason, date, action buttons)
+- [x] Add peerReports DB table (reporterId, reportedId, reason, details, createdAt)
+- [x] Add peerMutes DB table (muterPeerId, mutedPeerId, createdAt)
+- [x] Run db:push migration
+- [x] Add report/listReports/listAll/updateStatus tRPC procedures (report stores to DB; listAll for admin)
+- [x] Add mute/unmute/isMuted/listMuted tRPC procedures
+- [x] Update block UI to show reason dropdown (Spam / Suspicious activity / Other) before confirming
+- [x] Update PeerDetail: replace plain Block button with confirmation dialog (reason dropdown + confirm)
+- [x] Add Mute/Unmute button in PeerDetail (below Block button)
+- [x] Add Report button in PeerDetail (opens report dialog with reason + optional details textarea)
+- [x] Suppress toast notifications for muted peers (check mutedPeerIds in new-message effect)
+- [x] Show muted badge in Peer Directory rows + NodeGraph muted indicator
+- [x] Add Muted Peers section in Settings page with Unmute button
+- [x] Add Peer Reports tab in Admin Panel (pending/reviewed/actioned/dismissed with action buttons)
+- [x] Write vitest tests for peerReports and peerMutes routers (11 tests passing)

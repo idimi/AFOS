@@ -28,6 +28,8 @@ import {
   RotateCcw,
   UserX,
   Unlock,
+  BellOff,
+  Bell,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -233,6 +235,19 @@ export default function AgentSettings() {
       toast.success('Peer unblocked', { description: 'They can now send you direct messages again.' });
     },
     onError: () => toast.error('Failed to unblock peer'),
+  });
+
+  // ── Muted peers ──────────────────────────────────────────────────────────────
+  const { data: mutedPeersRaw = [], refetch: refetchMuted } = trpc.peerMutes.listMuted.useQuery(
+    { muterPeerId: lightPeer.peerId! },
+    { enabled: !!lightPeer.peerId }
+  );
+  const unmuteMutation = trpc.peerMutes.unmute.useMutation({
+    onSuccess: () => {
+      refetchMuted();
+      toast.success('Peer unmuted', { description: 'You will receive notifications from this peer again.' });
+    },
+    onError: () => toast.error('Failed to unmute peer'),
   });
 
   // ── Remote state ──────────────────────────────────────────────────────────────
@@ -568,6 +583,57 @@ export default function AgentSettings() {
                   >
                     <Unlock className="w-3 h-3" />
                     Unblock
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Privacy — Muted Peers ─────────────────────────────────────────────── */}
+        <SectionCard
+          icon={BellOff}
+          title="Privacy — Muted Peers"
+          color="text-slate-400"
+          border="rgba(100,116,139,0.2)"
+          bg="rgba(100,116,139,0.04)"
+          delay={0.35}
+        >
+          <p className="text-[11px] text-muted-foreground">
+            Muted peers can still send you messages, but you won't receive notifications or badge indicators.
+          </p>
+          {mutedPeersRaw.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              You have not muted any peers. Mute a peer from their profile in the Network page.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {mutedPeersRaw.map(m => (
+                <div
+                  key={m.mutedPeerId}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(100,116,139,0.12)' }}>
+                      <BellOff className="w-3 h-3 text-slate-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-mono text-foreground truncate">{m.mutedPeerId}</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        Muted {new Date(m.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => unmuteMutation.mutate({ muterPeerId: lightPeer.peerId!, mutedPeerId: m.mutedPeerId })}
+                    disabled={unmuteMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all shrink-0 disabled:opacity-60"
+                    style={{ background: 'rgba(100,116,139,0.12)', border: '1px solid rgba(100,116,139,0.3)', color: '#94a3b8' }}
+                    title="Unmute this peer"
+                  >
+                    <Bell className="w-3 h-3" />
+                    Unmute
                   </button>
                 </div>
               ))}

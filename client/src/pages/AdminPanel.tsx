@@ -270,7 +270,7 @@ function PasswordGate({ onAuth }: { onAuth: () => void }) {
 }
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
-type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users" | "agent_wallet" | "operator_config";
+type AdminTab = "revenue" | "fees" | "treasury" | "lp" | "routing" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -387,6 +387,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     { id: "users", label: "Users", icon: Users },
     { id: "agent_wallet", label: "Agent Wallet", icon: Cpu },
     { id: "operator_config", label: "Operator Config", icon: Settings },
+    { id: "reports", label: "Peer Reports", icon: AlertTriangle },
   ];
 
   return (
@@ -1055,6 +1056,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           </div>
         )}
 
+        {/* ── Peer Reports Tab ── */}
+        {activeTab === "reports" && <PeerReportsTab />}
+
       </div>
 
       {/* QR Code Modal */}
@@ -1090,6 +1094,154 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Peer Reports Tab ────────────────────────────────────────────
+
+const REPORT_REASON_LABELS: Record<string, string> = {
+  spam: 'Spam',
+  suspicious_activity: 'Suspicious activity',
+  fake_quotes: 'Fake quotes / price manipulation',
+  harassment: 'Harassment',
+  other: 'Other',
+};
+
+const REPORT_STATUS_COLORS: Record<string, string> = {
+  pending: '#f59e0b',
+  reviewed: '#06b6d4',
+  dismissed: '#64748b',
+  actioned: '#10b981',
+};
+
+function PeerReportsTab() {
+  const { data: reports = [], isLoading, refetch } = trpc.peerReports.listAll.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+  const updateStatus = trpc.peerReports.updateStatus.useMutation({
+    onSuccess: () => refetch(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (reports.length === 0) {
+    return (
+      <div className="rounded-2xl p-8 text-center max-w-lg mx-auto" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+        <AlertTriangle className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-foreground mb-1">No Peer Reports</p>
+        <p className="text-xs text-muted-foreground">When users flag peers, reports will appear here for moderation.</p>
+      </div>
+    );
+  }
+
+  const pending = reports.filter(r => r.status === 'pending');
+  const reviewed = reports.filter(r => r.status !== 'pending');
+
+  return (
+    <div className="space-y-4 max-w-3xl mx-auto">
+      <div className="flex items-center gap-2 mb-2">
+        <AlertTriangle className="w-4 h-4 text-amber-400" />
+        <h2 className="text-sm font-bold text-foreground">Peer Moderation Reports</h2>
+        <span className="text-[10px] font-mono text-muted-foreground ml-auto">{reports.length} total · {pending.length} pending</span>
+      </div>
+
+      {/* Pending reports */}
+      {pending.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-widest">Pending Review</p>
+          {pending.map(report => (
+            <div key={report.id} className="rounded-2xl p-4" style={{ background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono text-foreground">
+                      Reporter: <span className="text-amber-400">{report.reporterPeerId.slice(0, 16)}…</span>
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">→</span>
+                    <span className="text-[10px] font-mono text-foreground">
+                      Reported: <span className="text-red-400">{report.reportedPeerId.slice(0, 16)}…</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}>
+                      {REPORT_REASON_LABELS[report.reason] ?? report.reason}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground">{new Date(report.createdAt).toLocaleString()}</span>
+                  </div>
+                  {report.details && (
+                    <p className="text-[9px] text-muted-foreground mt-1.5 italic">“{report.details}”</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => updateStatus.mutate({ id: report.id, status: 'actioned' })}
+                  disabled={updateStatus.isPending}
+                  className="flex-1 py-1.5 rounded-lg text-[9px] font-bold transition-all"
+                  style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', color: '#10b981' }}
+                >
+                  Take Action
+                </button>
+                <button
+                  onClick={() => updateStatus.mutate({ id: report.id, status: 'reviewed' })}
+                  disabled={updateStatus.isPending}
+                  className="flex-1 py-1.5 rounded-lg text-[9px] font-bold transition-all"
+                  style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.25)', color: '#06b6d4' }}
+                >
+                  Mark Reviewed
+                </button>
+                <button
+                  onClick={() => updateStatus.mutate({ id: report.id, status: 'dismissed' })}
+                  disabled={updateStatus.isPending}
+                  className="flex-1 py-1.5 rounded-lg text-[9px] font-bold transition-all"
+                  style={{ background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reviewed / actioned / dismissed */}
+      {reviewed.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest">Reviewed</p>
+          {reviewed.map(report => (
+            <div key={report.id} className="rounded-2xl p-3 flex items-center justify-between gap-3" style={{ background: 'var(--card)', border: '1px solid var(--border)' }}>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[9px] font-mono text-muted-foreground">
+                    {report.reporterPeerId.slice(0, 12)}… → {report.reportedPeerId.slice(0, 12)}…
+                  </span>
+                  <span className="text-[8px] px-1 py-0.5 rounded font-bold" style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>
+                    {REPORT_REASON_LABELS[report.reason] ?? report.reason}
+                  </span>
+                </div>
+                {report.details && <p className="text-[8px] text-muted-foreground/60 mt-0.5 italic truncate">“{report.details}”</p>}
+              </div>
+              <span
+                className="shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded"
+                style={{
+                  background: `${REPORT_STATUS_COLORS[report.status] ?? '#64748b'}18`,
+                  color: REPORT_STATUS_COLORS[report.status] ?? '#64748b',
+                  border: `1px solid ${REPORT_STATUS_COLORS[report.status] ?? '#64748b'}40`,
+                }}
+              >
+                {report.status}
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

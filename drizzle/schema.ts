@@ -210,3 +210,35 @@ export const DEFAULT_USER_SETTINGS = {
   preferredRoute: "best" as const,
   theme: "dark" as const,
 };
+
+// ─── Peer Reports ─────────────────────────────────────────────────────────────
+// Users can flag peers as spammy or malicious. Reports are visible in Admin Panel.
+export const peerReports = mysqlTable("peer_reports", {
+  id:           int("id").autoincrement().primaryKey(),
+  /** The peer who submitted the report (local peer ID) */
+  reporterPeerId: varchar("reporterPeerId", { length: 128 }).notNull(),
+  /** The peer being reported */
+  reportedPeerId: varchar("reportedPeerId", { length: 128 }).notNull(),
+  /** Reason category: spam | suspicious_activity | fake_quotes | harassment | other */
+  reason:       varchar("reason", { length: 64 }).notNull(),
+  /** Optional free-text details */
+  details:      text("details"),
+  /** Admin review status: pending | reviewed | dismissed */
+  status:       varchar("status", { length: 32 }).default("pending").notNull(),
+  createdAt:    timestamp("createdAt").defaultNow().notNull(),
+});
+export type PeerReport = typeof peerReports.$inferSelect;
+export type InsertPeerReport = typeof peerReports.$inferInsert;
+
+// ─── Peer Mutes ───────────────────────────────────────────────────────────────
+// Muting hides notifications from a peer without blocking their messages.
+export const peerMutes = mysqlTable("peer_mutes", {
+  id:           int("id").autoincrement().primaryKey(),
+  /** The peer who muted */
+  muterPeerId:  varchar("muterPeerId", { length: 128 }).notNull(),
+  /** The peer being muted */
+  mutedPeerId:  varchar("mutedPeerId", { length: 128 }).notNull(),
+  createdAt:    timestamp("createdAt").defaultNow().notNull(),
+});
+export type PeerMute = typeof peerMutes.$inferSelect;
+export type InsertPeerMute = typeof peerMutes.$inferInsert;

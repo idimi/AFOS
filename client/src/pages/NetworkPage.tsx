@@ -15,7 +15,8 @@ import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
-  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX, Trophy
+  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX, Trophy,
+  BellOff, Bell, Flag
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -169,7 +170,7 @@ function peerPosition(pubkey: string, index: number, total: number): { lat: numb
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds, mutedPeerIds }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
@@ -178,6 +179,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
   pingingIds?: Set<string>;
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
   blockedPeerIds?: Set<string>;
+  mutedPeerIds?: Set<string>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
@@ -446,6 +448,23 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
               </g>
             )}
 
+            {/* Muted peer indicator — gray bell icon, no pulsing rings */}
+            {peer.id !== "self" && peer.fullKey && mutedPeerIds?.has(peer.fullKey) && !blockedPeerIds?.has(peer.fullKey) && (
+              <g>
+                {/* Gray tint overlay */}
+                <circle cx={x} cy={y} r={r + 2} fill="rgba(100,116,139,0.12)" stroke="rgba(100,116,139,0.35)" strokeWidth={1} strokeDasharray="3,2" />
+                {/* Bell-off badge top-right */}
+                <circle cx={x + r + 4} cy={y - r - 4} r={7} fill="rgba(100,116,139,0.85)" />
+                <text x={x + r + 4} y={y - r - 0.5} textAnchor="middle" fontSize={8} fill="#fff" fontWeight="bold">
+                  🔕
+                </text>
+                {/* Muted label below latency */}
+                <text x={x} y={y + r + 34} textAnchor="middle" fontSize={7} fill="rgba(100,116,139,0.7)" fontFamily="monospace">
+                  muted
+                </text>
+              </g>
+            )}
+
             {/* Unread message indicator — pulsing rings + badge when peer has unread messages */}
             {peer.id !== "self" && peer.fullKey && unreadByPeer?.[peer.fullKey]?.count ? (() => {
               const count = unreadByPeer[peer.fullKey!]!.count;
@@ -696,10 +715,24 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
   // same pair is clicked twice in a row.
   const [pairDraftKey, setPairDraftKey] = useState(0);
   const [pairDraft, setPairDraft] = useState('');
-  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
 
-  // Block state — only relevant for remote peers
+  // Block state
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [blockReason, setBlockReason] = useState<string>('spam');
+
+  // Mute state
+  const [showMuteConfirm, setShowMuteConfirm] = useState(false);
+
+  // Report state
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [reportReason, setReportReason] = useState<string>('spam');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+
+  // Only relevant for remote peers
   const isRemotePeer = peer.id !== 'self' && !!peer.fullKey && !!selfPeerId;
+
+  // Block queries/mutations
   const { data: blockState, refetch: refetchBlock } = trpc.peerBlocks.isBlocked.useQuery(
     { blockerPeerId: selfPeerId ?? '', blockedPeerId: peer.fullKey ?? '' },
     { enabled: isRemotePeer && !!selfPeerId && !!peer.fullKey }
@@ -711,6 +744,27 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
     onSuccess: () => refetchBlock(),
   });
   const isBlocked = blockState?.blocked ?? false;
+
+  // Mute queries/mutations
+  const { data: muteState, refetch: refetchMute } = trpc.peerMutes.isMuted.useQuery(
+    { muterPeerId: selfPeerId ?? '', mutedPeerId: peer.fullKey ?? '' },
+    { enabled: isRemotePeer && !!selfPeerId && !!peer.fullKey }
+  );
+  const muteMutation = trpc.peerMutes.mute.useMutation({
+    onSuccess: () => { refetchMute(); setShowMuteConfirm(false); },
+  });
+  const unmuteMutation = trpc.peerMutes.unmute.useMutation({
+    onSuccess: () => refetchMute(),
+  });
+  const isMuted = muteState?.muted ?? false;
+
+  // Report mutation
+  const reportMutation = trpc.peerReports.report.useMutation({
+    onSuccess: () => {
+      setReportSubmitted(true);
+      setTimeout(() => { setShowReportForm(false); setReportSubmitted(false); setReportDetails(''); }, 2000);
+    },
+  });
 
   const handlePairClick = (pair: string) => {
     if (!selfPeerId || !peer.fullKey || peer.id === 'self') return;
@@ -887,9 +941,57 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
             <CopyInviteLinkButton peerId={peer.fullKey} />
           </div>
         )}
-        {/* Block / Unblock — only for remote peers */}
+        {/* Mute / Unmute — only for remote peers */}
         {isRemotePeer && (
           <div className="mt-3 pt-3 border-t border-border">
+            {!showMuteConfirm ? (
+              <button
+                onClick={() => isMuted
+                  ? unmuteMutation.mutate({ muterPeerId: selfPeerId!, mutedPeerId: peer.fullKey! })
+                  : setShowMuteConfirm(true)
+                }
+                disabled={muteMutation.isPending || unmuteMutation.isPending}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                style={{
+                  background: isMuted ? 'rgba(6,182,212,0.08)' : 'rgba(100,116,139,0.08)',
+                  border: `1px solid ${isMuted ? 'rgba(6,182,212,0.25)' : 'rgba(100,116,139,0.2)'}`,
+                  color: isMuted ? '#06b6d4' : '#94a3b8',
+                }}
+              >
+                {isMuted
+                  ? <><Bell className="w-3 h-3" /> Unmute Peer</>
+                  : <><BellOff className="w-3 h-3" /> Mute Peer</>}
+              </button>
+            ) : (
+              <div className="rounded-lg p-2.5" style={{ background: 'rgba(100,116,139,0.08)', border: '1px solid rgba(100,116,139,0.2)' }}>
+                <p className="text-[9px] text-muted-foreground mb-2 leading-relaxed">
+                  Mute <span className="font-bold text-foreground">{peer.alias}</span>? Their messages will still arrive but you won't see notifications or badges.
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => muteMutation.mutate({ muterPeerId: selfPeerId!, mutedPeerId: peer.fullKey! })}
+                    disabled={muteMutation.isPending}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: '#64748b', color: '#fff' }}
+                  >
+                    {muteMutation.isPending ? 'Muting…' : 'Confirm Mute'}
+                  </button>
+                  <button
+                    onClick={() => setShowMuteConfirm(false)}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted-foreground)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Block / Unblock — only for remote peers */}
+        {isRemotePeer && (
+          <div className="mt-1">
             {!showBlockConfirm ? (
               <button
                 onClick={() => isBlocked ? unblockMutation.mutate({ blockerPeerId: selfPeerId!, blockedPeerId: peer.fullKey! }) : setShowBlockConfirm(true)}
@@ -908,9 +1010,24 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
                 <p className="text-[9px] text-red-400 mb-2 leading-relaxed">
                   Block <span className="font-bold">{peer.alias}</span>? They won't be able to send you messages.
                 </p>
+                {/* Reason dropdown */}
+                <div className="mb-2">
+                  <label className="text-[8px] text-muted-foreground uppercase tracking-widest mb-1 block">Reason</label>
+                  <select
+                    value={blockReason}
+                    onChange={e => setBlockReason(e.target.value)}
+                    className="w-full px-2 py-1 rounded text-[9px] text-foreground outline-none"
+                    style={{ background: 'var(--background)', border: '1px solid rgba(239,68,68,0.3)' }}
+                  >
+                    <option value="spam">Spam</option>
+                    <option value="suspicious_activity">Suspicious activity</option>
+                    <option value="harassment">Harassment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
                 <div className="flex gap-1.5">
                   <button
-                    onClick={() => blockMutation.mutate({ blockerPeerId: selfPeerId!, blockedPeerId: peer.fullKey! })}
+                    onClick={() => blockMutation.mutate({ blockerPeerId: selfPeerId!, blockedPeerId: peer.fullKey!, reason: blockReason })}
                     disabled={blockMutation.isPending}
                     className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
                     style={{ background: '#ef4444', color: '#fff' }}
@@ -919,6 +1036,85 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
                   </button>
                   <button
                     onClick={() => setShowBlockConfirm(false)}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted-foreground)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Report Peer — only for remote peers */}
+        {isRemotePeer && (
+          <div className="mt-1">
+            {!showReportForm ? (
+              <button
+                onClick={() => setShowReportForm(true)}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                style={{
+                  background: 'rgba(245,158,11,0.06)',
+                  border: '1px solid rgba(245,158,11,0.18)',
+                  color: '#f59e0b',
+                }}
+              >
+                <Flag className="w-3 h-3" /> Report Peer
+              </button>
+            ) : reportSubmitted ? (
+              <div className="rounded-lg p-2.5 text-center" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p className="text-[9px] text-emerald-400 font-semibold">✓ Report submitted. Thank you.</p>
+              </div>
+            ) : (
+              <div className="rounded-lg p-2.5" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                <p className="text-[9px] text-amber-400 mb-2 leading-relaxed font-semibold">
+                  Report <span className="font-bold">{peer.alias}</span>
+                </p>
+                <div className="mb-2">
+                  <label className="text-[8px] text-muted-foreground uppercase tracking-widest mb-1 block">Reason</label>
+                  <select
+                    value={reportReason}
+                    onChange={e => setReportReason(e.target.value)}
+                    className="w-full px-2 py-1 rounded text-[9px] text-foreground outline-none"
+                    style={{ background: 'var(--background)', border: '1px solid rgba(245,158,11,0.3)' }}
+                  >
+                    <option value="spam">Spam</option>
+                    <option value="suspicious_activity">Suspicious activity</option>
+                    <option value="fake_quotes">Fake quotes / price manipulation</option>
+                    <option value="harassment">Harassment</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div className="mb-2">
+                  <label className="text-[8px] text-muted-foreground uppercase tracking-widest mb-1 block">Details (optional)</label>
+                  <textarea
+                    value={reportDetails}
+                    onChange={e => setReportDetails(e.target.value)}
+                    placeholder="Describe the issue…"
+                    maxLength={500}
+                    rows={2}
+                    className="w-full px-2 py-1 rounded text-[9px] text-foreground placeholder:text-muted-foreground/50 outline-none resize-none"
+                    style={{ background: 'var(--background)', border: '1px solid rgba(245,158,11,0.3)' }}
+                  />
+                  <div className="text-[8px] text-muted-foreground/50 text-right">{reportDetails.length}/500</div>
+                </div>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => reportMutation.mutate({
+                      reporterPeerId: selfPeerId!,
+                      reportedPeerId: peer.fullKey!,
+                      reason: reportReason as 'spam' | 'suspicious_activity' | 'fake_quotes' | 'harassment' | 'other',
+                      details: reportDetails || undefined,
+                    })}
+                    disabled={reportMutation.isPending}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: '#f59e0b', color: '#000' }}
+                  >
+                    {reportMutation.isPending ? 'Submitting…' : 'Submit Report'}
+                  </button>
+                  <button
+                    onClick={() => { setShowReportForm(false); setReportDetails(''); }}
                     className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
                     style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted-foreground)' }}
                   >
@@ -1043,7 +1239,7 @@ function CopyInviteLinkButton({ peerId, onCopy }: { peerId: string; onCopy?: () 
   );
 }
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink, unreadByPeer, blockedPeerIds }: {
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink, unreadByPeer, blockedPeerIds, mutedPeerIds }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -1054,6 +1250,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
   onCopyInviteLink?: (peerId: string) => void;
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
   blockedPeerIds?: Set<string>;
+  mutedPeerIds?: Set<string>;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('reputation');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
@@ -1216,6 +1413,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
           const repScore = rep?.score ?? null;
           const unread = peer.fullKey ? unreadByPeer?.[peer.fullKey] : undefined;
           const isBlockedPeer = peer.fullKey ? blockedPeerIds?.has(peer.fullKey) : false;
+          const isMutedPeer = peer.fullKey ? mutedPeerIds?.has(peer.fullKey) : false;
           const canInvite = repScore !== null && repScore >= 70;
           const inviteTooltip = repScore === null
             ? 'Ping this peer first to establish a reputation score'
@@ -1279,6 +1477,15 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                         style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444' }}
                       >
                         🔒 blocked
+                      </span>
+                    )}
+                    {isMutedPeer && !isBlockedPeer && (
+                      <span
+                        className="inline-flex items-center justify-center h-3.5 px-1 rounded text-[8px] font-bold shrink-0"
+                        title="You have muted this peer — their messages arrive silently"
+                        style={{ background: 'rgba(100,116,139,0.15)', border: '1px solid rgba(100,116,139,0.35)', color: '#94a3b8' }}
+                      >
+                        🔕 muted
                       </span>
                     )}
                   </div>
@@ -1666,22 +1873,33 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   );
   const blockedPeerIds = useMemo(() => new Set(blockedPeersRaw.map(b => b.blockedPeerId)), [blockedPeersRaw]);
 
-  // Build a lookup: fullKey → { count, snippet }
+  // Muted peers list — used to suppress notifications/badges without blocking
+  const { data: mutedPeersRaw = [] } = trpc.peerMutes.listMuted.useQuery(
+    { muterPeerId: lightPeer.peerId! },
+    { enabled: !!lightPeer.peerId, refetchInterval: 30_000 }
+  );
+  const mutedPeerIds = useMemo(() => new Set(mutedPeersRaw.map(m => m.mutedPeerId)), [mutedPeersRaw]);
+
+  // Build a lookup: fullKey → { count, snippet } — exclude muted peers from badges
   const unreadByPeer = useMemo(() => {
     const map: Record<string, { count: number; snippet: string }> = {};
     for (const entry of unreadBySenderRaw) {
-      map[entry.fromPeerId] = { count: entry.count, snippet: entry.snippet };
+      // Still track unread count but skip badge for muted peers
+      if (!mutedPeerIds.has(entry.fromPeerId)) {
+        map[entry.fromPeerId] = { count: entry.count, snippet: entry.snippet };
+      }
     }
     return map;
-  }, [unreadBySenderRaw]);
+  }, [unreadBySenderRaw, mutedPeerIds]);
 
   // Fire a toast when a new unread message arrives from a peer we haven't toasted yet.
+  // Skip toasts for muted peers.
   const prevUnreadRef = useRef<Record<string, number>>({});
   useEffect(() => {
     const prev = prevUnreadRef.current;
     for (const entry of unreadBySenderRaw) {
       const prevCount = prev[entry.fromPeerId] ?? 0;
-      if (entry.count > prevCount) {
+      if (entry.count > prevCount && !mutedPeerIds.has(entry.fromPeerId)) {
         // Find the peer's alias from livePeers
         const senderPeer = livePeers.find(p => p.fullKey === entry.fromPeerId);
         const alias = senderPeer?.alias ?? entry.fromPeerId.slice(0, 12);
@@ -1702,7 +1920,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
     const next: Record<string, number> = {};
     for (const entry of unreadBySenderRaw) next[entry.fromPeerId] = entry.count;
     prevUnreadRef.current = next;
-  }, [unreadBySenderRaw, livePeers, setActiveTab]);
+  }, [unreadBySenderRaw, livePeers, setActiveTab, mutedPeerIds]);
 
   // ── Peer Reputation ────────────────────────────────────────────────────────
   // Collect all remote peer IDs (short IDs used as keys in livePeers)
@@ -2730,6 +2948,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               pingingIds={new Set(Object.entries(pingResults).filter(([, v]) => v.loading).map(([k]) => k))}
               unreadByPeer={unreadByPeer}
               blockedPeerIds={blockedPeerIds}
+              mutedPeerIds={mutedPeerIds}
             />
           ) : (
             /* Single node (just "You") — show scanning state inside graph area */
@@ -2802,6 +3021,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             reputationScores={reputationData}
             unreadByPeer={unreadByPeer}
             blockedPeerIds={blockedPeerIds}
+            mutedPeerIds={mutedPeerIds}
             onInvite={(peerId, alias) => {
               // Switch to Liquidity Channels tab and pre-fill the Open Channel form
               setActiveTab('channels');

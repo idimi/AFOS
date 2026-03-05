@@ -10,6 +10,8 @@ import { htlcWalletRouter } from "./routers/htlcWallet";
 import { peerReputationRouter } from "./routers/peerReputation";
 import { peerMessagesRouter } from "./routers/peerMessages";
 import { peerBlocksRouter } from "./routers/peerBlocks";
+import { peerReportsRouter } from "./routers/peerReports";
+import { peerMutesRouter } from "./routers/peerMutes";
 import { settingsRouter } from "./routers/settings";
 
 export const appRouter = router({
@@ -23,6 +25,8 @@ export const appRouter = router({
   peerReputation: peerReputationRouter,
   peerMessages: peerMessagesRouter,
   peerBlocks: peerBlocksRouter,
+  peerReports: peerReportsRouter,
+  peerMutes: peerMutesRouter,
   settings: settingsRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
