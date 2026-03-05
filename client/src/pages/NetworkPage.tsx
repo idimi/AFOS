@@ -164,8 +164,11 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
   const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === "dark";
-  const labelColor = isDark ? "rgba(255,255,255,0.75)" : "rgba(15,23,42,0.85)";
+  // resolvedTheme can be undefined on first render — fall back to DOM class check
+  const isDark = resolvedTheme
+    ? resolvedTheme === "dark"
+    : typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+  const labelColor = isDark ? "rgba(255,255,255,0.82)" : "rgba(15,23,42,0.85)";
   const labelColorOffline = isDark ? "rgba(255,255,255,0.3)" : "rgba(15,23,42,0.4)";
   const offlineNodeFill = isDark ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.06)";
   const offlineNodeStroke = isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.2)";

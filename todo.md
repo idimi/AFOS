@@ -1073,3 +1073,8 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Header Peer Tooltip Enhancement
 
 - [x] Enhance peer count tooltip: show peer IDs, connection type (direct/relay), status dots, trading pairs, total breakdown with proper values
+
+## Theme Visibility Fixes — Topology + Tooltip
+
+- [x] Fix topology canvas peer alias/latency text: dark mode text invisible — fixed with DOM classList fallback when resolvedTheme is undefined
+- [x] Fix peer count tooltip background/text: now uses bg-popover text-popover-foreground with dark: variants for status colors
