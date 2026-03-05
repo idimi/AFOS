@@ -543,15 +543,17 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="absolute top-4 right-4 w-64 rounded-2xl p-4 z-20"
+      className="absolute top-4 right-4 w-64 rounded-2xl z-20 flex flex-col"
       style={{
         background: "var(--card)",
         border: "1px solid var(--border)",
         backdropFilter: "blur(24px)",
         boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+        maxHeight: "calc(100% - 2rem)",
       }}
     >
-      <div className="flex items-start justify-between mb-3">
+      {/* Sticky header */}
+      <div className="flex items-start justify-between p-4 pb-3 shrink-0">
         <div>
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full" style={{ background: peer.online ? "#10b981" : "#ef4444" }} />
@@ -564,70 +566,73 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
         </button>
       </div>
 
-      <div className="space-y-2">
-        {[
-          { label: "Latency", value: peer.id === "self" ? "local" : `${peer.latency}ms`, color: color },
-          { label: "Reputation", value: `${repScore}/100`, color: trust.color },
-          { label: "Trust Level", value: trust.label, color: trust.color },
-          ...(dbRep ? [{ label: "Swaps", value: `${dbRep.successfulSwaps} completed`, color: '#a78bfa' }] : []),
-          ...(dbRep?.avgLatencyMs != null ? [{ label: "Avg Latency", value: `${dbRep.avgLatencyMs}ms`, color: '#06b6d4' }] : []),
-          { label: "Channels", value: peer.channels.toString(), color: "#06b6d4" },
-          { label: "Liquidity", value: `${peer.liquidity} BTC`, color: "#f7931a" },
-          { label: "24h Volume", value: peer.volume24h > 0 ? `$${(peer.volume24h / 1000).toFixed(0)}k` : "$0", color: "#a78bfa" },
-          { label: "Version", value: peer.version, color: "#64748b" },
-        ].map(item => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="text-[10px] text-muted-foreground">{item.label}</span>
-            <span className="text-[10px] font-mono font-semibold" style={{ color: item.color }}>{item.value}</span>
-          </div>
-        ))}
-
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-border">
-        <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
-        <div className="flex flex-wrap gap-1">
-          {peer.pairs.map(pair => (
-            <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-              style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.8)" }}>
-              {pair}
-            </span>
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
+        <div className="space-y-2">
+          {[
+            { label: "Latency", value: peer.id === "self" ? "local" : `${peer.latency}ms`, color: color },
+            { label: "Reputation", value: `${repScore}/100`, color: trust.color },
+            { label: "Trust Level", value: trust.label, color: trust.color },
+            ...(dbRep ? [{ label: "Swaps", value: `${dbRep.successfulSwaps} completed`, color: '#a78bfa' }] : []),
+            ...(dbRep?.avgLatencyMs != null ? [{ label: "Avg Latency", value: `${dbRep.avgLatencyMs}ms`, color: '#06b6d4' }] : []),
+            { label: "Channels", value: peer.channels.toString(), color: "#06b6d4" },
+            { label: "Liquidity", value: `${peer.liquidity} BTC`, color: "#f7931a" },
+            { label: "24h Volume", value: peer.volume24h > 0 ? `$${(peer.volume24h / 1000).toFixed(0)}k` : "$0", color: "#a78bfa" },
+            { label: "Version", value: peer.version, color: "#64748b" },
+          ].map(item => (
+            <div key={item.label} className="flex items-center justify-between">
+              <span className="text-[10px] text-muted-foreground">{item.label}</span>
+              <span className="text-[10px] font-mono font-semibold" style={{ color: item.color }}>{item.value}</span>
+            </div>
           ))}
         </div>
+
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
+          <div className="flex flex-wrap gap-1">
+            {peer.pairs.map(pair => (
+              <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
+                style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.8)" }}>
+                {pair}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Copy Invite Link — only for remote peers with a fullKey */}
+        {peer.id !== 'self' && peer.fullKey && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Share</div>
+            <CopyInviteLinkButton peerId={peer.fullKey} />
+          </div>
+        )}
+        {/* Direct Message — only for remote peers when own wallet is connected */}
+        {peer.id !== 'self' && peer.fullKey && selfPeerId && (
+          <PeerChat
+            myPeerId={selfPeerId}
+            otherPeerId={peer.fullKey}
+            otherAlias={peer.alias}
+          />
+        )}
+        {/* My Invite Link — only for self peer when wallet is connected */}
+        {peer.id === 'self' && selfPeerId && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
+            <p className="text-[9px] text-muted-foreground mb-2">
+              Share this link so others can connect to you directly.
+            </p>
+            <CopyInviteLinkButton peerId={selfPeerId} />
+          </div>
+        )}
+        {peer.id === 'self' && !selfPeerId && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
+            <p className="text-[9px] text-muted-foreground">
+              Connect a wallet to generate your invite link.
+            </p>
+          </div>
+        )}
       </div>
-      {/* Copy Invite Link — only for remote peers with a fullKey */}
-      {peer.id !== 'self' && peer.fullKey && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Share</div>
-          <CopyInviteLinkButton peerId={peer.fullKey} />
-        </div>
-      )}
-      {/* Direct Message — only for remote peers when own wallet is connected */}
-      {peer.id !== 'self' && peer.fullKey && selfPeerId && (
-        <PeerChat
-          myPeerId={selfPeerId}
-          otherPeerId={peer.fullKey}
-          otherAlias={peer.alias}
-        />
-      )}
-      {/* My Invite Link — only for self peer when wallet is connected */}
-      {peer.id === 'self' && selfPeerId && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
-          <p className="text-[9px] text-muted-foreground mb-2">
-            Share this link so others can connect to you directly.
-          </p>
-          <CopyInviteLinkButton peerId={selfPeerId} />
-        </div>
-      )}
-      {peer.id === 'self' && !selfPeerId && (
-        <div className="mt-3 pt-3 border-t border-border">
-          <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">My Invite Link</div>
-          <p className="text-[9px] text-muted-foreground">
-            Connect a wallet to generate your invite link.
-          </p>
-        </div>
-      )}
     </motion.div>
   );
 }

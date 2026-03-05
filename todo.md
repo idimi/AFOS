@@ -1082,3 +1082,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Peer Directory Row Cleanup
 
 - [x] Redesign Peer Directory rows: action buttons (Ping/Invite/Link) now hidden in hover-revealed strip, badge labels shortened (HW/LP), LastSeenBadge uses darker colors in light mode
+
+## PeerDetail Panel Layout Fix
+
+- [x] Fix PeerDetail panel: now uses flex-col with max-height calc(100%-2rem) and overflow-y-auto scrollable body, sticky header stays fixed while content scrolls
