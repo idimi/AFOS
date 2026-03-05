@@ -180,9 +180,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const announce = useCallback(async (id: string, alias: string) => {
     if (!prefsRef.current.enabled) return;
     try {
+      // Use AbortController to timeout after 10s instead of waiting 60s+ for Oracle VM
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10_000);
       await fetch(`${BACKEND_URL}/api/peer/announce`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           peerId: id,
           alias,
@@ -194,14 +198,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           timestamp: Date.now(),
         }),
       });
-      setIsRegistered(true);
-      setIsOnline(true);
+      clearTimeout(timeoutId);
       setLastHeartbeat(Date.now());
     } catch {
-      // Oracle VM may not have this endpoint yet — still mark as "registered"
-      // in the local UI so the peer badge shows and RFQ listening works
-      setIsRegistered(true);
-      setIsOnline(true);
+      // Oracle VM may not have this endpoint yet — peer is still functional
+      // locally via SSE RFQ listening and relay bridge.
       setLastHeartbeat(Date.now());
     }
     // Also announce to the relay bridge so this Light Peer appears in the
@@ -238,7 +239,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     if (!prefs.enabled) return;
 
-    // Initial announce
+    // Optimistically mark as online immediately — the announce call may take
+    // 60+ seconds to timeout if the Oracle VM is unreachable, but the Light Peer
+    // is functional locally (SSE RFQ listening, relay bridge) regardless.
+    setIsRegistered(true);
+    setIsOnline(true);
+    setLastHeartbeat(Date.now());
+
+    // Initial announce (fire-and-forget — status already set above)
     announce(peerId, peerAlias);
 
     // Heartbeat

@@ -1037,3 +1037,7 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix chat welcome message only showing ETH — debounced 2.5s to wait for all chain balances to settle
 - [x] Optimize Phantom connection speed — set state immediately, fetch SOL balance in background async
+
+## IntercomSwap DHT Activation Fix
+
+- [x] Fix IntercomSwap DHT showing "Connect wallet to activate" — optimistic isOnline when peerId is set + 10s announce timeout instead of 60s hang
