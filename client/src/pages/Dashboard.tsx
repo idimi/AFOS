@@ -288,22 +288,66 @@ interface MiniChatMessage {
   quoteData?: QuoteData;
 }
 
-function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
-  const { publicKey, balances } = useWallet();
-  const { bitcoin } = useMultiChainWallet();
-  const [messages, setMessages] = useState<MiniChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Hi! I'm AFOS. Try: *swap 1 USDT to SOL* or *what's the SOL price?*",
-      timestamp: Date.now(),
-    },
-  ]);
+function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () => void; onOpenWallet: () => void }) {
+  const { publicKey, balances, connected: solConnected } = useWallet();
+  const { bitcoin, ethereum } = useMultiChainWallet();
+  const [messages, setMessages] = useState<MiniChatMessage[]>([]);
+  // Initialise the welcome message once — wallet-aware
+  const welcomeInitRef = useRef(false);
+  useEffect(() => {
+    if (welcomeInitRef.current) return;
+    welcomeInitRef.current = true;
+    const connected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
+    setMessages([
+      {
+        id: "welcome",
+        role: "assistant" as const,
+        content: connected
+          ? "Hi! I'm AFOS. Try: *swap 1 USDT to SOL* or *what's the SOL price?*"
+          : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping, or ask me anything — e.g. *what's the SOL price?*",
+        timestamp: Date.now(),
+        type: "text" as const,
+      },
+    ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = trpc.chat.sendMessage.useMutation();
+  const prevAnyConnectedRef = useRef(false);
+
+  // Detect wallet connection and inject personalised welcome message
+  const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
+  useEffect(() => {
+    if (anyConnected && !prevAnyConnectedRef.current) {
+      // Build balance lines for each connected chain
+      const lines: string[] = [];
+      if (solConnected && balances.length > 0) {
+        const sol = balances.find(b => b.symbol === "SOL");
+        if (sol) lines.push(`SOL balance: **${parseFloat(sol.amount).toFixed(4)} SOL**`);
+      }
+      if (ethereum?.connected) {
+        lines.push(`ETH balance: **${parseFloat(ethereum.balance).toFixed(4)} ETH**`);
+      }
+      if (bitcoin?.connected) {
+        lines.push(`BTC balance: **${parseFloat(bitcoin.balance).toFixed(6)} ₿**`);
+      }
+      const balanceLine = lines.length > 0 ? `\n${lines.join(" · ")}` : "";
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `welcome-connected-${Date.now()}`,
+          role: "assistant" as const,
+          content: `Welcome back! Your wallet is connected.${balanceLine}\nWhat would you like to do?`,
+          timestamp: Date.now(),
+          type: "text" as const,
+        },
+      ]);
+    }
+    prevAnyConnectedRef.current = anyConnected;
+  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -708,7 +752,7 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
         /* Connect Wallet prompt — compact version for mini widget */
         <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border">
           <button
-            onClick={onOpenFullChat}
+            onClick={onOpenWallet}
             className="w-full rounded-xl py-2.5 flex items-center justify-center gap-2 text-xs font-semibold transition-all active:scale-[0.97] hover:opacity-90"
             style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
           >
@@ -1055,29 +1099,52 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
 // ── Quick Actions ──────────────────────────────────────────────────────────
 function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
   const haptic = useHaptic();
+  const { connected: solConnected } = useWallet();
+  const { ethereum, bitcoin } = useMultiChainWallet();
+  const anyWalletConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
+
   const actions = [
-    { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-    { label: "History", icon: Activity, page: "activity" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
-    { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-    { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20" },
+    { label: "New Swap", icon: ArrowLeftRight, page: "swaps" as NavPage, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20", requiresWallet: true },
+    { label: "History", icon: Activity, page: "activity" as NavPage, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20", requiresWallet: false },
+    { label: "View Peers", icon: Globe, page: "network" as NavPage, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", requiresWallet: false },
+    { label: "Settings", icon: Settings, page: "settings" as NavPage, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", requiresWallet: false },
   ];
 
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-      {actions.map(action => {
-        const Icon = action.icon;
-        return (
-          <button
-            key={action.label}
-            onClick={() => { haptic.tap(); onNavigate(action.page); }}
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border ${action.border} ${action.bg} hover:scale-[1.02] active:scale-[0.98] transition-all`}
-          >
-            <Icon className={`w-4 h-4 ${action.color}`} />
-            <span className="text-xs font-semibold text-foreground">{action.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <TooltipProvider>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
+        {actions.map(action => {
+          const Icon = action.icon;
+          const disabled = action.requiresWallet && !anyWalletConnected;
+          const btn = (
+            <button
+              key={action.label}
+              onClick={() => { if (!disabled) { haptic.tap(); onNavigate(action.page); } }}
+              disabled={disabled}
+              className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border transition-all ${
+                disabled
+                  ? `${action.border} ${action.bg} opacity-40 cursor-not-allowed`
+                  : `${action.border} ${action.bg} hover:scale-[1.02] active:scale-[0.98]`
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${action.color}`} />
+              <span className="text-xs font-semibold text-foreground">{action.label}</span>
+            </button>
+          );
+          if (disabled) {
+            return (
+              <Tooltip key={action.label}>
+                <TooltipTrigger asChild>{btn}</TooltipTrigger>
+                <TooltipContent side="top">
+                  <p>Connect a wallet to swap</p>
+                </TooltipContent>
+              </Tooltip>
+            );
+          }
+          return btn;
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -3033,7 +3100,7 @@ export default function Dashboard() {
 
                 {/* LEFT col — Mini Chat + Metrics + Quick Actions + Market (with charts) */}
                 <div className="col-span-7 flex flex-col gap-4 min-h-0">
-                  <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} />
+                  <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} onOpenWallet={() => setShowWalletModal(true)} />
                   <MetricsRow onNavigate={setActivePage} />
                   <QuickActions onNavigate={setActivePage} />
                   <MarketTicker />
@@ -3054,7 +3121,7 @@ export default function Dashboard() {
                 <MobilePortfolioStrip />
 
                 {/* 2. Mini Chat Widget — full feature parity with desktop */}
-                <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} />
+                <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} onOpenWallet={() => setShowWalletModal(true)} />
 
                 {/* 3. Metrics: horizontal scroll strip */}
                 <MobileMetricStrip />

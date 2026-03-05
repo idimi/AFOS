@@ -957,3 +957,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Both: once wallet connects, the prompt disappears and the input becomes available
 - [x] 147 tests passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## Overview UX — Wallet Connect Inline + Welcome Message + New Swap Gate
+
+- [x] MiniChatWidget: wire "Connect wallet to chat" button to call onOpenWallet() directly (open modal inline, no navigation)
+- [x] MiniChatWidget: initial welcome message is now wallet-aware (shows connect prompt when no wallet connected)
+- [x] MiniChatWidget: after wallet connects, inject personalised welcome message with all chain balances (SOL, ETH, BTC)
+- [x] QuickActions: disable "New Swap" button when no wallet connected; show tooltip "Connect a wallet to swap" on hover
+- [x] Save checkpoint
