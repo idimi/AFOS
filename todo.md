@@ -1139,3 +1139,19 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update PeerDetail overlay to show chain address badges (SOL/ETH/BTC) for the peer
 - [x] Update Peer Directory rows to show chain icons instead of chain-prefixed peer IDs
 - [ ] Clean up old lp-eth-XXXX duplicate entries from peerReputation table (manual DB cleanup)
+
+## Peer Moderation — Report, Block with Reason, Mute
+
+- [ ] Add peerReports DB table (reporterId, reportedId, reason, details, createdAt)
+- [ ] Add peerMutes DB table (muterPeerId, mutedPeerId, createdAt)
+- [ ] Run db:push migration
+- [ ] Add report/listReports tRPC procedures (report stores to DB; listReports for admin)
+- [ ] Add mute/unmute/isMuted/listMuted tRPC procedures
+- [ ] Update block procedure to accept reason field (Spam / Suspicious activity / Other)
+- [ ] Update PeerDetail: replace plain Block button with confirmation dialog (reason dropdown + confirm)
+- [ ] Add Mute/Unmute button in PeerDetail (below Block button)
+- [ ] Add Report button in PeerDetail (opens report dialog with reason + optional details textarea)
+- [ ] Suppress toast notifications for muted peers (check mutedPeerIds in new-message effect)
+- [ ] Show muted badge in Peer Directory rows
+- [ ] Add Muted Peers section in Settings page with Unmute button
+- [ ] Add Peer Reports section in Admin Panel (table: reporter, reported, reason, date, action buttons)
