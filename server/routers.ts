@@ -8,6 +8,7 @@ import { pathFinderRouter } from "./pathFinder";
 import { analyticsRouter } from "./routers/analytics";
 import { htlcWalletRouter } from "./routers/htlcWallet";
 import { peerReputationRouter } from "./routers/peerReputation";
+import { peerMessagesRouter } from "./routers/peerMessages";
 import { settingsRouter } from "./routers/settings";
 
 export const appRouter = router({
@@ -19,6 +20,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   htlcWallet: htlcWalletRouter,
   peerReputation: peerReputationRouter,
+  peerMessages: peerMessagesRouter,
   settings: settingsRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),

@@ -1011,3 +1011,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add "My invite link" button to self-peer popup
 - [x] Show "Peer found via invite link" banner when ?peer= matches
 - [x] Add heartbeat "last seen" timestamp to Light Peer rows in Peer Directory
+
+## P2P Invite & Direct Message (Mar 5, 2026)
+- [ ] Pending invite banner state with spinner when invited peer not yet online
+- [ ] Persist invite peerId in sessionStorage for post-wallet-connect banner re-show
+- [ ] Peer direct message system via relay (send/receive + UI)

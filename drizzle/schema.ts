@@ -168,6 +168,25 @@ export type UserSettings = typeof userSettings.$inferSelect;
 export type InsertUserSettings = typeof userSettings.$inferInsert;
 
 /** Default settings returned when no row exists yet for a user */
+// ─── Peer Direct Messages ────────────────────────────────────────────────────
+// Stores informal pre-swap messages exchanged between Light Peers via the relay.
+// Messages are keyed by sender/recipient peer IDs (wallet-derived).
+export const peerMessages = mysqlTable("peer_messages", {
+  id:           int("id").autoincrement().primaryKey(),
+  /** Sender peer ID (wallet-derived, e.g. lp-eth-8dfa0f) */
+  fromPeerId:   varchar("fromPeerId", { length: 128 }).notNull(),
+  /** Recipient peer ID */
+  toPeerId:     varchar("toPeerId", { length: 128 }).notNull(),
+  /** Message body (plain text, max 500 chars) */
+  body:         varchar("body", { length: 500 }).notNull(),
+  /** Timestamp when the message was read by the recipient (null = unread) */
+  readAt:       timestamp("readAt"),
+  createdAt:    timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PeerMessage = typeof peerMessages.$inferSelect;
+export type InsertPeerMessage = typeof peerMessages.$inferInsert;
+
 export const DEFAULT_USER_SETTINGS = {
   maxTxAmountUsd: 500,
   autoConfirm: false,

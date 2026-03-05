@@ -2797,7 +2797,20 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   // Invite link: ?peer=<peerId> in hash navigates to Network page and highlights the peer
-  const [invitePeerId, setInvitePeerId] = useState<string | null>(null);
+  // Initialise invitePeerId from hash OR sessionStorage (persists across wallet connect flow)
+  const [invitePeerId, setInvitePeerId] = useState<string | null>(() => {
+    const stored = sessionStorage.getItem('afos:invite-peer');
+    return stored ?? null;
+  });
+
+  // Auto-navigate to Network page if there's a stored invite peer (e.g. after wallet connect redirect)
+  useEffect(() => {
+    const stored = sessionStorage.getItem('afos:invite-peer');
+    if (stored && !window.location.hash.startsWith('#network')) {
+      setActivePage('network');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Handle invite link hash on mount: #network?peer=<peerId>
   useEffect(() => {
@@ -2810,6 +2823,8 @@ export default function Dashboard() {
       if (peer) {
         setActivePage('network');
         setInvitePeerId(peer);
+        // Persist so the banner survives wallet connect redirects
+        sessionStorage.setItem('afos:invite-peer', peer);
         // Clean the hash from the URL without triggering a reload
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
       } else {

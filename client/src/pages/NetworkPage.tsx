@@ -14,7 +14,7 @@ import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
-  ArrowUpDown, SlidersHorizontal, Star, Check
+  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -320,6 +320,147 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
 
 // ─── Peer Detail Panel ────────────────────────────────────────────────────────
 
+// ─── Peer Chat ───────────────────────────────────────────────────────────────
+
+/**
+ * Collapsible direct-message panel shown inside the PeerDetail popup.
+ * Messages are stored in the DB via the peerMessages tRPC router.
+ */
+function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; otherPeerId: string; otherAlias: string }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: thread = [], refetch } = trpc.peerMessages.getThread.useQuery(
+    { myPeerId, otherPeerId, limit: 50 },
+    { enabled: open, refetchInterval: open ? 5000 : false }
+  );
+
+  const sendMsg = trpc.peerMessages.send.useMutation({
+    onSuccess: () => {
+      setDraft('');
+      refetch();
+    },
+  });
+
+  const markRead = trpc.peerMessages.markRead.useMutation();
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (open && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [thread, open]);
+
+  // Mark messages as read when chat opens
+  useEffect(() => {
+    if (open && myPeerId && otherPeerId) {
+      markRead.mutate({ myPeerId, fromPeerId: otherPeerId });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const handleSend = () => {
+    const body = draft.trim();
+    if (!body || sendMsg.isPending) return;
+    sendMsg.mutate({ fromPeerId: myPeerId, toPeerId: otherPeerId, body });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between text-[9px] text-slate-500 uppercase tracking-widest hover:text-slate-300 transition-colors"
+      >
+        <span className="flex items-center gap-1">
+          <MessageSquare className="w-3 h-3" />
+          Direct Message
+        </span>
+        <span className="text-[8px]">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="mt-2 flex flex-col gap-1">
+          {/* Message thread */}
+          <div
+            ref={scrollRef}
+            className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1"
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            {thread.length === 0 ? (
+              <p className="text-[9px] text-muted-foreground text-center py-2">
+                No messages yet. Say hi!
+              </p>
+            ) : (
+              thread.map((msg) => {
+                const isMine = msg.fromPeerId === myPeerId;
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                  >
+                    <div
+                      className="px-2 py-1 rounded-lg text-[10px] max-w-[90%] break-words"
+                      style={{
+                        background: isMine ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.12)',
+                        border: `1px solid ${isMine ? 'rgba(6,182,212,0.25)' : 'rgba(100,116,139,0.2)'}`,
+                        color: isMine ? '#06b6d4' : 'var(--foreground)',
+                      }}
+                    >
+                      {msg.body}
+                    </div>
+                    <span className="text-[8px] text-muted-foreground/50 mt-0.5">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="flex gap-1 mt-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={draft}
+              onChange={e => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={`Message ${otherAlias}…`}
+              maxLength={500}
+              className="flex-1 min-w-0 px-2 py-1 rounded-md text-[10px] bg-transparent outline-none"
+              style={{
+                border: '1px solid var(--border)',
+                color: 'var(--foreground)',
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!draft.trim() || sendMsg.isPending}
+              className="shrink-0 px-2 py-1 rounded-md text-[9px] font-semibold transition-all disabled:opacity-40"
+              style={{
+                background: 'rgba(6,182,212,0.15)',
+                border: '1px solid rgba(6,182,212,0.3)',
+                color: '#06b6d4',
+              }}
+            >
+              {sendMsg.isPending ? '…' : 'Send'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => void; selfPeerId?: string | null }) {
   const color = latencyColor(peer.latency);
   return (
@@ -382,6 +523,14 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
           <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Share</div>
           <CopyInviteLinkButton peerId={peer.fullKey} />
         </div>
+      )}
+      {/* Direct Message — only for remote peers when own wallet is connected */}
+      {peer.id !== 'self' && peer.fullKey && selfPeerId && (
+        <PeerChat
+          myPeerId={selfPeerId}
+          otherPeerId={peer.fullKey}
+          otherAlias={peer.alias}
+        />
       )}
       {/* My Invite Link — only for self peer when wallet is connected */}
       {peer.id === 'self' && selfPeerId && (
@@ -1556,52 +1705,75 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       {/* Stats */}
       {activeTab === "topology" && <NetworkStats peers={livePeers} channels={liveChannels} />}
 
-      {/* Invite link banner — shown when a ?peer= URL param matched a live peer */}
-      {activeTab === "topology" && invitedPeer && !inviteBannerDismissed && (
+      {/* Invite link banner — shown when a ?peer= URL param is set (pending or found) */}
+      {activeTab === "topology" && invitePeerId && !inviteBannerDismissed && (
         <AnimatePresence>
           <motion.div
+            key={invitedPeer ? 'found' : 'pending'}
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
             className="mx-4 mt-2 rounded-xl px-4 py-3 flex items-center gap-3"
             style={{
-              background: "rgba(6,182,212,0.08)",
-              border: "1px solid rgba(6,182,212,0.3)",
+              background: invitedPeer ? "rgba(6,182,212,0.08)" : "rgba(100,116,139,0.08)",
+              border: `1px solid ${invitedPeer ? "rgba(6,182,212,0.3)" : "rgba(100,116,139,0.25)"}`,
             }}
           >
-            <Link2 className="w-4 h-4 text-cyan-400 shrink-0" />
+            {invitedPeer ? (
+              <Link2 className="w-4 h-4 text-cyan-400 shrink-0" />
+            ) : (
+              <Loader2 className="w-4 h-4 text-slate-400 shrink-0 animate-spin" />
+            )}
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-cyan-300">
-                Peer found via invite link
-              </p>
-              <p className="text-[10px] text-muted-foreground truncate">
-                <span className="font-mono text-cyan-400">{invitedPeer.alias}</span>
-                {" "}· {invitedPeer.origin === 'intercomswap' ? 'Light Peer' : 'Hyperswarm'}
-                {invitedPeer.online ? (
-                  <span className="ml-1 text-emerald-400">● online</span>
-                ) : (
-                  <span className="ml-1 text-slate-500">● offline</span>
-                )}
-              </p>
+              {invitedPeer ? (
+                <>
+                  <p className="text-[11px] font-semibold text-cyan-300">
+                    Peer found via invite link
+                  </p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    <span className="font-mono text-cyan-400">{invitedPeer.alias}</span>
+                    {" "}· {invitedPeer.origin === 'intercomswap' ? 'Light Peer' : 'Hyperswarm'}
+                    {invitedPeer.online ? (
+                      <span className="ml-1 text-emerald-400">● online</span>
+                    ) : (
+                      <span className="ml-1 text-slate-500">● offline</span>
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[11px] font-semibold text-slate-300">
+                    Waiting for peer to come online…
+                  </p>
+                  <p className="text-[10px] text-muted-foreground font-mono truncate">
+                    {invitePeerId.slice(0, 20)}…
+                  </p>
+                </>
+              )}
             </div>
+            {invitedPeer && (
+              <button
+                onClick={() => {
+                  setSelectedId(invitedPeer.id);
+                  window.dispatchEvent(new CustomEvent('afos:navigate-swaps', { detail: { peerId: invitedPeer.fullKey || invitedPeer.id } }));
+                }}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                style={{
+                  background: "rgba(6,182,212,0.2)",
+                  border: "1px solid rgba(6,182,212,0.4)",
+                  color: "#06b6d4",
+                }}
+              >
+                <Zap className="w-3 h-3" />
+                Swap Now
+              </button>
+            )}
             <button
               onClick={() => {
-                setSelectedId(invitedPeer.id);
-                window.dispatchEvent(new CustomEvent('afos:navigate-swaps', { detail: { peerId: invitedPeer.fullKey || invitedPeer.id } }));
+                setInviteBannerDismissed(true);
+                sessionStorage.removeItem('afos:invite-peer');
               }}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
-              style={{
-                background: "rgba(6,182,212,0.2)",
-                border: "1px solid rgba(6,182,212,0.4)",
-                color: "#06b6d4",
-              }}
-            >
-              <Zap className="w-3 h-3" />
-              Swap Now
-            </button>
-            <button
-              onClick={() => setInviteBannerDismissed(true)}
               className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
               title="Dismiss"
             >
