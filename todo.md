@@ -1065,3 +1065,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix topology SVG: "You" label and latency text still invisible in light mode (hardcoded white fills in SVG text elements)
 - [x] Add TURN server configuration to WebRTC signaling client for NAT traversal (Open Relay Project TURN + custom VITE_TURN_URL/USERNAME/CREDENTIAL env vars)
 - [x] Persist peer reputation scores to database across sessions (peerReputation table, signaling server calls recordPeerPing on register+heartbeat, Reputation Leaderboard tab added to Network page)
+
+## Header Peer Count Fix
+
+- [x] Fix top header peer count badge showing "1 peer" when there are 2 peers (You + 1 remote) — now reads signaling peers from LightPeerContext and adds self node to total

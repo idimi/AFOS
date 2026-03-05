@@ -2814,7 +2814,7 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
   const { ethereum: topbarEth, bitcoin: topbarBtc, phantomMultiChain } = useMultiChainWallet();
-  const { isOnline: lightPeerOnline, peerId: myPeerId } = useLightPeer();
+  const { isOnline: lightPeerOnline, peerId: myPeerId, remotePeers: signalingPeers } = useLightPeer();
   // SOL is connected either via wallet-adapter OR via Phantom multi-chain
   const solConnected = connected || !!(phantomMultiChain?.chains.includes("solana"));
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -3096,10 +3096,14 @@ export default function Dashboard() {
                 peerFlash === 'up' ? "text-emerald-300" : peerFlash === 'down' ? "text-red-300" : "text-violet-300"
               ].join(" ")}>
                 {(() => {
-                  // Remote peers from Oracle VM + local Light Peer when online
-                  const remotePeers = headerPeers ?? 0;
-                  const total = remotePeers + (lightPeerOnline ? 1 : 0);
-                  if (headerPeers === null && !lightPeerOnline) return '— peers';
+                  // Count: signaling/WebSocket remote peers + Oracle VM peers + self (when online)
+                  const signalingCount = signalingPeers?.length ?? 0;
+                  const oracleCount = headerPeers ?? 0;
+                  // Use the higher of signaling vs oracle (they may overlap)
+                  const remoteCount = Math.max(signalingCount, oracleCount);
+                  const selfCount = lightPeerOnline ? 1 : 0;
+                  const total = remoteCount + selfCount;
+                  if (headerPeers === null && !lightPeerOnline && signalingCount === 0) return '— peers';
                   return `${total} peer${total === 1 ? '' : 's'}`;
                 })()}
               </span>
@@ -3108,19 +3112,27 @@ export default function Dashboard() {
                 <TooltipContent side="bottom" className="text-xs">
                   <div className="space-y-1 py-0.5">
                     <div className="flex items-center gap-2 justify-between">
-                      <span className="text-muted-foreground">Light Peer (you)</span>
+                      <span className="text-muted-foreground">You (local node)</span>
                       <span className={lightPeerOnline ? "text-emerald-400 font-mono" : "text-muted-foreground/60 font-mono"}>
-                        {lightPeerOnline ? "1 online" : "offline"}
+                        {lightPeerOnline ? "online" : "offline"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 justify-between">
-                      <span className="text-muted-foreground">Remote peers</span>
-                      <span className="font-mono text-foreground">{headerPeers ?? 0}</span>
-                    </div>
+                    {(signalingPeers?.length ?? 0) > 0 && (
+                      <div className="flex items-center gap-2 justify-between">
+                        <span className="text-muted-foreground">Signaling peers</span>
+                        <span className="font-mono text-foreground">{signalingPeers?.length ?? 0}</span>
+                      </div>
+                    )}
+                    {(headerPeers ?? 0) > 0 && (
+                      <div className="flex items-center gap-2 justify-between">
+                        <span className="text-muted-foreground">Oracle VM peers</span>
+                        <span className="font-mono text-foreground">{headerPeers ?? 0}</span>
+                      </div>
+                    )}
                     <div className="border-t border-border pt-1 mt-1 flex items-center gap-2 justify-between">
                       <span className="text-muted-foreground font-semibold">Total</span>
                       <span className="font-mono font-semibold text-foreground">
-                        {(headerPeers ?? 0) + (lightPeerOnline ? 1 : 0)}
+                        {Math.max(signalingPeers?.length ?? 0, headerPeers ?? 0) + (lightPeerOnline ? 1 : 0)}
                       </span>
                     </div>
                   </div>
