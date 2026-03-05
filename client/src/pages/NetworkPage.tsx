@@ -14,7 +14,7 @@ import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
-  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare
+  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -1104,6 +1104,18 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
   const [inviteBannerDismissed, setInviteBannerDismissed] = useState(false);
 
+  // Chime mute toggle — persisted to localStorage
+  const [chimeMuted, setChimeMuted] = useState<boolean>(
+    () => localStorage.getItem('afos:chime-muted') === 'true'
+  );
+  const toggleChimeMuted = () => {
+    setChimeMuted(prev => {
+      const next = !prev;
+      localStorage.setItem('afos:chime-muted', String(next));
+      return next;
+    });
+  };
+
   // The matched peer from the invite link (if any)
   const invitedPeer = useMemo(() => {
     if (!invitePeerId || livePeers.length === 0) return null;
@@ -1461,6 +1473,23 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <RefreshCw className="w-3 h-3 text-muted-foreground" />
             <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">Refresh</span>
+          </button>
+          {/* Chime mute toggle */}
+          <button
+            onClick={toggleChimeMuted}
+            title={chimeMuted ? "Message chime muted — click to unmute" : "Message chime on — click to mute"}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:opacity-80"
+            style={{
+              background: chimeMuted ? "rgba(239,68,68,0.08)" : "var(--card)",
+              border: `1px solid ${chimeMuted ? "rgba(239,68,68,0.3)" : "var(--border)"}`,
+            }}
+          >
+            {chimeMuted
+              ? <VolumeX className="w-3 h-3 text-red-400" />
+              : <Volume2 className="w-3 h-3 text-muted-foreground" />}
+            <span className={`text-[10px] font-mono hidden sm:inline ${chimeMuted ? 'text-red-400' : 'text-muted-foreground'}`}>
+              {chimeMuted ? "Muted" : "Chime"}
+            </span>
           </button>
           {/* Hyperswarm DHT badge */}
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg" title="Oracle VM Hyperswarm DHT — full node"

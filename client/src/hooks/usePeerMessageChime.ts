@@ -18,8 +18,9 @@ export function usePeerMessageChime(
     const prev = prevCountRef.current;
     prevCountRef.current = unreadCount;
 
-    // Only chime when count increases and user is away from Network page
+    // Only chime when count increases, user is away from Network page, and not muted
     if (unreadCount <= prev || isNetworkPage) return;
+    if (localStorage.getItem('afos:chime-muted') === 'true') return;
 
     // Lazily create AudioContext on first use (browser requires user gesture
     // before the first AudioContext can be created; we create it here inside
