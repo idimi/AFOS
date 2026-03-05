@@ -51,14 +51,15 @@ export const settingsRouter = router({
         }
 
         if (input.routeId === "jupiter") {
-          // Lightweight SOL→USDC quote probe
+          // Lightweight SOL→USDC quote probe — uses the current lite-api v1 endpoint
+          // (quote-api.jup.ag/v6 is deprecated and returns connection refused)
           const res = await fetch(
-            "https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50",
+            "https://lite-api.jup.ag/swap/v1/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50",
             { signal: AbortSignal.timeout(5000) },
           );
           const latencyMs = Date.now() - start;
           if (!res.ok) return { ok: false, latencyMs, message: `Jupiter API returned HTTP ${res.status}` };
-          return { ok: true, latencyMs, message: `Jupiter API reachable (${latencyMs}ms)` };
+          return { ok: true, latencyMs, message: `Jupiter lite-api reachable (${latencyMs}ms)` };
         }
 
         if (input.routeId === "zerox") {

@@ -372,29 +372,39 @@ export default function SwapHistory() {
     window.open(url, "_blank");
   };
 
-  const exportCsv = () => {
-    const rows = [
-      ["Time", "From", "To", "Protocol", "Peer", "USD Value", "Fee", "Status", "Tx Hash"],
-      ...filtered.map(s => [
-        s.timestamp.toISOString(),
-        `${s.fromAmount} ${s.fromSymbol}`,
-        `${s.toAmount} ${s.toSymbol}`,
-        s.protocol,
-        s.peer,
-        s.fromUsd.toFixed(2),
-        s.fee.toFixed(2),
-        s.status,
-        s.txHash,
-      ]),
-    ];
-    const csv = rows.map(r => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `afos-history-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportCsvQuery = trpc.history.exportCsv.useQuery(
+    {
+      walletAddresses,
+      status: statusParam as "all" | "completed" | "failed" | "refunded",
+      days,
+      search: debouncedSearch,
+    },
+    { enabled: false } // only fetch on demand
+  );
+
+  const exportCsv = async () => {
+    setIsExporting(true);
+    try {
+      const result = await exportCsvQuery.refetch();
+      const csv = result.data?.csv ?? "";
+      if (!csv) {
+        toast.info("No data to export");
+        return;
+      }
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `afos-history-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("CSV exported", { description: `Downloaded ${csv.split("\n").length - 1} rows` });
+    } catch {
+      toast.error("Export failed", { description: "Could not fetch history for export" });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -411,12 +421,16 @@ export default function SwapHistory() {
         </div>
         {activeTab === "history" && (
           <button
-            onClick={exportCsv}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => { void exportCsv(); }}
+            disabled={isExporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}
           >
-            <Download className="w-3.5 h-3.5" />
-            Export CSV
+            {isExporting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Download className="w-3.5 h-3.5" />
+            }
+            {isExporting ? "Exporting…" : "Export CSV"}
           </button>
         )}
       </div>

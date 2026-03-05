@@ -223,7 +223,7 @@ async function pollPendingHtlcs(): Promise<void> {
       continue;
     }
 
-    // Update DB record
+    // Update DB record — htlcSwaps + matching swapAnalytics row
     try {
       const db2 = await getDb();
       if (!db2) continue;
@@ -236,6 +236,14 @@ async function pollPendingHtlcs(): Promise<void> {
           updatedAt:  new Date(),
         })
         .where(and(eq(htlcSwaps.id, htlc.id), eq(htlcSwaps.status, "pending")));
+
+      // Mirror status to swapAnalytics via lockTxId
+      if (htlc.lockTxId) {
+        await db2
+          .update(swapAnalytics)
+          .set({ status: "refunded" })
+          .where(eq(swapAnalytics.txId, htlc.lockTxId));
+      }
 
       console.log(
         `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} marked as refunded. ` +
@@ -319,14 +327,28 @@ export async function recordHtlcLock(params: {
 
 /**
  * Mark an HTLC as completed (secret revealed, funds claimed).
+ * Also updates the matching swapAnalytics row to "completed" via lockTxId.
  */
 export async function markHtlcCompleted(secretHash: string, txId?: string): Promise<void> {
   const db = await getDb();
   if (!db) return;
+  // 1. Update htlcSwaps status
   await db
     .update(htlcSwaps)
     .set({ status: "completed", refundTxId: txId, updatedAt: new Date() })
     .where(and(eq(htlcSwaps.secretHash, secretHash), eq(htlcSwaps.status, "pending")));
+  // 2. Mirror to swapAnalytics via lockTxId
+  const [htlcRow] = await db
+    .select({ lockTxId: htlcSwaps.lockTxId })
+    .from(htlcSwaps)
+    .where(eq(htlcSwaps.secretHash, secretHash))
+    .limit(1);
+  if (htlcRow?.lockTxId) {
+    await db
+      .update(swapAnalytics)
+      .set({ status: "completed" })
+      .where(eq(swapAnalytics.txId, htlcRow.lockTxId));
+  }
 }
 
 /**

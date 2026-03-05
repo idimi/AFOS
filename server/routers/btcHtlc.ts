@@ -517,6 +517,33 @@ export const btcHtlcRouter = router({
       const txHex = psbt.extractTransaction().toHex();
       const txid = await broadcastTx(txHex, network);
 
+      // Update htlcSwaps + swapAnalytics status to "refunded" on successful broadcast
+      void (async () => {
+        try {
+          const db = await getDb();
+          if (!db) return;
+          // 1. Mark the HTLC lock row as refunded
+          await db
+            .update(htlcSwaps)
+            .set({ status: "refunded", updatedAt: new Date() })
+            .where(eq(htlcSwaps.htlcAddress, htlcAddress));
+          // 2. Find the matching swapAnalytics row via lockTxId and update its status
+          const [htlcRow] = await db
+            .select({ lockTxId: htlcSwaps.lockTxId })
+            .from(htlcSwaps)
+            .where(eq(htlcSwaps.htlcAddress, htlcAddress))
+            .limit(1);
+          if (htlcRow?.lockTxId) {
+            await db
+              .update(swapAnalytics)
+              .set({ status: "refunded" })
+              .where(eq(swapAnalytics.txId, htlcRow.lockTxId));
+          }
+        } catch (e) {
+          console.error("[htlcRefund] Failed to update analytics status:", e);
+        }
+      })();
+
       return {
         success: true,
         demo: false,

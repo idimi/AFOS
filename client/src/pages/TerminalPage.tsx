@@ -52,18 +52,38 @@ function formatTs(ts: number): string {
 
 function agentLogToDisplay(entry: AgentLogEntry): DisplayEntry {
   let level: DisplayLevel = 'info';
-  if (entry.level === 'warn') level = 'warn';
-  else if (entry.level === 'error') level = 'error';
-  else if (entry.level === 'debug') level = 'debug';
-  else if (entry.message.includes('P2P') || entry.message.includes('peer') || entry.message.includes('RFQ')) level = 'p2p';
-  else if (entry.message.includes('decision') || entry.message.includes('Agent')) level = 'decision';
-  else if (entry.message.includes('swap') || entry.message.includes('Swap') || entry.message.includes('quote')) level = 'swap';
+  let message = entry.message;
+
+  // Detect expected Oracle VM warnings that are not real errors
+  const isDexQuoteFailed = entry.level === 'warn' && entry.message === 'DEX quote failed';
+  const errorDetail = (entry.data as Record<string, string> | undefined)?.error ?? '';
+  const isBtcNoDex = isDexQuoteFailed && (
+    errorDetail.includes('BTC') || errorDetail.includes('Unsupported pair')
+  );
+
+  if (isBtcNoDex) {
+    // BTC has no DEX route — Oracle VM automatically falls back to P2P. Not a real error.
+    level = 'p2p';
+    message = 'DEX route unavailable for BTC — routing via P2P bridge (expected)';
+  } else if (entry.level === 'warn') {
+    level = 'warn';
+  } else if (entry.level === 'error') {
+    level = 'error';
+  } else if (entry.level === 'debug') {
+    level = 'debug';
+  } else if (entry.message.includes('P2P') || entry.message.includes('peer') || entry.message.includes('RFQ')) {
+    level = 'p2p';
+  } else if (entry.message.includes('decision') || entry.message.includes('Agent')) {
+    level = 'decision';
+  } else if (entry.message.includes('swap') || entry.message.includes('Swap') || entry.message.includes('quote')) {
+    level = 'swap';
+  }
 
   return {
     id: entry.id,
     ts: formatTs(entry.timestamp),
     level,
-    message: entry.message,
+    message,
     data: Object.keys(entry.data || {}).length > 0 ? entry.data : undefined,
     source: 'api',
   };

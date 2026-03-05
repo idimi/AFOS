@@ -179,6 +179,88 @@ export const historyRouter = router({
     }),
 
   /**
+   * Export all matching swaps as CSV (no pagination limit).
+   * Respects the same wallet-scoping, status, date, and search filters as `list`.
+   * Returns a CSV string — the client triggers a browser download.
+   */
+  exportCsv: publicProcedure
+    .input(z.object({
+      walletAddresses: z.array(z.string()).default([]),
+      status:          z.enum(["all", "completed", "failed", "refunded"]).default("all"),
+      days:            z.number().int().min(1).max(365).default(90),
+      search:          z.string().max(100).default(""),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { csv: "" };
+
+      const since = sinceDate(input.days);
+      const isWalletScoped = input.walletAddresses.length > 0;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const conditions: any[] = [gte(swapAnalytics.createdAt, since)];
+
+      if (input.status !== "all") {
+        conditions.push(
+          eq(swapAnalytics.status, input.status as "completed" | "failed" | "refunded")
+        );
+      }
+      if (isWalletScoped) {
+        conditions.push(inArray(swapAnalytics.walletAddress, input.walletAddresses));
+      }
+      if (input.search.trim()) {
+        const q = `%${input.search.trim()}%`;
+        conditions.push(
+          or(
+            like(swapAnalytics.fromToken, q),
+            like(swapAnalytics.toToken, q),
+            like(swapAnalytics.peerId, q),
+            like(swapAnalytics.txId, q),
+          )
+        );
+      }
+
+      const rows = await db
+        .select()
+        .from(swapAnalytics)
+        .where(and(...conditions))
+        .orderBy(desc(swapAnalytics.createdAt))
+        .limit(10000); // safety cap
+
+      // Build CSV
+      const headers = [
+        "Date", "From Token", "To Token", "Amount", "Out Amount",
+        "Amount USD", "Status", "Route", "Peer ID", "Tx ID",
+        "Platform Fee USD", "Wallet Address",
+      ];
+      const escape = (v: unknown) => {
+        const s = v == null ? "" : String(v);
+        return s.includes(",") || s.includes('"') || s.includes("\n")
+          ? `"${s.replace(/"/g, '""')}"`
+          : s;
+      };
+      const csvLines = [
+        headers.join(","),
+        ...rows.map(r => [
+          r.createdAt ? new Date(r.createdAt).toISOString() : "",
+          escape(r.fromToken),
+          escape(r.toToken),
+          escape(r.amount),
+          escape(r.outAmount),
+          escape(r.amountUsd),
+          escape(r.status),
+          escape(r.route),
+          escape(r.peerId),
+          escape(r.txId),
+          escape(r.platformFeeUsd),
+          escape(r.walletAddress),
+        ].join(",")),
+      ];
+
+      return { csv: csvLines.join("\n") };
+    }),
+
+  /**
    * Refundable / refunded HTLCs — "Refunds" tab.
    * If walletAddresses provided → filter by senderAddress.
    */

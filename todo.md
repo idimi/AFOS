@@ -1331,3 +1331,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Add search param to history.refunds procedure (LIKE on peerId, htlcAddress, fromToken, toToken)
 - [ ] Add shared search bar to SwapHistoryTabs.tsx (debounced, passed to both tabs)
 - [ ] Wire swapAnalytics status update in btcHtlc.htlcReveal (set status="completed" by txId/secretHash)
+
+## Multi-Chain HTLC Lifecycle Status Tracking
+
+- [x] btcHtlc.htlcRefund: update htlcSwaps.status to "refunded" and swapAnalytics.status to "refunded" on successful broadcast
+- [x] htlcMonitor auto-refund path: mirror status to swapAnalytics.status="refunded" via lockTxId for all 3 chains
+- [x] markHtlcCompleted: also update swapAnalytics.status="completed" via lockTxId (covers ETH/SOL reveal paths)
+
+## CSV Export — Server-Side Full Export
+
+- [x] Add history.exportCsv tRPC procedure (fetches all matching rows, returns CSV string)
+- [x] Wire Export CSV button in SwapHistory.tsx to trpc.history.exportCsv (on-demand fetch, loading state, toast feedback)
