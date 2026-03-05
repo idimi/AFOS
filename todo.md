@@ -1041,3 +1041,11 @@ The Overview should be an **operator's command center** — a single glance tell
 ## IntercomSwap DHT Activation Fix
 
 - [x] Fix IntercomSwap DHT showing "Connect wallet to activate" — optimistic isOnline when peerId is set + 10s announce timeout instead of 60s hang
+
+## Shared Chat State + Agent Page Wallet Fix
+
+- [x] Unify MiniChatWidget (Overview) and ChatPage (Agent) into shared persistent conversation state
+- [x] Fix Agent page showing "Wallet not connected" when Phantom multi-chain is connected
+- [x] Add "New Chat" button to Agent page header to clear conversation and start fresh
+- [x] Auto-clear chat conversation on wallet disconnect for privacy
+- [x] Fix feeModel.test.ts to check ChatContext.tsx instead of ChatPage.tsx for QuoteData fields

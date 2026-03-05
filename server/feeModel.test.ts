@@ -133,9 +133,9 @@ describe("feeRevenue analytics procedure", () => {
 
 // ─── 7. Frontend QuoteData interface ──────────────────────────────────────────
 describe("Frontend QuoteData", () => {
-  it("should include fee fields in ChatPage.tsx QuoteData interface", async () => {
+  it("should include fee fields in QuoteData interface (ChatContext)", async () => {
     const fs = await import("fs");
-    const src = fs.readFileSync("client/src/pages/ChatPage.tsx", "utf-8");
+    const src = fs.readFileSync("client/src/contexts/ChatContext.tsx", "utf-8");
     expect(src).toContain("netToAmount?:");
     expect(src).toContain("platformFeeOut?:");
     expect(src).toContain("feeBps?:");

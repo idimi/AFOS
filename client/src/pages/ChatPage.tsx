@@ -4,7 +4,7 @@
  * "swap 1 USDT to SOL" → agent parses → shows quote → user confirms → Phantom signs → on-chain
  */
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Wallet, ArrowLeftRight, CheckCircle2,
@@ -16,49 +16,14 @@ import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/contexts/WalletContext";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "@/contexts/ChatContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { Link } from "wouter";
 import { SUPPORTED_WALLETS_TEXT } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type SupportedChain = "solana" | "ethereum" | "bitcoin";
-
-interface QuoteData {
-  fromToken: string;
-  fromChain?: SupportedChain;
-  toToken: string;
-  toChain?: SupportedChain;
-  fromAmount: number;
-  toAmount: number;
-  netToAmount?: number;    // what user actually receives after fee
-  fromAmountUsd: number;
-  toAmountUsd: number;
-  rate: number;
-  priceImpact: number;
-  platformFee: number;
-  platformFeeUsd: number;
-  platformFeeOut?: number; // fee in toToken units
-  feeBps?: number;         // 15 for P2P, 20 for DEX
-  feeToken?: string;
-  route: string;
-  quoteResponse: unknown;
-}
-
-interface ChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded";
-  quoteData?: QuoteData;
-  txHash?: string;
-  timestamp: number;
-  /** Soft warning: amount is near or over the user's maxTxAmountUsd */
-  limitWarning?: string;
-  /** For limit_exceeded messages: the blocked amount and the user's limit */
-  limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
-}
+// SupportedChain, QuoteData, and ChatMessage are imported from ChatContext
 
 // ─── Suggestion chips ─────────────────────────────────────────────────────────
 const SUGGESTIONS = [
@@ -520,22 +485,23 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
-  const { bitcoin, ethereum } = useMultiChainWallet();
+  const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
   const { user } = useAuth();
   const openId = user?.openId;
+
+  // ── Phantom multi-chain: treat as connected if any chain address is present ──
+  const phantomSolAddr = phantomMultiChain?.solanaAddress;
+  const solConnected = connected || !!phantomSolAddr;
+  // For swap execution gating: any wallet connected means the user can chat
+  const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
+
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Hi! I'm AFOS, your autonomous financial agent. I can help you swap tokens on Solana.\n\nTry saying: *swap 1 USDT to SOL* or *what's the SOL price?*",
-      type: "text",
-      timestamp: Date.now(),
-    },
-  ]);
+
+  // ── Shared chat state from ChatContext ──────────────────────────────────────
+  const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
+
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -573,16 +539,6 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  const addMessage = useCallback((msg: Omit<ChatMessage, "id" | "timestamp">) => {
-    const newMsg: ChatMessage = {
-      ...msg,
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: Date.now(),
-    };
-    setMessages(prev => [...prev, newMsg]);
-    return newMsg.id;
-  }, []);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
@@ -643,8 +599,10 @@ export default function ChatPage() {
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
     // ── Wallet required — AFOS is non-custodial, user must connect their own wallet ──
     const fromChainNorm = (quoteData.fromChain ?? "solana").toLowerCase();
+    // Accept Phantom multi-chain Solana address as a valid Solana wallet
+    const effectivePublicKey = publicKey || (phantomSolAddr ? { toString: () => phantomSolAddr } : null);
     const noWalletConnected =
-      !connected || !publicKey ||
+      (!connected && !phantomSolAddr) || !effectivePublicKey ||
       (fromChainNorm === "ethereum" && !ethereum?.address) ||
       (fromChainNorm === "bitcoin"  && !bitcoin?.address);
 
@@ -802,7 +760,7 @@ export default function ChatPage() {
       // ── Solana swaps: IntercomSwap P2P primary + Jupiter fallback ──────────────
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
-        userPublicKey: publicKey.toString(),
+        userPublicKey: effectivePublicKey!.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
         fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
@@ -917,26 +875,47 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Wallet status — read-only indicator, no connect button (header has it) */}
-        {connected && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
-            style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <div className="text-right">
-              <p className="text-[10px] font-semibold text-emerald-400">{walletName}</p>
-              <p className="text-[9px] font-mono text-muted-foreground">{shortAddress}</p>
+        {/* New Chat button + Wallet status */}
+        <div className="flex items-center gap-2">
+          {/* New Chat button — clears conversation */}
+          <button
+            onClick={() => {
+              clearMessages(anyWalletConnected);
+              setCancelledIds(new Set());
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all hover:opacity-80"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            title="Start a new conversation"
+          >
+            <RefreshCw className="w-3 h-3" />
+            New Chat
+          </button>
+
+          {/* Wallet status — read-only indicator, no connect button (header has it) */}
+          {anyWalletConnected && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
+              style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <div className="text-right">
+                <p className="text-[10px] font-semibold text-emerald-400">
+                  {connected ? walletName : phantomSolAddr ? "Phantom" : ethereum?.address ? "MetaMask" : "Wallet"}
+                </p>
+                <p className="text-[9px] font-mono text-muted-foreground">
+                  {connected ? shortAddress : phantomSolAddr ? `${phantomSolAddr.slice(0, 4)}…${phantomSolAddr.slice(-4)}` : ethereum?.address ? `${ethereum.address.slice(0, 6)}…${ethereum.address.slice(-4)}` : ""}
+                </p>
+              </div>
+              {totalUsd > 0 && (
+                <span className="text-[10px] font-bold text-foreground ml-1">${totalUsd.toFixed(2)}</span>
+              )}
             </div>
-            {totalUsd > 0 && (
-              <span className="text-[10px] font-bold text-foreground ml-1">${totalUsd.toFixed(2)}</span>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Subtle hint when not connected — no button, header has the connect action */}
-        {!connected && (
+        {!anyWalletConnected && (
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -990,7 +969,7 @@ export default function ChatPage() {
       </div>
 
       {/* Suggestion chips — only when a wallet is connected and few messages */}
-      {(connected || bitcoin?.address || ethereum?.address) && messages.length <= 2 && (
+      {anyWalletConnected && messages.length <= 2 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
           {SUGGESTIONS.map(s => (
             <button
@@ -1005,7 +984,7 @@ export default function ChatPage() {
       )}
 
       {/* Input area — gated behind wallet connection */}
-      {(connected || bitcoin?.address || ethereum?.address) ? (
+      {anyWalletConnected ? (
         <div className="px-4 pb-4 pt-2 shrink-0"
           style={{ borderTop: "1px solid var(--border)" }}>
           <div className="flex gap-2 items-end">

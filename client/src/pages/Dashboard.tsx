@@ -24,6 +24,7 @@ import { useAgentLog, type TerminalEntry } from "../contexts/AgentLogContext";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useLightPeer } from "../contexts/LightPeerContext";
+import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "../contexts/ChatContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, getRelayPeers, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
@@ -275,24 +276,7 @@ function MobileSidebarDrawer({
 }
 
 // ── Mini Chat Widget (replaces Agent Status Card on Overview) ─────────────────
-type SupportedChain = "solana" | "ethereum" | "bitcoin";
-
-interface QuoteData {
-  fromToken: string;
-  fromChain?: SupportedChain;
-  toToken: string;
-  toChain?: SupportedChain;
-  fromAmount: number;
-  toAmount: number;
-  fromAmountUsd: number;
-  toAmountUsd: number;
-  rate: number;
-  priceImpact: number;
-  platformFee: number;
-  platformFeeUsd: number;
-  route: string;
-  quoteResponse: unknown;
-}
+// SupportedChain and QuoteData types imported from ChatContext
 
 const CHAIN_BADGE: Record<SupportedChain, { label: string; color: string }> = {
   solana:   { label: "SOL",  color: "#9945FF" },
@@ -300,41 +284,17 @@ const CHAIN_BADGE: Record<SupportedChain, { label: string; color: string }> = {
   bitcoin:  { label: "BTC",  color: "#F7931A" },
 };
 
-interface MiniChatMessage {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: number;
-  type?: "text" | "quote_card" | "tx_success" | "error";
-  quoteData?: QuoteData;
-}
+// MiniChatMessage type removed — using ChatMessage from ChatContext
 
 function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () => void; onOpenWallet: () => void }) {
   const { publicKey, balances, connected: solAdapterConnected } = useWallet();
   const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
   const solConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
-  const [messages, setMessages] = useState<MiniChatMessage[]>([]);
-  // Initialise the welcome message once — wallet-aware
-  const welcomeInitRef = useRef(false);
-  useEffect(() => {
-    if (welcomeInitRef.current) return;
-    welcomeInitRef.current = true;
-    const connected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
-    setMessages([
-      {
-        id: "welcome",
-        role: "assistant" as const,
-        content: connected
-          ? "Hi! I'm AFOS. Try: *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *how much SOL can I get for $500?*"
-          : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping — e.g. *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *bridge 1 SOL to Bitcoin*.",
-        timestamp: Date.now(),
-        type: "text" as const,
-      },
-    ]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+  // ── Shared chat state from ChatContext ──────────────────────────────────────
+  const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping, welcomeShownRef } = useChat();
+
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sendMessage = trpc.chat.sendMessage.useMutation();
@@ -343,7 +303,6 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
   // Detect wallet connection and inject personalised welcome message
   // Debounce: wait for all chain balances to settle before showing the welcome
   const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
-  const welcomeShownRef = useRef(false);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Build the welcome message with all available balances
@@ -404,19 +363,11 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     return () => {
       if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
     };
-  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin, phantomMultiChain?.solanaBalances, buildWelcomeMessage]);
+  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin, phantomMultiChain?.solanaBalances, buildWelcomeMessage, welcomeShownRef, setMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
-
-  const addMessage = useCallback((msg: Omit<MiniChatMessage, "id" | "timestamp">) => {
-    setMessages(prev => [...prev, {
-      ...msg,
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      timestamp: Date.now(),
-    }]);
-  }, []);
 
    const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
   const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
@@ -588,12 +539,22 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
             <p className="text-[10px] text-muted-foreground font-mono">gemini-2.5-flash-lite</p>
           </div>
         </div>
-        <button
-          onClick={onOpenFullChat}
-          className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-lg hover:bg-cyan-500/10 font-mono"
-        >
-          Full chat →
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => clearMessages(anyConnected)}
+            className="text-[10px] text-muted-foreground hover:text-muted-foreground/70 transition-colors px-2 py-1 rounded-lg hover:bg-muted font-mono flex items-center gap-1"
+            title="Start a new conversation"
+          >
+            <RefreshCw className="w-2.5 h-2.5" />
+            New
+          </button>
+          <button
+            onClick={onOpenFullChat}
+            className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors px-2 py-1 rounded-lg hover:bg-cyan-500/10 font-mono"
+          >
+            Full chat →
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
