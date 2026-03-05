@@ -989,3 +989,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Apply --success-* variables to Save button flash in AgentSettings.tsx
 - [x] Add Reset button resetFlash pattern (brief "Reset ✓" state after reset completes)
 - [x] Save checkpoint
+
+## Swap Button Gate + Advanced Settings Persistence
+- [x] Disable Swap Now / Send to Agent button when balance is insufficient; change label to "Insufficient balance"
+- [x] Persist Advanced Settings panel open/closed state in localStorage across page navigations
+- [x] Save checkpoint

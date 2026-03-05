@@ -2332,7 +2332,13 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
   const [selectedPeer, setSelectedPeer] = useState<LivePeer | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(() => {
+    try { return localStorage.getItem('afos_advanced_open') === 'true'; } catch { return false; }
+  });
+  // Persist Advanced Settings panel state across navigations
+  useEffect(() => {
+    try { localStorage.setItem('afos_advanced_open', showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
+  }, [showAdvanced]);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live quote from backend
   const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
@@ -3156,64 +3162,76 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                   Connect Wallet
                 </span>
               </button>
-            ) : (
-              <button
-                onClick={() => {
-                  if (isSwapping) return;
-                  if (swapPhase === "complete") { handleReset(); return; }
-                  if (execMode === 'agent' && onNavigateToChat) {
-                    const msg = `swap ${fromAmount} ${fromToken.symbol} to ${toToken.symbol}`;
-                    sessionStorage.setItem('afos_chat_prefill', msg);
-                    sessionStorage.setItem('afos_chat_autosend', 'true');
-                    onNavigateToChat(msg);
-                  } else {
-                    navigator.vibrate?.(50);
-                    handleSwap();
+            ) : (() => {
+              const isBalanceTooLow = parseFloat(fromAmount) > 0 && parseFloat(fromAmount) > getTokenBalance(fromToken);
+              return (
+                <button
+                  onClick={() => {
+                    if (isSwapping || isBalanceTooLow) return;
+                    if (swapPhase === "complete") { handleReset(); return; }
+                    if (execMode === 'agent' && onNavigateToChat) {
+                      const msg = `swap ${fromAmount} ${fromToken.symbol} to ${toToken.symbol}`;
+                      sessionStorage.setItem('afos_chat_prefill', msg);
+                      sessionStorage.setItem('afos_chat_autosend', 'true');
+                      onNavigateToChat(msg);
+                    } else {
+                      navigator.vibrate?.(50);
+                      handleSwap();
+                    }
+                  }}
+                  disabled={isSwapping || isBalanceTooLow}
+                  className="mt-3 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:cursor-not-allowed relative overflow-hidden"
+                  style={isBalanceTooLow
+                    ? { background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)', opacity: 0.65 }
+                    : {
+                        background: swapPhase === "complete"
+                          ? "rgba(16,185,129,0.2)"
+                          : swapPhase === "error"
+                            ? "rgba(239,68,68,0.2)"
+                            : isSwapping
+                              ? "rgba(59,130,246,0.15)"
+                              : execMode === 'agent'
+                                ? "linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%)"
+                                : "#3b82f6",
+                        border: `1px solid ${swapPhase === "complete" ? "rgba(16,185,129,0.4)" : execMode === 'agent' ? "rgba(147,51,234,0.5)" : "rgba(59,130,246,0.5)"}`,
+                        color: swapPhase === "complete" ? "#10b981" : "white",
+                        boxShadow: isSwapping ? "none" : execMode === 'agent' ? "0 4px 20px rgba(147,51,234,0.3)" : "0 4px 20px rgba(59,130,246,0.3)",
+                      }
                   }
-                }}
-                disabled={isSwapping}
-                className="mt-3 w-full py-4 sm:py-4 rounded-xl font-bold text-sm tracking-wide transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed relative overflow-hidden"
-                style={{
-                  background: swapPhase === "complete"
-                    ? "rgba(16,185,129,0.2)"
-                    : swapPhase === "error"
-                      ? "rgba(239,68,68,0.2)"
-                      : isSwapping
-                        ? "rgba(59,130,246,0.15)"
-                        : execMode === 'agent'
-                          ? "linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%)"
-                          : "#3b82f6",
-                  border: `1px solid ${swapPhase === "complete" ? "rgba(16,185,129,0.4)" : execMode === 'agent' ? "rgba(147,51,234,0.5)" : "rgba(59,130,246,0.5)"}`,
-                  color: swapPhase === "complete" ? "#10b981" : "white",
-                  boxShadow: isSwapping ? "none" : execMode === 'agent' ? "0 4px 20px rgba(147,51,234,0.3)" : "0 4px 20px rgba(59,130,246,0.3)",
-                }}
-              >
-                {isSwapping ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {swapPhase === "rfq" && "Broadcasting RFQ..."}
-                    {swapPhase === "negotiating" && "Negotiating with peers..."}
-                    {swapPhase === "locking" && "Locking in HTLC escrow..."}
-                    {swapPhase === "settling" && "Atomic settlement..."}
-                  </span>
-                ) : swapPhase === "complete" ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <CheckCircle2 className="w-4 h-4" />
-                    Swap Complete — New Swap
-                  </span>
-                ) : execMode === 'agent' ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Bot className="w-4 h-4" />
-                    Send to Agent
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center gap-2">
-                    <Zap className="w-4 h-4" />
-                    Swap Now
-                  </span>
-                )}
-              </button>
-            )}
+                >
+                  {isBalanceTooLow ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <AlertCircle className="w-4 h-4" />
+                      Insufficient balance
+                    </span>
+                  ) : isSwapping ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {swapPhase === "rfq" && "Broadcasting RFQ..."}
+                      {swapPhase === "negotiating" && "Negotiating with peers..."}
+                      {swapPhase === "locking" && "Locking in HTLC escrow..."}
+                      {swapPhase === "settling" && "Atomic settlement..."}
+                    </span>
+                  ) : swapPhase === "complete" ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      Swap Complete — New Swap
+                    </span>
+                  ) : execMode === 'agent' ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Bot className="w-4 h-4" />
+                      Send to Agent
+                    </span>
+                  ) : (
+                    <span className="flex items-center justify-center gap-2">
+                      <Zap className="w-4 h-4" />
+                      Swap Now
+                    </span>
+                  )}
+                </button>
+              );
+            })()}
+
 
           </div>{/* end swap card inner */}
 
