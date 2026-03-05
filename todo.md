@@ -1289,3 +1289,15 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Schedule fee revenue alert to run hourly via setInterval in server/_core/index.ts
 - [x] Initial run 10s after server startup (DB pool warm-up delay)
 - [x] Idempotent: only one notification per calendar day (UTC)
+
+## Full Branding Pass
+
+- [x] Generate all favicon sizes: 16x16, 32x32, 48x48, 180x180 (apple-touch), 192x192, 512x512
+- [x] Generate OG image (1200x630) with AFOS logo + wordmark on dark background
+- [x] Create site.webmanifest with all icon sizes
+- [x] Add complete favicon/manifest/SEO meta tags to index.html
+- [x] Add Open Graph meta tags (og:title, og:description, og:image, og:type)
+- [x] Add Twitter Card meta tags
+- [x] Add theme-color meta tag (dark + light)
+- [x] Fix logo light-mode rendering: add ring-1 ring-border/40 shadow-sm wrapper so dark icon blends in light mode
+- [x] Apply light-mode wrapper to all logo placements (sidebar, mobile drawer, chat bubbles, agent CTA)
