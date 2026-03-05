@@ -25,7 +25,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
 import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, type SwapQuote, type RfqResult } from "../lib/afosApi";
-import LightPeerPanel from "../components/LightPeerPanel";
+import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
 
@@ -353,74 +353,6 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount, 
         </motion.div>
       )}
     </motion.div>
-  );
-}
-
-// ─── P2P Peer Panel (live from SSE) ───────────────────────────────────────────────────
-
-function PeerPanel({ fromToken, toToken, livePeers, activePeerCount }: {
-  fromToken: typeof TOKENS[0];
-  toToken: typeof TOKENS[0];
-  livePeers: LivePeer[];
-  activePeerCount: number;
-}) {
-  const pair = `${fromToken.symbol}/${toToken.symbol}`;
-  const relevantPeers = livePeers.filter(p =>
-    p.pairs.some(pp => pp === pair || pp === `${toToken.symbol}/${fromToken.symbol}`)
-  );
-  const displayPeers = relevantPeers.length > 0 ? relevantPeers : livePeers.slice(0, 3);
-  const onlineCount = livePeers.filter(p => p.online).length;
-
-  return (
-    <div
-      className="rounded-2xl p-4"
-      style={{
-        background: "var(--card)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Network className="w-3.5 h-3.5 text-cyan-400" />
-          <span className="text-xs font-semibold text-slate-300">P2P Peers</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] text-slate-500">{onlineCount} online</span>
-        </div>
-      </div>
-
-      {displayPeers.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground text-center py-3">
-          Waiting for peers to announce…
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {displayPeers.map(peer => (
-            <div
-              key={peer.id}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
-              style={{ background: "var(--muted)" }}
-            >
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${peer.online ? "bg-emerald-400" : "bg-slate-600"}`} />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-mono text-slate-300 truncate">{peer.alias}</div>
-                <div className="text-[9px] text-slate-600">{peer.id}</div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className="text-[10px] font-mono text-cyan-400">{peer.latency}ms</div>
-                <div className="text-[9px] text-slate-600">{peer.reputation}%</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3 pt-3 border-t border-border flex items-center justify-between">
-        <span className="text-[10px] text-slate-600">IntercomSwap DHT</span>
-        <span className="text-[10px] font-mono text-cyan-500">{activePeerCount > 0 ? `${activePeerCount} total peers` : 'Connecting…'}</span>
-      </div>
-    </div>
   );
 }
 
@@ -3310,14 +3242,9 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
           <RecentSwaps />
         </div>
 
-        {/* ═ 5. LIGHT PEER — mobile fifth, desktop col-2 row-3 ═ */}
-        <div className="xl:col-start-2 xl:row-start-3">
-          <LightPeerPanel />
-        </div>
-
-        {/* ═ 6. P2P PEERS — mobile sixth, desktop col-2 row-4 ═ */}
-        <div className="xl:col-start-2 xl:row-start-4">
-          <PeerPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
+        {/* ═ 5. NETWORK PANEL (My Node + Live Peers) — mobile fifth, desktop col-2 row-3 to row-4 ═ */}
+        <div className="xl:col-start-2 xl:row-start-3 xl:row-span-2">
+          <NetworkPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
         </div>
 
         {/* ═ 7. HTLC ESCROW — mobile last, desktop col-1 row-3 ═ */}

@@ -994,3 +994,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Disable Swap Now / Send to Agent button when balance is insufficient; change label to "Insufficient balance"
 - [x] Persist Advanced Settings panel open/closed state in localStorage across page navigations
 - [x] Save checkpoint
+
+## Network Panel Unification
+- [x] Merge Light Peer and P2P Peers into a single "Network" panel with "My Node" / "Live Peers" tabs
+- [x] Persist selected tab in localStorage (afos_network_tab)
+- [x] Save checkpoint
