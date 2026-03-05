@@ -5,7 +5,7 @@
  * Data: Real live data from trpc.history.list — wallet-scoped when wallet connected, global operator view otherwise
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, ExternalLink, Copy, ChevronDown,
@@ -273,6 +273,18 @@ export default function SwapHistory() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const PAGE_SIZE = 8;
 
+  // Debounced search — 350ms delay so we don't fire a server request on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+      setPage(1); // reset to page 1 when search changes
+    }, 350);
+    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
+  }, [filters.search]);
+
   // Compute days from dateRange filter
   const days = filters.dateRange === "Last 24h" ? 1
     : filters.dateRange === "Last 7d" ? 7
@@ -286,11 +298,12 @@ export default function SwapHistory() {
     : filters.status === "refunded" ? "refunded"
     : "all";
 
-  // Fetch real data from tRPC — true server-side pagination
+  // Fetch real data from tRPC — true server-side pagination with server-side search
   const { data: historyData, isLoading: historyLoading, isFetching, refetch } = trpc.history.list.useQuery({
     walletAddresses,
     status: statusParam as "all" | "completed" | "failed" | "refunded",
     days,
+    search: debouncedSearch,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   }, { refetchInterval: 30000, placeholderData: (prev) => prev });
@@ -308,32 +321,20 @@ export default function SwapHistory() {
 
   const stats = statsData ?? { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
 
-  // Client-side search filter
+  // Client-side sort only (search is now server-side via debouncedSearch)
   const filtered = useMemo(() => {
-    let result = [...allSwaps];
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      result = result.filter(s =>
-        s.fromSymbol.toLowerCase().includes(q) ||
-        s.toSymbol.toLowerCase().includes(q) ||
-        s.peer.toLowerCase().includes(q) ||
-        s.txHash.toLowerCase().includes(q) ||
-        s.protocol.toLowerCase().includes(q)
-      );
-    }
+    const result = [...allSwaps];
     result.sort((a, b) => {
       const va = sortField === "timestamp" ? a.timestamp.getTime() : a[sortField];
       const vb = sortField === "timestamp" ? b.timestamp.getTime() : b[sortField];
       return sortDir === "desc" ? (vb as number) - (va as number) : (va as number) - (vb as number);
     });
     return result;
-  }, [allSwaps, filters.search, sortField, sortDir]);
+  }, [allSwaps, sortField, sortDir]);
 
   // Server returns exactly PAGE_SIZE rows; total comes from server count
   const serverTotal = historyData?.total ?? 0;
   const totalPages = Math.ceil(serverTotal / PAGE_SIZE);
-  // For client-side search: if search is active, filter the current page's rows
-  // (full-text search across all pages requires server-side search — this filters the visible page)
   const paginated = filtered;
 
   const handleSort = (field: typeof sortField) => {

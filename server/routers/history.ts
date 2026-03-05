@@ -14,7 +14,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
-import { eq, and, gte, desc, count, inArray, or, sql } from "drizzle-orm";
+import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,7 @@ export const historyRouter = router({
       walletAddresses: z.array(z.string()).default([]),
       status:          z.enum(["all", "completed", "failed", "refunded"]).default("all"),
       days:            z.number().int().min(1).max(365).default(90),
+      search:          z.string().max(100).default(""),
       limit:           z.number().int().min(1).max(100).default(50),
       offset:          z.number().int().min(0).default(0),
     }))
@@ -54,6 +55,18 @@ export const historyRouter = router({
       }
       if (isWalletScoped) {
         conditions.push(inArray(swapAnalytics.walletAddress, input.walletAddresses));
+      }
+      // Server-side full-text search across token names, peer ID, and tx hash
+      if (input.search.trim()) {
+        const q = `%${input.search.trim()}%`;
+        conditions.push(
+          or(
+            like(swapAnalytics.fromToken, q),
+            like(swapAnalytics.toToken, q),
+            like(swapAnalytics.peerId, q),
+            like(swapAnalytics.txId, q),
+          )
+        );
       }
 
       const where = and(...conditions);

@@ -1317,3 +1317,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add ellipsis page buttons for large page counts
 - [x] Add isFetching spinner in pagination row
 - [x] Disable prev/next/page buttons while fetching to prevent double-clicks
+
+## Server-side Search + BTC walletAddress
+
+- [ ] Add search param to history.list tRPC procedure (LIKE %q% on fromToken, toToken, peerId, txId)
+- [ ] Reset page to 1 when search query changes in SwapHistory.tsx
+- [ ] Wire search input value to tRPC query param (debounced)
+- [ ] Wire walletAddress into executeBtcSwap recordSwapAnalytic call (input.senderAddress)

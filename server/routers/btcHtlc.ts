@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
+import { recordSwapAnalytic } from "../htlcMonitor";
 import * as bitcoin from "bitcoinjs-lib";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -263,6 +264,21 @@ export const btcHtlcRouter = router({
 
       const txHex = psbt.extractTransaction().toHex();
       const txid = await broadcastTx(txHex, network);
+
+      // Record analytics — attribute to the sender's BTC address
+      const btcAmountHuman = (amountSats / 1e8).toFixed(8);
+      void recordSwapAnalytic({
+        fromChain:    "bitcoin",
+        toChain:      "bitcoin",
+        fromToken:    "BTC",
+        toToken:      "BTC",
+        amount:       btcAmountHuman,
+        route:        "IntercomSwap P2P (HTLC)",
+        status:       "completed",
+        feeBps:       15,
+        feeAmountOut: String((amountSats * 0.0015 / 1e8).toFixed(8)),
+        walletAddress: senderAddress,
+      }).catch(() => {/* non-fatal */});
 
       return {
         success: true,
