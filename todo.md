@@ -1049,3 +1049,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add "New Chat" button to Agent page header to clear conversation and start fresh
 - [x] Auto-clear chat conversation on wallet disconnect for privacy
 - [x] Fix feeModel.test.ts to check ChatContext.tsx instead of ChatPage.tsx for QuoteData fields
+
+## WebSocket Signaling Server (Option A) — Real P2P Peer Discovery
+
+- [x] Build WebSocket signaling server endpoint on AFOS backend (peer registry, heartbeat, matchmaking)
+- [x] Implement WebRTC signaling relay (SDP offer/answer, ICE candidate exchange)
+- [x] Update LightPeerContext to connect to real signaling server instead of in-memory simulation
+- [x] Establish WebRTC data channels between discovered peers for direct browser-to-browser communication
+- [x] Wire peer-to-peer messaging (chat + swap negotiation) through WebRTC data channels
+- [x] Update Network page UI to reflect real remote peer connections and status
+- [x] Write tests for signaling server and peer discovery

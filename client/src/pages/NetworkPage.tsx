@@ -989,9 +989,12 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
 
 // ─── Empty State for Topology ─────────────────────────────────────────────────
 
-function EmptyTopology({ lightPeerOnline, lightPeerId, onConnectWallet }: {
+function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signalingRemotePeers, directPeerCount, onConnectWallet }: {
   lightPeerOnline: boolean;
   lightPeerId: string | null;
+  signalingConnected: boolean;
+  signalingRemotePeers: { peerId: string }[];
+  directPeerCount: number;
   onConnectWallet?: () => void;
 }) {
   return (
@@ -1045,7 +1048,7 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, onConnectWallet }: {
         </div>
       )}
 
-      {/* Two-layer DHT status badges */}
+      {/* Three-layer status badges */}
       <div className="flex flex-col gap-2 w-full max-w-xs">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
           style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
@@ -1070,6 +1073,24 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, onConnectWallet }: {
             </div>
           </div>
           <Globe className="w-3 h-3 shrink-0" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }} />
+        </div>
+        {/* WebSocket Signaling status */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
+          style={{
+            background: signalingConnected ? "rgba(168,85,247,0.08)" : "rgba(100,116,139,0.06)",
+            border: `1px solid ${signalingConnected ? "rgba(168,85,247,0.2)" : "rgba(100,116,139,0.15)"}`,
+          }}>
+          <div className="w-1.5 h-1.5 rounded-full animate-pulse"
+            style={{ background: signalingConnected ? "#a855f7" : "#64748b", animationDelay: "1s" }} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-mono font-bold" style={{ color: signalingConnected ? "#a855f7" : "#64748b" }}>WebSocket Signaling</div>
+            <div className="text-[9px]" style={{ color: signalingConnected ? "rgba(168,85,247,0.6)" : "rgba(100,116,139,0.6)" }}>
+              {signalingConnected
+                ? `Connected · ${signalingRemotePeers.length} peer${signalingRemotePeers.length !== 1 ? 's' : ''} · ${directPeerCount} direct`
+                : lightPeerOnline ? "Connecting…" : "Connect wallet to activate"}
+            </div>
+          </div>
+          <Wifi className="w-3 h-3 shrink-0" style={{ color: signalingConnected ? "#a855f7" : "#64748b" }} />
         </div>
       </div>
     </div>
@@ -1264,10 +1285,42 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             })
         : [];
 
-      // Deduplicate: prefer Oracle peers over relay peers for same ID
+      // Merge signaling peers (WebSocket-discovered browser peers)
+      const signalingPeers: Peer[] = lightPeer.remotePeers
+        .filter(sp => {
+          // Exclude self
+          if (myRelayPeerId && sp.peerId === myRelayPeerId) return false;
+          return true;
+        })
+        .map((sp, index) => {
+          const totalSig = lightPeer.remotePeers.length;
+          const pos = peerPosition(sp.peerId, remotePeers.length + lightPeers.length + index, remotePeers.length + lightPeers.length + totalSig);
+          return {
+            id: sp.peerId.slice(0, 16),
+            alias: sp.alias || `lp-${sp.peerId.slice(0, 8)}`,
+            region: "Light Peer",
+            lat: pos.lat,
+            lng: pos.lng,
+            latency: 0,
+            volume24h: 0,
+            pairs: sp.pairs || ["BTC/USDT", "SOL/USDT"],
+            online: true, // signaling peers are always online (they have an active WS)
+            reputation: 99,
+            channels: sp.dataChannel ? 1 : 0,
+            liquidity: 0,
+            version: "2.0.0",
+            fullKey: sp.peerId,
+            origin: 'intercomswap' as const,
+            lastSeen: sp.lastHeartbeat ?? sp.connectedAt,
+          };
+        });
+
+      // Deduplicate: prefer Oracle peers > relay peers > signaling peers
       const seenIds = new Set(remotePeers.map(p => p.id));
       const newLightPeers = lightPeers.filter(p => !seenIds.has(p.id));
-      const allRemotePeers = [...remotePeers, ...newLightPeers];
+      newLightPeers.forEach(p => seenIds.add(p.id));
+      const newSignalingPeers = signalingPeers.filter(p => !seenIds.has(p.id));
+      const allRemotePeers = [...remotePeers, ...newLightPeers, ...newSignalingPeers];
 
       const allPeers = [selfPeer, ...allRemotePeers];
       const channels = buildChannels(allRemotePeers);
@@ -1293,7 +1346,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       setLiveChannels([]);
       setLoading(false);
     }
-  }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId]);
+  }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId, lightPeer.remotePeers]);
 
   /** Ping a remote peer, update latency display, and persist result to reputation DB */
   const handlePing = useCallback(async (peerId: string, fullKey: string) => {
@@ -1863,6 +1916,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         <EmptyTopology
           lightPeerOnline={lightPeer.isOnline}
           lightPeerId={lightPeer.peerId}
+          signalingConnected={lightPeer.signalingConnected}
+          signalingRemotePeers={lightPeer.remotePeers}
+          directPeerCount={lightPeer.directPeerCount}
           onConnectWallet={() => window.dispatchEvent(new CustomEvent('afos:open-wallet'))}
         />
       )}

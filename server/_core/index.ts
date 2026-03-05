@@ -9,6 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
+import { attachSignalingServer } from "../signaling";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -80,6 +81,9 @@ async function startServer() {
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
+
+  // Attach WebSocket signaling server for P2P peer discovery
+  attachSignalingServer(server);
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);

@@ -35,6 +35,7 @@ import {
 import { buildSolanaHtlcLockTx, generateHtlcSecret } from "../lib/solanaHtlc";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
+import { getSignalingClient, type RemotePeer, type SignalingClient } from "../lib/signalingClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,12 +84,24 @@ export interface LightPeerState {
   totalVolumeUsd: number;
   lastHeartbeat: number | null;
   htlcSigning: HtlcSigningState | null;
+  /** Remote peers discovered via WebSocket signaling */
+  remotePeers: RemotePeer[];
+  /** The signaling client instance for direct peer messaging */
+  signalingClient: SignalingClient | null;
+  /** Whether the signaling WebSocket is connected */
+  signalingConnected: boolean;
+  /** Count of peers with direct WebRTC data channels */
+  directPeerCount: number;
   // Actions
   setPrefs: (prefs: Partial<LightPeerPrefs>) => void;
   acceptRfq: (rfqId: string) => Promise<void>;
   rejectRfq: (rfqId: string) => void;
   toggleEnabled: () => void;
   dismissHtlc: () => void;
+  /** Send a message to a specific peer via WebRTC or signaling relay */
+  sendPeerMessage: (targetPeerId: string, payload: unknown) => void;
+  /** Broadcast an RFQ to all connected peers */
+  broadcastRfq: (rfq: unknown) => void;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -145,6 +158,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [totalVolumeUsd, setTotalVolumeUsd] = useState(0);
   const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(null);
 
+  // ── Signaling state ───────────────────────────────────────────────────────
+  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
+  const [signalingConnected, setSignalingConnected] = useState(false);
+  const [directPeerCount, setDirectPeerCount] = useState(0);
+  const signalingRef = useRef<SignalingClient | null>(null);
+
   // ── Live prices ref (updated from SSE) ────────────────────────────────────
   const pricesRef = useRef<Record<string, number>>({});
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -176,11 +195,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     setPeerAlias(alias);
   }, [solAdapterConnected, solPubkey, phantomSolAddress, ethereum?.address, bitcoin?.address]);
 
-  // ── Announce / heartbeat ──────────────────────────────────────────────────
+  // ── Announce / heartbeat (legacy HTTP — kept as fallback) ─────────────────
   const announce = useCallback(async (id: string, alias: string) => {
     if (!prefsRef.current.enabled) return;
     try {
-      // Use AbortController to timeout after 10s instead of waiting 60s+ for Oracle VM
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10_000);
       await fetch(`${BACKEND_URL}/api/peer/announce`, {
@@ -188,8 +206,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          peerId: id,
-          alias,
+          peerId: id, alias,
           pairs: prefsRef.current.acceptedPairs,
           spreadBps: prefsRef.current.spreadBps,
           minTradeUsd: prefsRef.current.minTradeUsd,
@@ -199,15 +216,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         }),
       });
       clearTimeout(timeoutId);
-      setLastHeartbeat(Date.now());
-    } catch {
-      // Oracle VM may not have this endpoint yet — peer is still functional
-      // locally via SSE RFQ listening and relay bridge.
-      setLastHeartbeat(Date.now());
-    }
-    // Also announce to the relay bridge so this Light Peer appears in the
-    // merged Hyperswarm + IntercomSwap peer list on the Network page.
-    // Best-effort — never blocks the main announce flow.
+    } catch { /* Oracle VM may not be reachable — signaling server is primary */ }
     announceToRelay(id, alias, prefsRef.current.acceptedPairs).catch(() => {});
   }, []);
 
@@ -219,49 +228,122 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({ peerId: id, timestamp: Date.now() }),
       });
     } catch { /* best-effort */ }
-    setIsRegistered(false);
-    setIsOnline(false);
   }, []);
 
-  // ── Register when wallet connects, deregister when it disconnects ─────────
+  // ── WebSocket Signaling — primary peer discovery & WebRTC ─────────────────
   useEffect(() => {
-    if (!peerId) {
+    if (!peerId || !prefs.enabled) {
+      // Disconnect signaling if no wallet or disabled
+      if (signalingRef.current) {
+        signalingRef.current.deregister();
+        signalingRef.current.disconnect();
+        signalingRef.current = null;
+      }
+      setRemotePeers([]);
+      setSignalingConnected(false);
+      setDirectPeerCount(0);
       if (isRegistered) {
         setIsRegistered(false);
         setIsOnline(false);
       }
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      return () => {};
+      return;
     }
 
-    if (!prefs.enabled) return;
+    const client = getSignalingClient();
+    signalingRef.current = client;
 
-    // Optimistically mark as online immediately — the announce call may take
-    // 60+ seconds to timeout if the Oracle VM is unreachable, but the Light Peer
-    // is functional locally (SSE RFQ listening, relay bridge) regardless.
-    setIsRegistered(true);
-    setIsOnline(true);
-    setLastHeartbeat(Date.now());
+    // Build wallet addresses map
+    const walletAddresses: Record<string, string> = {};
+    if (solAdapterConnected && solPubkey) walletAddresses.solana = solPubkey.toString();
+    if (phantomSolAddress) walletAddresses.solana = walletAddresses.solana || phantomSolAddress;
+    if (ethereum?.address) walletAddresses.ethereum = ethereum.address;
+    if (bitcoin?.address) walletAddresses.bitcoin = bitcoin.address;
 
-    // Initial announce (fire-and-forget — status already set above)
+    // Event handlers
+    const unsubs: Array<() => void> = [];
+
+    unsubs.push(client.on("connected", () => {
+      setSignalingConnected(true);
+    }));
+
+    unsubs.push(client.on("disconnected", () => {
+      setSignalingConnected(false);
+    }));
+
+    unsubs.push(client.on("registered", () => {
+      setIsRegistered(true);
+      setIsOnline(true);
+      setLastHeartbeat(Date.now());
+    }));
+
+    unsubs.push(client.on("peer_list", () => {
+      setRemotePeers(client.getPeerList());
+      setDirectPeerCount(client.directPeerCount);
+    }));
+
+    unsubs.push(client.on("peer_joined", () => {
+      setRemotePeers(client.getPeerList());
+    }));
+
+    unsubs.push(client.on("peer_left", () => {
+      setRemotePeers(client.getPeerList());
+      setDirectPeerCount(client.directPeerCount);
+    }));
+
+    unsubs.push(client.on("data_channel_open", () => {
+      setDirectPeerCount(client.directPeerCount);
+    }));
+
+    unsubs.push(client.on("data_channel_close", () => {
+      setDirectPeerCount(client.directPeerCount);
+    }));
+
+    // Handle peer messages received via signaling relay or WebRTC
+    unsubs.push(client.on("peer_message", (data) => {
+      const { fromPeerId, payload } = data as { fromPeerId: string; payload: unknown };
+      const msg = payload as { type?: string };
+      if (msg?.type === "rfq") {
+        // Process as RFQ (same as SSE p2p_rfq)
+        window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...payload as object } }));
+      } else if (msg?.type === "chat") {
+        // Peer chat message
+        window.dispatchEvent(new CustomEvent("afos:peer-chat", { detail: { fromPeerId, ...payload as object } }));
+      }
+    }));
+
+    // Handle RFQ broadcasts
+    unsubs.push(client.on("rfq_broadcast", (data) => {
+      const { fromPeerId, rfq } = data as { fromPeerId: string; rfq: unknown };
+      window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...(rfq as object) } }));
+    }));
+
+    // Connect and register
+    client.connect();
+    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses);
+
+    // Also do legacy HTTP announce (best-effort fallback)
     announce(peerId, peerAlias);
 
-    // Heartbeat
+    // Legacy heartbeat (for Oracle VM compatibility)
     heartbeatRef.current = setInterval(() => {
       announce(peerId, peerAlias);
+      setLastHeartbeat(Date.now());
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => {
+      unsubs.forEach(u => u());
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
+      client.deregister();
+      client.disconnect();
+      signalingRef.current = null;
       deannounce(peerId);
+      setIsRegistered(false);
+      setIsOnline(false);
     };
-  }, [peerId, peerAlias, prefs.enabled]);
+  }, [peerId, peerAlias, prefs.enabled, prefs.acceptedPairs, solAdapterConnected, solPubkey, phantomSolAddress, ethereum?.address, bitcoin?.address]);
 
   // ── Subscribe to live prices via SSE ──────────────────────────────────────
   useEffect(() => {
@@ -663,6 +745,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     setPrefs({ enabled: !prefs.enabled });
   }, [prefs.enabled, setPrefs]);
 
+  // ── Signaling message helpers ────────────────────────────────────────────
+  const sendPeerMessage = useCallback((targetPeerId: string, payload: unknown) => {
+    signalingRef.current?.sendToPeer(targetPeerId, payload);
+  }, []);
+
+  const broadcastRfqFn = useCallback((rfq: unknown) => {
+    signalingRef.current?.broadcastRfq(rfq);
+  }, []);
+
   return (
     <LightPeerContext.Provider value={{
       peerId,
@@ -676,11 +767,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       totalVolumeUsd,
       lastHeartbeat,
       htlcSigning,
+      remotePeers,
+      signalingClient: signalingRef.current,
+      signalingConnected,
+      directPeerCount,
       setPrefs,
       acceptRfq,
       rejectRfq,
       toggleEnabled,
       dismissHtlc,
+      sendPeerMessage,
+      broadcastRfq: broadcastRfqFn,
     }}>
       {children}
     </LightPeerContext.Provider>
