@@ -253,14 +253,17 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     : phantomSolAddr
     ? `https://solscan.io/account/${phantomSolAddr}`
     : undefined;
-  // Balances: use adapter balances when adapter-connected, else show empty (Phantom multi-chain SOL balance
-  // is not fetched via the adapter — show a placeholder until we can fetch it)
+  // Balances: use adapter balances when adapter-connected, else use Phantom multi-chain RPC-fetched balances
   const effectiveSolBalances = solAdapterConnected
     ? balances.map(b => ({ symbol: b.symbol, amount: b.amount, usdValue: b.usdValue }))
+    : phantomSolAddr && phantomMultiChain?.solanaBalances
+    ? phantomMultiChain.solanaBalances
     : phantomSolAddr
-    ? [{ symbol: "SOL", amount: "—", usdValue: 0 }]
+    ? [{ symbol: "SOL", amount: "…", usdValue: 0 }]  // loading state
     : [];
-  const effectiveSolTotalUsd = solAdapterConnected ? totalUsd : 0;
+  const effectiveSolTotalUsd = solAdapterConnected
+    ? totalUsd
+    : phantomMultiChain?.solanaTotalUsd ?? 0;
 
   // Watch for Phantom multi-chain connection completing and trigger success overlay
   const prevPhantomRef = useRef(phantomMultiChain?.connected ?? false);
@@ -292,7 +295,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     const wasConnected = prevEthRef.current;
     const isNowConnected = ethereum?.connected ?? false;
     prevEthRef.current = isNowConnected;
-    if (!wasConnected && isNowConnected && open && !successState) {
+    // Skip standalone ETH toast if this is a Phantom multi-chain connection (toast already shown by Phantom handler)
+    if (!wasConnected && isNowConnected && open && !successState && !ethereum?.isPhantom) {
       showSuccessAndClose(
         ethereum?.walletName ?? "Ethereum Wallet",
         [{ chain: "ethereum", address: ethereum?.shortAddress ?? "" }],
@@ -307,7 +311,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     const wasConnected = prevBtcRef.current;
     const isNowConnected = bitcoin?.connected ?? false;
     prevBtcRef.current = isNowConnected;
-    if (!wasConnected && isNowConnected && open && !successState) {
+    // Skip standalone BTC toast if this is a Phantom multi-chain connection (toast already shown by Phantom handler)
+    if (!wasConnected && isNowConnected && open && !successState && !bitcoin?.isPhantom) {
       showSuccessAndClose(
         bitcoin?.walletName ?? "Bitcoin Wallet",
         [{ chain: "bitcoin", address: bitcoin?.shortAddress ?? "" }],

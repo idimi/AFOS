@@ -1181,8 +1181,9 @@ function PortfolioCard() {
   // Compute live total across all chains
   const totalUsd = useMemo(() => {
     let total = 0;
-    // Solana: SOL + USDT/SOL + USDC/SOL (only when adapter-connected; Phantom multi-chain doesn't fetch SOL balances via adapter)
+    // Solana: use adapter total when adapter-connected, else use Phantom multi-chain RPC-fetched total
     if (solAdapterConnected) total += solanaTotalUsd;
+    else if (phantomMultiChain?.solanaTotalUsd) total += phantomMultiChain.solanaTotalUsd;
     // Ethereum: native ETH
     if (ethereum?.connected) total += ethereum.balanceUsd;
     // Ethereum: ERC-20 USDC + USDT (both pegged $1)
@@ -1190,7 +1191,7 @@ function PortfolioCard() {
     // Bitcoin
     if (bitcoin?.connected) total += bitcoin.balanceUsd;
     return total;
-  }, [solanaTotalUsd, solAdapterConnected, ethereum, bitcoin, erc20Balances]);
+  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, erc20Balances]);
 
   // Count how many chains have connected wallets
   const connectedChains = [
@@ -1443,9 +1444,13 @@ function WalletsCard() {
     : solShortAddr;
   const solBrowserConnected = solConnected || !!(phantomMultiChain?.chains.includes("solana"));
 
+  // Use Phantom multi-chain RPC balances when adapter is not connected
+  const effectiveSolBal = (sym: string) => {
+    if (solConnected) return solBalances.find(b => b.symbol === sym);
+    return phantomMultiChain?.solanaBalances?.find(b => b.symbol === sym);
+  };
 
-  // ── Build "My Wallets" rows (browser) ─────────────────────────────────────
-  const solBal = (sym: string) => solBalances.find(b => b.symbol === sym);
+  // ── Build "My Wallets" rows (browser) ─────────────────────────────────────────────────────
   const solAddr = solBrowserAddr ? `Solana · ${solBrowserAddr}` : "Solana";
   const ethAddr = ethereum?.shortAddress ? `Ethereum · ${ethereum.shortAddress}` : "Ethereum";
   const btcAddr = bitcoin?.shortAddress ? `Bitcoin · ${bitcoin.shortAddress}` : "Bitcoin";
@@ -1454,22 +1459,22 @@ function WalletsCard() {
     // ── Solana ──
     {
       asset: "SOL", chain: "Solana", networkLabel: solAddr,
-      balance: solBrowserConnected ? (solBal("SOL")?.amount ?? "0.000000") : "0.000000",
-      usd: solBrowserConnected && solBal("SOL") ? `$${solBal("SOL")!.usdValue.toFixed(2)}` : "$0",
+      balance: solBrowserConnected ? (effectiveSolBal("SOL")?.amount ?? "0.000000") : "0.000000",
+      usd: solBrowserConnected && effectiveSolBal("SOL") ? `$${effectiveSolBal("SOL")!.usdValue.toFixed(2)}` : "$0",
       connected: solBrowserConnected,
       ...WALLET_ASSET_STYLE["SOL"],
     },
     {
       asset: "USDT", chain: "Solana", networkLabel: solAddr,
-      balance: solBrowserConnected ? (solBal("USDT")?.amount ?? "0.00") : "0.00",
-      usd: solBrowserConnected && solBal("USDT") ? `$${solBal("USDT")!.usdValue.toFixed(2)}` : "$0",
+      balance: solBrowserConnected ? (effectiveSolBal("USDT")?.amount ?? "0.00") : "0.00",
+      usd: solBrowserConnected && effectiveSolBal("USDT") ? `$${effectiveSolBal("USDT")!.usdValue.toFixed(2)}` : "$0",
       connected: solBrowserConnected,
       ...WALLET_ASSET_STYLE["USDT"],
     },
     {
       asset: "USDC", chain: "Solana", networkLabel: solAddr,
-      balance: solBrowserConnected ? (solBal("USDC")?.amount ?? "0.00") : "0.00",
-      usd: solBrowserConnected && solBal("USDC") ? `$${solBal("USDC")!.usdValue.toFixed(2)}` : "$0",
+      balance: solBrowserConnected ? (effectiveSolBal("USDC")?.amount ?? "0.00") : "0.00",
+      usd: solBrowserConnected && effectiveSolBal("USDC") ? `$${effectiveSolBal("USDC")!.usdValue.toFixed(2)}` : "$0",
       connected: solBrowserConnected,
       ...WALLET_ASSET_STYLE["USDC"],
     },
@@ -2082,10 +2087,11 @@ function MobilePortfolioStrip() {
   const totalUsd = useMemo(() => {
     let total = 0;
     if (solAdapterConnected) total += solanaTotalUsd;
+    else if (phantomMultiChain?.solanaTotalUsd) total += phantomMultiChain.solanaTotalUsd;
     if (ethereum?.connected) total += ethereum.balanceUsd + erc20Balances.usdc + erc20Balances.usdt;
     if (bitcoin?.connected) total += bitcoin.balanceUsd;
     return total;
-  }, [solanaTotalUsd, solAdapterConnected, ethereum, bitcoin, erc20Balances]);
+  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, erc20Balances]);
 
   const connectedChains = [
     solanaConnected ? "SOL" : null,

@@ -60,6 +60,10 @@ export interface PhantomMultiChainState {
   ethereumAddress?: string;
   /** Phantom's Bitcoin payment address (if connected) */
   bitcoinAddress?: string;
+  /** Solana balances fetched via RPC (SOL + SPL tokens) */
+  solanaBalances?: Array<{ symbol: string; amount: string; usdValue: number }>;
+  /** Total USD value of Solana holdings */
+  solanaTotalUsd?: number;
 }
 
 interface MultiChainWalletContextValue {
@@ -75,6 +79,8 @@ interface MultiChainWalletContextValue {
   disconnectEthereum: () => void;
   disconnectBitcoin: () => void;
   disconnectPhantom: () => void;
+  /** Manually refresh Solana balances for Phantom multi-chain connection */
+  refreshPhantomSolBalance: () => Promise<void>;
   ethConnecting: boolean;
   btcConnecting: boolean;
   phantomConnecting: boolean;
@@ -232,6 +238,77 @@ async function fetchBtcPriceUsd(): Promise<number> {
   return 0;
 }
 
+// ─── Solana RPC balance fetcher (for Phantom multi-chain path) ───────────────
+
+const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+const USDT_MINT_SOL = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+const USDC_MINT_SOL = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+async function fetchSolanaBalancesForAddress(
+  address: string
+): Promise<{ balances: Array<{ symbol: string; amount: string; usdValue: number }>; totalUsd: number }> {
+  try {
+    // Fetch SOL price
+    let solPrice = 0;
+    try {
+      const priceRes = await fetch("/api/afos/api/prices");
+      if (priceRes.ok) {
+        const priceData = await priceRes.json();
+        solPrice = priceData.prices?.SOL?.usd || priceData.prices?.sol?.usd || 0;
+      }
+    } catch (_) {}
+
+    // Fetch SOL balance via JSON-RPC
+    const solRes = await fetch(SOLANA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "getBalance",
+        params: [address, { commitment: "confirmed" }],
+      }),
+    });
+    const solData = await solRes.json();
+    const lamports = solData?.result?.value ?? 0;
+    const solAmount = lamports / 1e9;
+
+    // Fetch SPL token accounts (USDT + USDC)
+    const splRes = await fetch(SOLANA_RPC, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id: 2, method: "getTokenAccountsByOwner",
+        params: [
+          address,
+          { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+          { encoding: "jsonParsed" },
+        ],
+      }),
+    });
+    const splData = await splRes.json();
+    const tokenAccounts: Array<{ account: { data: { parsed: { info: { mint: string; tokenAmount: { uiAmount: number } } } } } }> =
+      splData?.result?.value ?? [];
+
+    let usdtAmount = 0;
+    let usdcAmount = 0;
+    for (const acc of tokenAccounts) {
+      const info = acc.account.data.parsed.info;
+      if (info.mint === USDT_MINT_SOL) usdtAmount = info.tokenAmount.uiAmount ?? 0;
+      if (info.mint === USDC_MINT_SOL) usdcAmount = info.tokenAmount.uiAmount ?? 0;
+    }
+
+    const balances = [
+      { symbol: "SOL", amount: solAmount.toFixed(4), usdValue: solAmount * solPrice },
+      { symbol: "USDT", amount: usdtAmount.toFixed(2), usdValue: usdtAmount },
+      { symbol: "USDC", amount: usdcAmount.toFixed(2), usdValue: usdcAmount },
+    ];
+    const totalUsd = balances.reduce((s, b) => s + b.usdValue, 0);
+    return { balances, totalUsd };
+  } catch (err) {
+    console.warn("[MultiChainWallet] SOL balance fetch failed:", err);
+    return { balances: [], totalUsd: 0 };
+  }
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
@@ -361,12 +438,27 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         return;
       }
 
+      // ── Fetch Solana balances via RPC (wallet adapter not used in multi-chain path) ──
+      let solanaBalances: Array<{ symbol: string; amount: string; usdValue: number }> | undefined;
+      let solanaTotalUsd = 0;
+      if (solanaAddress) {
+        try {
+          const solBalResult = await fetchSolanaBalancesForAddress(solanaAddress);
+          solanaBalances = solBalResult.balances;
+          solanaTotalUsd = solBalResult.totalUsd;
+        } catch (e) {
+          console.warn("[Phantom] SOL balance fetch failed:", e);
+        }
+      }
+
       setPhantomMultiChain({
         connected: true,
         chains: connectedChains,
         solanaAddress,
         ethereumAddress,
         bitcoinAddress,
+        solanaBalances,
+        solanaTotalUsd,
       });
 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
@@ -380,6 +472,18 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       setPhantomConnecting(false);
     }
   }, []);
+
+  // ── Refresh Solana balances for Phantom multi-chain connection ──────────────
+  const refreshPhantomSolBalance = useCallback(async () => {
+    const addr = phantomMultiChain?.solanaAddress;
+    if (!addr) return;
+    try {
+      const { balances, totalUsd } = await fetchSolanaBalancesForAddress(addr);
+      setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: balances, solanaTotalUsd: totalUsd } : null);
+    } catch (e) {
+      console.warn("[Phantom] SOL balance refresh failed:", e);
+    }
+  }, [phantomMultiChain?.solanaAddress]);
 
   const disconnectPhantom = useCallback(() => {
     // Disconnect Phantom Solana
@@ -787,6 +891,18 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [bitcoin?.connected, bitcoin?.address]);
 
+  // ── Auto-refresh SOL balance every 60 seconds when Phantom multi-chain is connected ──
+  useEffect(() => {
+    const addr = phantomMultiChain?.solanaAddress;
+    if (!addr) return;
+    const interval = setInterval(() => {
+      fetchSolanaBalancesForAddress(addr).then(({ balances, totalUsd }) => {
+        setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: balances, solanaTotalUsd: totalUsd } : null);
+      }).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [phantomMultiChain?.solanaAddress]);
+
   return (
     <MultiChainWalletContext.Provider value={{
       ethereum,
@@ -799,6 +915,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       disconnectEthereum,
       disconnectBitcoin,
       disconnectPhantom,
+      refreshPhantomSolBalance,
       ethConnecting,
       btcConnecting,
       phantomConnecting,
