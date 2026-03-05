@@ -1078,3 +1078,7 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix topology canvas peer alias/latency text: dark mode text invisible — fixed with DOM classList fallback when resolvedTheme is undefined
 - [x] Fix peer count tooltip background/text: now uses bg-popover text-popover-foreground with dark: variants for status colors
+
+## Peer Directory Row Cleanup
+
+- [x] Redesign Peer Directory rows: action buttons (Ping/Invite/Link) now hidden in hover-revealed strip, badge labels shortened (HW/LP), LastSeenBadge uses darker colors in light mode

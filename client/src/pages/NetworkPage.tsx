@@ -79,13 +79,22 @@ function formatLastSeen(lastSeen: number): string {
 /** Animated "last seen" badge for Light Peers — updates every 5 seconds */
 function LastSeenBadge({ lastSeen }: { lastSeen: number }) {
   const [label, setLabel] = useState(() => formatLastSeen(lastSeen));
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme
+    ? resolvedTheme === 'dark'
+    : typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
   useEffect(() => {
     setLabel(formatLastSeen(lastSeen));
     const id = setInterval(() => setLabel(formatLastSeen(lastSeen)), 5_000);
     return () => clearInterval(id);
   }, [lastSeen]);
   const diffSec = Math.floor((Date.now() - lastSeen) / 1000);
-  const color = diffSec < 30 ? '#10b981' : diffSec < 120 ? '#f59e0b' : '#f97316';
+  // Use darker shades in light mode for readability
+  const color = diffSec < 30
+    ? (isDark ? '#10b981' : '#059669')
+    : diffSec < 120
+      ? (isDark ? '#f59e0b' : '#d97706')
+      : (isDark ? '#f97316' : '#ea580c');
   return (
     <span
       title={`Last heartbeat: ${new Date(lastSeen).toLocaleTimeString()}`}
@@ -882,23 +891,28 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
           const isSelected = selectedId === peer.id;
           const rep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
           const repScore = rep?.score ?? null;
+          const canInvite = repScore !== null && repScore >= 70;
+          const inviteTooltip = repScore === null
+            ? 'Ping this peer first to establish a reputation score'
+            : canInvite
+              ? `Invite to open a Liquidity Channel (score ${repScore}/100 \u2265 70)`
+              : `Score ${repScore}/100 is below the 70-point threshold to invite`;
           return (
             <div
               key={peer.id}
-              className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors"
+              className="group px-4 py-2 hover:bg-muted/40 transition-colors cursor-pointer"
               style={{ background: isSelected ? "rgba(6,182,212,0.06)" : undefined }}
+              onClick={() => onSelect(peer.id)}
             >
-              <button
-                onClick={() => onSelect(peer.id)}
-                className="flex items-center gap-3 flex-1 min-w-0 text-left"
-              >
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#374151" }} />
+              {/* Main info row */}
+              <div className="flex items-center gap-2.5">
+                <div className="w-2 h-2 rounded-full shrink-0 mt-0.5" style={{ background: peer.online ? color : "#374151" }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono text-foreground truncate flex items-center gap-1.5">
                     {peer.alias}
-                    {/* Peer type badge — Hyperswarm full node vs IntercomSwap light peer */}
+                    {/* Peer type badge */}
                     <span
-                      className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0 flex items-center gap-0.5"
+                      className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
                       title={
                         peer.origin === 'hyperswarm'
                           ? 'Hyperswarm DHT — Full node · Oracle VM · Supports HTLC atomic swaps, channel routing, and relay bridging'
@@ -910,11 +924,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                         color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
                       }}
                     >
-                      {peer.origin === 'hyperswarm' ? (
-                        <>⚡ Hyperswarm</>
-                      ) : (
-                        <>📱 Light Peer</>
-                      )}
+                      {peer.origin === 'hyperswarm' ? '⚡ HW' : '📱 LP'}
                     </span>
                     {repScore !== null && (
                       <span
@@ -928,13 +938,16 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       >{repScore}</span>
                     )}
                   </div>
-                  <div className="text-[9px] text-muted-foreground flex items-center gap-1.5">
-                    {peer.region} · {peer.pairs[0] || "—"}
+                  <div className="text-[9px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                    <span>{peer.channels}ch</span>
+                    <span className="text-muted-foreground/40">·</span>
+                    <span>{peer.pairs[0] || '—'}</span>
                     {peer.origin === 'intercomswap' && peer.lastSeen && (
                       <LastSeenBadge lastSeen={peer.lastSeen} />
                     )}
                   </div>
                 </div>
+                {/* Latency — always visible */}
                 <div className="text-right shrink-0">
                   <div className="text-[10px] font-mono" style={{ color }}>
                     {pingState?.loading ? (
@@ -943,58 +956,48 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       `${displayLatency}ms`
                     )}
                   </div>
-                  <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
                 </div>
-              </button>
-              {/* Ping button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); if (peer.fullKey) onPing(peer.id, peer.fullKey); }}
-                disabled={pingState?.loading || !peer.fullKey}
-                title="Ping this peer"
-                className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all hover:opacity-80"
-                style={{
-                  background: pingState?.loading ? "rgba(6,182,212,0.08)" : "rgba(16,185,129,0.1)",
-                  border: `1px solid ${pingState?.loading ? "rgba(6,182,212,0.2)" : "rgba(16,185,129,0.25)"}`,
-                  color: pingState?.loading ? "#06b6d4" : "#10b981",
-                  opacity: (!peer.fullKey || pingState?.loading) ? 0.5 : 1,
-                }}>
-                {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
-                Ping
-              </button>
-              {/* Invite button — only enabled when reputation score >= 70 */}
-              {(() => {
-                const canInvite = repScore !== null && repScore >= 70;
-                const noScore = repScore === null;
-                const tooltip = noScore
-                  ? 'Ping this peer first to establish a reputation score'
-                  : canInvite
-                    ? `Invite to open a Liquidity Channel (score ${repScore}/100 \u2265 70)`
-                    : `Score ${repScore}/100 is below the 70-point threshold to invite`;
-                return (
+                <ChevronRight className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+              </div>
+              {/* Action strip — revealed on hover */}
+              <div className="overflow-hidden max-h-0 group-hover:max-h-10 transition-all duration-200 ease-in-out">
+                <div className="flex items-center gap-1.5 pt-1.5 pl-4" onClick={e => e.stopPropagation()}>
+                  {/* Ping */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (peer.fullKey) onPing(peer.id, peer.fullKey); }}
+                    disabled={pingState?.loading || !peer.fullKey}
+                    title="Ping this peer"
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono transition-all hover:opacity-80 disabled:opacity-40"
+                    style={{
+                      background: 'rgba(16,185,129,0.1)',
+                      border: '1px solid rgba(16,185,129,0.25)',
+                      color: '#10b981',
+                    }}
+                  >
+                    {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
+                    Ping
+                  </button>
+                  {/* Invite */}
                   <button
                     onClick={(e) => { e.stopPropagation(); if (canInvite && peer.fullKey) onInvite?.(peer.fullKey, peer.alias); }}
                     disabled={!canInvite}
-                    title={tooltip}
-                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                    title={inviteTooltip}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono transition-all hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{
                       background: canInvite ? 'rgba(139,92,246,0.12)' : 'rgba(100,116,139,0.08)',
                       border: `1px solid ${canInvite ? 'rgba(139,92,246,0.3)' : 'rgba(100,116,139,0.2)'}`,
-                      color: canInvite ? '#a78bfa' : '#475569',
-                      opacity: canInvite ? 1 : 0.5,
-                      cursor: canInvite ? 'pointer' : 'not-allowed',
+                      color: canInvite ? '#a78bfa' : '#94a3b8',
                     }}
-                    onMouseEnter={(e) => { if (canInvite) (e.currentTarget as HTMLButtonElement).style.opacity = '0.8'; }}
-                    onMouseLeave={(e) => { if (canInvite) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
                   >
                     <Mail className="w-2.5 h-2.5" />
                     Invite
                   </button>
-                );
-              })()}
-              {/* Copy Invite Link — generates a shareable URL for this peer */}
-              {peer.fullKey && (
-                <CopyInviteLinkButton peerId={peer.fullKey} onCopy={() => onCopyInviteLink?.(peer.fullKey!)} />
-              )}
+                  {/* Copy link */}
+                  {peer.fullKey && (
+                    <CopyInviteLinkButton peerId={peer.fullKey} onCopy={() => onCopyInviteLink?.(peer.fullKey!)} />
+                  )}
+                </div>
+              </div>
             </div>
           );
         })}
