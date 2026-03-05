@@ -1112,3 +1112,10 @@ The Overview should be an **operator's command center** — a single glance tell
 ## PeerChat Input UX
 
 - [x] Replace single-line input with auto-resizing textarea in PeerChat DM panel
+
+## Unread Message UX — Who Sent the Message?
+
+- [x] Show unread message badge on peer nodes in topology canvas (glowing dot above node)
+- [x] Show unread badge on peer rows in Peer Directory list
+- [x] Show clickable toast with sender alias + message snippet when a new message arrives, clicking it auto-selects that peer's PeerDetail panel
+- [x] Add pulsing ring animation on node contour when peer has unread messages (3 staggered Framer Motion rings expanding outward)

@@ -99,6 +99,49 @@ export const peerMessagesRouter = router({
     }),
 
   /**
+   * Get unread message counts grouped by sender, with latest message snippet.
+   * Used to show badges on peer nodes in the topology canvas and Peer Directory.
+   */
+  unreadBySender: publicProcedure
+    .input(z.object({ myPeerId: z.string().min(1).max(128) }))
+    .query(async ({ input }) => {
+      const { getDb } = await import("../db");
+      const { peerMessages } = await import("../../drizzle/schema");
+      const { eq, isNull, and } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return [];
+
+      const unread = await db
+        .select()
+        .from(peerMessages)
+        .where(
+          and(
+            eq(peerMessages.toPeerId, input.myPeerId),
+            isNull(peerMessages.readAt)
+          )
+        )
+        .orderBy(peerMessages.createdAt);
+
+      // Group by sender
+      const bySender: Record<string, { count: number; latestBody: string; latestAt: Date }> = {};
+      for (const msg of unread) {
+        if (!bySender[msg.fromPeerId]) {
+          bySender[msg.fromPeerId] = { count: 0, latestBody: msg.body, latestAt: msg.createdAt };
+        }
+        bySender[msg.fromPeerId].count++;
+        bySender[msg.fromPeerId].latestBody = msg.body;
+        bySender[msg.fromPeerId].latestAt = msg.createdAt;
+      }
+
+      return Object.entries(bySender).map(([fromPeerId, v]) => ({
+        fromPeerId,
+        count: v.count,
+        snippet: v.latestBody.slice(0, 60) + (v.latestBody.length > 60 ? '…' : ''),
+        latestAt: v.latestAt,
+      }));
+    }),
+
+  /**
    * Mark ALL unread messages addressed to myPeerId as read.
    * Called when the user navigates to the Network page.
    */

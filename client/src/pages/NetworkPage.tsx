@@ -163,13 +163,14 @@ function peerPosition(pubkey: string, index: number, total: number): { lat: numb
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   pulseIds: Set<string>;
   pingingIds?: Set<string>;
+  unreadByPeer?: Record<string, { count: number; snippet: string }>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
@@ -225,6 +226,14 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
             100% { offset-distance: 100%; opacity: 0; }
           }
           .ping-dot { animation: ping-travel 0.9s ease-in-out infinite; }
+          @keyframes unread-ring {
+            0%   { r: var(--ring-start); opacity: 0.85; stroke-width: 2.5; }
+            60%  { opacity: 0.4; stroke-width: 1.5; }
+            100% { r: var(--ring-end); opacity: 0; stroke-width: 0.5; }
+          }
+          .unread-ring-1 { animation: unread-ring 1.8s ease-out infinite; }
+          .unread-ring-2 { animation: unread-ring 1.8s ease-out 0.6s infinite; }
+          .unread-ring-3 { animation: unread-ring 1.8s ease-out 1.2s infinite; }
         `}</style>
       </defs>
 
@@ -412,6 +421,44 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
                 {peer.latency}ms
               </text>
             )}
+
+            {/* Unread message indicator — pulsing rings + badge when peer has unread messages */}
+            {peer.id !== "self" && peer.fullKey && unreadByPeer?.[peer.fullKey]?.count ? (() => {
+              const count = unreadByPeer[peer.fullKey!]!.count;
+              const ringStart = r + 4;
+              const ringEnd = r + 22;
+              const badgeR = 7;
+              const bx = x + r + 4;
+              const by = y - r - 4;
+              return (
+                <g>
+                  {/* Three staggered expanding rings for "new message" glow — Framer Motion for reliable SVG r animation */}
+                  {[0, 0.6, 1.2].map((delay, i) => (
+                    <motion.circle
+                      key={i}
+                      cx={x} cy={y}
+                      fill="none"
+                      stroke="rgba(6,182,212,0.85)"
+                      initial={{ r: ringStart, opacity: 0.85, strokeWidth: 2.5 }}
+                      animate={{ r: ringEnd, opacity: 0, strokeWidth: 0.5 }}
+                      transition={{
+                        duration: 1.8,
+                        ease: 'easeOut',
+                        delay,
+                        repeat: Infinity,
+                        repeatDelay: 1.8 * 2 / 3,
+                      }}
+                    />
+                  ))}
+                  {/* Numeric badge */}
+                  <circle cx={bx} cy={by} r={badgeR + 2} fill="rgba(6,182,212,0.2)" />
+                  <circle cx={bx} cy={by} r={badgeR} fill="rgba(6,182,212,0.95)" />
+                  <text x={bx} y={by + 3.5} textAnchor="middle" fontSize={7} fill="#000" fontWeight="bold" fontFamily="monospace">
+                    {count > 9 ? '9+' : count}
+                  </text>
+                </g>
+              );
+            })() : null}
           </g>
         );
       })}
@@ -881,7 +928,7 @@ function CopyInviteLinkButton({ peerId, onCopy }: { peerId: string; onCopy?: () 
   );
 }
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink }: {
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink, unreadByPeer }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -890,6 +937,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
   reputationScores: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }> | undefined;
   onInvite?: (peerId: string, alias: string) => void;
   onCopyInviteLink?: (peerId: string) => void;
+  unreadByPeer?: Record<string, { count: number; snippet: string }>;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('reputation');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
@@ -1050,6 +1098,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
           const isSelected = selectedId === peer.id;
           const rep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
           const repScore = rep?.score ?? null;
+          const unread = peer.fullKey ? unreadByPeer?.[peer.fullKey] : undefined;
           const canInvite = repScore !== null && repScore >= 70;
           const inviteTooltip = repScore === null
             ? 'Ping this peer first to establish a reputation score'
@@ -1095,6 +1144,16 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                           color: reputationColor(repScore),
                         }}
                       >{repScore}</span>
+                    )}
+                    {unread && unread.count > 0 && (
+                      <span
+                        className="inline-flex items-center justify-center min-w-[14px] h-3.5 px-1 rounded-full text-[8px] font-bold shrink-0 animate-pulse"
+                        title={`${unread.count} unread message${unread.count > 1 ? 's' : ''}: "${unread.snippet}"`}
+                        style={{
+                          background: 'rgba(6,182,212,0.9)',
+                          color: '#000',
+                        }}
+                      >{unread.count > 9 ? '9+' : unread.count}</span>
                     )}
                   </div>
                   <div className="text-[9px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
@@ -1451,6 +1510,52 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       onInvitePeerHandled?.();
     }
   }, [invitePeerId, livePeers, onInvitePeerHandled]);
+
+  // ── Unread Messages by Sender ─────────────────────────────────────────────
+  // Poll every 10s to know which peers have sent unread messages.
+  // We use lightPeer.peerId as our own peer ID (wallet-derived).
+  const { data: unreadBySenderRaw = [] } = trpc.peerMessages.unreadBySender.useQuery(
+    { myPeerId: lightPeer.peerId! },
+    { enabled: !!lightPeer.peerId, refetchInterval: 10_000 }
+  );
+
+  // Build a lookup: fullKey → { count, snippet }
+  const unreadByPeer = useMemo(() => {
+    const map: Record<string, { count: number; snippet: string }> = {};
+    for (const entry of unreadBySenderRaw) {
+      map[entry.fromPeerId] = { count: entry.count, snippet: entry.snippet };
+    }
+    return map;
+  }, [unreadBySenderRaw]);
+
+  // Fire a toast when a new unread message arrives from a peer we haven't toasted yet.
+  const prevUnreadRef = useRef<Record<string, number>>({});
+  useEffect(() => {
+    const prev = prevUnreadRef.current;
+    for (const entry of unreadBySenderRaw) {
+      const prevCount = prev[entry.fromPeerId] ?? 0;
+      if (entry.count > prevCount) {
+        // Find the peer's alias from livePeers
+        const senderPeer = livePeers.find(p => p.fullKey === entry.fromPeerId);
+        const alias = senderPeer?.alias ?? entry.fromPeerId.slice(0, 12);
+        toast.message(`💬 Message from ${alias}`, {
+          description: entry.snippet,
+          action: {
+            label: 'View',
+            onClick: () => {
+              setActiveTab('topology');
+              if (senderPeer) setSelectedId(senderPeer.id);
+            },
+          },
+          duration: 8000,
+        });
+      }
+    }
+    // Update prev counts
+    const next: Record<string, number> = {};
+    for (const entry of unreadBySenderRaw) next[entry.fromPeerId] = entry.count;
+    prevUnreadRef.current = next;
+  }, [unreadBySenderRaw, livePeers, setActiveTab]);
 
   // ── Peer Reputation ────────────────────────────────────────────────────────
   // Collect all remote peer IDs (short IDs used as keys in livePeers)
@@ -2470,6 +2575,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               onSelect={id => setSelectedId(prev => prev === id ? null : id)}
               pulseIds={pulseIds}
               pingingIds={new Set(Object.entries(pingResults).filter(([, v]) => v.loading).map(([k]) => k))}
+              unreadByPeer={unreadByPeer}
             />
           ) : (
             /* Single node (just "You") — show scanning state inside graph area */
@@ -2540,6 +2646,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             pingResults={pingResults}
             onPing={handlePing}
             reputationScores={reputationData}
+            unreadByPeer={unreadByPeer}
             onInvite={(peerId, alias) => {
               // Switch to Liquidity Channels tab and pre-fill the Open Channel form
               setActiveTab('channels');
