@@ -56,8 +56,8 @@ describe("Signaling Server — Source Code Validation", () => {
     expect(signalingSource).toContain("peer_left");
   });
 
-  it("should use /ws/signaling path for WebSocket upgrade", () => {
-    expect(signalingSource).toContain("/ws/signaling");
+  it("should use /api/ws/signaling path for WebSocket upgrade", () => {
+    expect(signalingSource).toContain("/api/ws/signaling");
   });
 
   it("should store wallet addresses in peer registry", () => {

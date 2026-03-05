@@ -146,15 +146,27 @@ function startCleanup() {
 
 // ─── WebSocket Server Setup ─────────────────────────────────────────────────
 
+const SIGNALING_PATH = "/api/ws/signaling";
+
 export function attachSignalingServer(httpServer: HttpServer) {
-  const wss = new WebSocketServer({
-    server: httpServer,
-    path: "/ws/signaling",
+  // Use noServer mode + manual upgrade handling so the signaling WebSocket
+  // is intercepted BEFORE Vite dev middleware can swallow the upgrade request.
+  // Path is under /api/* so the Manus gateway routes it to our backend.
+  const wss = new WebSocketServer({ noServer: true });
+
+  httpServer.on("upgrade", (req, socket, head) => {
+    const url = req.url?.split("?")[0];
+    if (url === SIGNALING_PATH) {
+      wss.handleUpgrade(req, socket as import("net").Socket, head, (ws) => {
+        wss.emit("connection", ws, req);
+      });
+    }
+    // All other upgrade requests (e.g. Vite HMR) fall through naturally
   });
 
   startCleanup();
 
-  console.log("[Signaling] WebSocket signaling server attached at /ws/signaling");
+  console.log(`[Signaling] WebSocket signaling server attached at ${SIGNALING_PATH}`);
 
   wss.on("connection", (ws, req) => {
     const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;

@@ -82,7 +82,8 @@ export class SignalingClient {
   /** Get the WebSocket URL based on current page origin */
   private getWsUrl(): string {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    return `${proto}//${window.location.host}/ws/signaling`;
+    // Path is under /api/* so the Manus gateway routes it to our backend
+    return `${proto}//${window.location.host}/api/ws/signaling`;
   }
 
   // ── Event Emitter ─────────────────────────────────────────────────────────

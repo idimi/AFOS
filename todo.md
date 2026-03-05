@@ -1059,5 +1059,5 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire peer-to-peer messaging (chat + swap negotiation) through WebRTC data channels
 - [x] Update Network page UI to reflect real remote peer connections and status
 - [x] Write tests for signaling server and peer discovery
-- [x] Fix page refresh loop caused by WebSocket signaling client reconnect (Invalid frame header)
+- [x] Fix page refresh loop: moved signaling WebSocket to /api/ws/signaling, switched to noServer mode with manual upgrade handling, added MAX_RECONNECT_ATTEMPTS=5, stabilized useEffect deps
 - [x] Fix StacksProvider redefine property error (Phantom wallet extension bug — not our code, harmless)
