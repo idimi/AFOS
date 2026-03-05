@@ -43,6 +43,7 @@ interface Peer {
   version: string;
   fullKey?: string; // full public key for ping
   origin?: 'hyperswarm' | 'intercomswap'; // which DHT layer this peer came from
+  lastSeen?: number; // Unix ms timestamp — only set for relay light peers
 }
 
 interface Channel {
@@ -61,6 +62,39 @@ function latencyColor(ms: number): string {
   if (ms < 50) return "#f59e0b";
   if (ms < 100) return "#f97316";
   return "#ef4444";
+}
+
+/** Format a Unix ms timestamp as a human-readable "last seen" string */
+function formatLastSeen(lastSeen: number): string {
+  const diffMs = Date.now() - lastSeen;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 10) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  return `${Math.floor(diffMin / 60)}h ago`;
+}
+
+/** Animated "last seen" badge for Light Peers — updates every 5 seconds */
+function LastSeenBadge({ lastSeen }: { lastSeen: number }) {
+  const [label, setLabel] = useState(() => formatLastSeen(lastSeen));
+  useEffect(() => {
+    setLabel(formatLastSeen(lastSeen));
+    const id = setInterval(() => setLabel(formatLastSeen(lastSeen)), 5_000);
+    return () => clearInterval(id);
+  }, [lastSeen]);
+  const diffSec = Math.floor((Date.now() - lastSeen) / 1000);
+  const color = diffSec < 30 ? '#10b981' : diffSec < 120 ? '#f59e0b' : '#f97316';
+  return (
+    <span
+      title={`Last heartbeat: ${new Date(lastSeen).toLocaleTimeString()}`}
+      className="shrink-0 flex items-center gap-0.5 text-[8px] font-mono"
+      style={{ color }}
+    >
+      <span className="w-1 h-1 rounded-full inline-block" style={{ background: color }} />
+      {label}
+    </span>
+  );
 }
 
 function nodeRadius(peer: Peer): number {
@@ -286,7 +320,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
 
 // ─── Peer Detail Panel ────────────────────────────────────────────────────────
 
-function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
+function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => void; selfPeerId?: string | null }) {
   const color = latencyColor(peer.latency);
   return (
     <motion.div
@@ -347,6 +381,24 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Share</div>
           <CopyInviteLinkButton peerId={peer.fullKey} />
+        </div>
+      )}
+      {/* My Invite Link — only for self peer when wallet is connected */}
+      {peer.id === 'self' && selfPeerId && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">My Invite Link</div>
+          <p className="text-[9px] text-muted-foreground mb-2">
+            Share this link so others can connect to you directly.
+          </p>
+          <CopyInviteLinkButton peerId={selfPeerId} />
+        </div>
+      )}
+      {peer.id === 'self' && !selfPeerId && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">My Invite Link</div>
+          <p className="text-[9px] text-muted-foreground">
+            Connect a wallet to generate your invite link.
+          </p>
         </div>
       )}
     </motion.div>
@@ -658,7 +710,12 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       >{repScore}</span>
                     )}
                   </div>
-                  <div className="text-[9px] text-slate-600">{peer.region} · {peer.pairs[0] || "—"}</div>
+                  <div className="text-[9px] text-slate-600 flex items-center gap-1.5">
+                    {peer.region} · {peer.pairs[0] || "—"}
+                    {peer.origin === 'intercomswap' && peer.lastSeen && (
+                      <LastSeenBadge lastSeen={peer.lastSeen} />
+                    )}
+                  </div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-[10px] font-mono" style={{ color }}>
@@ -860,6 +917,17 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
 
   const lightPeer = useLightPeer();
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
+  const [inviteBannerDismissed, setInviteBannerDismissed] = useState(false);
+
+  // The matched peer from the invite link (if any)
+  const invitedPeer = useMemo(() => {
+    if (!invitePeerId || livePeers.length === 0) return null;
+    return livePeers.find(p =>
+      p.fullKey === invitePeerId ||
+      p.id === invitePeerId ||
+      (p.fullKey && p.fullKey.startsWith(invitePeerId))
+    ) ?? null;
+  }, [invitePeerId, livePeers]);
 
   // Auto-select invited peer from invite link (?peer=<peerId>)
   useEffect(() => {
@@ -994,6 +1062,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                 version: "2.0.0",
                 fullKey: rp.peerId,
                 origin: 'intercomswap' as const,
+                lastSeen: rp.lastSeen,
               };
             })
         : [];
@@ -1487,6 +1556,61 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       {/* Stats */}
       {activeTab === "topology" && <NetworkStats peers={livePeers} channels={liveChannels} />}
 
+      {/* Invite link banner — shown when a ?peer= URL param matched a live peer */}
+      {activeTab === "topology" && invitedPeer && !inviteBannerDismissed && (
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="mx-4 mt-2 rounded-xl px-4 py-3 flex items-center gap-3"
+            style={{
+              background: "rgba(6,182,212,0.08)",
+              border: "1px solid rgba(6,182,212,0.3)",
+            }}
+          >
+            <Link2 className="w-4 h-4 text-cyan-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-cyan-300">
+                Peer found via invite link
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate">
+                <span className="font-mono text-cyan-400">{invitedPeer.alias}</span>
+                {" "}· {invitedPeer.origin === 'intercomswap' ? 'Light Peer' : 'Hyperswarm'}
+                {invitedPeer.online ? (
+                  <span className="ml-1 text-emerald-400">● online</span>
+                ) : (
+                  <span className="ml-1 text-slate-500">● offline</span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedId(invitedPeer.id);
+                window.dispatchEvent(new CustomEvent('afos:navigate-swaps', { detail: { peerId: invitedPeer.fullKey || invitedPeer.id } }));
+              }}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+              style={{
+                background: "rgba(6,182,212,0.2)",
+                border: "1px solid rgba(6,182,212,0.4)",
+                color: "#06b6d4",
+              }}
+            >
+              <Zap className="w-3 h-3" />
+              Swap Now
+            </button>
+            <button
+              onClick={() => setInviteBannerDismissed(true)}
+              className="shrink-0 text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
+              title="Dismiss"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        </AnimatePresence>
+      )}
+
       {/* Topology content */}
       {activeTab === "topology" && (
       <>
@@ -1714,7 +1838,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           {/* Peer detail overlay */}
           <AnimatePresence>
             {selectedPeer && (
-              <PeerDetail peer={selectedPeer} onClose={() => setSelectedId(null)} />
+              <PeerDetail peer={selectedPeer} onClose={() => setSelectedId(null)} selfPeerId={lightPeer.peerId} />
             )}
           </AnimatePresence>
 

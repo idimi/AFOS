@@ -2899,6 +2899,13 @@ export default function Dashboard() {
     return () => window.removeEventListener('afos:open-wallet', handler);
   }, []);
 
+  // Listen for navigate-swaps event from NetworkPage "Swap Now" button
+  useEffect(() => {
+    const handler = () => setActivePage('swaps');
+    window.addEventListener('afos:navigate-swaps', handler);
+    return () => window.removeEventListener('afos:navigate-swaps', handler);
+  }, []);
+
   // Swipe-right from left edge to open drawer
   const swipeTouchStartX = useRef<number | null>(null);
   const handleGlobalTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {

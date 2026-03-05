@@ -1006,3 +1006,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Peer type badges in Peer Directory — "Light Peer" (cyan) vs "Hyperswarm" (emerald) colored tags
 - [ ] Copy Invite Link button — generates ?peer=<peerId> shareable URL for direct peer connection
 - [ ] Handle ?peer= URL param on load — auto-highlight or connect to the specified peer
+
+## P2P UX Improvements (Mar 5, 2026)
+- [x] Add "My invite link" button to self-peer popup
+- [x] Show "Peer found via invite link" banner when ?peer= matches
+- [x] Add heartbeat "last seen" timestamp to Light Peer rows in Peer Directory
