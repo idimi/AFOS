@@ -1027,3 +1027,8 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix SOL balance showing "—" / $0.00 when connected via Phantom multi-chain (fetched via direct Solana RPC in connectPhantomMultiChain)
 - [x] Fix connected toast showing only Ethereum address — now shows all 3 addresses (SOL + ETH + BTC) by suppressing standalone ETH/BTC toasts when isPhantom=true
+
+## SOL Balance Still $0 + Chat Welcome Multi-Chain
+
+- [x] Fix SOL balance still showing $0 — routed through backend tRPC procedure (getSolanaBalanceByAddress) to avoid browser CORS/403 from Solana public RPC
+- [x] Update chat welcome message to show all connected chain balances (SOL + ETH + BTC) — checks phantomMultiChain.solanaBalances as fallback

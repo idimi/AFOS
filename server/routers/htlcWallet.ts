@@ -420,6 +420,72 @@ export const htlcWalletRouter = router({
    *   Ethereum: ETH, USDT (ERC-20), USDC (ERC-20)
    *   Bitcoin:  BTC
    */
+  /**
+   * Fetch SOL + SPL token balances for any Solana address.
+   * Used by the frontend when Phantom connects via multi-chain flow
+   * (bypassing the wallet adapter) and needs server-side RPC access.
+   */
+  getSolanaBalanceByAddress: publicProcedure
+    .input(z.object({ address: z.string().min(32).max(50) }))
+    .query(async ({ input }) => {
+      const { address } = input;
+      const RPC_ENDPOINTS = [
+        "https://api.mainnet-beta.solana.com",
+        "https://solana-mainnet.rpc.extrnode.com",
+      ];
+
+      let solBal = 0;
+      let live = false;
+
+      // Fetch native SOL balance
+      for (const rpc of RPC_ENDPOINTS) {
+        try {
+          const connection = new Connection(rpc, "confirmed");
+          const lamports = await connection.getBalance(new PublicKey(address));
+          solBal = lamports / LAMPORTS_PER_SOL;
+          live = true;
+          break;
+        } catch { /* try next endpoint */ }
+      }
+
+      // Fetch SPL token balances
+      const [usdtBal, usdcBal] = await Promise.all([
+        fetchSplBalance(address, SOL_USDT_MINT),
+        fetchSplBalance(address, SOL_USDC_MINT),
+      ]);
+
+      // Fetch SOL price from CoinGecko
+      let solUsdPrice = 0;
+      try {
+        const priceRes = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (priceRes.ok) {
+          const priceData = await priceRes.json() as { solana: { usd: number } };
+          solUsdPrice = priceData.solana?.usd ?? 0;
+        }
+      } catch { /* price optional */ }
+
+      const solUsd = solBal * solUsdPrice;
+      const usdtUsd = usdtBal ?? 0;
+      const usdcUsd = usdcBal ?? 0;
+      const totalUsd = solUsd + usdtUsd + usdcUsd;
+
+      return {
+        address,
+        live,
+        solBalance: solBal,
+        solUsd,
+        usdtBalance: usdtBal ?? 0,
+        usdtUsd,
+        usdcBalance: usdcBal ?? 0,
+        usdcUsd,
+        totalUsd,
+        solUsdPrice,
+      };
+    }),
+
   getHtlcWallets: publicProcedure.query(async () => {
     const [btc, ethWallets, solWallets] = await Promise.all([
       getBtcHtlcWallet(),

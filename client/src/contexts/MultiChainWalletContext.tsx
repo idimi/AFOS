@@ -238,73 +238,30 @@ async function fetchBtcPriceUsd(): Promise<number> {
   return 0;
 }
 
-// ─── Solana RPC balance fetcher (for Phantom multi-chain path) ───────────────
-
-const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
-const USDT_MINT_SOL = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
-const USDC_MINT_SOL = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+// ─── Solana balance fetcher via backend tRPC (avoids browser CORS/403 from public RPC) ──
 
 async function fetchSolanaBalancesForAddress(
   address: string
 ): Promise<{ balances: Array<{ symbol: string; amount: string; usdValue: number }>; totalUsd: number }> {
   try {
-    // Fetch SOL price
-    let solPrice = 0;
-    try {
-      const priceRes = await fetch("/api/afos/api/prices");
-      if (priceRes.ok) {
-        const priceData = await priceRes.json();
-        solPrice = priceData.prices?.SOL?.usd || priceData.prices?.sol?.usd || 0;
-      }
-    } catch (_) {}
-
-    // Fetch SOL balance via JSON-RPC
-    const solRes = await fetch(SOLANA_RPC, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 1, method: "getBalance",
-        params: [address, { commitment: "confirmed" }],
-      }),
+    // Call our backend tRPC procedure which fetches from Solana RPC server-side
+    const encoded = encodeURIComponent(JSON.stringify({ "0": { json: { address } } }));
+    const res = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
+      credentials: "include",
     });
-    const solData = await solRes.json();
-    const lamports = solData?.result?.value ?? 0;
-    const solAmount = lamports / 1e9;
-
-    // Fetch SPL token accounts (USDT + USDC)
-    const splRes = await fetch(SOLANA_RPC, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0", id: 2, method: "getTokenAccountsByOwner",
-        params: [
-          address,
-          { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
-          { encoding: "jsonParsed" },
-        ],
-      }),
-    });
-    const splData = await splRes.json();
-    const tokenAccounts: Array<{ account: { data: { parsed: { info: { mint: string; tokenAmount: { uiAmount: number } } } } } }> =
-      splData?.result?.value ?? [];
-
-    let usdtAmount = 0;
-    let usdcAmount = 0;
-    for (const acc of tokenAccounts) {
-      const info = acc.account.data.parsed.info;
-      if (info.mint === USDT_MINT_SOL) usdtAmount = info.tokenAmount.uiAmount ?? 0;
-      if (info.mint === USDC_MINT_SOL) usdcAmount = info.tokenAmount.uiAmount ?? 0;
-    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const batchResult = await res.json();
+    const data = batchResult?.[0]?.result?.data?.json;
+    if (!data) throw new Error("No data in response");
 
     const balances = [
-      { symbol: "SOL", amount: solAmount.toFixed(4), usdValue: solAmount * solPrice },
-      { symbol: "USDT", amount: usdtAmount.toFixed(2), usdValue: usdtAmount },
-      { symbol: "USDC", amount: usdcAmount.toFixed(2), usdValue: usdcAmount },
+      { symbol: "SOL",  amount: data.solBalance.toFixed(4),  usdValue: data.solUsd },
+      { symbol: "USDT", amount: data.usdtBalance.toFixed(2), usdValue: data.usdtUsd },
+      { symbol: "USDC", amount: data.usdcBalance.toFixed(2), usdValue: data.usdcUsd },
     ];
-    const totalUsd = balances.reduce((s, b) => s + b.usdValue, 0);
-    return { balances, totalUsd };
+    return { balances, totalUsd: data.totalUsd };
   } catch (err) {
-    console.warn("[MultiChainWallet] SOL balance fetch failed:", err);
+    console.warn("[MultiChainWallet] SOL balance fetch via backend failed:", err);
     return { balances: [], totalUsd: 0 };
   }
 }

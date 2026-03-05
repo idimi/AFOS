@@ -341,20 +341,26 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
   const prevAnyConnectedRef = useRef(false);
 
   // Detect wallet connection and inject personalised welcome message
-  const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
+    const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
   useEffect(() => {
     if (anyConnected && !prevAnyConnectedRef.current) {
       // Build balance lines for each connected chain
       const lines: string[] = [];
-      if (solConnected && balances.length > 0) {
-        const sol = balances.find(b => b.symbol === "SOL");
-        if (sol) lines.push(`SOL balance: **${parseFloat(sol.amount).toFixed(4)} SOL**`);
+      // SOL: check adapter balances first, then Phantom multi-chain balances
+      if (solConnected) {
+        const adapterSol = balances.find(b => b.symbol === "SOL");
+        if (adapterSol && parseFloat(adapterSol.amount) > 0) {
+          lines.push(`SOL: **${parseFloat(adapterSol.amount).toFixed(4)} SOL**`);
+        } else if (phantomMultiChain?.solanaBalances?.length) {
+          const pmSol = phantomMultiChain.solanaBalances.find(b => b.symbol === "SOL");
+          if (pmSol) lines.push(`SOL: **${parseFloat(pmSol.amount).toFixed(4)} SOL**`);
+        }
       }
       if (ethereum?.connected) {
-        lines.push(`ETH balance: **${parseFloat(ethereum.balance).toFixed(4)} ETH**`);
+        lines.push(`ETH: **${parseFloat(ethereum.balance).toFixed(4)} ETH**`);
       }
       if (bitcoin?.connected) {
-        lines.push(`BTC balance: **${parseFloat(bitcoin.balance).toFixed(6)} ₿**`);
+        lines.push(`BTC: **${parseFloat(bitcoin.balance).toFixed(6)} ₿**`);
       }
       const balanceLine = lines.length > 0 ? `\n${lines.join(" · ")}` : "";
       setMessages(prev => [
@@ -369,7 +375,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       ]);
     }
     prevAnyConnectedRef.current = anyConnected;
-  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin]);
+  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin, phantomMultiChain?.solanaBalances]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
