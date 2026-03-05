@@ -427,9 +427,15 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
  * Collapsible direct-message panel shown inside the PeerDetail popup.
  * Messages are stored in the DB via the peerMessages tRPC router.
  */
-function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; otherPeerId: string; otherAlias: string }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
+function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }: {
+  myPeerId: string;
+  otherPeerId: string;
+  otherAlias: string;
+  initialDraft?: string;
+  autoOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(autoOpen ?? false);
+  const [draft, setDraft] = useState(initialDraft ?? '');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -446,6 +452,17 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; oth
   });
 
   const markRead = trpc.peerMessages.markRead.useMutation();
+
+  // When a pair badge is clicked, the parent updates initialDraft + autoOpen.
+  // Sync those changes into local state so the chat opens and pre-fills.
+  useEffect(() => {
+    if (initialDraft !== undefined && initialDraft !== '') {
+      setDraft(initialDraft);
+      setOpen(true);
+      // Focus the input after the panel opens
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [initialDraft]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -584,6 +601,21 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
   const dbRep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
   const repScore = dbRep?.score ?? peer.reputation;
   const trust = trustLevel(repScore);
+
+  // When a pair badge is clicked, pre-fill the DM with a trade inquiry template.
+  // Using a counter suffix forces the useEffect in PeerChat to re-fire even if the
+  // same pair is clicked twice in a row.
+  const [pairDraftKey, setPairDraftKey] = useState(0);
+  const [pairDraft, setPairDraft] = useState('');
+
+  const handlePairClick = (pair: string) => {
+    if (!selfPeerId || !peer.fullKey || peer.id === 'self') return;
+    const [base, quote] = pair.split('/');
+    const template = `Hey ${peer.alias}, interested in ${base}/${quote} — are you quoting? What's your rate?`;
+    setPairDraft(template);
+    setPairDraftKey(k => k + 1);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -671,21 +703,44 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
           <div className="flex flex-wrap gap-1">
-            {peer.pairs.map(pair => (
-              <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-                style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.8)" }}>
-                {pair}
-              </span>
-            ))}
+            {peer.pairs.map(pair => {
+              const isClickable = peer.id !== 'self' && !!peer.fullKey && !!selfPeerId;
+              return (
+                <button
+                  key={pair}
+                  onClick={() => isClickable && handlePairClick(pair)}
+                  title={isClickable ? `Message ${peer.alias} about ${pair}` : pair}
+                  className="px-1.5 py-0.5 rounded text-[9px] font-mono transition-all"
+                  style={{
+                    background: "rgba(6,182,212,0.1)",
+                    border: "1px solid rgba(6,182,212,0.2)",
+                    color: "rgba(6,182,212,0.8)",
+                    cursor: isClickable ? 'pointer' : 'default',
+                  }}
+                  onMouseEnter={e => { if (isClickable) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(6,182,212,0.22)'; }}
+                  onMouseLeave={e => { if (isClickable) (e.currentTarget as HTMLButtonElement).style.background = 'rgba(6,182,212,0.1)'; }}
+                >
+                  {pair}
+                </button>
+              );
+            })}
           </div>
+          {peer.id !== 'self' && !!peer.fullKey && !!selfPeerId && (
+            <p className="text-[8px] text-muted-foreground/50 mt-1">
+              Click a pair to send a quick trade inquiry
+            </p>
+          )}
         </div>
 
         {/* Direct Message — only for remote peers when own wallet is connected */}
         {peer.id !== 'self' && peer.fullKey && selfPeerId && (
           <PeerChat
+            key={pairDraftKey}
             myPeerId={selfPeerId}
             otherPeerId={peer.fullKey}
             otherAlias={peer.alias}
+            initialDraft={pairDraft}
+            autoOpen={pairDraft !== ''}
           />
         )}
         {/* Copy Invite Link — only for remote peers with a fullKey */}

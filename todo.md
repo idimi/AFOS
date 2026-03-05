@@ -1104,3 +1104,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add periodic re-ping every 30s for connected peers
 - [x] Add latency history sparkline in PeerDetail overlay panel
 - [x] Add visual ping animation on topology edge when ping is in progress
+
+## Pair Badge → Direct Message Quick Trade
+
+- [x] Clicking an active pair badge in PeerDetail opens DM section and pre-fills input with trade inquiry template for that pair
