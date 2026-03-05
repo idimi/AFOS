@@ -163,9 +163,9 @@ function ToggleRow({
       </div>
       {warning && value && (
         <div className="flex items-start gap-2 p-3 rounded-lg"
-          style={{ background: "rgba(245,158,11,0.15)", border: "1.5px solid rgba(180,110,0,0.5)" }}>
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#92400e" }} />
-          <p className="text-[11px] font-semibold" style={{ color: "#78350f" }}>{warning}</p>
+          style={{ background: "var(--warning-bg)", border: "1.5px solid var(--warning-border)" }}>
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "var(--warning-icon)" }} />
+          <p className="text-[11px] font-semibold" style={{ color: "var(--warning-foreground)" }}>{warning}</p>
         </div>
       )}
     </div>
@@ -215,6 +215,7 @@ function SectionCard({
 // ─── Main component ──────────────────────────────────────────────────────────────
 export default function AgentSettings() {
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const [savedFlash, setSavedFlash] = useState(false);
 
   // ── Remote state ──────────────────────────────────────────────────────────────
   const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
@@ -241,6 +242,8 @@ export default function AgentSettings() {
       toast.success("Settings saved", {
         description: "Your trading preferences have been updated.",
       });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
     },
     onSettled: () => {
       utils.settings.get.invalidate();
@@ -409,7 +412,7 @@ export default function AgentSettings() {
             {parseFloat(effectiveSlippage) > 1 && (
               <div className="flex items-center gap-1.5 mt-1.5">
                 <AlertTriangle className="w-3 h-3 text-amber-400" />
-                <p className="text-[11px] font-semibold" style={{ color: "#78350f" }}>High slippage — you may receive a worse rate.</p>
+                <p className="text-[11px] font-semibold" style={{ color: "var(--warning-foreground)" }}>High slippage — you may receive a worse rate.</p>
               </div>
             )}
           </div>
@@ -521,14 +524,19 @@ export default function AgentSettings() {
           onClick={handleSave}
           disabled={saveMutation.isPending}
           className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60"
-          style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
+          style={savedFlash
+            ? { background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.45)", color: "#34d399" }
+            : { background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }
+          }
         >
           {saveMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : savedFlash ? (
+            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 8 6 12 14 4" /></svg>
           ) : (
             <Save className="w-4 h-4" />
           )}
-          {saveMutation.isPending ? "Saving…" : "Save Settings"}
+          {saveMutation.isPending ? "Saving…" : savedFlash ? "Saved ✓" : "Save Settings"}
         </button>
       </div>
     </div>

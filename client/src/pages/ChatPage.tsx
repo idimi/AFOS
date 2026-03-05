@@ -19,6 +19,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { Link } from "wouter";
+import { SUPPORTED_WALLETS_TEXT } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1062,7 +1063,7 @@ export default function ChatPage() {
               Connect Wallet
             </button>
             <p className="text-[10px] text-muted-foreground">
-              Supports Phantom, MetaMask, Coinbase, Solflare, Tap Wallet · Non-custodial
+              Supports {SUPPORTED_WALLETS_TEXT} · Non-custodial
             </p>
           </div>
         </div>

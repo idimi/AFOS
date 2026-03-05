@@ -87,6 +87,11 @@
   --violet: oklch(0.55 0.22 290);
   --success: oklch(0.65 0.18 155);
   --warning: oklch(0.78 0.18 85);
+  /* Warning banner tokens — dark mode: light amber text on dark amber bg */
+  --warning-bg: oklch(0.55 0.15 75 / 0.18);
+  --warning-border: oklch(0.65 0.18 75 / 0.55);
+  --warning-foreground: oklch(0.88 0.12 80);
+  --warning-icon: oklch(0.78 0.18 75);
   --glass-bg: oklch(0.14 0.025 260 / 0.55);
   --glass-border: oklch(0.55 0.1 220 / 0.2);
   --glow-cyan: 0 0 20px oklch(0.72 0.18 195 / 0.4);
@@ -135,6 +140,11 @@
   --violet: oklch(0.52 0.2 290);
   --success: oklch(0.52 0.16 155);
   --warning: oklch(0.62 0.16 75);
+  /* Warning banner tokens — light mode: dark brown text on light amber bg */
+  --warning-bg: oklch(0.92 0.1 80 / 0.35);
+  --warning-border: oklch(0.55 0.15 65 / 0.55);
+  --warning-foreground: oklch(0.32 0.1 55);
+  --warning-icon: oklch(0.42 0.13 60);
   --glass-bg: oklch(1 0 0 / 0.7);
   --glass-border: oklch(0.75 0.04 220 / 0.35);
   --glow-cyan: 0 0 20px oklch(0.52 0.18 210 / 0.2);

@@ -971,3 +971,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace "Send to Agent" button with "Connect Wallet" button when no wallet is connected
 - [x] Connect Wallet button opens the wallet modal (ConnectWalletModal)
 - [x] Save checkpoint
+
+## Polish — Theme-Aware Warnings + Save Confirmation + Wallet Text Sync
+- [x] Add --warning-foreground and --warning-bg CSS variables to .light and .dark blocks in index.css
+- [x] Update AgentSettings.tsx warning banners to use CSS variables instead of hardcoded #78350f
+- [x] Settings save button: show inline "Saved ✓" success state for 2s after mutation completes
+- [x] Centralise SUPPORTED_WALLETS_TEXT constant in shared/const.ts
+- [x] Update ChatPage to use the shared constant (only consumer found)
+- [x] Save checkpoint
