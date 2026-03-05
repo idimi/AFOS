@@ -965,3 +965,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] MiniChatWidget: after wallet connects, inject personalised welcome message with all chain balances (SOL, ETH, BTC)
 - [x] QuickActions: disable "New Swap" button when no wallet connected; show tooltip "Connect a wallet to swap" on hover
 - [x] Save checkpoint
+
+## Swaps Page — Wallet Gate on Action Buttons
+- [x] Replace "Swap Now" button with "Connect Wallet" button when no wallet is connected
+- [x] Replace "Send to Agent" button with "Connect Wallet" button when no wallet is connected
+- [x] Connect Wallet button opens the wallet modal (ConnectWalletModal)
+- [x] Save checkpoint
