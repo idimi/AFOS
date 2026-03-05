@@ -947,3 +947,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Pass openId from useAuth to sendMessage, buildSwapTx, executeEthSwap mutation calls
 - [x] 147 tests passing, 0 TypeScript errors
 - [x] Save checkpoint
+
+## Chat Input Wallet Gate
+
+- [x] MiniChatWidget (Overview): replace input with compact "Connect wallet to chat" gradient button when no wallet connected
+- [x] MiniChatWidget (Overview): hide quick-action chips when no wallet connected
+- [x] ChatPage: replace input + quick-action chips with Connect Wallet prompt card when no wallet connected
+- [x] ChatPage: prompt card shows Wallet icon, title, description, and Connect Wallet button that opens modal
+- [x] Both: once wallet connects, the prompt disappears and the input becomes available
+- [x] 147 tests passing, 0 TypeScript errors
+- [x] Save checkpoint

@@ -988,8 +988,8 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestion chips */}
-      {messages.length <= 2 && (
+      {/* Suggestion chips — only when a wallet is connected and few messages */}
+      {(connected || bitcoin?.address || ethereum?.address) && messages.length <= 2 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
           {SUGGESTIONS.map(s => (
             <button
@@ -1003,44 +1003,70 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input */}
-      <div className="px-4 pb-4 pt-2 shrink-0"
-        style={{ borderTop: "1px solid var(--border)" }}>
-        <div className="flex gap-2 items-end">
-          <div className="flex-1 rounded-2xl overflow-hidden flex items-center gap-2 px-4 py-3"
-            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-            <Sparkles className="w-4 h-4 text-muted-foreground shrink-0" />
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="swap 1 USDT to SOL…"
-              disabled={isTyping}
-              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
-            />
+      {/* Input area — gated behind wallet connection */}
+      {(connected || bitcoin?.address || ethereum?.address) ? (
+        <div className="px-4 pb-4 pt-2 shrink-0"
+          style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="flex gap-2 items-end">
+            <div className="flex-1 rounded-2xl overflow-hidden flex items-center gap-2 px-4 py-3"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <Sparkles className="w-4 h-4 text-muted-foreground shrink-0" />
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="swap 1 USDT to SOL…"
+                disabled={isTyping}
+                className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
+              />
+            </div>
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isTyping}
+              className="w-11 h-11 rounded-2xl flex items-center justify-center transition-all shrink-0"
+              style={{
+                background: input.trim() && !isTyping
+                  ? "linear-gradient(135deg, #06b6d4, #8b5cf6)"
+                  : "var(--muted)",
+                opacity: input.trim() && !isTyping ? 1 : 0.5,
+              }}>
+              {isTyping ? (
+                <Loader2 className="w-4 h-4 text-foreground animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 text-white" />
+              )}
+            </button>
           </div>
-          <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || isTyping}
-            className="w-11 h-11 rounded-2xl flex items-center justify-center transition-all shrink-0"
-            style={{
-              background: input.trim() && !isTyping
-                ? "linear-gradient(135deg, #06b6d4, #8b5cf6)"
-                : "var(--muted)",
-              opacity: input.trim() && !isTyping ? 1 : 0.5,
-            }}>
-            {isTyping ? (
-              <Loader2 className="w-4 h-4 text-foreground animate-spin" />
-            ) : (
-              <Send className="w-4 h-4 text-white" />
-            )}
-          </button>
+          <p className="text-[10px] text-muted-foreground text-center mt-2">
+            AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 1inch
+          </p>
         </div>
-        <p className="text-[10px] text-muted-foreground text-center mt-2">
-          AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 1inch
-        </p>
-      </div>
+      ) : (
+        /* Connect Wallet prompt — shown when no wallet is connected */
+        <div className="px-4 pb-5 pt-3 shrink-0" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="rounded-2xl p-5 flex flex-col items-center gap-3 text-center"
+            style={{ background: "color-mix(in srgb, var(--foreground) 4%, var(--background))", border: "1px solid var(--border)" }}>
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.15), rgba(139,92,246,0.15))", border: "1px solid rgba(6,182,212,0.3)" }}>
+              <Wallet className="w-6 h-6 text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Connect a wallet to start</p>
+              <p className="text-xs text-muted-foreground mt-1">You need a wallet to ask questions or request swaps</p>
+            </div>
+            <button
+              onClick={() => { setWalletModalChain("solana"); setShowWalletModal(true); }}
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all active:scale-[0.97] hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}>
+              Connect Wallet
+            </button>
+            <p className="text-[10px] text-muted-foreground">
+              Supports Phantom, MetaMask, Coinbase, Xverse · Non-custodial
+            </p>
+          </div>
+        </div>
+      )}
       <ConnectWalletModal
         open={showWalletModal}
         onClose={() => setShowWalletModal(false)}

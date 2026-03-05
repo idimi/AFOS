@@ -602,8 +602,8 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick chips — auto-cycling slider, only when few messages */}
-      {messages.length <= 2 && (
+      {/* Quick chips — auto-cycling slider, only when wallet connected and few messages */}
+      {(publicKey || bitcoin?.address) && messages.length <= 2 && (
         <div
           className="px-3 pb-1.5 shrink-0"
           onMouseEnter={() => setChipPaused(true)}
@@ -668,41 +668,55 @@ function MiniChatWidget({ onOpenFullChat }: { onOpenFullChat: () => void }) {
         </div>
       )}
 
-      {/* Input */}
-      <div className="px-3 pb-3 pt-1.5 shrink-0 border-t border-border">
-        <div className="flex gap-2 items-center">
-          <div
-            className="flex-1 rounded-xl flex items-center gap-2 px-3 py-2.5 transition-all duration-150"
-            style={{
-              background: "color-mix(in srgb, var(--foreground) 6%, var(--background))",
-              border: "1.5px solid color-mix(in srgb, var(--foreground) 18%, transparent)",
-            }}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder="Ask AFOS — e.g. swap 1 USDT to SOL"
-              disabled={isTyping}
-              className="flex-1 bg-transparent text-xs text-foreground outline-none"
-              style={{ color: "var(--foreground)", caretColor: "#06b6d4" }}
-            />
+      {/* Input area — gated behind wallet connection */}
+      {(publicKey || bitcoin?.address) ? (
+        <div className="px-3 pb-3 pt-1.5 shrink-0 border-t border-border">
+          <div className="flex gap-2 items-center">
+            <div
+              className="flex-1 rounded-xl flex items-center gap-2 px-3 py-2.5 transition-all duration-150"
+              style={{
+                background: "color-mix(in srgb, var(--foreground) 6%, var(--background))",
+                border: "1.5px solid color-mix(in srgb, var(--foreground) 18%, transparent)",
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <input
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                placeholder="Ask AFOS — e.g. swap 1 USDT to SOL"
+                disabled={isTyping}
+                className="flex-1 bg-transparent text-xs text-foreground outline-none"
+                style={{ color: "var(--foreground)", caretColor: "#06b6d4" }}
+              />
+            </div>
+            <button
+              onClick={() => handleSend()}
+              disabled={!input.trim() || isTyping}
+              className="w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0"
+              style={{
+                background: input.trim() && !isTyping ? "linear-gradient(135deg, #06b6d4, #8b5cf6)" : "var(--muted)",
+                opacity: input.trim() && !isTyping ? 1 : 0.5,
+              }}
+            >
+              {isTyping ? <Loader2 className="w-3 h-3 text-foreground animate-spin" /> : <Send className="w-3 h-3 text-white" />}
+            </button>
           </div>
+        </div>
+      ) : (
+        /* Connect Wallet prompt — compact version for mini widget */
+        <div className="px-3 pb-3 pt-2 shrink-0 border-t border-border">
           <button
-            onClick={() => handleSend()}
-            disabled={!input.trim() || isTyping}
-            className="w-8 h-8 rounded-xl flex items-center justify-center transition-all shrink-0"
-            style={{
-              background: input.trim() && !isTyping ? "linear-gradient(135deg, #06b6d4, #8b5cf6)" : "var(--muted)",
-              opacity: input.trim() && !isTyping ? 1 : 0.5,
-            }}
+            onClick={onOpenFullChat}
+            className="w-full rounded-xl py-2.5 flex items-center justify-center gap-2 text-xs font-semibold transition-all active:scale-[0.97] hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
           >
-            {isTyping ? <Loader2 className="w-3 h-3 text-foreground animate-spin" /> : <Send className="w-3 h-3 text-white" />}
+            <Wallet className="w-3.5 h-3.5" />
+            Connect wallet to chat
           </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
