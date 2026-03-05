@@ -296,6 +296,29 @@ export default function AgentSettings() {
     },
   });
 
+  // ── Danger Zone mutations ────────────────────────────────────────────────────
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showClearBlocksConfirm, setShowClearBlocksConfirm] = useState(false);
+  const [showClearMutesConfirm, setShowClearMutesConfirm] = useState(false);
+
+  const clearBlocksMutation = trpc.peerBlocks.clearAll.useMutation({
+    onSuccess: (res) => {
+      refetchBlocked();
+      setShowClearBlocksConfirm(false);
+      toast.success(`Cleared ${res.deleted} blocked peer${res.deleted !== 1 ? 's' : ''}`);
+    },
+    onError: () => toast.error('Failed to clear blocked peers'),
+  });
+
+  const clearMutesMutation = trpc.peerMutes.clearAll.useMutation({
+    onSuccess: (res) => {
+      refetchMuted();
+      setShowClearMutesConfirm(false);
+      toast.success(`Cleared ${res.deleted} muted peer${res.deleted !== 1 ? 's' : ''}`);
+    },
+    onError: () => toast.error('Failed to clear muted peers'),
+  });
+
   // ── Local draft state (mirrors remote, editable before save) ─────────────────
   const [maxTxAmount, setMaxTxAmount] = useState("500");
   const [autoConfirm, setAutoConfirm] = useState(false);
@@ -669,6 +692,143 @@ export default function AgentSettings() {
         </SectionCard>
 
       </div>
+
+      {/* ── Danger Zone ─────────────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="rounded-2xl p-5 space-y-4 mt-4"
+        style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.2)' }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <AlertTriangle className="w-4 h-4 text-red-400" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-red-400">Danger Zone</p>
+            <p className="text-xs text-muted-foreground">Irreversible actions — proceed with caution</p>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {/* Reset all settings */}
+          <div className="flex items-center justify-between gap-4 py-3 px-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
+            <div>
+              <p className="text-sm font-medium text-foreground">Reset all settings</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Restore all trading preferences to factory defaults</p>
+            </div>
+            {!showResetConfirm ? (
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset
+              </button>
+            ) : (
+              <div className="shrink-0 flex items-center gap-2">
+                <span className="text-xs text-red-400 font-medium">Confirm?</span>
+                <button
+                  onClick={() => { handleReset(); setShowResetConfirm(false); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171' }}
+                >
+                  Yes, reset
+                </button>
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Clear blocked peers */}
+          <div className="flex items-center justify-between gap-4 py-3 px-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
+            <div>
+              <p className="text-sm font-medium text-foreground">Clear all blocked peers</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Unblock all {blockedPeersRaw.length > 0 ? `${blockedPeersRaw.length} ` : ''}blocked peer{blockedPeersRaw.length !== 1 ? 's' : ''} — they can message you again
+              </p>
+            </div>
+            {!showClearBlocksConfirm ? (
+              <button
+                onClick={() => setShowClearBlocksConfirm(true)}
+                disabled={blockedPeersRaw.length === 0 || !lightPeer.peerId}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                <UserX className="w-3.5 h-3.5" />
+                Clear all
+              </button>
+            ) : (
+              <div className="shrink-0 flex items-center gap-2">
+                <span className="text-xs text-red-400 font-medium">Confirm?</span>
+                <button
+                  onClick={() => clearBlocksMutation.mutate({ blockerPeerId: lightPeer.peerId! })}
+                  disabled={clearBlocksMutation.isPending}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+                  style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171' }}
+                >
+                  {clearBlocksMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Yes, clear'}
+                </button>
+                <button
+                  onClick={() => setShowClearBlocksConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Clear muted peers */}
+          <div className="flex items-center justify-between gap-4 py-3 px-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
+            <div>
+              <p className="text-sm font-medium text-foreground">Clear all muted peers</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Unmute all {mutedPeersRaw.length > 0 ? `${mutedPeersRaw.length} ` : ''}muted peer{mutedPeersRaw.length !== 1 ? 's' : ''} — you will receive their notifications again
+              </p>
+            </div>
+            {!showClearMutesConfirm ? (
+              <button
+                onClick={() => setShowClearMutesConfirm(true)}
+                disabled={mutedPeersRaw.length === 0 || !lightPeer.peerId}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171' }}
+              >
+                <BellOff className="w-3.5 h-3.5" />
+                Clear all
+              </button>
+            ) : (
+              <div className="shrink-0 flex items-center gap-2">
+                <span className="text-xs text-red-400 font-medium">Confirm?</span>
+                <button
+                  onClick={() => clearMutesMutation.mutate({ muterPeerId: lightPeer.peerId! })}
+                  disabled={clearMutesMutation.isPending}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-60"
+                  style={{ background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171' }}
+                >
+                  {clearMutesMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Yes, clear'}
+                </button>
+                <button
+                  onClick={() => setShowClearMutesConfirm(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
 
       {/* Save / Reset buttons */}
       <div className="mt-6 flex items-center justify-between gap-3">

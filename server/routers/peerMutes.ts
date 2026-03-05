@@ -79,4 +79,16 @@ export const peerMutesRouter = router({
         .where(eq(peerMutes.muterPeerId, input.muterPeerId))
         .orderBy(desc(peerMutes.createdAt));
     }),
+
+  /** Clear ALL mutes set by this peer. Used in the Danger Zone of Settings. */
+  clearAll: publicProcedure
+    .input(z.object({ muterPeerId: z.string().min(1).max(128) }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { ok: false, deleted: 0 };
+      const result = await db
+        .delete(peerMutes)
+        .where(eq(peerMutes.muterPeerId, input.muterPeerId));
+      return { ok: true, deleted: (result as any).affectedRows ?? 0 };
+    }),
 });

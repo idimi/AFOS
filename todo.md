@@ -1242,3 +1242,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace "Connect Account" prompt with "Connect Wallet" prompt
 - [x] Show settings content to all users (wallet-connected or not)
 - [x] Wallet-dependent settings (save/sync) should prompt wallet connect, not OAuth login
+
+## Settings — Danger Zone & Admin Route Guard
+
+- [x] Add server-side /admin route guard middleware (403 for non-admin before React loads)
+- [x] Add Danger Zone section to Settings page
+- [x] Add "Reset all settings" confirmation dialog in Danger Zone
+- [x] Add "Clear all blocked peers" bulk action with confirmation in Danger Zone
+- [x] Add "Clear all muted peers" bulk action with confirmation in Danger Zone
+- [x] Run tests after changes (228 pass)
+
+## Settings Page — Mobile Scroll Fix
+
+- [ ] Fix Settings page not scrolling on mobile

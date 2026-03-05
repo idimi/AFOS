@@ -129,4 +129,23 @@ export const peerBlocksRouter = router({
 
       return rows;
     }),
+
+  /**
+   * Clear ALL blocks set by this peer. Used in the Danger Zone of Settings.
+   */
+  clearAll: publicProcedure
+    .input(z.object({ blockerPeerId: z.string().min(1).max(128) }))
+    .mutation(async ({ input }) => {
+      const { getDb } = await import("../db");
+      const { peerBlocks } = await import("../../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return { ok: false, deleted: 0 };
+
+      const result = await db
+        .delete(peerBlocks)
+        .where(eq(peerBlocks.blockerPeerId, input.blockerPeerId));
+
+      return { ok: true, deleted: (result as any).affectedRows ?? 0 };
+    }),
 });
