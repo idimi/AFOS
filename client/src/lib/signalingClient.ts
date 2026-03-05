@@ -58,8 +58,9 @@ const RTC_CONFIG: RTCConfiguration = {
 };
 
 const HEARTBEAT_INTERVAL = 30_000;
-const RECONNECT_DELAY = 3_000;
-const MAX_RECONNECT_DELAY = 30_000;
+const RECONNECT_DELAY = 5_000;
+const MAX_RECONNECT_DELAY = 60_000;
+const MAX_RECONNECT_ATTEMPTS = 5; // Stop reconnecting after 5 failures to prevent loops
 
 // ─── Signaling Client ────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export class SignalingClient {
   private remotePeers = new Map<string, RemotePeer>();
   private isRegistered = false;
   private intentionalClose = false;
+  private reconnectAttempts = 0;
 
   /** Get the WebSocket URL based on current page origin */
   private getWsUrl(): string {
@@ -97,12 +99,25 @@ export class SignalingClient {
 
   // ── Connection Management ─────────────────────────────────────────────────
 
+  /** Reset reconnect state — allows retrying after max attempts reached */
+  resetReconnect() {
+    this.reconnectAttempts = 0;
+    this.reconnectDelay = RECONNECT_DELAY;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
   connect() {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
 
     this.intentionalClose = false;
+    // Reset attempts on explicit connect (not from auto-reconnect)
+    this.reconnectAttempts = 0;
+    this.reconnectDelay = RECONNECT_DELAY;
     const url = this.getWsUrl();
 
     try {
@@ -116,6 +131,7 @@ export class SignalingClient {
     this.ws.onopen = () => {
       console.log("[SignalingClient] Connected to signaling server");
       this.reconnectDelay = RECONNECT_DELAY;
+      this.reconnectAttempts = 0; // Reset on successful connection
       this.emit("connected");
 
       // Re-register if we had a previous registration
@@ -183,12 +199,18 @@ export class SignalingClient {
 
   private scheduleReconnect() {
     if (this.reconnectTimer || this.intentionalClose) return;
-    console.log(`[SignalingClient] Reconnecting in ${this.reconnectDelay / 1000}s...`);
+    this.reconnectAttempts++;
+    if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+      console.warn(`[SignalingClient] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Signaling offline — will use HTTP fallback only.`);
+      this.emit("error", { message: "Max reconnect attempts reached" });
+      return;
+    }
+    console.log(`[SignalingClient] Reconnecting in ${this.reconnectDelay / 1000}s... (attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();
     }, this.reconnectDelay);
-    this.reconnectDelay = Math.min(this.reconnectDelay * 1.5, MAX_RECONNECT_DELAY);
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_DELAY);
   }
 
   // ── Registration ──────────────────────────────────────────────────────────

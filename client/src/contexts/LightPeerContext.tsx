@@ -343,7 +343,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       setIsRegistered(false);
       setIsOnline(false);
     };
-  }, [peerId, peerAlias, prefs.enabled, prefs.acceptedPairs, solAdapterConnected, solPubkey, phantomSolAddress, ethereum?.address, bitcoin?.address]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId, peerAlias, prefs.enabled, JSON.stringify(prefs.acceptedPairs), solAdapterConnected, solPubkey?.toString(), phantomSolAddress, ethereum?.address, bitcoin?.address]);
 
   // ── Subscribe to live prices via SSE ──────────────────────────────────────
   useEffect(() => {
