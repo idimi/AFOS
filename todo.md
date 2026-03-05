@@ -1096,3 +1096,11 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix ping request failure for signaling peers — REST endpoints moved before Vite middleware so they're no longer caught by SPA fallback
 - [x] Show live latency in topology canvas after successful ping — handlePing now updates livePeers state, edge labels + node labels reflect real RTT
 - [x] Auto-ping on connect for new signaling peers — useEffect watches livePeers for new intercomswap peers and silently pings them with staggered timing
+
+## PeerDetail Modal + Network Graph UX Fixes
+
+- [x] Move Direct Message section above Share section in PeerDetail overlay
+- [x] Expand topology canvas to fill available viewport height (not fixed 480px)
+- [x] Add periodic re-ping every 30s for connected peers
+- [x] Add latency history sparkline in PeerDetail overlay panel
+- [x] Add visual ping animation on topology edge when ping is in progress

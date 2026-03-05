@@ -3250,7 +3250,7 @@ export default function Dashboard() {
 
         {/* Content */}
         {subPage ? (
-          <main className="flex-1 overflow-auto">{subPage}</main>
+          <main className="flex-1 overflow-hidden flex flex-col min-h-0">{subPage}</main>
         ) : (
           /* ── OVERVIEW ── */
           <div className="flex-1 flex flex-col overflow-hidden">

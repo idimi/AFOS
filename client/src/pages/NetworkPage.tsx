@@ -163,12 +163,13 @@ function peerPosition(pubkey: string, index: number, total: number): { lat: numb
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   pulseIds: Set<string>;
+  pingingIds?: Set<string>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
@@ -218,6 +219,12 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
             to { stroke-dashoffset: -20; }
           }
           .channel-active { animation: dash-flow 1.2s linear infinite; }
+          @keyframes ping-travel {
+            0%   { offset-distance: 0%; opacity: 1; }
+            85%  { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+          }
+          .ping-dot { animation: ping-travel 0.9s ease-in-out infinite; }
         `}</style>
       </defs>
 
@@ -241,21 +248,31 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
         const to = peers.find(p => p.id === ch.to);
         if (!from || !to) return null;
         const isSelected = selectedId === ch.from || selectedId === ch.to;
+        const isPinging = pingingIds?.has(ch.to) || pingingIds?.has(ch.from);
+        const x1 = px(from.lat), y1 = py(from.lng);
+        const x2 = px(to.lat), y2 = py(to.lng);
+        const pathId = `edge-path-${i}`;
         return (
           <g key={i}>
+            {/* Hidden path for ping-dot motion path */}
+            {isPinging && (
+              <defs>
+                <path id={pathId} d={`M${x1},${y1} L${x2},${y2}`} />
+              </defs>
+            )}
             {ch.active && (
               <line
-                x1={px(from.lat)} y1={py(from.lng)}
-                x2={px(to.lat)} y2={py(to.lng)}
-                stroke="rgba(6,182,212,0.12)"
+                x1={x1} y1={y1}
+                x2={x2} y2={y2}
+                stroke={isPinging ? "rgba(6,182,212,0.35)" : "rgba(6,182,212,0.12)"}
                 strokeWidth={isSelected ? 6 : 3}
               />
             )}
             <line
-              x1={px(from.lat)} y1={py(from.lng)}
-              x2={px(to.lat)} y2={py(to.lng)}
+              x1={x1} y1={y1}
+              x2={x2} y2={y2}
               stroke={ch.active
-                ? isSelected ? "rgba(6,182,212,0.7)" : "rgba(6,182,212,0.25)"
+                ? isSelected ? "rgba(6,182,212,0.7)" : isPinging ? "rgba(6,182,212,0.5)" : "rgba(6,182,212,0.25)"
                 : inactiveChannelStroke}
               strokeWidth={ch.active ? (isSelected ? 2 : 1.5) : 1}
               strokeDasharray={ch.active ? "6 4" : "3 6"}
@@ -264,16 +281,16 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
             {ch.active && (
               <>
                 <circle
-                  cx={(px(from.lat) + px(to.lat)) / 2}
-                  cy={(py(from.lng) + py(to.lng)) / 2}
+                  cx={(x1 + x2) / 2}
+                  cy={(y1 + y2) / 2}
                   r={3}
                   fill="rgba(6,182,212,0.5)"
                 />
                 {/* Live latency label on the channel edge */}
                 {to.latency > 0 && (
                   <text
-                    x={(px(from.lat) + px(to.lat)) / 2}
-                    y={(py(from.lng) + py(to.lng)) / 2 - 8}
+                    x={(x1 + x2) / 2}
+                    y={(y1 + y2) / 2 - 8}
                     textAnchor="middle"
                     fontSize={8}
                     fill={latencyColor(to.latency)}
@@ -282,6 +299,19 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
                   >
                     {to.latency}ms
                   </text>
+                )}
+                {/* Ping animation: traveling dot along the edge */}
+                {isPinging && (
+                  <circle
+                    r={4}
+                    fill="rgba(6,182,212,0.9)"
+                    filter="url(#glow-cyan)"
+                    style={{
+                      offsetPath: `path('M${x1},${y1} L${x2},${y2}')`,
+                      offsetDistance: '0%',
+                      animation: 'ping-travel 0.9s ease-in-out infinite',
+                    } as React.CSSProperties}
+                  />
                 )}
               </>
             )}
@@ -542,11 +572,12 @@ function trustLevel(score: number): { label: string; color: string } {
   return { label: 'Risky', color: '#ef4444' };
 }
 
-function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
+function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }: {
   peer: Peer;
   onClose: () => void;
   selfPeerId?: string | null;
   reputationScores?: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }>;
+  pingHistory?: number[];
 }) {
   const color = latencyColor(peer.latency);
   // Use DB-persisted reputation score if available, fall back to in-memory value
@@ -603,6 +634,40 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
           ))}
         </div>
 
+        {/* Latency Sparkline — shown when there's at least 2 ping history readings */}
+        {pingHistory && pingHistory.length >= 2 && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[9px] text-muted-foreground uppercase tracking-widest">Latency History</div>
+              <span className="text-[9px] font-mono" style={{ color: latencyColor(pingHistory[pingHistory.length - 1]) }}>
+                {pingHistory[pingHistory.length - 1]}ms
+              </span>
+            </div>
+            <div className="flex items-end gap-0.5 h-8">
+              {pingHistory.map((ms, idx) => {
+                const maxMs = Math.max(...pingHistory, 1);
+                const heightPct = Math.max(10, (ms / maxMs) * 100);
+                return (
+                  <div
+                    key={idx}
+                    className="flex-1 rounded-sm transition-all duration-300"
+                    style={{
+                      height: `${heightPct}%`,
+                      background: latencyColor(ms),
+                      opacity: idx === pingHistory.length - 1 ? 1 : 0.45 + (idx / pingHistory.length) * 0.4,
+                    }}
+                    title={`${ms}ms`}
+                  />
+                );
+              })}
+            </div>
+            <div className="flex justify-between mt-1">
+              <span className="text-[8px] text-muted-foreground/50">oldest</span>
+              <span className="text-[8px] text-muted-foreground/50">latest</span>
+            </div>
+          </div>
+        )}
+
         <div className="mt-3 pt-3 border-t border-border">
           <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Active Pairs</div>
           <div className="flex flex-wrap gap-1">
@@ -615,13 +680,6 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
           </div>
         </div>
 
-        {/* Copy Invite Link — only for remote peers with a fullKey */}
-        {peer.id !== 'self' && peer.fullKey && (
-          <div className="mt-3 pt-3 border-t border-border">
-            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Share</div>
-            <CopyInviteLinkButton peerId={peer.fullKey} />
-          </div>
-        )}
         {/* Direct Message — only for remote peers when own wallet is connected */}
         {peer.id !== 'self' && peer.fullKey && selfPeerId && (
           <PeerChat
@@ -629,6 +687,13 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
             otherPeerId={peer.fullKey}
             otherAlias={peer.alias}
           />
+        )}
+        {/* Copy Invite Link — only for remote peers with a fullKey */}
+        {peer.id !== 'self' && peer.fullKey && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest mb-1.5">Share</div>
+            <CopyInviteLinkButton peerId={peer.fullKey} />
+          </div>
         )}
         {/* My Invite Link — only for self peer when wallet is connected */}
         {peer.id === 'self' && selfPeerId && (
@@ -1267,7 +1332,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   const [newChannel, setNewChannel] = useState({ peer: "", capacity: "", chain: "SOL" as "BTC" | "ETH" | "SOL", feeRate: "100" });
   const [channelSubmitting, setChannelSubmitting] = useState(false);
   // Ping state
-  const [pingResults, setPingResults] = useState<Record<string, { latencyMs: number | null; loading: boolean }>>({}); 
+  const [pingResults, setPingResults] = useState<Record<string, { latencyMs: number | null; loading: boolean; history: number[] }>>({}); 
   const [inviteCode, setInviteCode] = useState("");
   const [invites, setInvites] = useState<{code: string; peer: string; created: Date; used: boolean}[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1502,7 +1567,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
 
   /** Ping a remote peer, update latency display, and persist result to reputation DB */
   const handlePing = useCallback(async (peerId: string, fullKey: string, silent = false) => {
-    setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true } }));
+    setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true, history: prev[peerId]?.history ?? [] } }));
     const peer = livePeers.find(p => p.id === peerId);
     // Route to correct ping endpoint based on peer origin:
     // - 'intercomswap' (signaling/light peers) → local signaling server
@@ -1512,7 +1577,13 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       const result = isSignalingPeer
         ? await pingSignalingPeer(fullKey)
         : await pingPeer(fullKey);
-      setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false } }));
+      setPingResults(prev => {
+        const prevHistory = prev[peerId]?.history ?? [];
+        const newHistory = result.latencyMs !== null
+          ? [...prevHistory, result.latencyMs].slice(-10) // keep last 10 readings
+          : prevHistory;
+        return { ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false, history: newHistory } };
+      });
       // Update the peer's latency in livePeers so the topology canvas reflects the real RTT
       if (result.success && result.latencyMs !== null) {
         setLivePeers(prev => prev.map(p =>
@@ -1536,7 +1607,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         }
       }
     } catch {
-      setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false } }));
+      setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false, history: prev[peerId]?.history ?? [] } }));
       // Record failed ping
       recordPingMutation.mutate({ peerId: fullKey, alias: peer?.alias, origin: isSignalingPeer ? 'intercomswap' : 'hyperswarm', latencyMs: null });
       if (!silent) {
@@ -1698,8 +1769,27 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
     });
   }, [livePeers, handlePing]);
 
+  // ── Periodic re-ping every 30s ─────────────────────────────────────────────
+  // Keep latency values fresh for all connected intercomswap peers.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const connectedPeers = livePeers.filter(p =>
+        p.id !== 'self' &&
+        p.online &&
+        p.origin === 'intercomswap' &&
+        p.fullKey
+      );
+      connectedPeers.forEach((p, idx) => {
+        setTimeout(() => {
+          handlePing(p.id, p.fullKey!, true); // silent = true (no toast)
+        }, idx * 600); // stagger by 600ms
+      });
+    }, 30_000); // every 30 seconds
+    return () => clearInterval(interval);
+  }, [livePeers, handlePing]);
+
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>
+    <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-6" style={{ background: "transparent" }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -2100,7 +2190,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
 
       {/* Topology content */}
       {activeTab === "topology" && (
-      <>
+      <div className="flex-1 flex flex-col min-h-0">
       {/* Loading state */}
       {loading && (
         <div className="flex items-center justify-center py-16">
@@ -2289,15 +2379,14 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
 
       {/* Desktop/tablet main layout */}
       {!loading && (
-      <div className="hidden sm:grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
+      <div className="hidden sm:grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4 flex-1 min-h-0">
 
         {/* Node Graph */}
-        <div className="rounded-2xl overflow-hidden relative"
+        <div className="rounded-2xl overflow-hidden relative flex flex-col min-h-0"
           style={{
             background: "var(--card)",
             border: "1px solid var(--border)",
             backdropFilter: "blur(20px)",
-            height: "480px",
           }}>
 
           {livePeers.length > 1 ? (
@@ -2307,6 +2396,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               selectedId={selectedId}
               onSelect={id => setSelectedId(prev => prev === id ? null : id)}
               pulseIds={pulseIds}
+              pingingIds={new Set(Object.entries(pingResults).filter(([, v]) => v.loading).map(([k]) => k))}
             />
           ) : (
             /* Single node (just "You") — show scanning state inside graph area */
@@ -2328,7 +2418,13 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           {/* Peer detail overlay */}
           <AnimatePresence>
             {selectedPeer && (
-              <PeerDetail peer={selectedPeer} onClose={() => setSelectedId(null)} selfPeerId={lightPeer.peerId} reputationScores={reputationData} />
+              <PeerDetail
+                peer={selectedPeer}
+                onClose={() => setSelectedId(null)}
+                selfPeerId={lightPeer.peerId}
+                reputationScores={reputationData}
+                pingHistory={selectedPeer ? pingResults[selectedPeer.id]?.history : undefined}
+              />
             )}
           </AnimatePresence>
 
@@ -2453,7 +2549,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       </div>
       )}
       {/* end hidden sm:grid */}
-      </>
+      </div>
       )}
     </div>
   );
