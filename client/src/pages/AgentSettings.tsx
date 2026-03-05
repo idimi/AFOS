@@ -30,6 +30,8 @@ import {
   Unlock,
   BellOff,
   Bell,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -49,8 +51,8 @@ const ROUTES = [
     id: "intercomswap",
     label: "IntercomSwap P2P",
     description: "Best rates via peer-to-peer atomic swaps (0.15% fee)",
-    badge: "Recommended",
-    badgeColor: "#10b981",
+    badge: "Active",
+    badgeColor: "#6366f1",
   },
   {
     id: "jupiter",
@@ -77,8 +79,8 @@ const ROUTES = [
     id: "best",
     label: "Best Available",
     description: "Auto-selects: P2P → 0x (ETH) / Jupiter (SOL) → 1inch fallback",
-    badge: null,
-    badgeColor: null,
+    badge: "Recommended",
+    badgeColor: "#10b981",
   },
 ];
 
@@ -235,7 +237,6 @@ export default function AgentSettings() {
   const isWalletConnected = !!(lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
-  const [resetFlash, setResetFlash] = useState(false);
 
   // ── Blocked peers ─────────────────────────────────────────────────────────────
   const { data: blockedPeersRaw = [], refetch: refetchBlocked } = trpc.peerBlocks.listBlocked.useQuery(
@@ -319,6 +320,23 @@ export default function AgentSettings() {
     onError: () => toast.error('Failed to clear muted peers'),
   });
 
+  // ── Test route connection ──────────────────────────────────────────────────────
+  const [routePingState, setRoutePingState] = useState<Record<string, { loading: boolean; ok?: boolean; latencyMs?: number; message?: string }>>({});
+  const testRouteMutation = trpc.settings.testRouteConnection.useMutation({
+    onSuccess: (result, variables) => {
+      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ...result } }));
+    },
+    onError: (err, variables) => {
+      setRoutePingState(prev => ({ ...prev, [variables.routeId]: { loading: false, ok: false, message: err.message } }));
+    },
+  });
+
+  const handleTestRoute = (e: React.MouseEvent, routeId: string) => {
+    e.stopPropagation();
+    setRoutePingState(prev => ({ ...prev, [routeId]: { loading: true } }));
+    testRouteMutation.mutate({ routeId: routeId as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best" });
+  };
+
   // ── Local draft state (mirrors remote, editable before save) ─────────────────
   const [maxTxAmount, setMaxTxAmount] = useState("500");
   const [autoConfirm, setAutoConfirm] = useState(false);
@@ -363,8 +381,6 @@ export default function AgentSettings() {
       theme: "dark",
     });
     toast.success("Settings reset to defaults");
-    setResetFlash(true);
-    setTimeout(() => setResetFlash(false), 2000);
   };
 
   const handleSave = () => {
@@ -562,8 +578,30 @@ export default function AgentSettings() {
                       )}
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{route.description}</p>
+                    {/* Ping result */}
+                    {routePingState[route.id] && !routePingState[route.id].loading && (
+                      <p className={`text-[10px] mt-1 font-medium ${routePingState[route.id].ok ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {routePingState[route.id].ok ? '✓' : '✗'} {routePingState[route.id].message}
+                      </p>
+                    )}
                   </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                  {/* Test Connection button */}
+                  <button
+                    onClick={(e) => handleTestRoute(e, route.id)}
+                    disabled={routePingState[route.id]?.loading}
+                    className="shrink-0 p-1.5 rounded-lg transition-colors hover:bg-white/5 disabled:opacity-50"
+                    title="Test connection"
+                  >
+                    {routePingState[route.id]?.loading ? (
+                      <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+                    ) : routePingState[route.id]?.ok === true ? (
+                      <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : routePingState[route.id]?.ok === false ? (
+                      <WifiOff className="w-3.5 h-3.5 text-red-400" />
+                    ) : (
+                      <Wifi className="w-3.5 h-3.5 text-muted-foreground" />
+                    )}
+                  </button>
                 </button>
               );
             })}
@@ -830,23 +868,8 @@ export default function AgentSettings() {
         </div>
       </motion.div>
 
-      {/* Save / Reset buttons */}
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <button
-          onClick={handleReset}
-          disabled={saveMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm transition-all disabled:opacity-60"
-          style={resetFlash
-            ? { background: 'var(--success-bg)', border: '1px solid var(--success-border)', color: 'var(--success-foreground)' }
-            : { background: 'var(--muted)', border: '1px solid var(--border)', color: 'var(--muted-foreground)' }
-          }
-        >
-          {resetFlash
-            ? <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 8 6 12 14 4" /></svg>
-            : <RotateCcw className="w-3.5 h-3.5" />
-          }
-          {resetFlash ? 'Reset ✓' : 'Reset to defaults'}
-        </button>
+      {/* Save button */}
+      <div className="mt-6 flex items-center justify-end gap-3">
         <button
           onClick={!isWalletConnected ? () => setShowWalletModal(true) : handleSave}
           disabled={saveMutation.isPending}

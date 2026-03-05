@@ -983,8 +983,10 @@ export const chatRouter = router({
         }
       }
 
-      // Apply preferredRoute: if user prefers Jupiter, skip P2P
-      const skipP2P = input.skipP2P || userPrefs.preferredRoute === "jupiter";
+      // Apply preferredRoute: if user prefers Jupiter or 0x (ETH-only, not applicable on Solana), skip P2P
+      const skipP2P = input.skipP2P ||
+        userPrefs.preferredRoute === "jupiter" ||
+        userPrefs.preferredRoute === "zerox"; // 0x is ETH-only; on Solana fall back to Jupiter
 
       if (!userPublicKey) throw new Error("Wallet not connected");
 

@@ -1259,3 +1259,10 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Settings Page — Mobile Scroll Fix (Round 2)
 
 - [x] Fix Settings page still not scrolling on mobile after previous attempt (root overflow:clip + h-dvh + main touch-action:pan-y + WebkitOverflowScrolling + subPage overflow-y-auto)
+
+## Route Badges, Swap Engine Wiring & Test Connection
+
+- [ ] Move "Recommended" badge from IntercomSwap P2P to Best Available card
+- [ ] Give IntercomSwap P2P an "Active" badge (indigo, matching Jupiter and 0x)
+- [ ] Wire preferred route setting from DB to swap engine tRPC procedure
+- [ ] Add "Test Connection" ping button per route with latency/availability feedback
