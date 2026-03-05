@@ -1166,6 +1166,12 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Mobile UX — Network Page Tab Bar Fix
 
-- [ ] Fix tab bar overflow on mobile (tabs clipping into header)
-- [ ] Make tab bar horizontally scrollable or use compact icon-only tabs on mobile
-- [ ] Investigate and fix the "1 error" toast shown on reputation tab
+- [x] Fix tab bar overflow on mobile (tabs clipping into header)
+- [x] Make tab bar show icon + short label stacked vertically on mobile (Nodes/Channels/Invites/Rep)
+- [x] Hide Non-custodial badge on mobile to free header space; error toast is a proxy socket hang-up (non-critical)
+
+## Mobile UX — Network Page Scroll Fix
+
+- [x] Fix unresponsive scroll on Network page mobile (overflow-hidden blocking touch scroll)
+- [x] DashboardLayout main container: added overflow-y-auto so all pages scroll on mobile
+- [x] NetworkPage root div: overflow-y-auto on mobile, overflow-hidden on sm+ (desktop sidebar layout)

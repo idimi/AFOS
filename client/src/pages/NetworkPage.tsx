@@ -2407,7 +2407,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   }, [livePeers, handlePing]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-6" style={{ background: "transparent" }}>
+    <div className="flex-1 flex flex-col overflow-y-auto sm:overflow-hidden p-3 sm:p-6" style={{ background: "transparent" }}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -2461,7 +2461,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             <span className="text-[10px] font-mono hidden sm:inline" style={{ color: lightPeer.isOnline ? "#06b6d4" : "#64748b" }}>IntercomSwap</span>
             <span className="text-[10px] font-mono sm:hidden" style={{ color: lightPeer.isOnline ? "#06b6d4" : "#64748b" }}>IS</span>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
             style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <Shield className="w-3 h-3 text-cyan-400" />
             <span className="text-[10px] font-mono text-cyan-400">Non-custodial</span>
@@ -2472,19 +2472,20 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       {/* Tab bar */}
       <div className="flex gap-1 mb-4 p-1 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
         {([
-          { id: "topology", label: "Topology", icon: <Activity className="w-3.5 h-3.5" /> },
-          { id: "channels", label: "Liquidity Channels", icon: <GitBranch className="w-3.5 h-3.5" /> },
-          { id: "invites", label: "Invites", icon: <Mail className="w-3.5 h-3.5" /> },
-          { id: "leaderboard", label: "Reputation", icon: <Trophy className="w-3.5 h-3.5" /> },
+          { id: "topology", label: "Topology", shortLabel: "Nodes", icon: <Activity className="w-3.5 h-3.5" /> },
+          { id: "channels", label: "Liquidity Channels", shortLabel: "Channels", icon: <GitBranch className="w-3.5 h-3.5" /> },
+          { id: "invites", label: "Invites", shortLabel: "Invites", icon: <Mail className="w-3.5 h-3.5" /> },
+          { id: "leaderboard", label: "Reputation", shortLabel: "Rep", icon: <Trophy className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
+            className="flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 py-2 rounded-lg text-[10px] sm:text-xs font-semibold transition-all min-w-0"
             style={{
               background: activeTab === tab.id ? "var(--card)" : "transparent",
               color: activeTab === tab.id ? "var(--foreground)" : "var(--muted-foreground)",
               boxShadow: activeTab === tab.id ? "0 1px 4px rgba(0,0,0,0.2)" : "none",
             }}>
             {tab.icon}
+            <span className="sm:hidden leading-none">{tab.shortLabel}</span>
             <span className="hidden sm:inline">{tab.label}</span>
           </button>
         ))}
