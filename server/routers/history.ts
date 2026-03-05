@@ -143,6 +143,7 @@ export const historyRouter = router({
   openTrades: publicProcedure
     .input(z.object({
       walletAddresses: z.array(z.string()).default([]),
+      search:          z.string().max(100).default(""),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -154,6 +155,17 @@ export const historyRouter = router({
       const conditions: any[] = [eq(htlcSwaps.status, "pending")];
       if (isWalletScoped) {
         conditions.push(inArray(htlcSwaps.senderAddress, input.walletAddresses));
+      }
+      if (input.search.trim()) {
+        const q = `%${input.search.trim()}%`;
+        conditions.push(
+          or(
+            like(htlcSwaps.peerId, q),
+            like(htlcSwaps.htlcAddress, q),
+            like(htlcSwaps.toToken, q),
+            like(htlcSwaps.senderAddress, q),
+          )
+        );
       }
 
       const trades = await db
@@ -173,6 +185,7 @@ export const historyRouter = router({
   refunds: publicProcedure
     .input(z.object({
       walletAddresses: z.array(z.string()).default([]),
+      search:          z.string().max(100).default(""),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -189,6 +202,17 @@ export const historyRouter = router({
       const conditions: any[] = [statusCondition];
       if (isWalletScoped) {
         conditions.push(inArray(htlcSwaps.senderAddress, input.walletAddresses));
+      }
+      if (input.search.trim()) {
+        const q = `%${input.search.trim()}%`;
+        conditions.push(
+          or(
+            like(htlcSwaps.peerId, q),
+            like(htlcSwaps.htlcAddress, q),
+            like(htlcSwaps.toToken, q),
+            like(htlcSwaps.senderAddress, q),
+          )
+        );
       }
 
       const refunds = await db

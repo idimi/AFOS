@@ -20,6 +20,9 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { recordSwapAnalytic } from "../htlcMonitor";
+import { getDb } from "../db";
+import { htlcSwaps, swapAnalytics } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 import * as bitcoin from "bitcoinjs-lib";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
@@ -389,8 +392,35 @@ export const btcHtlcRouter = router({
         }));
       }
 
-      const txHex = psbt.extractTransaction().toHex();
+       const txHex = psbt.extractTransaction().toHex();
       const txid = await broadcastTx(txHex, network);
+
+      // Update htlcSwaps + swapAnalytics status to "completed" on successful reveal
+      void (async () => {
+        try {
+          const db = await getDb();
+          if (!db) return;
+          // 1. Mark the HTLC lock row as completed
+          await db
+            .update(htlcSwaps)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(htlcSwaps.htlcAddress, htlcAddress));
+          // 2. Find the matching swapAnalytics row via lockTxId and update its status
+          const [htlcRow] = await db
+            .select({ lockTxId: htlcSwaps.lockTxId })
+            .from(htlcSwaps)
+            .where(eq(htlcSwaps.htlcAddress, htlcAddress))
+            .limit(1);
+          if (htlcRow?.lockTxId) {
+            await db
+              .update(swapAnalytics)
+              .set({ status: "completed" })
+              .where(eq(swapAnalytics.txId, htlcRow.lockTxId));
+          }
+        } catch (e) {
+          console.error("[htlcReveal] Failed to update analytics status:", e);
+        }
+      })();
 
       return {
         success: true,
@@ -402,9 +432,8 @@ export const btcHtlcRouter = router({
         message: `BTC HTLC claimed: ${claimAmount.toLocaleString()} sats → ${recipientAddress}. Tx: ${txid}`,
       };
     }),
-
   /**
-   * Refund BTC after HTLC timeout (CLTV expired).
+   * Refund BTC after HTLC timeout (CLTV expired)..
    * Called by the agent if the counterparty never revealed the secret.
    */
   htlcRefund: publicProcedure

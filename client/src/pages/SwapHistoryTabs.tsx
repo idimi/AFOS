@@ -3,14 +3,50 @@
  * Production: pulls live data from tRPC history procedures (wallet-scoped)
  */
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet, Search } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
 interface TabProps {
   walletAddresses: string[];
+  search?: string;
+}
+
+// ─── Shared Search Bar ────────────────────────────────────────────────────────
+
+export function HtlcSearchBar({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-2 px-3 py-2 rounded-xl"
+      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+    >
+      <Search className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+      <input
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Search peer, HTLC address, token…"
+        className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          className="text-muted-foreground/60 hover:text-foreground text-xs leading-none"
+        >
+          ✕
+        </button>
+      )}
+    </div>
+  );
 }
 
 // ─── HtlcSwap row type (mirrors drizzle schema) ───────────────────────────────
@@ -101,9 +137,9 @@ function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
   };
 }
 
-export function OpenTradesTab({ walletAddresses }: TabProps) {
+export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
   const { data, isLoading } = trpc.history.openTrades.useQuery(
-    { walletAddresses },
+    { walletAddresses, search },
     { refetchInterval: 15000 }
   );
 
@@ -294,9 +330,9 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
   };
 }
 
-export function RefundsTab({ walletAddresses }: TabProps) {
+export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   const { data, isLoading } = trpc.history.refunds.useQuery(
-    { walletAddresses },
+    { walletAddresses, search },
     { refetchInterval: 30000 }
   );
 

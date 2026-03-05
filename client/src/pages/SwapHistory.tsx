@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
-import { OpenTradesTab, RefundsTab } from "./SwapHistoryTabs";
+import { OpenTradesTab, RefundsTab, HtlcSearchBar } from "./SwapHistoryTabs";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -273,7 +273,7 @@ export default function SwapHistory() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const PAGE_SIZE = 8;
 
-  // Debounced search — 350ms delay so we don't fire a server request on every keystroke
+  // Debounced search for Swaps tab — 350ms delay so we don't fire a server request on every keystroke
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -284,6 +284,18 @@ export default function SwapHistory() {
     }, 350);
     return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
   }, [filters.search]);
+
+  // Shared search for Open Trades + Refunds tabs
+  const [htlcSearch, setHtlcSearch] = useState("");
+  const [debouncedHtlcSearch, setDebouncedHtlcSearch] = useState("");
+  const htlcDebounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (htlcDebounceTimer.current) clearTimeout(htlcDebounceTimer.current);
+    htlcDebounceTimer.current = setTimeout(() => {
+      setDebouncedHtlcSearch(htlcSearch);
+    }, 350);
+    return () => { if (htlcDebounceTimer.current) clearTimeout(htlcDebounceTimer.current); };
+  }, [htlcSearch]);
 
   // Compute days from dateRange filter
   const days = filters.dateRange === "Last 24h" ? 1
@@ -442,11 +454,20 @@ export default function SwapHistory() {
         ))}
       </div>
 
+      {/* Shared search bar for HTLC tabs */}
+      {(activeTab === "open" || activeTab === "refunds") && (
+        <HtlcSearchBar value={htlcSearch} onChange={setHtlcSearch} />
+      )}
+
       {/* Open Trades Tab */}
-      {activeTab === "open" && <OpenTradesTab walletAddresses={walletAddresses} />}
+      {activeTab === "open" && (
+        <OpenTradesTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+      )}
 
       {/* Refunds Tab */}
-      {activeTab === "refunds" && <RefundsTab walletAddresses={walletAddresses} />}
+      {activeTab === "refunds" && (
+        <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+      )}
 
       {/* History Tab */}
       {activeTab === "history" && <>

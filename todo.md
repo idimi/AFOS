@@ -1324,3 +1324,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Reset page to 1 when search query changes in SwapHistory.tsx
 - [ ] Wire search input value to tRPC query param (debounced)
 - [ ] Wire walletAddress into executeBtcSwap recordSwapAnalytic call (input.senderAddress)
+
+## Search + htlcReveal Attribution
+
+- [ ] Add search param to history.openTrades procedure (LIKE on peerId, htlcAddress, fromToken, toToken)
+- [ ] Add search param to history.refunds procedure (LIKE on peerId, htlcAddress, fromToken, toToken)
+- [ ] Add shared search bar to SwapHistoryTabs.tsx (debounced, passed to both tabs)
+- [ ] Wire swapAnalytics status update in btcHtlc.htlcReveal (set status="completed" by txId/secretHash)
