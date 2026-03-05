@@ -187,6 +187,22 @@ export const peerMessages = mysqlTable("peer_messages", {
 export type PeerMessage = typeof peerMessages.$inferSelect;
 export type InsertPeerMessage = typeof peerMessages.$inferInsert;
 
+// ─── Peer Blocks ─────────────────────────────────────────────────────────────
+// Tracks which peers a user has blocked. Blocked peers cannot send DMs.
+export const peerBlocks = mysqlTable("peer_blocks", {
+  id:          int("id").autoincrement().primaryKey(),
+  /** The peer who initiated the block (local peer ID) */
+  blockerPeerId: varchar("blockerPeerId", { length: 128 }).notNull(),
+  /** The peer being blocked */
+  blockedPeerId: varchar("blockedPeerId", { length: 128 }).notNull(),
+  /** Optional note/reason for the block */
+  reason:      varchar("reason", { length: 256 }),
+  createdAt:   timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PeerBlock = typeof peerBlocks.$inferSelect;
+export type InsertPeerBlock = typeof peerBlocks.$inferInsert;
+
 export const DEFAULT_USER_SETTINGS = {
   maxTxAmountUsd: 500,
   autoConfirm: false,

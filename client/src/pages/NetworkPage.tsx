@@ -163,7 +163,7 @@ function peerPosition(pubkey: string, index: number, total: number): { lat: numb
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
@@ -171,6 +171,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
   pulseIds: Set<string>;
   pingingIds?: Set<string>;
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
+  blockedPeerIds?: Set<string>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
@@ -420,6 +421,23 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
               >
                 {peer.latency}ms
               </text>
+            )}
+
+            {/* Blocked peer indicator — red tint overlay + lock icon */}
+            {peer.id !== "self" && peer.fullKey && blockedPeerIds?.has(peer.fullKey) && (
+              <g>
+                {/* Red tint overlay on node circle */}
+                <circle cx={x} cy={y} r={r + 2} fill="rgba(239,68,68,0.18)" stroke="rgba(239,68,68,0.5)" strokeWidth={1.5} />
+                {/* Lock badge top-right */}
+                <circle cx={x + r + 4} cy={y - r - 4} r={7} fill="rgba(239,68,68,0.9)" />
+                <text x={x + r + 4} y={y - r - 0.5} textAnchor="middle" fontSize={8} fill="#fff" fontWeight="bold">
+                  🔒
+                </text>
+                {/* Blocked label below latency */}
+                <text x={x} y={y + r + 34} textAnchor="middle" fontSize={7} fill="rgba(239,68,68,0.7)" fontFamily="monospace">
+                  blocked
+                </text>
+              </g>
             )}
 
             {/* Unread message indicator — pulsing rings + badge when peer has unread messages */}
@@ -672,6 +690,21 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
   // same pair is clicked twice in a row.
   const [pairDraftKey, setPairDraftKey] = useState(0);
   const [pairDraft, setPairDraft] = useState('');
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+
+  // Block state — only relevant for remote peers
+  const isRemotePeer = peer.id !== 'self' && !!peer.fullKey && !!selfPeerId;
+  const { data: blockState, refetch: refetchBlock } = trpc.peerBlocks.isBlocked.useQuery(
+    { blockerPeerId: selfPeerId ?? '', blockedPeerId: peer.fullKey ?? '' },
+    { enabled: isRemotePeer && !!selfPeerId && !!peer.fullKey }
+  );
+  const blockMutation = trpc.peerBlocks.block.useMutation({
+    onSuccess: () => { refetchBlock(); setShowBlockConfirm(false); },
+  });
+  const unblockMutation = trpc.peerBlocks.unblock.useMutation({
+    onSuccess: () => refetchBlock(),
+  });
+  const isBlocked = blockState?.blocked ?? false;
 
   const handlePairClick = (pair: string) => {
     if (!selfPeerId || !peer.fullKey || peer.id === 'self') return;
@@ -815,6 +848,49 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
             <CopyInviteLinkButton peerId={peer.fullKey} />
           </div>
         )}
+        {/* Block / Unblock — only for remote peers */}
+        {isRemotePeer && (
+          <div className="mt-3 pt-3 border-t border-border">
+            {!showBlockConfirm ? (
+              <button
+                onClick={() => isBlocked ? unblockMutation.mutate({ blockerPeerId: selfPeerId!, blockedPeerId: peer.fullKey! }) : setShowBlockConfirm(true)}
+                disabled={blockMutation.isPending || unblockMutation.isPending}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                style={{
+                  background: isBlocked ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)',
+                  border: `1px solid ${isBlocked ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'}`,
+                  color: isBlocked ? '#10b981' : '#ef4444',
+                }}
+              >
+                {isBlocked ? '✓ Unblock Peer' : '⊘ Block Peer'}
+              </button>
+            ) : (
+              <div className="rounded-lg p-2.5" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                <p className="text-[9px] text-red-400 mb-2 leading-relaxed">
+                  Block <span className="font-bold">{peer.alias}</span>? They won't be able to send you messages.
+                </p>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => blockMutation.mutate({ blockerPeerId: selfPeerId!, blockedPeerId: peer.fullKey! })}
+                    disabled={blockMutation.isPending}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: '#ef4444', color: '#fff' }}
+                  >
+                    {blockMutation.isPending ? 'Blocking…' : 'Confirm Block'}
+                  </button>
+                  <button
+                    onClick={() => setShowBlockConfirm(false)}
+                    className="flex-1 py-1 rounded text-[9px] font-semibold transition-all"
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--muted-foreground)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* My Invite Link — only for self peer when wallet is connected */}
         {peer.id === 'self' && selfPeerId && (
           <div className="mt-3 pt-3 border-t border-border">
@@ -928,7 +1004,7 @@ function CopyInviteLinkButton({ peerId, onCopy }: { peerId: string; onCopy?: () 
   );
 }
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink, unreadByPeer }: {
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink, unreadByPeer, blockedPeerIds }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -938,6 +1014,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
   onInvite?: (peerId: string, alias: string) => void;
   onCopyInviteLink?: (peerId: string) => void;
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
+  blockedPeerIds?: Set<string>;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('reputation');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
@@ -1099,6 +1176,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
           const rep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
           const repScore = rep?.score ?? null;
           const unread = peer.fullKey ? unreadByPeer?.[peer.fullKey] : undefined;
+          const isBlockedPeer = peer.fullKey ? blockedPeerIds?.has(peer.fullKey) : false;
           const canInvite = repScore !== null && repScore >= 70;
           const inviteTooltip = repScore === null
             ? 'Ping this peer first to establish a reputation score'
@@ -1154,6 +1232,15 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                           color: '#000',
                         }}
                       >{unread.count > 9 ? '9+' : unread.count}</span>
+                    )}
+                    {isBlockedPeer && (
+                      <span
+                        className="inline-flex items-center justify-center h-3.5 px-1 rounded text-[8px] font-bold shrink-0"
+                        title="You have blocked this peer — they cannot send you messages"
+                        style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444' }}
+                      >
+                        🔒 blocked
+                      </span>
                     )}
                   </div>
                   <div className="text-[9px] text-muted-foreground flex items-center gap-1.5 mt-0.5">
@@ -1518,6 +1605,13 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
     { myPeerId: lightPeer.peerId! },
     { enabled: !!lightPeer.peerId, refetchInterval: 10_000 }
   );
+
+  // Blocked peers list — used to show visual indicators on nodes
+  const { data: blockedPeersRaw = [], refetch: refetchBlocked } = trpc.peerBlocks.listBlocked.useQuery(
+    { blockerPeerId: lightPeer.peerId! },
+    { enabled: !!lightPeer.peerId, refetchInterval: 30_000 }
+  );
+  const blockedPeerIds = useMemo(() => new Set(blockedPeersRaw.map(b => b.blockedPeerId)), [blockedPeersRaw]);
 
   // Build a lookup: fullKey → { count, snippet }
   const unreadByPeer = useMemo(() => {
@@ -2576,6 +2670,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               pulseIds={pulseIds}
               pingingIds={new Set(Object.entries(pingResults).filter(([, v]) => v.loading).map(([k]) => k))}
               unreadByPeer={unreadByPeer}
+              blockedPeerIds={blockedPeerIds}
             />
           ) : (
             /* Single node (just "You") — show scanning state inside graph area */
@@ -2647,6 +2742,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             onPing={handlePing}
             reputationScores={reputationData}
             unreadByPeer={unreadByPeer}
+            blockedPeerIds={blockedPeerIds}
             onInvite={(peerId, alias) => {
               // Switch to Liquidity Channels tab and pre-fill the Open Channel form
               setActiveTab('channels');

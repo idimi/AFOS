@@ -1119,3 +1119,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Show unread badge on peer rows in Peer Directory list
 - [x] Show clickable toast with sender alias + message snippet when a new message arrives, clicking it auto-selects that peer's PeerDetail panel
 - [x] Add pulsing ring animation on node contour when peer has unread messages (3 staggered Framer Motion rings expanding outward)
+
+## Peer Block / Unblock System
+
+- [x] Add peerBlocks table to DB schema (blocker, blocked, createdAt)
+- [x] Run db:push migration
+- [x] Add block/unblock/isBlocked/listBlocked tRPC procedures
+- [x] Enforce block on peerMessages.send — reject if recipient has blocked sender
+- [x] Add Block/Unblock button in PeerDetail overlay panel
+- [x] Show visual indicator (red tint / lock icon) on blocked peer nodes in topology canvas and Peer Directory
+- [x] Add Blocked Peers section in Settings page with unblock button

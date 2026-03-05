@@ -23,9 +23,28 @@ export const peerMessagesRouter = router({
     )
     .mutation(async ({ input }) => {
       const { getDb } = await import("../db");
-      const { peerMessages } = await import("../../drizzle/schema");
+      const { peerMessages, peerBlocks } = await import("../../drizzle/schema");
+      const { and, eq } = await import("drizzle-orm");
+      const { TRPCError } = await import("@trpc/server");
       const db = await getDb();
       if (!db) return { id: null, ok: false };
+
+      // Check if the recipient has blocked the sender
+      const block = await db
+        .select({ id: peerBlocks.id })
+        .from(peerBlocks)
+        .where(
+          and(
+            eq(peerBlocks.blockerPeerId, input.toPeerId),
+            eq(peerBlocks.blockedPeerId, input.fromPeerId)
+          )
+        )
+        .limit(1);
+
+      if (block.length > 0) {
+        // Return silently blocked — don't reveal to sender that they're blocked
+        return { id: null, ok: false, blocked: true };
+      }
 
       const [result] = await db
         .insert(peerMessages)
@@ -35,7 +54,7 @@ export const peerMessagesRouter = router({
           body: input.body,
         })
         .$returningId();
-      return { id: result.id, ok: true };
+      return { id: result.id, ok: true, blocked: false };
     }),
 
   /**

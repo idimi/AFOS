@@ -26,12 +26,15 @@ import {
   AlertTriangle,
   Loader2,
   RotateCcw,
+  UserX,
+  Unlock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { useLightPeer } from "@/contexts/LightPeerContext";
 
 // ─── Slippage options ──────────────────────────────────────────────────────────
 const SLIPPAGE_PRESETS = ["0.1", "0.5", "1.0", "2.0"];
@@ -215,8 +218,22 @@ function SectionCard({
 // ─── Main component ──────────────────────────────────────────────────────────────
 export default function AgentSettings() {
   const { isAuthenticated, loading: authLoading } = useAuth();
+  const lightPeer = useLightPeer();
   const [savedFlash, setSavedFlash] = useState(false);
   const [resetFlash, setResetFlash] = useState(false);
+
+  // ── Blocked peers ─────────────────────────────────────────────────────────────
+  const { data: blockedPeersRaw = [], refetch: refetchBlocked } = trpc.peerBlocks.listBlocked.useQuery(
+    { blockerPeerId: lightPeer.peerId! },
+    { enabled: !!lightPeer.peerId }
+  );
+  const unblockMutation = trpc.peerBlocks.unblock.useMutation({
+    onSuccess: () => {
+      refetchBlocked();
+      toast.success('Peer unblocked', { description: 'They can now send you direct messages again.' });
+    },
+    onError: () => toast.error('Failed to unblock peer'),
+  });
 
   // ── Remote state ──────────────────────────────────────────────────────────────
   const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
@@ -509,6 +526,54 @@ export default function AgentSettings() {
         </SectionCard>
 
 
+
+        {/* ── Privacy & Blocked Peers ─────────────────────────────────────────────── */}
+        <SectionCard
+          icon={UserX}
+          title="Privacy — Blocked Peers"
+          color="text-red-400"
+          border="rgba(239,68,68,0.2)"
+          bg="rgba(239,68,68,0.04)"
+          delay={0.28}
+        >
+          {blockedPeersRaw.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">
+              You have not blocked any peers. Block a peer from their profile in the Network page.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {blockedPeersRaw.map(b => (
+                <div
+                  key={b.blockedPeerId}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl"
+                  style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)' }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.12)' }}>
+                      <UserX className="w-3 h-3 text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-mono text-foreground truncate">{b.blockedPeerId}</p>
+                      <p className="text-[9px] text-muted-foreground mt-0.5">
+                        Blocked {new Date(b.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => unblockMutation.mutate({ blockerPeerId: lightPeer.peerId!, blockedPeerId: b.blockedPeerId })}
+                    disabled={unblockMutation.isPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all shrink-0 disabled:opacity-60"
+                    style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444' }}
+                    title="Unblock this peer"
+                  >
+                    <Unlock className="w-3 h-3" />
+                    Unblock
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
 
       </div>
 
