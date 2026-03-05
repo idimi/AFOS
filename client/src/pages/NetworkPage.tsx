@@ -685,7 +685,11 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
 
 // ─── Empty State for Topology ─────────────────────────────────────────────────
 
-function EmptyTopology() {
+function EmptyTopology({ lightPeerOnline, lightPeerId, onConnectWallet }: {
+  lightPeerOnline: boolean;
+  lightPeerId: string | null;
+  onConnectWallet?: () => void;
+}) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6">
       <div className="relative mb-6">
@@ -701,6 +705,42 @@ function EmptyTopology() {
       <p className="text-xs text-muted-foreground text-center max-w-xs mb-4">
         Your AFOS node announces on both DHT networks simultaneously. Remote peers from either layer will appear here once they connect.
       </p>
+
+      {/* Wallet connect CTA — shown when no wallet is connected */}
+      {!lightPeerId && (
+        <div className="mb-4 px-4 py-3 rounded-xl text-center w-full max-w-xs"
+          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.25)" }}>
+          <div className="flex items-center gap-2 justify-center mb-1.5">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[11px] font-bold text-amber-400">Wallet not connected</span>
+          </div>
+          <p className="text-[10px] text-amber-300/70 mb-2">
+            Connect a wallet to announce yourself as a Light Peer and become discoverable to other nodes.
+          </p>
+          {onConnectWallet && (
+            <button
+              onClick={onConnectWallet}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all hover:opacity-90 active:scale-95"
+              style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
+              Connect Wallet
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Light peer enabled but waiting for remote peers */}
+      {lightPeerId && lightPeerOnline && (
+        <div className="mb-4 px-4 py-2 rounded-xl text-center w-full max-w-xs"
+          style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
+          <div className="flex items-center gap-2 justify-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-mono text-emerald-400">
+              You are announced · waiting for remote peers
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Two-layer DHT status badges */}
       <div className="flex flex-col gap-2 w-full max-w-xs">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
@@ -713,13 +753,19 @@ function EmptyTopology() {
           <Radio className="w-3 h-3 text-emerald-400 shrink-0" />
         </div>
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg"
-          style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)" }}>
-          <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" style={{ animationDelay: "0.5s" }} />
+          style={{
+            background: lightPeerOnline ? "rgba(6,182,212,0.08)" : "rgba(100,116,139,0.06)",
+            border: `1px solid ${lightPeerOnline ? "rgba(6,182,212,0.2)" : "rgba(100,116,139,0.15)"}`,
+          }}>
+          <div className="w-1.5 h-1.5 rounded-full animate-pulse"
+            style={{ background: lightPeerOnline ? "#06b6d4" : "#64748b", animationDelay: "0.5s" }} />
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] font-mono text-cyan-400 font-bold">IntercomSwap DHT</div>
-            <div className="text-[9px] text-cyan-400/60">Browser Light Peer · Relay bridge active</div>
+            <div className="text-[10px] font-mono font-bold" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }}>IntercomSwap DHT</div>
+            <div className="text-[9px]" style={{ color: lightPeerOnline ? "rgba(6,182,212,0.6)" : "rgba(100,116,139,0.6)" }}>
+              {lightPeerOnline ? `Light Peer · ${lightPeerId?.slice(0, 12)}… · Active` : "Connect wallet to activate"}
+            </div>
           </div>
-          <Globe className="w-3 h-3 text-cyan-400 shrink-0" />
+          <Globe className="w-3 h-3 shrink-0" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }} />
         </div>
       </div>
     </div>
@@ -1373,7 +1419,11 @@ export default function NetworkPage() {
 
       {/* Empty state — no remote peers */}
       {!loading && livePeers.filter(p => p.id !== "self").length === 0 && (
-        <EmptyTopology />
+        <EmptyTopology
+          lightPeerOnline={lightPeer.isOnline}
+          lightPeerId={lightPeer.peerId}
+          onConnectWallet={() => window.dispatchEvent(new CustomEvent('afos:open-wallet'))}
+        />
       )}
 
       {/* Mobile peer list — shown only on small screens */}

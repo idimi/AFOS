@@ -2809,18 +2809,28 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchHeaderData = async () => {
       try {
-        const [status, swapData] = await Promise.allSettled([
+        const [status, swapData, relayData] = await Promise.allSettled([
           getAgentStatus(),
           getSwaps(),
+          getRelayPeers(),
         ]);
         if (status.status === 'fulfilled') {
-          setHeaderPeers(status.value.activePeers);
+          // Combine Oracle VM Hyperswarm peers + relay light peers for header count
+          const hyperswarmCount = status.value.activePeers || 0;
+          const relayCount = relayData.status === 'fulfilled'
+            ? (relayData.value.hyperswarmPeers.length + relayData.value.lightPeers.length)
+            : 0;
+          // Use the higher of the two counts (relay includes hyperswarm peers too)
+          setHeaderPeers(Math.max(hyperswarmCount, relayCount));
           if (status.value.p2pNodeKey) {
             const k = status.value.p2pNodeKey;
             setHeaderNodeKeyFull(k);
             // Show first 6 + last 4 chars of the node key
             setHeaderNodeKey(k.length > 12 ? `${k.slice(0, 6)}…${k.slice(-4)}` : k);
           }
+        } else if (relayData.status === 'fulfilled') {
+          // Oracle VM unreachable — use relay count only
+          setHeaderPeers(relayData.value.hyperswarmPeers.length + relayData.value.lightPeers.length);
         }
         if (swapData.status === 'fulfilled') {
           const all = [...swapData.value.pending, ...swapData.value.completed]
@@ -2856,6 +2866,13 @@ export default function Dashboard() {
       }
     });
     return () => { clearInterval(t); unsubPeer(); unsubPeerD(); unsubInit(); unsubSwap(); };
+  }, []);
+
+  // Listen for cross-page events that trigger the wallet modal
+  useEffect(() => {
+    const handler = () => setShowWalletModal(true);
+    window.addEventListener('afos:open-wallet', handler);
+    return () => window.removeEventListener('afos:open-wallet', handler);
   }, []);
 
   // Swipe-right from left edge to open drawer
@@ -3002,7 +3019,7 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <div className="flex items-center gap-2 justify-between">
-                      <span className="text-muted-foreground">Remote nodes</span>
+                      <span className="text-muted-foreground">Remote peers</span>
                       <span className="font-mono text-foreground">{headerPeers ?? 0}</span>
                     </div>
                     <div className="border-t border-border pt-1 mt-1 flex items-center gap-2 justify-between">
