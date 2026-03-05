@@ -1,0 +1,9 @@
+{
+  "query": "ALTER TABLE admin_config ADD COLUMN IF NOT EXISTS lastOracleSyncAt timestamp NULL AFTER feeAlertLastNotifiedDate; ALTER TABLE admin_config ADD COLUMN IF NOT EXISTS lastSyncInserted int NULL DEFAULT 0 AFTER lastOracleSyncAt;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute ALTER TABLE admin_config ADD COLUMN IF NOT EXISTS lastOracleSyncAt timestamp NULL AFTER feeAlertLastNotifiedDate; ALTER TABLE admin_config ADD COLUMN IF NOT EXISTS lastSyncInserted int NULL DEFAULT 0 AFTER lastOracleSyncAt;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 1201
+}

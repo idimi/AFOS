@@ -272,6 +272,10 @@ export const adminConfig = mysqlTable("admin_config", {
   feeAlertThresholdCents: int("feeAlertThresholdCents").default(100).notNull(),
   /** ISO date string (YYYY-MM-DD) of the last day we sent a fee alert, to avoid duplicate alerts */
   feeAlertLastNotifiedDate: varchar("feeAlertLastNotifiedDate", { length: 10 }),
+  /** Timestamp of the last successful Oracle VM sync run */
+  lastOracleSyncAt: timestamp("lastOracleSyncAt"),
+  /** Number of rows inserted in the last Oracle VM sync run */
+  lastSyncInserted: int("lastSyncInserted").default(0),
   createdAt:       timestamp("createdAt").defaultNow().notNull(),
   updatedAt:       timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

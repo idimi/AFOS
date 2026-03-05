@@ -539,7 +539,7 @@ export default function SwapHistory() {
           <div
             className="hidden sm:grid text-[10px] font-mono uppercase tracking-widest text-muted-foreground px-5 py-3 border-b"
             style={{
-              gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr",
+              gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr",
               borderColor: "var(--border)",
             }}
           >
@@ -547,6 +547,7 @@ export default function SwapHistory() {
             <span>Swap</span>
             <span>Protocol</span>
             <SortHeader label="Value" field="fromUsd" current={sortField} dir={sortDir} onClick={handleSort} />
+            <span>Received</span>
             <SortHeader label="Fee" field="fee" current={sortField} dir={sortDir} onClick={handleSort} />
             <span>Status</span>
             <span>Tx</span>
@@ -587,7 +588,7 @@ export default function SwapHistory() {
                     <div
                       className="hidden sm:grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
                       style={{
-                        gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.6fr",
+                        gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr",
                         borderColor: "var(--border)",
                       }}
                       onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
@@ -613,6 +614,15 @@ export default function SwapHistory() {
                       </div>
                       <div className="text-xs font-mono text-amber-400 font-semibold">
                         ${swap.fromUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-xs font-mono">
+                        {swap.toAmount > 0 ? (
+                          <span style={{ color: TOKEN_COLORS[swap.toSymbol] ?? "#94a3b8" }}>
+                            {swap.toAmount.toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toSymbol}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </div>
                       <div className="text-xs font-mono text-muted-foreground">
                         {swap.fee > 0 ? `$${swap.fee.toFixed(2)}` : "—"}

@@ -91,6 +91,8 @@ export const adminConfigRouter = router({
       feeAlertThresholdCents: 100,
       feeAlertLastNotifiedDate: null as string | null,
       treasuryWallets:  DEFAULT_ADMIN_CONFIG.treasuryWallets,
+      lastOracleSyncAt:  null as Date | null,
+      lastSyncInserted:  0,
     };
 
     return {
@@ -106,6 +108,8 @@ export const adminConfigRouter = router({
         try { return JSON.parse(row.treasuryWallets ?? "[]") as typeof DEFAULT_ADMIN_CONFIG.treasuryWallets; }
         catch { return DEFAULT_ADMIN_CONFIG.treasuryWallets; }
       })(),
+      lastOracleSyncAt:  row.lastOracleSyncAt ?? null,
+      lastSyncInserted:  row.lastSyncInserted ?? 0,
     };
   }),
 

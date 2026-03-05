@@ -628,6 +628,37 @@ function TreasuryTab() {
   );
 }
 
+// ─── Oracle VM Sync Status Card ─────────────────────────────────────────────────
+function OracleVmSyncCard() {
+  const { data: cfg, isLoading } = trpc.adminConfig.get.useQuery(undefined, { staleTime: 30_000, refetchInterval: 65_000 });
+  const lastSync = cfg?.lastOracleSyncAt ? new Date(cfg.lastOracleSyncAt) : null;
+  const inserted = cfg?.lastSyncInserted ?? 0;
+  const isStale = lastSync ? (Date.now() - lastSync.getTime()) > 120_000 : true;
+  const syncColor = isLoading ? "#94a3b8" : lastSync ? (isStale ? "#f59e0b" : "#10b981") : "#ef4444";
+  const syncBg   = isLoading ? "var(--muted)" : lastSync ? (isStale ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)") : "rgba(239,68,68,0.12)";
+  const syncLabel = isLoading ? "CHECKING" : lastSync ? (isStale ? "STALE" : "LIVE") : "NEVER RUN";
+  return (
+    <div className="rounded-2xl p-4 mt-1" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-2 h-2 rounded-full" style={{ background: syncColor, boxShadow: !isStale && lastSync ? `0 0 6px ${syncColor}` : "none" }} />
+          <div>
+            <p className="text-xs font-semibold text-foreground">Oracle VM Sync Job</p>
+            <p className="text-[10px] text-muted-foreground">
+              {isLoading ? "Loading…" : lastSync
+                ? `Last run: ${lastSync.toLocaleTimeString()} · ${inserted} row${inserted === 1 ? "" : "s"} inserted`
+                : "No sync run recorded yet"}
+            </p>
+          </div>
+        </div>
+        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: syncBg, color: syncColor }}>
+          {syncLabel}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Node Health Tab (live health checks) ─────────────────────────────────────
 interface NodeStatus {
   name: string;
@@ -769,6 +800,8 @@ function NodeHealthTab() {
           </div>
         ))
       )}
+      {/* Oracle VM Sync Status */}
+      <OracleVmSyncCard />
     </div>
   );
 }

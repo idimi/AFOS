@@ -1,29 +1,24 @@
 /**
  * Oracle VM Swap Status Sync Job
  *
- * Polls the IntercomSwap Oracle VM /api/swaps endpoint every 60 seconds and
- * back-fills the local swapAnalytics table for any completed swaps that were
- * never recorded locally (e.g. browser-initiated swaps that bypassed the
- * executeAgentSwap tRPC procedure, or swaps that failed to record due to a
- * transient error).
+ * Polls the IntercomSwap Oracle VM /api/swaps endpoint every 60 seconds and:
+ *   1. Back-fills swapAnalytics for completed swaps never recorded locally.
+ *   2. Back-fills rfqId on existing rows where txId matches an Oracle VM rfqId.
+ *   3. Updates admin_config.lastOracleSyncAt + lastSyncInserted after each run.
  *
  * De-duplication strategy:
  *   - Each Oracle VM swap has a unique `rfqId` (UUID).
- *   - Before inserting, we check whether a row with that rfqId already exists.
- *   - If it does, we skip the insert (idempotent).
- *   - If a row exists with a matching txId but no rfqId, we back-fill the rfqId.
+ *   - Before inserting, check whether a row with that rfqId already exists → skip.
+ *   - If a row exists with rfqId=NULL but txId = rfqId → back-fill rfqId only.
+ *   - Otherwise → insert a new row.
  *
  * Called from:
- *   - server/_core/index.ts on startup (10s delay, then every 60s)
- *
- * Oracle VM swap structure (status = "executed"):
- *   { rfqId, route, fromToken, toToken, inAmount, outAmount, rate,
- *     platformFeeBps, feeUsd, timestamp, id, status, createdAt, completedAt }
+ *   - server/_core/index.ts on startup (15s delay, then every 60s)
  */
 
 import { getDb } from "../db";
-import { swapAnalytics } from "../../drizzle/schema";
-import { eq, or } from "drizzle-orm";
+import { swapAnalytics, adminConfig } from "../../drizzle/schema";
+import { eq, isNull, and } from "drizzle-orm";
 
 const ORACLE_API = process.env.ORACLE_API_URL ?? "http://141.253.123.101:4000";
 
@@ -68,14 +63,42 @@ function routeLabel(swap: OracleSwap): string {
   return "Jupiter DEX";
 }
 
+// ─── Persist sync status to admin_config ─────────────────────────────────────
+
+async function persistSyncStatus(inserted: number): Promise<void> {
+  try {
+    const db = await getDb();
+    if (!db) return;
+    // Ensure admin_config row exists (id = 1)
+    const [existing] = await db
+      .select({ id: adminConfig.id })
+      .from(adminConfig)
+      .limit(1);
+    if (existing) {
+      await db
+        .update(adminConfig)
+        .set({ lastOracleSyncAt: new Date(), lastSyncInserted: inserted })
+        .where(eq(adminConfig.id, existing.id));
+    } else {
+      await db.insert(adminConfig).values({
+        lastOracleSyncAt: new Date(),
+        lastSyncInserted: inserted,
+      });
+    }
+  } catch (err) {
+    // Non-fatal — sync still ran, just couldn't persist the timestamp
+    console.warn("[OracleVmSync] Could not persist sync status:", err);
+  }
+}
+
 // ─── Main sync function ───────────────────────────────────────────────────────
 
 export interface OracleVmSyncResult {
-  checked:   boolean;
-  inserted:  number;
-  skipped:   number;
+  checked:    boolean;
+  inserted:   number;
+  skipped:    number;
   backfilled: number;
-  error?:    string;
+  error?:     string;
 }
 
 export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
@@ -99,11 +122,12 @@ export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
   }
 
   if (completedSwaps.length === 0) {
+    await persistSyncStatus(0);
     return { checked: true, inserted: 0, skipped: 0, backfilled: 0 };
   }
 
-  let inserted  = 0;
-  let skipped   = 0;
+  let inserted   = 0;
+  let skipped    = 0;
   let backfilled = 0;
 
   for (const swap of completedSwaps) {
@@ -111,38 +135,46 @@ export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
 
     try {
       // 2. Check if this rfqId already exists in swapAnalytics
-      const [existing] = await db
-        .select({ id: swapAnalytics.id, rfqId: swapAnalytics.rfqId })
+      const [existingByRfq] = await db
+        .select({ id: swapAnalytics.id })
         .from(swapAnalytics)
         .where(eq(swapAnalytics.rfqId, swap.rfqId))
         .limit(1);
 
-      if (existing) {
+      if (existingByRfq) {
         skipped++;
         continue;
       }
 
-      // 3. Also check if a row with rfqId=NULL but matching txId exists
-      //    (a row recorded locally before rfqId was added to the schema)
-      const [byTxId] = await db
-        .select({ id: swapAnalytics.id })
+      // 3. Back-fill: check if a row exists with rfqId=NULL but txId = rfqId
+      //    (recorded before rfqId column was added, or recorded with rfqId as txId)
+      const [existingByTxId] = await db
+        .select({ id: swapAnalytics.id, rfqId: swapAnalytics.rfqId })
         .from(swapAnalytics)
-        .where(eq(swapAnalytics.txId, swap.rfqId))
+        .where(
+          and(
+            eq(swapAnalytics.txId, swap.rfqId),
+            isNull(swapAnalytics.rfqId)
+          )
+        )
         .limit(1);
 
-      if (byTxId) {
-        // Back-fill the rfqId on the existing row
+      if (existingByTxId) {
+        // Back-fill rfqId and outAmount on the existing row
         await db
           .update(swapAnalytics)
-          .set({ rfqId: swap.rfqId })
-          .where(eq(swapAnalytics.id, byTxId.id));
+          .set({
+            rfqId:     swap.rfqId,
+            outAmount: swap.outAmount != null ? String(swap.outAmount) : undefined,
+          })
+          .where(eq(swapAnalytics.id, existingByTxId.id));
         backfilled++;
         continue;
       }
 
       // 4. Insert a new analytics row for this Oracle VM swap
-      const fromChain = tokenToChain(swap.fromToken);
-      const toChain   = tokenToChain(swap.toToken);
+      const fromChain    = tokenToChain(swap.fromToken);
+      const toChain      = tokenToChain(swap.toToken);
       const settlementMs = swap.completedAt && swap.createdAt
         ? swap.completedAt - swap.createdAt
         : undefined;
@@ -158,7 +190,7 @@ export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
         route:          routeLabel(swap),
         status:         "completed",
         settlementMs,
-        txId:           swap.rfqId, // use rfqId as txId since no on-chain txHash is available
+        txId:           swap.rfqId,
         rfqId:          swap.rfqId,
         outAmount:      swap.outAmount != null ? String(swap.outAmount) : undefined,
         platformFeeUsd: feeUsd,
@@ -167,10 +199,12 @@ export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
       });
       inserted++;
     } catch (err) {
-      // Log but continue — don't let one bad row stop the whole sync
       console.error(`[OracleVmSync] Error processing rfqId ${swap.rfqId}:`, err);
     }
   }
+
+  // 5. Persist sync status to admin_config for the Settings diagnostics card
+  await persistSyncStatus(inserted);
 
   return { checked: true, inserted, skipped, backfilled };
 }

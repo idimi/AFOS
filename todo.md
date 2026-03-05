@@ -1359,3 +1359,20 @@ The Overview should be an **operator's command center** — a single glance tell
 ## htlcReveal walletAddress Attribution
 
 - [x] Pass recipientAddress as walletAddress in btcHtlc.htlcReveal recordSwapAnalytic call
+
+## rfqId Back-fill for Existing Analytics Rows
+
+- [x] Add back-fill logic to oracleVmSync: for existing swapAnalytics rows where rfqId IS NULL but txId matches an Oracle VM rfqId, update rfqId
+- [x] Expose a tRPC mutation (admin) to trigger a one-time back-fill on demand
+
+## outAmount Received Column in History
+
+- [x] Add outAmount column to swapAnalytics schema (already added via ALTER TABLE, ensure schema.ts matches)
+- [x] Expose outAmount in history.list tRPC procedure response
+- [x] Add Received column to Completed tab table in SwapHistory.tsx
+
+## Oracle VM Sync Status Indicator in Settings
+
+- [x] Add lastOracleSyncAt and lastSyncInserted fields to admin_config or a new sync_status table
+- [x] Update oracleVmSync job to write lastOracleSyncAt after each run
+- [x] Add Oracle VM Sync Status card to Settings → Diagnostics section
