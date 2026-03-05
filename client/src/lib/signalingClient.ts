@@ -48,13 +48,48 @@ export type SignalingEvent =
 type EventHandler = (data: unknown) => void;
 
 // ─── STUN/TURN Configuration ─────────────────────────────────────────────────
+//
+// STUN servers: Used for NAT discovery (free, no credentials needed).
+// TURN servers: Used as relay when direct WebRTC fails behind strict NAT/firewalls.
+//   - Open Relay Project: free, no credentials, suitable for development/low traffic
+//   - For production: set VITE_TURN_URL, VITE_TURN_USERNAME, VITE_TURN_CREDENTIAL
+//     in your environment to use Cloudflare TURN or a self-hosted coturn server.
 
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [
+const TURN_URL = import.meta.env.VITE_TURN_URL as string | undefined;
+const TURN_USERNAME = import.meta.env.VITE_TURN_USERNAME as string | undefined;
+const TURN_CREDENTIAL = import.meta.env.VITE_TURN_CREDENTIAL as string | undefined;
+
+const buildIceServers = (): RTCIceServer[] => {
+  const servers: RTCIceServer[] = [
+    // Google STUN (free, no credentials)
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
-  ],
+    // Open Relay Project TURN (free, no credentials, good for development)
+    {
+      urls: [
+        "turn:openrelay.metered.ca:80",
+        "turn:openrelay.metered.ca:443",
+        "turn:openrelay.metered.ca:443?transport=tcp",
+      ],
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+  ];
+  // Custom TURN server (Cloudflare TURN or self-hosted coturn)
+  if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+    servers.push({
+      urls: TURN_URL,
+      username: TURN_USERNAME,
+      credential: TURN_CREDENTIAL,
+    });
+  }
+  return servers;
+};
+
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: buildIceServers(),
+  iceTransportPolicy: "all", // Use TURN relay only if direct/STUN fails
 };
 
 const HEARTBEAT_INTERVAL = 30_000;

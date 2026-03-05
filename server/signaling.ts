@@ -36,6 +36,7 @@
 
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server as HttpServer } from "http";
+import { recordPeerPing } from "./db";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -242,6 +243,8 @@ export function attachSignalingServer(httpServer: HttpServer) {
           console.log(
             `[Signaling] Peer registered: ${peer.alias} (${msg.peerId.slice(0, 12)}…) — ${peers.size} online`
           );
+          // Persist peer sighting to the database (fire-and-forget)
+          recordPeerPing(msg.peerId, peer.alias, "intercomswap", null).catch(() => {});
           break;
         }
 
@@ -249,11 +252,14 @@ export function attachSignalingServer(httpServer: HttpServer) {
         case "heartbeat": {
           const id = msg.peerId || registeredPeerId;
           if (id && peers.has(id)) {
-            peers.get(id)!.lastHeartbeat = Date.now();
+            const p = peers.get(id)!;
+            p.lastHeartbeat = Date.now();
             // Optionally update pairs if provided
             if (msg.pairs) {
-              peers.get(id)!.pairs = msg.pairs;
+              p.pairs = msg.pairs;
             }
+            // Record a successful ping with 0ms latency to keep lastSeenAt fresh
+            recordPeerPing(id, p.alias, "intercomswap", 0).catch(() => {});
           }
           break;
         }

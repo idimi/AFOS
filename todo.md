@@ -1062,3 +1062,6 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix page refresh loop: moved signaling WebSocket to /api/ws/signaling, switched to noServer mode with manual upgrade handling, added MAX_RECONNECT_ATTEMPTS=5, stabilized useEffect deps
 - [x] Fix StacksProvider redefine property error (Phantom wallet extension bug — not our code, harmless)
 - [x] Fix Network page topology canvas: node labels and latency text invisible in light mode
+- [x] Fix topology SVG: "You" label and latency text still invisible in light mode (hardcoded white fills in SVG text elements)
+- [x] Add TURN server configuration to WebRTC signaling client for NAT traversal (Open Relay Project TURN + custom VITE_TURN_URL/USERNAME/CREDENTIAL env vars)
+- [x] Persist peer reputation scores to database across sessions (peerReputation table, signaling server calls recordPeerPing on register+heartbeat, Reputation Leaderboard tab added to Network page)

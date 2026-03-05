@@ -15,7 +15,7 @@ import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
-  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX
+  ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX, Trophy
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -164,9 +164,12 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
   const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme !== "light";
-  const labelColor = isDark ? "rgba(255,255,255,0.55)" : "rgba(15,23,42,0.75)";
-  const labelColorOffline = isDark ? "rgba(255,255,255,0.2)" : "rgba(15,23,42,0.3)";
+  const isDark = resolvedTheme === "dark";
+  const labelColor = isDark ? "rgba(255,255,255,0.75)" : "rgba(15,23,42,0.85)";
+  const labelColorOffline = isDark ? "rgba(255,255,255,0.3)" : "rgba(15,23,42,0.4)";
+  const offlineNodeFill = isDark ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.06)";
+  const offlineNodeStroke = isDark ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.2)";
+  const inactiveChannelStroke = isDark ? "rgba(255,255,255,0.05)" : "rgba(15,23,42,0.12)";
 
   useEffect(() => {
     const obs = new ResizeObserver(entries => {
@@ -241,7 +244,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               x2={px(to.lat)} y2={py(to.lng)}
               stroke={ch.active
                 ? isSelected ? "rgba(6,182,212,0.7)" : "rgba(6,182,212,0.25)"
-                : "rgba(255,255,255,0.05)"}
+                : inactiveChannelStroke}
               strokeWidth={ch.active ? (isSelected ? 2 : 1.5) : 1}
               strokeDasharray={ch.active ? "6 4" : "3 6"}
               className={ch.active ? "channel-active" : ""}
@@ -309,10 +312,10 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
                 ? "rgba(6,182,212,0.25)"
                 : peer.online
                   ? `${color}22`
-                  : "rgba(255,255,255,0.04)"}
+                  : offlineNodeFill}
               stroke={isSelf
                 ? "rgba(6,182,212,0.8)"
-                : peer.online ? color : "rgba(255,255,255,0.12)"}
+                : peer.online ? color : offlineNodeStroke}
               strokeWidth={isSelf ? 2 : 1.5}
               filter={isSelected || isSelf ? "url(#glow-node)" : undefined}
             />
@@ -502,8 +505,26 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; oth
   );
 }
 
-function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => void; selfPeerId?: string | null }) {
+/** Derive a human-readable trust level label from a 0-100 reputation score */
+function trustLevel(score: number): { label: string; color: string } {
+  if (score >= 80) return { label: 'Trusted', color: '#10b981' };
+  if (score >= 60) return { label: 'Reliable', color: '#06b6d4' };
+  if (score >= 40) return { label: 'Neutral', color: '#f59e0b' };
+  if (score >= 20) return { label: 'Caution', color: '#f97316' };
+  return { label: 'Risky', color: '#ef4444' };
+}
+
+function PeerDetail({ peer, onClose, selfPeerId, reputationScores }: {
+  peer: Peer;
+  onClose: () => void;
+  selfPeerId?: string | null;
+  reputationScores?: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }>;
+}) {
   const color = latencyColor(peer.latency);
+  // Use DB-persisted reputation score if available, fall back to in-memory value
+  const dbRep = peer.fullKey ? reputationScores?.[peer.fullKey] : undefined;
+  const repScore = dbRep?.score ?? peer.reputation;
+  const trust = trustLevel(repScore);
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }}
@@ -534,7 +555,10 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
       <div className="space-y-2">
         {[
           { label: "Latency", value: peer.id === "self" ? "local" : `${peer.latency}ms`, color: color },
-          { label: "Reputation", value: `${peer.reputation}%`, color: peer.reputation > 98 ? "#10b981" : peer.reputation > 95 ? "#f59e0b" : "#ef4444" },
+          { label: "Reputation", value: `${repScore}/100`, color: trust.color },
+          { label: "Trust Level", value: trust.label, color: trust.color },
+          ...(dbRep ? [{ label: "Swaps", value: `${dbRep.successfulSwaps} completed`, color: '#a78bfa' }] : []),
+          ...(dbRep?.avgLatencyMs != null ? [{ label: "Avg Latency", value: `${dbRep.avgLatencyMs}ms`, color: '#06b6d4' }] : []),
           { label: "Channels", value: peer.channels.toString(), color: "#06b6d4" },
           { label: "Liquidity", value: `${peer.liquidity} BTC`, color: "#f7931a" },
           { label: "24h Volume", value: peer.volume24h > 0 ? `$${(peer.volume24h / 1000).toFixed(0)}k` : "$0", color: "#a78bfa" },
@@ -545,6 +569,7 @@ function PeerDetail({ peer, onClose, selfPeerId }: { peer: Peer; onClose: () => 
             <span className="text-[10px] font-mono font-semibold" style={{ color: item.color }}>{item.value}</span>
           </div>
         ))}
+
       </div>
 
       <div className="mt-3 pt-3 border-t border-border">
@@ -833,14 +858,14 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
             >
               <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-mono text-cyan-300 truncate flex items-center gap-1.5">
+                <div className="text-[11px] font-mono text-cyan-500 dark:text-cyan-300 truncate flex items-center gap-1.5">
                   {peer.alias}
-                  <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
+                  <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-bold">YOU</span>
                 </div>
                 <div className="text-[9px] text-muted-foreground">{peer.region}</div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[10px] font-mono text-cyan-400">local</div>
+                <div className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400">local</div>
               </div>
               <ChevronRight className="w-3 h-3 text-muted-foreground shrink-0" />
             </button>
@@ -1102,13 +1127,108 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signa
   );
 }
 
+// ─── Reputation Leaderboard ─────────────────────────────────────────────────
+
+function ReputationLeaderboard() {
+  const { data, isLoading } = trpc.peerReputation.getAll.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="rounded-2xl p-8 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <Trophy className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+        <p className="text-sm font-semibold text-foreground mb-1">No Reputation Data Yet</p>
+        <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+          Ping peers to start building reputation history. Scores persist across sessions and improve with successful swaps.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Trophy className="w-4 h-4 text-amber-400" />
+        <h2 className="text-sm font-bold text-foreground">Peer Reputation Leaderboard</h2>
+        <span className="text-[10px] font-mono text-muted-foreground ml-auto">{data.length} peers tracked</span>
+      </div>
+      <p className="text-[10px] text-muted-foreground mb-3">
+        Scores persist across sessions. Each successful ping improves a peer's score; failed pings and swap failures reduce it.
+      </p>
+      <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        {/* Table header */}
+        <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 px-4 py-2 border-b text-[9px] font-mono text-muted-foreground uppercase tracking-widest"
+          style={{ borderColor: "var(--border)" }}>
+          <span>#</span>
+          <span>Peer</span>
+          <span className="text-right">Score</span>
+          <span className="text-right hidden sm:block">Swaps</span>
+          <span className="text-right hidden sm:block">Avg Latency</span>
+        </div>
+        <div className="divide-y" style={{ borderColor: "var(--border)" }}>
+          {data.map((entry, idx) => {
+            const trust = trustLevel(entry.score);
+            const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+            return (
+              <div key={entry.peerId}
+                className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 px-4 py-2.5 items-center hover:bg-muted/30 transition-colors">
+                <span className="text-[10px] font-mono text-muted-foreground w-5 text-center">
+                  {medal ?? `${idx + 1}`}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-mono text-foreground truncate">
+                    {entry.alias || `${entry.peerId.slice(0, 12)}…`}
+                  </div>
+                  <div className="text-[9px] text-muted-foreground font-mono truncate">
+                    {entry.origin} · last seen {new Date(entry.lastSeenAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <span
+                    className="text-[11px] font-bold font-mono px-1.5 py-0.5 rounded"
+                    style={{
+                      background: `${trust.color}18`,
+                      border: `1px solid ${trust.color}40`,
+                      color: trust.color,
+                    }}
+                  >{entry.score}</span>
+                  <div className="text-[8px] mt-0.5" style={{ color: trust.color }}>{trust.label}</div>
+                </div>
+                <div className="text-right shrink-0 hidden sm:block">
+                  <div className="text-[10px] font-mono text-foreground">{entry.successfulSwaps}</div>
+                  <div className="text-[8px] text-muted-foreground">swaps</div>
+                </div>
+                <div className="text-right shrink-0 hidden sm:block">
+                  <div className="text-[10px] font-mono text-foreground">
+                    {entry.avgLatencyMs != null ? `${entry.avgLatencyMs}ms` : '—'}
+                  </div>
+                  <div className="text-[8px] text-muted-foreground">avg latency</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Network Page ────────────────────────────────────────────────────────
 
 export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   invitePeerId?: string | null;
   onInvitePeerHandled?: () => void;
 } = {}) {
-  const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites">("topology");
+  const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites" | "leaderboard">("topology");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(new Set());
   const [liveChannels, setLiveChannels] = useState<Channel[]>([]);
@@ -1581,6 +1701,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           { id: "topology", label: "Topology", icon: <Activity className="w-3.5 h-3.5" /> },
           { id: "channels", label: "Liquidity Channels", icon: <GitBranch className="w-3.5 h-3.5" /> },
           { id: "invites", label: "Invites", icon: <Mail className="w-3.5 h-3.5" /> },
+          { id: "leaderboard", label: "Reputation", icon: <Trophy className="w-3.5 h-3.5" /> },
         ] as const).map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold transition-all"
@@ -1825,6 +1946,11 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         </div>
       )}
 
+      {/* Leaderboard Tab — all-time peer reputation from DB */}
+      {activeTab === "leaderboard" && (
+        <ReputationLeaderboard />
+      )}
+
       {/* Stats */}
       {activeTab === "topology" && <NetworkStats peers={livePeers} channels={liveChannels} />}
 
@@ -1939,9 +2065,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-cyan-500 dark:text-cyan-300 truncate flex items-center gap-1.5">
+                  <div className="text-sm font-bold text-cyan-600 dark:text-cyan-300 truncate flex items-center gap-1.5">
                     {peer.alias}
-                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-400 font-bold">YOU</span>
+                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-bold">YOU</span>
                   </div>
                   <div className="text-[10px] font-mono text-muted-foreground">
                     {oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Local node"}
@@ -2136,7 +2262,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           {/* Peer detail overlay */}
           <AnimatePresence>
             {selectedPeer && (
-              <PeerDetail peer={selectedPeer} onClose={() => setSelectedId(null)} selfPeerId={lightPeer.peerId} />
+              <PeerDetail peer={selectedPeer} onClose={() => setSelectedId(null)} selfPeerId={lightPeer.peerId} reputationScores={reputationData} />
             )}
           </AnimatePresence>
 
@@ -2148,7 +2274,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               key={lastActivity}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-[10px] font-mono text-cyan-500/70 dark:text-cyan-300/70 truncate"
+              className="text-[10px] font-mono text-cyan-600/80 dark:text-cyan-300/70 truncate"
             >
               {lastActivity}
             </motion.span>
