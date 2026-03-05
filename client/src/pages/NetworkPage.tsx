@@ -1727,23 +1727,92 @@ function ReputationLeaderboard() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-2">
-        <Trophy className="w-4 h-4 text-amber-400" />
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-1">
+        <Trophy className="w-4 h-4 text-amber-400 shrink-0" />
         <h2 className="text-sm font-bold text-foreground">Peer Reputation Leaderboard</h2>
-        <span className="text-[10px] font-mono text-muted-foreground ml-auto">{data.length} peers tracked</span>
+        <span className="text-[10px] font-mono text-muted-foreground ml-auto shrink-0">{data.length} tracked</span>
       </div>
-      <p className="text-[10px] text-muted-foreground mb-3">
-        Scores persist across sessions. Each successful ping improves a peer's score; failed pings and swap failures reduce it.
+      <p className="text-[10px] text-muted-foreground">
+        Scores persist across sessions. Successful pings improve a peer's score; failures reduce it.
       </p>
-      <div className="rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+
+      {/* ── Mobile: card list ── */}
+      <div className="sm:hidden space-y-2">
+        {data.map((entry, idx) => {
+          const trust = trustLevel(entry.score);
+          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+          return (
+            <div
+              key={entry.peerId}
+              className="rounded-xl px-3 py-2.5 flex items-center gap-3"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            >
+              {/* Rank */}
+              <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-[11px] font-bold font-mono"
+                style={{
+                  background: medal ? `${trust.color}18` : "var(--muted)",
+                  border: `1px solid ${medal ? `${trust.color}35` : "var(--border)"}`,
+                  color: medal ? trust.color : "var(--muted-foreground)",
+                }}>
+                {medal ?? idx + 1}
+              </div>
+
+              {/* Peer info */}
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-mono font-semibold text-foreground truncate">
+                  {entry.alias || `${entry.peerId.slice(0, 14)}…`}
+                </div>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="text-[9px] font-mono text-muted-foreground">
+                    {entry.origin}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground/60">·</span>
+                  <span className="text-[9px] font-mono text-muted-foreground">
+                    {new Date(entry.lastSeenAt).toLocaleDateString()}
+                  </span>
+                  {entry.successfulSwaps > 0 && (
+                    <>
+                      <span className="text-[9px] text-muted-foreground/60">·</span>
+                      <span className="text-[9px] font-mono text-emerald-400">{entry.successfulSwaps} swaps</span>
+                    </>
+                  )}
+                  {entry.avgLatencyMs != null && (
+                    <>
+                      <span className="text-[9px] text-muted-foreground/60">·</span>
+                      <span className="text-[9px] font-mono text-cyan-400">{entry.avgLatencyMs}ms</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Score badge */}
+              <div className="shrink-0 text-right">
+                <div
+                  className="text-[13px] font-bold font-mono px-2 py-0.5 rounded-lg"
+                  style={{
+                    background: `${trust.color}18`,
+                    border: `1px solid ${trust.color}40`,
+                    color: trust.color,
+                  }}
+                >{entry.score}</div>
+                <div className="text-[9px] mt-0.5 font-medium" style={{ color: trust.color }}>{trust.label}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Desktop: table ── */}
+      <div className="hidden sm:block rounded-2xl overflow-hidden" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
         {/* Table header */}
         <div className="grid grid-cols-[auto_1fr_auto_auto_auto] gap-3 px-4 py-2 border-b text-[9px] font-mono text-muted-foreground uppercase tracking-widest"
           style={{ borderColor: "var(--border)" }}>
           <span>#</span>
           <span>Peer</span>
           <span className="text-right">Score</span>
-          <span className="text-right hidden sm:block">Swaps</span>
-          <span className="text-right hidden sm:block">Avg Latency</span>
+          <span className="text-right">Swaps</span>
+          <span className="text-right">Avg Latency</span>
         </div>
         <div className="divide-y" style={{ borderColor: "var(--border)" }}>
           {data.map((entry, idx) => {
@@ -1774,11 +1843,11 @@ function ReputationLeaderboard() {
                   >{entry.score}</span>
                   <div className="text-[8px] mt-0.5" style={{ color: trust.color }}>{trust.label}</div>
                 </div>
-                <div className="text-right shrink-0 hidden sm:block">
+                <div className="text-right shrink-0">
                   <div className="text-[10px] font-mono text-foreground">{entry.successfulSwaps}</div>
                   <div className="text-[8px] text-muted-foreground">swaps</div>
                 </div>
-                <div className="text-right shrink-0 hidden sm:block">
+                <div className="text-right shrink-0">
                   <div className="text-[10px] font-mono text-foreground">
                     {entry.avgLatencyMs != null ? `${entry.avgLatencyMs}ms` : '—'}
                   </div>
@@ -2762,26 +2831,45 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       {/* Mobile peer list — shown only on small screens */}
       {!loading && (
       <div className="sm:hidden space-y-2 mb-4">
+
+        {/* ── Mini stats bar ── */}
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {[
+            { label: "Online", value: `${livePeers.filter(p => p.id !== "self" && p.online).length}/${livePeers.filter(p => p.id !== "self").length}`, color: "#10b981" },
+            { label: "Channels", value: liveChannels.filter(c => c.active).length, color: "#06b6d4" },
+            { label: "Avg ms", value: (() => { const latencies = livePeers.filter(p => p.id !== "self" && p.online).map(p => pingResults[p.id]?.latencyMs ?? p.latency).filter(Boolean); return latencies.length ? `${Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)}ms` : "—"; })(), color: "#f59e0b" },
+          ].map(stat => (
+            <div key={stat.label} className="rounded-xl px-3 py-2 text-center" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+              <div className="text-[13px] font-bold font-mono" style={{ color: stat.color }}>{stat.value}</div>
+              <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
         {/* Self peer card on mobile */}
         {livePeers.filter(p => p.id === "self").map(peer => (
-          <div key={peer.id} className="rounded-xl p-3"
+          <div key={peer.id} className="rounded-xl px-3 py-2.5"
             style={{ background: "rgba(6,182,212,0.04)", border: "1px solid rgba(6,182,212,0.15)" }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-2 h-2 rounded-full shrink-0 bg-cyan-400" />
+                {/* Animated pulse for self node */}
+                <div className="relative shrink-0">
+                  <div className="w-2.5 h-2.5 rounded-full bg-cyan-400" />
+                  <div className="absolute inset-0 w-2.5 h-2.5 rounded-full bg-cyan-400/40 animate-ping" style={{ animationDuration: "2s" }} />
+                </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-bold text-cyan-600 dark:text-cyan-300 truncate flex items-center gap-1.5">
+                  <div className="text-[13px] font-bold text-cyan-600 dark:text-cyan-300 truncate flex items-center gap-1.5">
                     {peer.alias}
-                    <span className="text-[8px] px-1 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-bold">YOU</span>
+                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/25 text-cyan-600 dark:text-cyan-400 font-bold tracking-wide">YOU</span>
                   </div>
-                  <div className="text-[10px] font-mono text-muted-foreground">
-                    {oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Local node"}
+                  <div className="text-[10px] font-mono text-muted-foreground truncate">
+                    {oracleNodeKey ? `${oracleNodeKey.slice(0, 16)}…` : "Local node"}
                   </div>
                 </div>
               </div>
-              <div className="text-right shrink-0">
-                <div className="text-xs font-mono text-cyan-400">local</div>
-                <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
+              <div className="text-right shrink-0 ml-2">
+                <div className="text-[11px] font-mono font-semibold text-cyan-400">local</div>
+                <div className="text-[9px] text-muted-foreground">{peer.channels} ch</div>
               </div>
             </div>
           </div>
@@ -2793,63 +2881,83 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           const displayLatency = pingState?.latencyMs ?? peer.latency;
           const color = latencyColor(displayLatency);
           const isSelected = selectedId === peer.id;
+          const repEntry = peer.fullKey ? reputationData?.[peer.fullKey] : undefined;
+          const repScore = repEntry?.score ?? null;
+          const isMuted = mutedPeerIds.has(peer.id);
+          const isBlocked = blockedPeerIds.has(peer.id);
           return (
             <motion.div
               key={peer.id}
               onClick={() => setSelectedId(prev => prev === peer.id ? null : peer.id)}
-              className="rounded-xl p-3 cursor-pointer transition-all"
+              className="rounded-xl cursor-pointer transition-all overflow-hidden"
               animate={{ scale: isSelected ? 0.99 : 1 }}
               style={{
                 background: isSelected ? "var(--accent)" : "var(--card)",
-                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
+                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : isBlocked ? "rgba(239,68,68,0.25)" : "var(--border)"}`,
+                opacity: isBlocked ? 0.6 : 1,
               }}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: peer.online ? color : "#ef4444" }} />
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-foreground truncate flex items-center gap-1.5">
-                      {peer.alias}
-                      {/* DHT layer origin badge */}
-                      <span
-                        className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0"
-                        title={
-                          peer.origin === 'hyperswarm'
-                            ? 'Hyperswarm DHT — Full node · Oracle VM'
-                            : 'IntercomSwap DHT — Browser Light Peer · Wallet-connected'
-                        }
-                        style={{
-                          background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
-                          border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
-                          color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
-                        }}
-                      >{peer.origin === 'hyperswarm' ? '⚡ Hyperswarm' : '📱 Light Peer'}</span>
-                    </div>
-                    <div className="text-[10px] font-mono text-muted-foreground">{peer.region}</div>
+              {/* Main row */}
+              <div className="flex items-center gap-2.5 px-3 py-2.5">
+                {/* Status dot */}
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: peer.online ? color : "#ef4444" }} />
+
+                {/* Peer identity */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[13px] font-bold text-foreground font-mono truncate max-w-[140px]">{peer.alias}</span>
+                    <span
+                      className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0"
+                      style={{
+                        background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
+                        border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
+                        color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
+                      }}
+                    >{peer.origin === 'hyperswarm' ? 'HW' : 'IS'}</span>
+                    {isMuted && <span title="Muted"><BellOff className="w-3 h-3 text-slate-400 shrink-0" /></span>}
+                    {isBlocked && <span title="Blocked"><Shield className="w-3 h-3 text-red-400 shrink-0" /></span>}
+                  </div>
+                  {/* Meta row: latency · channels · rep score */}
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <span className="text-[10px] font-mono font-semibold" style={{ color: peer.online ? color : "#64748b" }}>
+                      {pingState?.loading
+                        ? <Loader2 className="w-2.5 h-2.5 animate-spin inline" />
+                        : peer.online ? `${displayLatency}ms` : "offline"}
+                    </span>
+                    <span className="text-[9px] text-muted-foreground/50">·</span>
+                    <span className="text-[9px] text-muted-foreground">{peer.channels} ch</span>
+                    {repScore !== null && (
+                      <>
+                        <span className="text-[9px] text-muted-foreground/50">·</span>
+                        <span className="text-[9px] font-mono" style={{ color: trustLevel(repScore).color }}>
+                          {repScore} rep
+                        </span>
+                      </>
+                    )}
+                    {peer.pairs.length > 0 && (
+                      <>
+                        <span className="text-[9px] text-muted-foreground/50">·</span>
+                        <span className="text-[9px] font-mono text-muted-foreground">{peer.pairs.slice(0, 2).join(' ')}{peer.pairs.length > 2 ? ` +${peer.pairs.length - 2}` : ''}</span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0 ml-2">
-                  <div className="text-right">
-                    <div className="text-xs font-mono font-semibold" style={{ color }}>
-                      {pingState?.loading ? <Loader2 className="w-3 h-3 animate-spin inline" /> : peer.online ? `${displayLatency}ms` : "offline"}
-                    </div>
-                    <div className="text-[9px] text-muted-foreground">{peer.channels}ch</div>
-                  </div>
-                  {/* Mobile Ping button */}
+
+                {/* Action buttons — compact on mobile */}
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); if (peer.fullKey) handlePing(peer.id, peer.fullKey); }}
                     disabled={pingState?.loading || !peer.fullKey}
-                    className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg transition-all"
+                    title="Ping"
                     style={{
                       background: "rgba(16,185,129,0.1)",
                       border: "1px solid rgba(16,185,129,0.25)",
                       color: "#10b981",
-                      opacity: (!peer.fullKey || pingState?.loading) ? 0.5 : 1,
+                      opacity: (!peer.fullKey || pingState?.loading) ? 0.4 : 1,
                     }}>
-                    {pingState?.loading ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Radio className="w-2.5 h-2.5" />}
-                    Ping
+                    {pingState?.loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
                   </button>
-                  {/* Mobile Invite button — reputation-gated */}
                   {(() => {
                     const mobileRep = peer.fullKey ? reputationData?.[peer.fullKey] : undefined;
                     const mobileScore = mobileRep?.score ?? null;
@@ -2867,47 +2975,77 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                           window.dispatchEvent(new CustomEvent('afos:open-channel', { detail: { peerId: peer.fullKey } }));
                           toast.success(`Opening channel form for ${peer.alias}`);
                         }}
-                        title={canInvite ? `Invite (score ${mobileScore}/100)` : mobileScore === null ? 'Ping first to establish score' : `Score ${mobileScore}/100 < 70`}
-                        className="flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all"
+                        title={canInvite ? `Invite (score ${mobileScore}/100)` : mobileScore === null ? 'Ping first' : `Score ${mobileScore}/100 < 70`}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg transition-all"
                         style={{
                           background: canInvite ? 'rgba(139,92,246,0.12)' : 'rgba(100,116,139,0.08)',
                           border: `1px solid ${canInvite ? 'rgba(139,92,246,0.3)' : 'rgba(100,116,139,0.2)'}`,
                           color: canInvite ? '#a78bfa' : '#475569',
-                          opacity: canInvite ? 1 : 0.4,
+                          opacity: canInvite ? 1 : 0.35,
                         }}>
-                        <Mail className="w-2.5 h-2.5" />
-                        Invite
+                        <Mail className="w-3.5 h-3.5" />
                       </button>
                     );
                   })()}
+                  {/* Expand chevron */}
+                  <div className="w-5 flex items-center justify-center">
+                    <motion.div animate={{ rotate: isSelected ? 90 : 0 }} transition={{ duration: 0.15 }}>
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
+                    </motion.div>
+                  </div>
                 </div>
               </div>
+
+              {/* Expanded detail panel */}
               <AnimatePresence>
                 {isSelected && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: "auto", opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ duration: 0.18 }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-3 pt-3 border-t border-border space-y-1.5">
-                      <div className="flex justify-between">
-                        <span className="text-[10px] text-muted-foreground">Reputation</span>
-                        <span className="text-[10px] font-mono" style={{ color: peer.reputation > 98 ? "#10b981" : peer.reputation > 95 ? "#f59e0b" : "#ef4444" }}>{peer.reputation}%</span>
+                    <div className="px-3 pb-3 pt-1 border-t border-border/60">
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-3 gap-2 mb-2.5">
+                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
+                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.reputation}%</div>
+                          <div className="text-[8px] text-muted-foreground">uptime</div>
+                        </div>
+                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
+                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.channels}</div>
+                          <div className="text-[8px] text-muted-foreground">channels</div>
+                        </div>
+                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
+                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.version}</div>
+                          <div className="text-[8px] text-muted-foreground">version</div>
+                        </div>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-[10px] text-muted-foreground">Version</span>
-                        <span className="text-[10px] font-mono text-foreground/80">{peer.version}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {peer.pairs.map(pair => (
-                          <span key={pair} className="px-1.5 py-0.5 rounded text-[9px] font-mono"
-                            style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.8)" }}>
-                            {pair}
-                          </span>
-                        ))}
-                      </div>
+                      {/* Pairs */}
+                      {peer.pairs.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {peer.pairs.map(pair => (
+                            <span key={pair} className="px-2 py-0.5 rounded-md text-[9px] font-mono"
+                              style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.85)" }}>
+                              {pair}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* View full profile button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedId(peer.id); }}
+                        className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                        style={{
+                          background: "rgba(6,182,212,0.08)",
+                          border: "1px solid rgba(6,182,212,0.2)",
+                          color: "#06b6d4",
+                        }}
+                      >
+                        <Users className="w-3 h-3" />
+                        View Full Profile
+                      </button>
                     </div>
                   </motion.div>
                 )}

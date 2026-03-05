@@ -1156,3 +1156,16 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add Muted Peers section in Settings page with Unmute button
 - [x] Add Peer Reports tab in Admin Panel (pending/reviewed/actioned/dismissed with action buttons)
 - [x] Write vitest tests for peerReports and peerMutes routers (11 tests passing)
+
+## Mobile UX — Network Page Reputation & Topology Tabs
+
+- [x] Reputation tab: replace table with card-based layout on mobile (rank badge, peer ID, score, last seen)
+- [x] Reputation tab: hide table header on mobile, use compact card rows
+- [x] Topology tab: enhanced mobile peer list with mini stats bar (online/channels/avg latency)
+- [x] Topology tab: peer cards show HW/IS badge, latency, channels, rep score, muted/blocked indicators, expandable detail panel
+
+## Mobile UX — Network Page Tab Bar Fix
+
+- [ ] Fix tab bar overflow on mobile (tabs clipping into header)
+- [ ] Make tab bar horizontally scrollable or use compact icon-only tabs on mobile
+- [ ] Investigate and fix the "1 error" toast shown on reputation tab
