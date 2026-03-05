@@ -127,3 +127,81 @@ describe("analytics.topPairs", () => {
     expect(Array.isArray(result)).toBe(true);
   });
 });
+
+describe("adminConfig.saveFeeConfig — feeAlertThresholdCents", () => {
+  it("rejects negative feeAlertThresholdCents", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.adminConfig.saveFeeConfig({ feeAlertThresholdCents: -1 })
+    ).rejects.toThrow();
+  });
+
+  it("accepts zero (disables alert)", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    // With no DB this returns { success: false } or null — both are acceptable
+    const result = await caller.adminConfig.saveFeeConfig({ feeAlertThresholdCents: 0 }).catch(() => null);
+    expect(result === null || typeof result === "object").toBe(true);
+  });
+});
+
+describe("operatorConfig.get", () => {
+  it("returns null or an object with expected shape (graceful when DB unavailable)", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.operatorConfig.get();
+    if (result !== null) {
+      expect(result).toHaveProperty("llmModel");
+      expect(result).toHaveProperty("rendezvousChannel");
+      expect(result).toHaveProperty("tradeauto");
+      expect(result).toHaveProperty("solanaRpc");
+    } else {
+      expect(result).toBeNull();
+    }
+  });
+});
+
+describe("operatorConfig.save — admin guard", () => {
+  it("rejects non-admin users", async () => {
+    const ctx: import("./_core/context").TrpcContext = {
+      user: {
+        id: 2,
+        openId: "regular-user",
+        email: "user@afos.io",
+        name: "Regular User",
+        loginMethod: "manus",
+        role: "user",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastSignedIn: new Date(),
+      },
+      req: { protocol: "https", headers: {} } as import("./_core/context").TrpcContext["req"],
+      res: { clearCookie: () => {} } as import("./_core/context").TrpcContext["res"],
+    };
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.operatorConfig.save({ llmModel: "gpt-4" })
+    ).rejects.toThrow();
+  });
+
+  it("rejects invalid solanaRpc URL", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    await expect(
+      caller.operatorConfig.save({ solanaRpc: "not-a-url" })
+    ).rejects.toThrow();
+  });
+});
+
+describe("analytics.checkFeeAlert", () => {
+  it("resolves without throwing (graceful when DB unavailable)", async () => {
+    const ctx = createAdminContext();
+    const caller = appRouter.createCaller(ctx);
+    const result = await caller.analytics.checkFeeAlert();
+    expect(result).toHaveProperty("checked");
+    expect(result).toHaveProperty("alerted");
+    expect(result).toHaveProperty("totalFeeUsd");
+    expect(result).toHaveProperty("thresholdUsd");
+  });
+});

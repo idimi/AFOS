@@ -1205,3 +1205,13 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove LP Node tab (no backing system)
 - [x] Remove Routing tab (no backing system)
 - [x] Run all tests after changes (216 tests pass)
+
+## Admin Panel — Phase 2 (Operator Config + Auth Guards + Alerts)
+
+- [x] Add `operatorConfig` table to schema (all operator config fields)
+- [x] Add `operatorConfig` tRPC router (get/save)
+- [x] Wire Operator Config tab to DB (load on mount, persist on save)
+- [x] Add `adminProcedure` guard to adminConfig router (fee config + treasury)
+- [x] Add `adminProcedure` guard to operatorConfig router
+- [x] Add fee revenue threshold alert via notifyOwner (daily check, first $1 earned)
+- [x] Run all tests after changes (222 tests pass)

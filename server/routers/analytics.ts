@@ -587,4 +587,14 @@ export const analyticsRouter = router({
         avgSwapUsd:    parseFloat(totRow?.avgSwapUsd ?? "0"),
       };
     }),
+
+  /**
+   * Manually trigger the fee revenue alert check.
+   * Returns whether an alert was fired and the current daily total.
+   * Safe to call repeatedly — idempotent (max one notification per calendar day).
+   */
+  checkFeeAlert: publicProcedure.mutation(async () => {
+    const { runFeeRevenueAlert } = await import("../jobs/feeRevenueAlert");
+    return runFeeRevenueAlert();
+  }),
 });

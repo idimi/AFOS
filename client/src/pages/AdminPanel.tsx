@@ -36,6 +36,26 @@ function RevenueTab() {
   const [days, setDays] = useState(30);
   const { data: feeData, isLoading } = trpc.analytics.feeRevenue.useQuery({ days }, { staleTime: 30_000 });
   const { data: volumeData } = trpc.analytics.volumeByChain.useQuery({ days }, { staleTime: 30_000 });
+  const { data: alertCfg, refetch: refetchAlertCfg } = trpc.adminConfig.get.useQuery(undefined, { staleTime: 60_000 });
+  const checkFeeAlert = trpc.analytics.checkFeeAlert.useMutation({
+    onSuccess: (result) => {
+      if (result.alerted) {
+        toast.success(`Alert sent! Daily revenue $${result.totalFeeUsd.toFixed(2)} crossed $${result.thresholdUsd.toFixed(2)} threshold.`);
+      } else {
+        toast.info(`No alert: $${result.totalFeeUsd.toFixed(2)} today (threshold: $${result.thresholdUsd.toFixed(2)}, reason: ${result.reason ?? 'below-threshold'})`);
+      }
+      refetchAlertCfg();
+    },
+    onError: (err) => toast.error(`Alert check failed: ${err.message}`),
+  });
+  const saveAlertThreshold = trpc.adminConfig.saveFeeConfig.useMutation({
+    onSuccess: () => { toast.success("Alert threshold saved"); refetchAlertCfg(); },
+    onError: (err) => toast.error(`Save failed: ${err.message}`),
+  });
+  const [alertThresholdInput, setAlertThresholdInput] = useState("");
+  useEffect(() => {
+    if (alertCfg) setAlertThresholdInput(((alertCfg.feeAlertThresholdCents ?? 100) / 100).toFixed(2));
+  }, [alertCfg]);
 
   const totalFee  = feeData?.totalFeeUsd ?? 0;
   const p2pFee    = feeData?.p2pFeeUsd   ?? 0;
@@ -157,6 +177,57 @@ function RevenueTab() {
           </div>
         </div>
       )}
+
+      {/* Fee Revenue Alert */}
+      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-amber-400" />
+            <p className="text-xs font-semibold text-foreground">Daily Revenue Alert</p>
+          </div>
+          {alertCfg?.feeAlertLastNotifiedDate && (
+            <span className="text-[9px] font-mono text-muted-foreground">Last sent: {alertCfg.feeAlertLastNotifiedDate}</span>
+          )}
+        </div>
+        <p className="text-[10px] text-muted-foreground mb-3">
+          Send a push notification when today's fee revenue crosses the threshold. One alert per calendar day (UTC). Set to $0 to disable.
+        </p>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-1 px-3 py-2 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <DollarSign className="w-3 h-3 text-muted-foreground shrink-0" />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={alertThresholdInput}
+              onChange={e => setAlertThresholdInput(e.target.value)}
+              className="flex-1 bg-transparent text-xs font-mono text-foreground outline-none"
+              placeholder="1.00"
+            />
+          </div>
+          <button
+            onClick={() => {
+              const cents = Math.round(parseFloat(alertThresholdInput || "0") * 100);
+              if (isNaN(cents) || cents < 0) { toast.error("Invalid threshold"); return; }
+              saveAlertThreshold.mutate({ feeAlertThresholdCents: cents });
+            }}
+            disabled={saveAlertThreshold.isPending}
+            className="px-3 py-2 rounded-xl text-[10px] font-bold transition-all"
+            style={{ background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.3)", color: "#fbbf24" }}
+          >
+            {saveAlertThreshold.isPending ? "Saving…" : "Set"}
+          </button>
+          <button
+            onClick={() => checkFeeAlert.mutate()}
+            disabled={checkFeeAlert.isPending}
+            className="px-3 py-2 rounded-xl text-[10px] font-bold transition-all flex items-center gap-1.5"
+            style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}
+          >
+            {checkFeeAlert.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Activity className="w-3 h-3" />}
+            {checkFeeAlert.isPending ? "Checking…" : "Check Now"}
+          </button>
+        </div>
+      </div>
 
       {/* Empty state */}
       {!isLoading && totalSwps === 0 && (
@@ -939,7 +1010,14 @@ function OperatorConfigCard({
 }
 
 function OperatorConfigTab() {
-  const [cfg, setCfg] = useState({
+  // ── Load from DB ────────────────────────────────────────────────────────────
+  const { data: remote, isLoading: loadingCfg } = trpc.operatorConfig.get.useQuery(undefined, { staleTime: 30_000 });
+  const saveMutation = trpc.operatorConfig.save.useMutation({
+    onSuccess: () => toast.success("Operator configuration saved"),
+    onError: (err) => toast.error(`Save failed: ${err.message}`),
+  });
+
+  const DEFAULT_CFG = {
     llmModel: "kimi-k2-turbo",
     systemPrompt: "You are an autonomous financial agent. Execute swaps via IntercomSwap when instructed.",
     rendezvousChannel: "0000intercomswapbtcusdt",
@@ -952,19 +1030,80 @@ function OperatorConfigTab() {
     btcTlsCert: "/root/.lnd/tls.cert",
     solanaRpc: "https://api.mainnet-beta.solana.com",
     solanaKeypairPath: "onchain/solana/keypair.json",
-    escrowProgramId: "4RS6xpspM1V2K7FKSqeSH6VVaZbtzHzhJqacwrz8gJrF",
     tradeauto: false,
     maxTradeBtc: "0.01",
     feeBpsCap: "50",
     tickInterval: "3800",
     minRefundHours: "20",
     maxRefundHours: "40",
-    moonpayApiKey: "",
-    moonpayWallet: "",
-  });
+  };
 
-  const set = (key: string) => (v: string | boolean) =>
+  const [cfg, setCfg] = useState(DEFAULT_CFG);
+  const [dirty, setDirty] = useState(false);
+
+  // Sync remote data into local state when loaded
+  useEffect(() => {
+    if (!remote) return;
+    setCfg({
+      llmModel:          remote.llmModel          ?? DEFAULT_CFG.llmModel,
+      systemPrompt:      remote.systemPrompt      ?? DEFAULT_CFG.systemPrompt,
+      rendezvousChannel: remote.rendezvousChannel ?? DEFAULT_CFG.rendezvousChannel,
+      peerMode:          (remote.peerMode as "maker" | "taker" | "maker-taker") ?? DEFAULT_CFG.peerMode,
+      minSwapUsdt:       remote.minSwapUsdt       ?? DEFAULT_CFG.minSwapUsdt,
+      maxSwapUsdt:       remote.maxSwapUsdt       ?? DEFAULT_CFG.maxSwapUsdt,
+      scBridgePort:      remote.scBridgePort      ?? DEFAULT_CFG.scBridgePort,
+      btcHost:           remote.btcHost           ?? DEFAULT_CFG.btcHost,
+      btcRpcPassword:    remote.btcRpcPassword    ?? DEFAULT_CFG.btcRpcPassword,
+      btcTlsCert:        remote.btcTlsCert        ?? DEFAULT_CFG.btcTlsCert,
+      solanaRpc:         remote.solanaRpc         ?? DEFAULT_CFG.solanaRpc,
+      solanaKeypairPath: remote.solanaKeypairPath ?? DEFAULT_CFG.solanaKeypairPath,
+      tradeauto:         remote.tradeauto         ?? DEFAULT_CFG.tradeauto,
+      maxTradeBtc:       remote.maxTradeBtc       ?? DEFAULT_CFG.maxTradeBtc,
+      feeBpsCap:         remote.feeBpsCap         ?? DEFAULT_CFG.feeBpsCap,
+      tickInterval:      remote.tickInterval      ?? DEFAULT_CFG.tickInterval,
+      minRefundHours:    remote.minRefundHours    ?? DEFAULT_CFG.minRefundHours,
+      maxRefundHours:    remote.maxRefundHours    ?? DEFAULT_CFG.maxRefundHours,
+    });
+    setDirty(false);
+  }, [remote]);
+
+  const set = (key: string) => (v: string | boolean) => {
     setCfg(prev => ({ ...prev, [key]: v }));
+    setDirty(true);
+  };
+
+  const handleSave = () => {
+    saveMutation.mutate({
+      llmModel:          cfg.llmModel,
+      systemPrompt:      cfg.systemPrompt,
+      rendezvousChannel: cfg.rendezvousChannel,
+      peerMode:          cfg.peerMode,
+      minSwapUsdt:       cfg.minSwapUsdt,
+      maxSwapUsdt:       cfg.maxSwapUsdt,
+      scBridgePort:      cfg.scBridgePort,
+      btcHost:           cfg.btcHost,
+      btcRpcPassword:    cfg.btcRpcPassword,
+      btcTlsCert:        cfg.btcTlsCert,
+      solanaRpc:         cfg.solanaRpc,
+      solanaKeypairPath: cfg.solanaKeypairPath,
+      tradeauto:         cfg.tradeauto,
+      maxTradeBtc:       cfg.maxTradeBtc,
+      feeBpsCap:         cfg.feeBpsCap,
+      tickInterval:      cfg.tickInterval,
+      minRefundHours:    cfg.minRefundHours,
+      maxRefundHours:    cfg.maxRefundHours,
+    });
+    setDirty(false);
+  };
+
+  if (loadingCfg) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+        <span className="ml-2 text-xs text-muted-foreground">Loading operator config…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto">
@@ -1026,7 +1165,7 @@ function OperatorConfigTab() {
           <label className="block text-[10px] text-muted-foreground mb-1">Escrow Program ID</label>
           <div className="flex items-center gap-2 p-2 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span className="text-[10px] font-mono text-foreground/70 truncate">{cfg.escrowProgramId}</span>
+            <span className="text-[10px] font-mono text-foreground/70 truncate">4RS6xpspM1V2K7FKSqeSH6VVaZbtzHzhJqacwrz8gJrF</span>
           </div>
           <p className="text-[9px] text-muted-foreground mt-0.5 font-mono">Deployed on Solana mainnet — do not modify</p>
         </div>
@@ -1055,19 +1194,20 @@ function OperatorConfigTab() {
 
       <OperatorConfigCard icon={Moon} title="MoonPay Fiat On-ramp (Phase 2)" color="text-foreground/50">
         <div className="opacity-40 pointer-events-none space-y-3">
-          <OperatorConfigField label="API Key" value={cfg.moonpayApiKey} onChange={set("moonpayApiKey")} type="password" placeholder="pk_live_…" disabled />
-          <OperatorConfigField label="Destination Wallet Address" value={cfg.moonpayWallet} onChange={set("moonpayWallet")} mono placeholder="bc1q…" disabled />
+          <OperatorConfigField label="API Key" value="" onChange={() => {}} type="password" placeholder="pk_live_…" disabled />
+          <OperatorConfigField label="Destination Wallet Address" value="" onChange={() => {}} mono placeholder="bc1q…" disabled />
           <p className="text-[10px] text-muted-foreground font-mono">MoonPay fiat on-ramp will be integrated in Phase 2 to auto-fund the agent wallet before executing swaps.</p>
         </div>
       </OperatorConfigCard>
 
       <button
-        onClick={() => toast.success("Operator configuration saved")}
-        className="w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
-        style={{ background: "rgba(59,130,246,0.12)", border: "1px solid rgba(59,130,246,0.3)", color: "#60a5fa" }}
+        onClick={handleSave}
+        disabled={saveMutation.isPending || !dirty}
+        className="w-full py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+        style={{ background: dirty ? "rgba(59,130,246,0.15)" : "rgba(59,130,246,0.06)", border: `1px solid ${dirty ? "rgba(59,130,246,0.5)" : "rgba(59,130,246,0.2)"}`, color: "#60a5fa" }}
       >
-        <Save className="w-3.5 h-3.5" />
-        Save Operator Config
+        {saveMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+        {saveMutation.isPending ? "Saving…" : dirty ? "Save Operator Config" : "No unsaved changes"}
       </button>
     </div>
   );

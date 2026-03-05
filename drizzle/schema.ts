@@ -262,6 +262,10 @@ export const adminConfig = mysqlTable("admin_config", {
   maxTradeUsdCents: int("maxTradeUsdCents").default(100000).notNull(),
   /** JSON-encoded array of TreasuryWallet objects */
   treasuryWallets: text("treasuryWallets"),
+  /** Fee revenue alert threshold in USD cents (e.g. 100 = $1.00). 0 = disabled. */
+  feeAlertThresholdCents: int("feeAlertThresholdCents").default(100).notNull(),
+  /** ISO date string (YYYY-MM-DD) of the last day we sent a fee alert, to avoid duplicate alerts */
+  feeAlertLastNotifiedDate: varchar("feeAlertLastNotifiedDate", { length: 10 }),
   createdAt:       timestamp("createdAt").defaultNow().notNull(),
   updatedAt:       timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -277,4 +281,60 @@ export const DEFAULT_ADMIN_CONFIG = {
   minTradeUsdCents: 1000,
   maxTradeUsdCents: 100000,
   treasuryWallets: [] as Array<{ id: string; label: string; chain: "solana" | "ethereum" | "bitcoin"; address: string; splitPercent: number }>,
+};
+
+// ─── Operator Config ──────────────────────────────────────────────────────────
+// Singleton table (id = 1) storing AFOS Oracle VM infrastructure configuration.
+// All fields correspond to the Operator Config tab in the admin panel.
+export const operatorConfig = mysqlTable("operator_config", {
+  id:                  int("id").autoincrement().primaryKey(),
+  // AFOS Agent
+  llmModel:            varchar("llmModel", { length: 100 }).default("kimi-k2-turbo").notNull(),
+  systemPrompt:        text("systemPrompt"),
+  // IntercomSwap Node
+  rendezvousChannel:   varchar("rendezvousChannel", { length: 200 }).default("0000intercomswapbtcusdt").notNull(),
+  peerMode:            varchar("peerMode", { length: 20 }).default("maker-taker").notNull(),
+  minSwapUsdt:         varchar("minSwapUsdt", { length: 20 }).default("10").notNull(),
+  maxSwapUsdt:         varchar("maxSwapUsdt", { length: 20 }).default("1000").notNull(),
+  scBridgePort:        varchar("scBridgePort", { length: 10 }).default("49222").notNull(),
+  // Bitcoin Node
+  btcHost:             varchar("btcHost", { length: 200 }).default("localhost:8332").notNull(),
+  btcRpcPassword:      varchar("btcRpcPassword", { length: 500 }).default("").notNull(),
+  btcTlsCert:          varchar("btcTlsCert", { length: 500 }).default("/root/.lnd/tls.cert").notNull(),
+  // Solana
+  solanaRpc:           varchar("solanaRpc", { length: 500 }).default("https://api.mainnet-beta.solana.com").notNull(),
+  solanaKeypairPath:   varchar("solanaKeypairPath", { length: 500 }).default("onchain/solana/keypair.json").notNull(),
+  // Worker / Autopost
+  tradeauto:           int("tradeauto").default(0).notNull(),  // 0 = false, 1 = true
+  maxTradeBtc:         varchar("maxTradeBtc", { length: 30 }).default("0.01").notNull(),
+  feeBpsCap:           varchar("feeBpsCap", { length: 10 }).default("50").notNull(),
+  tickInterval:        varchar("tickInterval", { length: 10 }).default("3800").notNull(),
+  minRefundHours:      varchar("minRefundHours", { length: 10 }).default("20").notNull(),
+  maxRefundHours:      varchar("maxRefundHours", { length: 10 }).default("40").notNull(),
+  createdAt:           timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:           timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OperatorConfig = typeof operatorConfig.$inferSelect;
+export type InsertOperatorConfig = typeof operatorConfig.$inferInsert;
+
+export const DEFAULT_OPERATOR_CONFIG = {
+  llmModel: "kimi-k2-turbo",
+  systemPrompt: "You are an autonomous financial agent. Execute swaps via IntercomSwap when instructed.",
+  rendezvousChannel: "0000intercomswapbtcusdt",
+  peerMode: "maker-taker" as "maker" | "taker" | "maker-taker",
+  minSwapUsdt: "10",
+  maxSwapUsdt: "1000",
+  scBridgePort: "49222",
+  btcHost: "localhost:8332",
+  btcRpcPassword: "",
+  btcTlsCert: "/root/.lnd/tls.cert",
+  solanaRpc: "https://api.mainnet-beta.solana.com",
+  solanaKeypairPath: "onchain/solana/keypair.json",
+  tradeauto: false,
+  maxTradeBtc: "0.01",
+  feeBpsCap: "50",
+  tickInterval: "3800",
+  minRefundHours: "20",
+  maxRefundHours: "40",
 };
