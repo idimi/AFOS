@@ -1301,3 +1301,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add theme-color meta tag (dark + light)
 - [x] Fix logo light-mode rendering: add ring-1 ring-border/40 shadow-sm wrapper so dark icon blends in light mode
 - [x] Apply light-mode wrapper to all logo placements (sidebar, mobile drawer, chat bubbles, agent CTA)
+
+## JSON-LD Structured Data
+
+- [x] Add WebApplication JSON-LD schema to index.html (name, description, applicationCategory, url, image, offers, featureList)
