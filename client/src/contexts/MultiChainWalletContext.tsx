@@ -395,28 +395,27 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         return;
       }
 
-      // ── Fetch Solana balances via RPC (wallet adapter not used in multi-chain path) ──
-      let solanaBalances: Array<{ symbol: string; amount: string; usdValue: number }> | undefined;
-      let solanaTotalUsd = 0;
-      if (solanaAddress) {
-        try {
-          const solBalResult = await fetchSolanaBalancesForAddress(solanaAddress);
-          solanaBalances = solBalResult.balances;
-          solanaTotalUsd = solBalResult.totalUsd;
-        } catch (e) {
-          console.warn("[Phantom] SOL balance fetch failed:", e);
-        }
-      }
-
+      // Set state immediately (without SOL balances) so the UI updates fast
       setPhantomMultiChain({
         connected: true,
         chains: connectedChains,
         solanaAddress,
         ethereumAddress,
         bitcoinAddress,
-        solanaBalances,
-        solanaTotalUsd,
       });
+
+      // Fetch Solana balances in the background and update state when ready
+      if (solanaAddress) {
+        fetchSolanaBalancesForAddress(solanaAddress)
+          .then(({ balances, totalUsd }) => {
+            setPhantomMultiChain(prev => prev ? {
+              ...prev,
+              solanaBalances: balances,
+              solanaTotalUsd: totalUsd,
+            } : null);
+          })
+          .catch(e => console.warn("[Phantom] SOL balance fetch failed:", e));
+      }
 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
 

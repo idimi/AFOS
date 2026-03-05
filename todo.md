@@ -1032,3 +1032,8 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix SOL balance still showing $0 — routed through backend tRPC procedure (getSolanaBalanceByAddress) to avoid browser CORS/403 from Solana public RPC
 - [x] Update chat welcome message to show all connected chain balances (SOL + ETH + BTC) — checks phantomMultiChain.solanaBalances as fallback
+
+## Chat Welcome Timing + Connection Speed
+
+- [x] Fix chat welcome message only showing ETH — debounced 2.5s to wait for all chain balances to settle
+- [x] Optimize Phantom connection speed — set state immediately, fetch SOL balance in background async
