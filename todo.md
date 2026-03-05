@@ -1254,4 +1254,4 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Settings Page — Mobile Scroll Fix
 
-- [ ] Fix Settings page not scrolling on mobile
+- [x] Fix Settings page not scrolling on mobile
