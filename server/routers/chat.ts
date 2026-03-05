@@ -826,7 +826,7 @@ export const chatRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const { message, history, walletBalances, openId } = input;
+      const { message, history, walletBalances, openId, walletAddress: senderWalletAddress } = input;
 
       // Load user settings (non-blocking — falls back to defaults if DB unavailable)
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1020,6 +1020,7 @@ export const chatRouter = router({
           route:      "IntercomSwap P2P",
           status:     "completed",
           peerId:     p2pQuote.peerId ?? undefined,
+          walletAddress: userPublicKey,
         }).catch(() => {/* non-fatal */});
         return {
           route:          "IntercomSwap P2P" as const,
@@ -1056,6 +1057,7 @@ export const chatRouter = router({
         amount:     String(amount ?? 0),
         route:      "Jupiter DEX",
         status:     "completed",
+        walletAddress: userPublicKey,
       }).catch(() => {/* non-fatal */});
 
       return {
@@ -1166,6 +1168,7 @@ export const chatRouter = router({
           route:      "IntercomSwap P2P",
           status:     "completed",
           peerId:     p2pQuote.peerId ?? undefined,
+          walletAddress: fromAddress,
         }).catch(() => {/* non-fatal */});
         // Build HTLC lock calldata if contract is deployed
         const htlcTimelock = Math.floor(Date.now() / 1000) + 3600; // 1-hour timelock
@@ -1254,6 +1257,7 @@ export const chatRouter = router({
           amount:     String(amount),
           route:      "1inch (Ethereum)",
           status:     "completed",
+          walletAddress: fromAddress,
         }).catch(() => {/* non-fatal */});
         return {
           success:  true,

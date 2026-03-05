@@ -286,14 +286,14 @@ export default function SwapHistory() {
     : filters.status === "refunded" ? "refunded"
     : "all";
 
-  // Fetch real data from tRPC
-  const { data: historyData, isLoading: historyLoading, refetch } = trpc.history.list.useQuery({
+  // Fetch real data from tRPC — true server-side pagination
+  const { data: historyData, isLoading: historyLoading, isFetching, refetch } = trpc.history.list.useQuery({
     walletAddresses,
     status: statusParam as "all" | "completed" | "failed" | "refunded",
     days,
-    limit: 200,
-    offset: 0,
-  }, { refetchInterval: 30000 });
+    limit: PAGE_SIZE,
+    offset: (page - 1) * PAGE_SIZE,
+  }, { refetchInterval: 30000, placeholderData: (prev) => prev });
 
   const { data: statsData } = trpc.history.stats.useQuery({
     walletAddresses,
@@ -329,8 +329,12 @@ export default function SwapHistory() {
     return result;
   }, [allSwaps, filters.search, sortField, sortDir]);
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Server returns exactly PAGE_SIZE rows; total comes from server count
+  const serverTotal = historyData?.total ?? 0;
+  const totalPages = Math.ceil(serverTotal / PAGE_SIZE);
+  // For client-side search: if search is active, filter the current page's rows
+  // (full-text search across all pages requires server-side search — this filters the visible page)
+  const paginated = filtered;
 
   const handleSort = (field: typeof sortField) => {
     if (sortField === field) setSortDir(d => d === "desc" ? "asc" : "desc");
@@ -685,38 +689,59 @@ export default function SwapHistory() {
             </AnimatePresence>
           )}
 
-          {/* Pagination */}
+          {/* Pagination — server-side */}
           {!historyLoading && totalPages > 1 && (
             <div className="flex items-center justify-between px-5 py-3">
-              <span className="text-[10px] text-slate-600">
-                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+              <span className="text-[10px] text-slate-600 flex items-center gap-1.5">
+                {isFetching && !historyLoading && (
+                  <span className="inline-block w-2.5 h-2.5 rounded-full border border-cyan-500 border-t-transparent animate-spin" />
+                )}
+                Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, serverTotal)} of {serverTotal}
               </span>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
+                  disabled={page === 1 || isFetching}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                   style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
                 </button>
-                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => i + 1).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className="w-7 h-7 rounded-lg text-xs font-mono transition-all"
-                    style={{
-                      background: p === page ? "rgba(59,130,246,0.15)" : "var(--muted)",
-                      border: `1px solid ${p === page ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
-                      color: p === page ? "#3b82f6" : "var(--muted-foreground)",
-                    }}
-                  >
-                    {p}
-                  </button>
-                ))}
+                {/* Show up to 7 page buttons with ellipsis for large page counts */}
+                {(() => {
+                  const pages: (number | "...")[] = [];
+                  if (totalPages <= 7) {
+                    for (let i = 1; i <= totalPages; i++) pages.push(i);
+                  } else {
+                    pages.push(1);
+                    if (page > 3) pages.push("...");
+                    for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+                    if (page < totalPages - 2) pages.push("...");
+                    pages.push(totalPages);
+                  }
+                  return pages.map((p, idx) =>
+                    p === "..." ? (
+                      <span key={`ellipsis-${idx}`} className="w-7 h-7 flex items-center justify-center text-xs text-muted-foreground">…</span>
+                    ) : (
+                      <button
+                        key={p}
+                        onClick={() => setPage(p as number)}
+                        disabled={isFetching}
+                        className="w-7 h-7 rounded-lg text-xs font-mono transition-all disabled:opacity-50"
+                        style={{
+                          background: p === page ? "rgba(59,130,246,0.15)" : "var(--muted)",
+                          border: `1px solid ${p === page ? "rgba(59,130,246,0.4)" : "var(--border)"}`,
+                          color: p === page ? "#3b82f6" : "var(--muted-foreground)",
+                        }}
+                      >
+                        {p}
+                      </button>
+                    )
+                  );
+                })()}
                 <button
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
+                  disabled={page === totalPages || isFetching}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30 transition-colors"
                   style={{ background: "var(--card)", border: "1px solid var(--border)" }}
                 >

@@ -1305,3 +1305,15 @@ The Overview should be an **operator's command center** — a single glance tell
 ## JSON-LD Structured Data
 
 - [x] Add WebApplication JSON-LD schema to index.html (name, description, applicationCategory, url, image, offers, featureList)
+
+## walletAddress Attribution + Pagination
+
+- [x] Add walletAddress param to recordSwapAnalytic() in htlcMonitor.ts
+- [x] Wire walletAddress into buildSwapTx IntercomSwap P2P call (userPublicKey)
+- [x] Wire walletAddress into buildSwapTx Jupiter DEX call (userPublicKey)
+- [x] Wire walletAddress into executeEthSwap IntercomSwap P2P call (fromAddress)
+- [x] Wire walletAddress into executeEthSwap 1inch fallback call (fromAddress)
+- [x] Upgrade SwapHistory.tsx to true server-side pagination (limit/offset per page)
+- [x] Add ellipsis page buttons for large page counts
+- [x] Add isFetching spinner in pagination row
+- [x] Disable prev/next/page buttons while fetching to prevent double-clicks
