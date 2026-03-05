@@ -144,9 +144,9 @@ function PairToggle({ pair, active, onToggle }: { pair: string; active: boolean;
 
 function MyNodeTab() {
   const peer = useLightPeer();
-  const { connected: solConnected } = useWallet();
-  const { ethereum, bitcoin } = useMultiChainWallet();
-  const isWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
+  const { connected: solAdapterConnected } = useWallet();
+  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
+  const isWalletConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress || !!ethereum?.address || !!bitcoin?.address;
 
   const [showSettings, setShowSettings] = useState(false);
   const [spreadInput, setSpreadInput] = useState(String(peer.prefs.spreadBps));
@@ -445,9 +445,9 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
   activePeerCount: number;
 }) {
   const peer = useLightPeer();
-  const { connected: solConnected } = useWallet();
-  const { ethereum, bitcoin } = useMultiChainWallet();
-  const isWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
+  const { connected: solAdapterConnected } = useWallet();
+  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
+  const isWalletConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress || !!ethereum?.address || !!bitcoin?.address;
 
   const [activeTab, setActiveTab] = useState<"mynode" | "livepeers">(() => {
     try { return (localStorage.getItem("afos_network_tab") as "mynode" | "livepeers") || "mynode"; }

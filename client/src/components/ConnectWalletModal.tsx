@@ -223,7 +223,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
   };
 
   // Solana
-  const { connected: solConnected, walletName: solWalletName, shortAddress: solShortAddr, balances, totalUsd, disconnect: solDisconnect } = useWallet();
+  const { connected: solAdapterConnected, walletName: solWalletName, shortAddress: solShortAddr, balances, totalUsd, disconnect: solDisconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const { publicKey } = useSolanaWallet();
 
@@ -237,6 +237,30 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
     disconnectPhantom,
     ethConnecting, btcConnecting, phantomConnecting,
   } = useMultiChainWallet();
+
+  // Solana is connected if the standard adapter is connected OR if Phantom multi-chain has a Solana address
+  const phantomSolAddr = phantomMultiChain?.solanaAddress;
+  const solConnected = solAdapterConnected || !!phantomSolAddr;
+  // When Phantom multi-chain is used, derive display values from its state
+  const effectiveSolWalletName = solAdapterConnected ? solWalletName : (phantomSolAddr ? "Phantom" : null);
+  const effectiveSolShortAddr = solAdapterConnected
+    ? solShortAddr
+    : phantomSolAddr
+    ? `${phantomSolAddr.slice(0, 4)}…${phantomSolAddr.slice(-4)}`
+    : null;
+  const effectiveSolExplorerUrl = solAdapterConnected && publicKey
+    ? `https://solscan.io/account/${publicKey.toString()}`
+    : phantomSolAddr
+    ? `https://solscan.io/account/${phantomSolAddr}`
+    : undefined;
+  // Balances: use adapter balances when adapter-connected, else show empty (Phantom multi-chain SOL balance
+  // is not fetched via the adapter — show a placeholder until we can fetch it)
+  const effectiveSolBalances = solAdapterConnected
+    ? balances.map(b => ({ symbol: b.symbol, amount: b.amount, usdValue: b.usdValue }))
+    : phantomSolAddr
+    ? [{ symbol: "SOL", amount: "—", usdValue: 0 }]
+    : [];
+  const effectiveSolTotalUsd = solAdapterConnected ? totalUsd : 0;
 
   // Watch for Phantom multi-chain connection completing and trigger success overlay
   const prevPhantomRef = useRef(phantomMultiChain?.connected ?? false);
@@ -499,13 +523,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
               {activeChain === "solana" && (
                 solConnected ? (
                   <ConnectedCard
-                    walletName={solWalletName || "Phantom"}
-                    shortAddress={solShortAddr ?? ""}
-                    explorerUrl={publicKey ? `https://solscan.io/account/${publicKey.toString()}` : undefined}
-                    balances={balances.map(b => ({ symbol: b.symbol, amount: b.amount, usdValue: b.usdValue }))}
-                    totalUsd={totalUsd}
+                    walletName={effectiveSolWalletName || "Phantom"}
+                    shortAddress={effectiveSolShortAddr ?? ""}
+                    explorerUrl={effectiveSolExplorerUrl}
+                    balances={effectiveSolBalances}
+                    totalUsd={effectiveSolTotalUsd}
                     accentColor="#9945FF"
-                    onDisconnect={handleSolanaDisconnect}
+                    onDisconnect={phantomSolAddr && !solAdapterConnected ? disconnectPhantom : handleSolanaDisconnect}
                   />
                 ) : (
                   <>

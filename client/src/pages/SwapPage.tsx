@@ -139,7 +139,7 @@ function chainExplorerUrl(txHash: string, chain: SupportedChain): string {
 export default function SwapPage() {
   // ── Wallet state ──────────────────────────────────────────────────────────
   const {
-    connected: solConnected,
+    connected: solAdapterConnected,
     shortAddress: solShortAddress,
     balances: solBalances,
     totalUsd: solTotalUsd,
@@ -149,7 +149,18 @@ export default function SwapPage() {
     ethereum: ethWallet,
     bitcoin: btcWallet,
     erc20Balances,
+    phantomMultiChain,
   } = useMultiChainWallet();
+
+  // Solana is connected if the standard adapter is connected OR Phantom multi-chain has a Solana address
+  const phantomSolAddress = phantomMultiChain?.solanaAddress;
+  const solConnected = solAdapterConnected || !!phantomSolAddress;
+  // Use Phantom multi-chain address as short address when adapter is not connected
+  const effectiveSolShortAddress = solAdapterConnected
+    ? solShortAddress
+    : phantomSolAddress
+    ? `${phantomSolAddress.slice(0, 4)}…${phantomSolAddress.slice(-4)}`
+    : null;
 
   const isConnected = solConnected || !!ethWallet?.address || !!btcWallet?.address;
 
@@ -417,7 +428,7 @@ export default function SwapPage() {
             style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)", color: "#10b981" }}>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
             {solConnected
-              ? solShortAddress
+              ? effectiveSolShortAddress
               : ethWallet?.address
                 ? ethWallet.address.slice(0, 6) + "…" + ethWallet.address.slice(-4)
                 : btcWallet?.address?.slice(0, 8) + "…"}
@@ -456,7 +467,7 @@ export default function SwapPage() {
                     </p>
                     <p className="text-[10px] text-muted-foreground">
                       {solConnected
-                        ? solShortAddress
+                        ? effectiveSolShortAddress
                         : ethWallet?.address
                           ? ethWallet.address.slice(0, 6) + "…" + ethWallet.address.slice(-4)
                           : btcWallet?.address?.slice(0, 8) + "…"}

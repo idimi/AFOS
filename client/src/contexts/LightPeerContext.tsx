@@ -113,9 +113,13 @@ const RFQ_EXPIRY_MS = 60_000;
 const LightPeerContext = createContext<LightPeerState | null>(null);
 
 export function LightPeerProvider({ children }: { children: ReactNode }) {
-  const { publicKey: solPubkey, connected: solConnected, signTransaction } = useWallet();
-  const { ethereum, bitcoin } = useMultiChainWallet();
+  const { publicKey: solPubkey, connected: solAdapterConnected, signTransaction } = useWallet();
+  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
   const { connection: solConnection } = useConnection();
+
+  // Solana is "connected" if the standard adapter is connected OR if Phantom multi-chain has a Solana address
+  const phantomSolAddress = phantomMultiChain?.solanaAddress;
+  const solConnected = solAdapterConnected || !!phantomSolAddress;
 
   // ── Peer identity ──────────────────────────────────────────────────────────
   const [peerId, setPeerId] = useState<string | null>(null);
@@ -152,8 +156,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     let id: string | null = null;
     let alias = "light-peer";
 
-    if (solConnected && solPubkey) {
+    if (solAdapterConnected && solPubkey) {
+      // Standard Solana wallet adapter (Solflare, etc.)
       id = solPubkey.toString();
+      alias = `lp-${id.slice(0, 6)}`;
+    } else if (phantomSolAddress) {
+      // Phantom multi-chain: use the Solana address from the multi-chain context
+      id = phantomSolAddress;
       alias = `lp-${id.slice(0, 6)}`;
     } else if (ethereum?.address) {
       id = ethereum.address.toLowerCase();
@@ -165,7 +174,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     setPeerId(id);
     setPeerAlias(alias);
-  }, [solConnected, solPubkey, ethereum?.address, bitcoin?.address]);
+  }, [solAdapterConnected, solPubkey, phantomSolAddress, ethereum?.address, bitcoin?.address]);
 
   // ── Announce / heartbeat ──────────────────────────────────────────────────
   const announce = useCallback(async (id: string, alias: string) => {

@@ -150,10 +150,10 @@ function PairToggle({ pair, active, onToggle }: {
 
 export default function LightPeerPanel() {
   const peer = useLightPeer();
-  const { connected: solConnected } = useWallet();
-  const { ethereum, bitcoin } = useMultiChainWallet();
+  const { connected: solAdapterConnected } = useWallet();
+  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
 
-  const isWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
+  const isWalletConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress || !!ethereum?.address || !!bitcoin?.address;
 
   const [expanded, setExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);

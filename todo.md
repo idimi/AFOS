@@ -1016,3 +1016,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [ ] Pending invite banner state with spinner when invited peer not yet online
 - [ ] Persist invite peerId in sessionStorage for post-wallet-connect banner re-show
 - [ ] Peer direct message system via relay (send/receive + UI)
+
+## Phantom Solana Connection Fix
+
+- [x] Fix SOL tab in ConnectWalletModal to show connected state when Phantom multi-chain has a Solana address (was checking only solana wallet adapter `connected` state, not `phantomMultiChain.solanaAddress`)
+- [x] Fix LightPeerContext peer ID derivation to use `phantomMultiChain.solanaAddress` when adapter is not connected
+- [x] Fix LightPeerPanel, NetworkPanel, SwapPage, Dashboard (MiniChatWidget, QuickActions, PortfolioCard, MobilePortfolioStrip) to also recognize Phantom multi-chain Solana as a connected state
