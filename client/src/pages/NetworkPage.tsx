@@ -262,12 +262,28 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds }: {
               className={ch.active ? "channel-active" : ""}
             />
             {ch.active && (
-              <circle
-                cx={(px(from.lat) + px(to.lat)) / 2}
-                cy={(py(from.lng) + py(to.lng)) / 2}
-                r={3}
-                fill="rgba(6,182,212,0.5)"
-              />
+              <>
+                <circle
+                  cx={(px(from.lat) + px(to.lat)) / 2}
+                  cy={(py(from.lng) + py(to.lng)) / 2}
+                  r={3}
+                  fill="rgba(6,182,212,0.5)"
+                />
+                {/* Live latency label on the channel edge */}
+                {to.latency > 0 && (
+                  <text
+                    x={(px(from.lat) + px(to.lat)) / 2}
+                    y={(py(from.lng) + py(to.lng)) / 2 - 8}
+                    textAnchor="middle"
+                    fontSize={8}
+                    fill={latencyColor(to.latency)}
+                    fontFamily="monospace"
+                    opacity={0.8}
+                  >
+                    {to.latency}ms
+                  </text>
+                )}
+              </>
             )}
           </g>
         );
@@ -1485,7 +1501,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId, lightPeer.remotePeers]);
 
   /** Ping a remote peer, update latency display, and persist result to reputation DB */
-  const handlePing = useCallback(async (peerId: string, fullKey: string) => {
+  const handlePing = useCallback(async (peerId: string, fullKey: string, silent = false) => {
     setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true } }));
     const peer = livePeers.find(p => p.id === peerId);
     // Route to correct ping endpoint based on peer origin:
@@ -1497,6 +1513,12 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         ? await pingSignalingPeer(fullKey)
         : await pingPeer(fullKey);
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: result.latencyMs, loading: false } }));
+      // Update the peer's latency in livePeers so the topology canvas reflects the real RTT
+      if (result.success && result.latencyMs !== null) {
+        setLivePeers(prev => prev.map(p =>
+          p.id === peerId ? { ...p, latency: result.latencyMs! } : p
+        ));
+      }
       // Persist ping result to reputation DB
       recordPingMutation.mutate({
         peerId: fullKey,
@@ -1506,16 +1528,20 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       }, {
         onSuccess: () => refetchReputation(),
       });
-      if (result.success && result.latencyMs !== null) {
-        toast.success(`Ping: ${result.latencyMs}ms${result.estimated ? ' (estimated)' : ''}`);
-      } else {
-        toast.error(result.error || 'Ping failed');
+      if (!silent) {
+        if (result.success && result.latencyMs !== null) {
+          toast.success(`Ping: ${result.latencyMs}ms${result.estimated ? ' (estimated)' : ''}`);
+        } else {
+          toast.error(result.error || 'Ping failed');
+        }
       }
     } catch {
       setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: false } }));
       // Record failed ping
       recordPingMutation.mutate({ peerId: fullKey, alias: peer?.alias, origin: isSignalingPeer ? 'intercomswap' : 'hyperswarm', latencyMs: null });
-      toast.error('Ping request failed');
+      if (!silent) {
+        toast.error('Ping request failed');
+      }
     }
   }, [livePeers, recordPingMutation, refetchReputation]);
 
@@ -1648,6 +1674,29 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
       unsubSwap();
     };
   }, [triggerPulse, fetchLiveData, recordSwapMutation, refetchReputation]);
+
+  // ── Auto-ping new signaling peers on connect ─────────────────────────────
+  // Track which peers have already been auto-pinged so we don't re-ping on every poll cycle.
+  const autoPingedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    // Find signaling peers that haven't been auto-pinged yet
+    const newPeers = livePeers.filter(p =>
+      p.id !== 'self' &&
+      p.online &&
+      p.origin === 'intercomswap' &&
+      p.fullKey &&
+      !autoPingedRef.current.has(p.fullKey)
+    );
+    if (newPeers.length === 0) return;
+    // Mark them as pinged immediately to avoid duplicate pings
+    newPeers.forEach(p => autoPingedRef.current.add(p.fullKey!));
+    // Stagger pings by 500ms to avoid overwhelming the signaling server
+    newPeers.forEach((p, idx) => {
+      setTimeout(() => {
+        handlePing(p.id, p.fullKey!, true); // silent = true (no toast)
+      }, idx * 500);
+    });
+  }, [livePeers, handlePing]);
 
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-6" style={{ background: "transparent" }}>

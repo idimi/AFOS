@@ -9,7 +9,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
-import { attachSignalingServer } from "../signaling";
+import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -68,25 +68,13 @@ async function startServer() {
       createContext,
     })
   );
-  // development mode uses Vite, production mode uses static files
-  if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  // ── Signaling peer REST endpoints ─────────────────────────────────────────
+  // MUST be registered BEFORE Vite middleware, otherwise Vite's catch-all
+  // serves the SPA HTML instead of our JSON response.
 
-  if (port !== preferredPort) {
-    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
-  }
-
-  // ── Signaling peer ping endpoint ─────────────────────────────────────────
-  // Used by the frontend Ping button for light peers (signaling-only)
-  // Sends a real WebSocket ping/pong to measure RTT
+  // Ping a specific signaling peer via WebSocket native ping/pong to measure RTT
   app.get("/api/signaling/peers/:peerId/ping", async (req, res) => {
-    const { getSignalingPeerList, pingSignalingPeer } = await import("../signaling");
     const peerId = decodeURIComponent(req.params.peerId);
     const peerList = getSignalingPeerList();
     const peer = peerList.find(p => p.peerId === peerId);
@@ -106,11 +94,25 @@ async function startServer() {
     }
   });
 
-  // ── Signaling peer list endpoint ──────────────────────────────────────────
-  app.get("/api/signaling/peers", async (_req, res) => {
-    const { getSignalingPeerList } = await import("../signaling");
+  // Get the list of all signaling peers
+  app.get("/api/signaling/peers", (_req, res) => {
     res.json({ peers: getSignalingPeerList() });
   });
+
+  // ── Vite / Static serving ─────────────────────────────────────────────────
+  // development mode uses Vite, production mode uses static files
+  if (process.env.NODE_ENV === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+
+  const preferredPort = parseInt(process.env.PORT || "3000");
+  const port = await findAvailablePort(preferredPort);
+
+  if (port !== preferredPort) {
+    console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+  }
 
   // Attach WebSocket signaling server for P2P peer discovery
   attachSignalingServer(server);

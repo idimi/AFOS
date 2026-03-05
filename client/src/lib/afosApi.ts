@@ -607,7 +607,7 @@ export async function pingSignalingPeer(peerId: string): Promise<PingResult> {
     throw new Error(`HTTP ${res.status}`);
   }
   const data = await res.json();
-  return { success: data.online === true, latencyMs: data.latencyMs ?? null };
+  return { success: data.online === true, latencyMs: data.latencyMs ?? null, estimated: data.estimated ?? false };
 }
 
 // ─── Liquidity Channels ───────────────────────────────────────────────────────

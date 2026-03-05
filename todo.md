@@ -1090,3 +1090,9 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Ping Bug Fix
 
 - [x] Fix "Peer not connected" error when pinging light peers: added /api/signaling/peers/:id/ping REST endpoint with real WebSocket ping/pong RTT, frontend now routes signaling peers (origin=intercomswap) to local endpoint instead of Oracle VM
+
+## Ping Fix + Live Latency + Auto-Ping
+
+- [x] Fix ping request failure for signaling peers — REST endpoints moved before Vite middleware so they're no longer caught by SPA fallback
+- [x] Show live latency in topology canvas after successful ping — handlePing now updates livePeers state, edge labels + node labels reflect real RTT
+- [x] Auto-ping on connect for new signaling peers — useEffect watches livePeers for new intercomswap peers and silently pings them with staggered timing
