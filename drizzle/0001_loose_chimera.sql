@@ -1,0 +1,1 @@
+ALTER TABLE `swap_analytics` ADD `rfqId` varchar(128);

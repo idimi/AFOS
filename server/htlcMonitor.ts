@@ -370,6 +370,8 @@ export async function recordSwapAnalytic(params: {
   feeBps?:         number;  // 15 for P2P, 20 for DEX
   feeAmountOut?:   string;  // fee in output token units
   walletAddress?:  string;  // user's wallet address for per-user history
+  rfqId?:          string;  // Oracle VM RFQ ID for de-duplication
+  outAmount?:      string;  // output amount in human-readable units
 }): Promise<void> {
   const db = await getDb();
   if (!db) return;

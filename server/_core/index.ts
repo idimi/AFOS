@@ -217,6 +217,29 @@ async function startServer() {
     };
     setTimeout(runFeeAlert, 10_000);          // initial run after DB pool warms up
     setInterval(runFeeAlert, 60 * 60 * 1000); // repeat every hour
+
+    // ── Oracle VM swap status sync ─────────────────────────────────────────────
+    // Polls /api/swaps every 60s and back-fills swapAnalytics for completed
+    // swaps that were never recorded locally (browser-initiated swaps, etc.).
+    const runOracleSync = async () => {
+      try {
+        const { runOracleVmSync } = await import("../jobs/oracleVmSync");
+        const result = await runOracleVmSync();
+        if (result.inserted > 0 || result.backfilled > 0) {
+          console.log(
+            `[OracleVmSync] Inserted ${result.inserted} new row(s), back-filled ${result.backfilled} rfqId(s). ` +
+            `Skipped ${result.skipped} duplicate(s).`
+          );
+        }
+        if (result.error) {
+          console.warn(`[OracleVmSync] Sync skipped: ${result.error}`);
+        }
+      } catch (err) {
+        console.error("[OracleVmSync] Error running Oracle VM sync:", err);
+      }
+    };
+    setTimeout(runOracleSync, 15_000);         // initial run 15s after startup
+    setInterval(runOracleSync, 60_000);        // repeat every 60s
   });
 }
 

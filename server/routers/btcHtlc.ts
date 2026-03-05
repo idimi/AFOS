@@ -405,7 +405,8 @@ export const btcHtlcRouter = router({
             .update(htlcSwaps)
             .set({ status: "completed", updatedAt: new Date() })
             .where(eq(htlcSwaps.htlcAddress, htlcAddress));
-          // 2. Find the matching swapAnalytics row via lockTxId and update its status
+          // 2. Find the matching swapAnalytics row via lockTxId and update its status.
+          //    Also back-fill walletAddress with recipientAddress for per-user history scoping.
           const [htlcRow] = await db
             .select({ lockTxId: htlcSwaps.lockTxId })
             .from(htlcSwaps)
@@ -414,7 +415,10 @@ export const btcHtlcRouter = router({
           if (htlcRow?.lockTxId) {
             await db
               .update(swapAnalytics)
-              .set({ status: "completed" })
+              .set({
+                status:        "completed",
+                walletAddress: recipientAddress, // attribute reveal to recipient wallet
+              })
               .where(eq(swapAnalytics.txId, htlcRow.lockTxId));
           }
         } catch (e) {

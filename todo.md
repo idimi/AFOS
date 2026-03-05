@@ -1342,3 +1342,20 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Add history.exportCsv tRPC procedure (fetches all matching rows, returns CSV string)
 - [x] Wire Export CSV button in SwapHistory.tsx to trpc.history.exportCsv (on-demand fetch, loading state, toast feedback)
+
+## Search Bar for Open Trades + Refunds Tabs
+
+- [x] Add search param to history.openTrades tRPC procedure (LIKE on peerId, htlcAddress, fromToken, toToken)
+- [x] Add search param to history.refunds tRPC procedure (LIKE on peerId, htlcAddress, fromToken, toToken)
+- [x] Add shared debounced search input to SwapHistoryTabs.tsx (passed to both tabs)
+- [x] Reset page to 1 when search changes in each tab
+
+## Oracle VM Swap Status Sync Job
+
+- [x] Create server/jobs/oracleVmSync.ts — polls /api/swaps every 60s, back-fills swapAnalytics for quoted→executed transitions
+- [x] Register oracleVmSync in server/_core/index.ts startup
+- [x] Write vitest test for oracleVmSync logic
+
+## htlcReveal walletAddress Attribution
+
+- [x] Pass recipientAddress as walletAddress in btcHtlc.htlcReveal recordSwapAnalytic call

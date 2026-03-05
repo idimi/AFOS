@@ -104,6 +104,8 @@ export const swapAnalytics = mysqlTable("swap_analytics", {
   outAmount:      varchar("outAmount", { length: 32 }),
   /** Wallet address of the user who initiated the swap (for per-user history filtering) */
   walletAddress:  varchar("walletAddress", { length: 128 }),
+  /** Oracle VM RFQ ID — used by the Oracle VM sync job to back-fill/de-duplicate rows */
+  rfqId:          varchar("rfqId", { length: 128 }),
   createdAt:      timestamp("createdAt").defaultNow().notNull(),
 });
 
