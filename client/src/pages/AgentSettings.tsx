@@ -56,8 +56,8 @@ const ROUTES = [
     id: "jupiter",
     label: "Jupiter (Solana)",
     description: "Aggregated DEX liquidity on Solana (0.20% fee)",
-    badge: null,
-    badgeColor: null,
+    badge: "Active",
+    badgeColor: "#6366f1",
   },
   {
     id: "zerox",
@@ -391,7 +391,7 @@ export default function AgentSettings() {
   if (settingsLoading && isAuthenticated) return <SettingsSkeleton />;
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 pb-20 max-w-2xl mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground">Settings</h1>

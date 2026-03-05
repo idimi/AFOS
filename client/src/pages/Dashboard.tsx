@@ -3012,8 +3012,8 @@ export default function Dashboard() {
 
   return (
     <div
-      className="flex h-screen bg-background font-sans"
-      style={{ overflow: "hidden" }}
+      className="flex h-dvh bg-background font-sans"
+      style={{ overflow: "clip" }}
       onTouchStart={handleGlobalTouchStart}
       onTouchEnd={handleGlobalTouchEnd}
     >
@@ -3021,7 +3021,7 @@ export default function Dashboard() {
         <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
       </div>
 
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex-1 flex flex-col min-w-0" style={{ overflow: 'clip' }}>
         {/* Topbar */}
         <header className="h-14 border-b border-border flex items-center justify-between px-4 lg:px-6 shrink-0 bg-background/80 backdrop-blur-sm">
           <div className="flex items-center gap-2 lg:gap-3">
@@ -3250,7 +3250,7 @@ export default function Dashboard() {
 
         {/* Content */}
         {subPage ? (
-          <main className="flex-1 overflow-hidden flex flex-col min-h-0">{subPage}</main>
+          <main className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>{subPage}</main>
         ) : (
           /* ── OVERVIEW ── */
           <div className="flex-1 flex flex-col overflow-hidden">

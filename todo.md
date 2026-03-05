@@ -1255,3 +1255,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Settings Page — Mobile Scroll Fix
 
 - [x] Fix Settings page not scrolling on mobile
+
+## Settings Page — Mobile Scroll Fix (Round 2)
+
+- [x] Fix Settings page still not scrolling on mobile after previous attempt (root overflow:clip + h-dvh + main touch-action:pan-y + WebkitOverflowScrolling + subPage overflow-y-auto)
