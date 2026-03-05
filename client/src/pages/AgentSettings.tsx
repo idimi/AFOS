@@ -35,8 +35,10 @@ import { toast } from "sonner";
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+
 import { useLightPeer } from "@/contexts/LightPeerContext";
+import ConnectWalletModal from "@/components/ConnectWalletModal";
+import { Wallet } from "lucide-react";
 
 // ─── Slippage options ──────────────────────────────────────────────────────────
 const SLIPPAGE_PRESETS = ["0.1", "0.5", "1.0", "2.0"];
@@ -226,8 +228,12 @@ function SectionCard({
 
 // ─── Main component ──────────────────────────────────────────────────────────────
 export default function AgentSettings() {
-  const { isAuthenticated, loading: authLoading } = useAuth();
+  const { isAuthenticated } = useAuth();
   const lightPeer = useLightPeer();
+
+  // A wallet is connected if any chain address is present
+  const isWalletConnected = !!(lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [resetFlash, setResetFlash] = useState(false);
 
@@ -358,26 +364,8 @@ export default function AgentSettings() {
     });
   };
 
-  // ── Auth gate ─────────────────────────────────────────────────────────────────
-  if (authLoading) return <SettingsSkeleton />;
-  if (!isAuthenticated) {
-    return (
-      <div className="p-6 max-w-2xl mx-auto flex flex-col items-center justify-center min-h-[50vh] gap-4">
-        <p className="text-sm text-muted-foreground text-center">
-          Connect your account to save and sync your settings across devices.
-        </p>
-        <a
-          href={getLoginUrl()}
-          className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
-        >
-          Connect Account
-        </a>
-      </div>
-    );
-  }
-
-  if (settingsLoading) return <SettingsSkeleton />;
+  // Show skeleton only while loading remote settings for authenticated users
+  if (settingsLoading && isAuthenticated) return <SettingsSkeleton />;
 
   return (
     <div className="p-6 max-w-2xl mx-auto">
@@ -388,6 +376,38 @@ export default function AgentSettings() {
           Your personal trading preferences and UI options.
         </p>
       </div>
+
+      {/* Wallet connect banner — shown when no wallet is connected */}
+      {!isWalletConnected && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-5 flex items-center justify-between gap-4 p-4 rounded-2xl"
+          style={{ background: "rgba(6,182,212,0.06)", border: "1px solid rgba(6,182,212,0.2)" }}
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.25)" }}>
+              <Wallet className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Connect a wallet to save settings</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Your preferences will sync across devices once a wallet is connected.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowWalletModal(true)}
+            className="shrink-0 px-4 py-2 rounded-xl text-xs font-semibold transition-all"
+            style={{ background: "rgba(6,182,212,0.15)", border: "1px solid rgba(6,182,212,0.35)", color: "#22d3ee" }}
+          >
+            Connect Wallet
+          </button>
+        </motion.div>
+      )}
+
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
 
       <div className="space-y-4">
 
@@ -668,7 +688,7 @@ export default function AgentSettings() {
           {resetFlash ? 'Reset ✓' : 'Reset to defaults'}
         </button>
         <button
-          onClick={handleSave}
+          onClick={!isWalletConnected ? () => setShowWalletModal(true) : handleSave}
           disabled={saveMutation.isPending}
           className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all disabled:opacity-60"
           style={savedFlash
@@ -680,10 +700,12 @@ export default function AgentSettings() {
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : savedFlash ? (
             <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="2 8 6 12 14 4" /></svg>
+          ) : !isWalletConnected ? (
+            <Wallet className="w-4 h-4" />
           ) : (
             <Save className="w-4 h-4" />
           )}
-          {saveMutation.isPending ? "Saving…" : savedFlash ? "Saved ✓" : "Save Settings"}
+          {saveMutation.isPending ? "Saving…" : savedFlash ? "Saved ✓" : !isWalletConnected ? "Connect Wallet to Save" : "Save Settings"}
         </button>
       </div>
     </div>

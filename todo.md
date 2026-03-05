@@ -1235,3 +1235,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove hardcoded `ADMIN_PASSWORD` constant from client bundle
 - [x] Remove `sessionStorage` auth bypass vector
 - [x] Run all tests after changes (228 pass)
+
+## Settings Page — User-Facing Fix
+
+- [x] Remove OAuth auth gate from Settings page (it is for regular users, not admins)
+- [x] Replace "Connect Account" prompt with "Connect Wallet" prompt
+- [x] Show settings content to all users (wallet-connected or not)
+- [x] Wallet-dependent settings (save/sync) should prompt wallet connect, not OAuth login
