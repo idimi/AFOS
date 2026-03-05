@@ -999,3 +999,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Merge Light Peer and P2P Peers into a single "Network" panel with "My Node" / "Live Peers" tabs
 - [x] Persist selected tab in localStorage (afos_network_tab)
 - [x] Save checkpoint
+
+## P2P Network Improvements (Phase 2)
+
+- [ ] 5-minute TTL for relay light peers — client-side expiry filtering + heartbeat keeps own peer alive
+- [ ] Peer type badges in Peer Directory — "Light Peer" (cyan) vs "Hyperswarm" (emerald) colored tags
+- [ ] Copy Invite Link button — generates ?peer=<peerId> shareable URL for direct peer connection
+- [ ] Handle ?peer= URL param on load — auto-highlight or connect to the specified peer

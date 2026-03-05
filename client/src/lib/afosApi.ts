@@ -526,6 +526,14 @@ export function mergeWithAllAssets(wallets: WalletAsset[]): WalletAsset[] {
 
 // ─── Relay Bridge ────────────────────────────────────────────────────────────
 
+/** Light peers that haven't sent a heartbeat within this window are considered stale */
+export const LIGHT_PEER_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/** Returns true if a light peer's lastSeen is within the TTL window */
+export function isLightPeerFresh(peer: { lastSeen: number }): boolean {
+  return Date.now() - peer.lastSeen <= LIGHT_PEER_TTL_MS;
+}
+
 export interface RelayPeer {
   peerId: string;
   shortId?: string;
@@ -546,11 +554,20 @@ export interface RelayPeersResponse {
   timestamp: number;
 }
 
-/** GET /api/relay/peers — merged Hyperswarm + Light Peer registry */
+/** GET /api/relay/peers — merged Hyperswarm + Light Peer registry.
+ *  Light peers with lastSeen older than LIGHT_PEER_TTL_MS are filtered out client-side.
+ */
 export async function getRelayPeers(): Promise<RelayPeersResponse> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/relay/peers`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data: RelayPeersResponse = await res.json();
+  // Filter stale light peers (TTL = 5 minutes based on lastSeen heartbeat)
+  const freshLightPeers = data.lightPeers.filter(isLightPeerFresh);
+  return {
+    ...data,
+    lightPeers: freshLightPeers,
+    total: data.hyperswarmPeers.length + freshLightPeers.length,
+  };
 }
 
 /** POST /api/relay/announce — Light Peer announces itself to the relay */

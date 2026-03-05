@@ -14,7 +14,7 @@ import {
   Radio, Zap, Globe, Activity, Users, TrendingUp,
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
-  ArrowUpDown, SlidersHorizontal, Star
+  ArrowUpDown, SlidersHorizontal, Star, Check
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -342,6 +342,13 @@ function PeerDetail({ peer, onClose }: { peer: Peer; onClose: () => void }) {
           ))}
         </div>
       </div>
+      {/* Copy Invite Link — only for remote peers with a fullKey */}
+      {peer.id !== 'self' && peer.fullKey && (
+        <div className="mt-3 pt-3 border-t border-border">
+          <div className="text-[9px] text-slate-600 uppercase tracking-widest mb-1.5">Share</div>
+          <CopyInviteLinkButton peerId={peer.fullKey} />
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -396,7 +403,47 @@ function reputationColor(score: number): string {
 type SortKey = 'reputation' | 'latency' | 'channels' | 'alias';
 type FilterKey = 'all' | 'online' | 'highRep';
 
-function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite }: {
+/** Small button that copies a shareable invite link for a specific peer to the clipboard */
+function CopyInviteLinkButton({ peerId, onCopy }: { peerId: string; onCopy?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = `${window.location.origin}${window.location.pathname}#network?peer=${encodeURIComponent(peerId)}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      onCopy?.();
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Fallback for browsers without clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      onCopy?.();
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title={copied ? 'Link copied!' : 'Copy invite link — share this URL to connect directly with this peer'}
+      className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-mono transition-all hover:opacity-80"
+      style={{
+        background: copied ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.08)',
+        border: `1px solid ${copied ? 'rgba(6,182,212,0.4)' : 'rgba(100,116,139,0.2)'}`,
+        color: copied ? '#06b6d4' : '#64748b',
+      }}
+    >
+      {copied ? <Check className="w-2.5 h-2.5" /> : <Link2 className="w-2.5 h-2.5" />}
+      {copied ? 'Copied!' : 'Link'}
+    </button>
+  );
+}
+
+function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputationScores, onInvite, onCopyInviteLink }: {
   peers: Peer[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -404,6 +451,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
   onPing: (peerId: string, fullKey: string) => void;
   reputationScores: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }> | undefined;
   onInvite?: (peerId: string, alias: string) => void;
+  onCopyInviteLink?: (peerId: string) => void;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('reputation');
   const [filterKey, setFilterKey] = useState<FilterKey>('all');
@@ -578,16 +626,26 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono text-slate-200 truncate flex items-center gap-1.5">
                     {peer.alias}
-                    {/* DHT layer origin badge */}
+                    {/* Peer type badge — Hyperswarm full node vs IntercomSwap light peer */}
                     <span
-                      className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
-                      title={peer.origin === 'hyperswarm' ? 'Hyperswarm DHT — full node' : peer.origin === 'intercomswap' ? 'IntercomSwap DHT — light peer' : 'Unknown layer'}
+                      className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0 flex items-center gap-0.5"
+                      title={
+                        peer.origin === 'hyperswarm'
+                          ? 'Hyperswarm DHT — Full node · Oracle VM · Supports HTLC atomic swaps, channel routing, and relay bridging'
+                          : 'IntercomSwap DHT — Browser Light Peer · Wallet-connected · Supports P2P RFQ and HTLC atomic swaps'
+                      }
                       style={{
                         background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
                         border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
                         color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
                       }}
-                    >{peer.origin === 'hyperswarm' ? 'HW' : 'IS'}</span>
+                    >
+                      {peer.origin === 'hyperswarm' ? (
+                        <>⚡ Hyperswarm</>
+                      ) : (
+                        <>📱 Light Peer</>
+                      )}
+                    </span>
                     {repScore !== null && (
                       <span
                         className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
@@ -658,6 +716,10 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                   </button>
                 );
               })()}
+              {/* Copy Invite Link — generates a shareable URL for this peer */}
+              {peer.fullKey && (
+                <CopyInviteLinkButton peerId={peer.fullKey} onCopy={() => onCopyInviteLink?.(peer.fullKey!)} />
+              )}
             </div>
           );
         })}
@@ -774,7 +836,10 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, onConnectWallet }: {
 
 // ─── Main Network Page ────────────────────────────────────────────────────────
 
-export default function NetworkPage() {
+export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
+  invitePeerId?: string | null;
+  onInvitePeerHandled?: () => void;
+} = {}) {
   const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites">("topology");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(new Set());
@@ -795,6 +860,21 @@ export default function NetworkPage() {
 
   const lightPeer = useLightPeer();
   const selectedPeer = selectedId ? livePeers.find(p => p.id === selectedId) ?? null : null;
+
+  // Auto-select invited peer from invite link (?peer=<peerId>)
+  useEffect(() => {
+    if (!invitePeerId || livePeers.length === 0) return;
+    // Match by fullKey (exact) or by partial peerId prefix
+    const match = livePeers.find(p =>
+      p.fullKey === invitePeerId ||
+      p.id === invitePeerId ||
+      (p.fullKey && p.fullKey.startsWith(invitePeerId))
+    );
+    if (match) {
+      setSelectedId(match.id);
+      onInvitePeerHandled?.();
+    }
+  }, [invitePeerId, livePeers, onInvitePeerHandled]);
 
   // ── Peer Reputation ────────────────────────────────────────────────────────
   // Collect all remote peer IDs (short IDs used as keys in livePeers)
@@ -1479,14 +1559,18 @@ export default function NetworkPage() {
                       {peer.alias}
                       {/* DHT layer origin badge */}
                       <span
-                        className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
-                        title={peer.origin === 'hyperswarm' ? 'Hyperswarm DHT' : 'IntercomSwap DHT'}
+                        className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0"
+                        title={
+                          peer.origin === 'hyperswarm'
+                            ? 'Hyperswarm DHT — Full node · Oracle VM'
+                            : 'IntercomSwap DHT — Browser Light Peer · Wallet-connected'
+                        }
                         style={{
                           background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
                           border: `1px solid ${peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.3)' : 'rgba(6,182,212,0.3)'}`,
                           color: peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4',
                         }}
-                      >{peer.origin === 'hyperswarm' ? 'HW' : 'IS'}</span>
+                      >{peer.origin === 'hyperswarm' ? '⚡ Hyperswarm' : '📱 Light Peer'}</span>
                     </div>
                     <div className="text-[10px] font-mono text-muted-foreground">{peer.region}</div>
                   </div>
@@ -1681,6 +1765,11 @@ export default function NetworkPage() {
               window.dispatchEvent(new CustomEvent('afos:open-channel', { detail: { peerId } }));
               toast.success(`Opening channel form for ${alias}`, {
                 description: `Score ≥ 70 — peer is eligible for a Liquidity Channel`,
+              });
+            }}
+            onCopyInviteLink={(peerId) => {
+              toast.success('Invite link copied!', {
+                description: 'Share this URL with the peer to connect directly without waiting for DHT discovery.',
               });
             }}
           />

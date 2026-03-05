@@ -2796,6 +2796,30 @@ export default function Dashboard() {
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  // Invite link: ?peer=<peerId> in hash navigates to Network page and highlights the peer
+  const [invitePeerId, setInvitePeerId] = useState<string | null>(null);
+
+  // Handle invite link hash on mount: #network?peer=<peerId>
+  useEffect(() => {
+    const parseInviteHash = () => {
+      const hash = window.location.hash; // e.g. "#network?peer=0xabc123"
+      if (!hash.startsWith('#network')) return;
+      const queryStr = hash.slice('#network'.length).replace(/^\?/, '');
+      const params = new URLSearchParams(queryStr);
+      const peer = params.get('peer');
+      if (peer) {
+        setActivePage('network');
+        setInvitePeerId(peer);
+        // Clean the hash from the URL without triggering a reload
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      } else {
+        setActivePage('network');
+      }
+    };
+    parseInviteHash();
+    window.addEventListener('hashchange', parseInviteHash);
+    return () => window.removeEventListener('hashchange', parseInviteHash);
+  }, []);
 
   // ── Live header data ──────────────────────────────────────────────────────
   const [headerPeers, setHeaderPeers] = useState<number | null>(null);
@@ -2908,7 +2932,7 @@ export default function Dashboard() {
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
     if (activePage === "analytics") return <SwapAnalytics />;
-    if (activePage === "network") return <NetworkPage />;
+    if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} />;
     if (activePage === "terminal") return <TerminalPage />;
     return null;
   };
