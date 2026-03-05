@@ -34,6 +34,7 @@ import TerminalPage from "./TerminalPage";
 import ChatPage from "./ChatPage";
 import SwapAnalytics from "./SwapAnalytics";
 import { trpc } from "@/lib/trpc";
+import { usePeerMessageChime } from "../hooks/usePeerMessageChime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
@@ -2955,11 +2956,27 @@ export default function Dashboard() {
   };
 
   // Unread peer messages badge — poll every 30s
+  const utils = trpc.useUtils();
   const { data: unreadMsgData } = trpc.peerMessages.unreadCount.useQuery(
     { myPeerId: myPeerId ?? "" },
     { enabled: !!myPeerId, refetchInterval: 30_000 }
   );
   const unreadMsgCount = unreadMsgData?.count ?? 0;
+
+  // Play a subtle chime when a new peer message arrives on another page
+  usePeerMessageChime(unreadMsgCount, activePage === 'network');
+
+  const markAllReadMutation = trpc.peerMessages.markAllRead.useMutation({
+    onSuccess: () => utils.peerMessages.unreadCount.invalidate(),
+  });
+
+  // Auto-clear badge when user navigates to Network page
+  useEffect(() => {
+    if (activePage === 'network' && myPeerId) {
+      markAllReadMutation.mutate({ myPeerId });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePage, myPeerId]);
 
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },

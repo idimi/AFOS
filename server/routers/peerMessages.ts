@@ -99,6 +99,28 @@ export const peerMessagesRouter = router({
     }),
 
   /**
+   * Mark ALL unread messages addressed to myPeerId as read.
+   * Called when the user navigates to the Network page.
+   */
+  markAllRead: publicProcedure
+    .input(z.object({ myPeerId: z.string().min(1).max(128) }))
+    .mutation(async ({ input }) => {
+      const { getDb } = await import("../db");
+      const { peerMessages } = await import("../../drizzle/schema");
+      const { eq, isNull } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return { ok: false, updated: 0 };
+
+      const result = await db
+        .update(peerMessages)
+        .set({ readAt: new Date() })
+        .where(
+          eq(peerMessages.toPeerId, input.myPeerId)
+        );
+      return { ok: true };
+    }),
+
+  /**
    * Mark all messages in a thread as read.
    */
   markRead: publicProcedure
