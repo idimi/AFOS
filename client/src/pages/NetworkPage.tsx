@@ -97,6 +97,41 @@ function LastSeenBadge({ lastSeen }: { lastSeen: number }) {
   );
 }
 
+/** Format a Date/timestamp as a human-readable relative time string */
+function formatRelativeTime(ts: Date | number): string {
+  const date = ts instanceof Date ? ts : new Date(ts);
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  // Older than 24h: show date + time
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+    ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+/** Live relative timestamp — updates every 30 seconds */
+function RelativeTime({ ts, className }: { ts: Date | number; className?: string }) {
+  const [label, setLabel] = useState(() => formatRelativeTime(ts));
+  useEffect(() => {
+    setLabel(formatRelativeTime(ts));
+    const id = setInterval(() => setLabel(formatRelativeTime(ts)), 30_000);
+    return () => clearInterval(id);
+  }, [ts]);
+  const date = ts instanceof Date ? ts : new Date(ts);
+  return (
+    <span
+      title={date.toLocaleString()}
+      className={className}
+    >
+      {label}
+    </span>
+  );
+}
+
 function nodeRadius(peer: Peer): number {
   if (peer.id === "self") return 14;
   const base = 7;
@@ -417,9 +452,10 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias }: { myPeerId: string; oth
                     >
                       {msg.body}
                     </div>
-                    <span className="text-[8px] text-muted-foreground/50 mt-0.5">
-                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+                    <RelativeTime
+                      ts={msg.createdAt}
+                      className="text-[8px] text-muted-foreground/50 mt-0.5"
+                    />
                   </div>
                 );
               })

@@ -40,7 +40,7 @@ type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "netw
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
 function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
-  navItems: { id: NavPage; icon: React.ElementType; label: string }[];
+  navItems: { id: NavPage; icon: React.ElementType; label: string; badge?: number }[];
   activePage: NavPage;
   setActivePage: (p: NavPage) => void;
   open: boolean;
@@ -104,15 +104,25 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
                   ? "bg-cyan-500/10 border border-cyan-500/20 text-cyan-300"
                   : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
               }`}>
-              <Icon className={`w-4 h-4 shrink-0 ${open ? "" : "mx-auto"}`} />
+              <div className="relative shrink-0">
+                <Icon className={`w-4 h-4 ${open ? "" : "mx-auto"}`} />
+                {(item.badge ?? 0) > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-1 ring-background" />
+                )}
+              </div>
               <AnimatePresence>
                 {open && (
                   <motion.span
                     initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -6 }}
                     transition={{ duration: 0.12 }}
-                    className="text-sm whitespace-nowrap">{item.label}</motion.span>
+                    className="text-sm whitespace-nowrap flex-1">{item.label}</motion.span>
                 )}
               </AnimatePresence>
+              {open && (item.badge ?? 0) > 0 && (
+                <span className="ml-auto shrink-0 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1">
+                  {item.badge! > 99 ? '99+' : item.badge}
+                </span>
+              )}
             </button>
           );
         })}
@@ -127,7 +137,7 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
 function MobileSidebarDrawer({
   navItems, activePage, setActivePage, open, onClose, onOpenWallet, connected, shortAddress,
 }: {
-  navItems: { id: NavPage; icon: React.ElementType; label: string }[];
+  navItems: { id: NavPage; icon: React.ElementType; label: string; badge?: number }[];
   activePage: NavPage;
   setActivePage: (p: NavPage) => void;
   open: boolean;
@@ -213,9 +223,19 @@ function MobileSidebarDrawer({
                         : "text-muted-foreground hover:text-foreground hover:bg-accent border border-transparent"
                     }`}
                   >
-                    <Icon className="w-4.5 h-4.5 shrink-0" />
-                    <span className="text-sm font-medium">{item.label}</span>
-                    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                    <div className="relative shrink-0">
+                      <Icon className="w-4.5 h-4.5" />
+                      {(item.badge ?? 0) > 0 && (
+                        <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-1 ring-background" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium flex-1">{item.label}</span>
+                    {(item.badge ?? 0) > 0 && (
+                      <span className="shrink-0 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1">
+                        {item.badge! > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                    {active && (item.badge ?? 0) === 0 && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400" />}
                   </button>
                 );
               })}
@@ -2788,7 +2808,7 @@ export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
   const { ethereum: topbarEth, bitcoin: topbarBtc, phantomMultiChain } = useMultiChainWallet();
-  const { isOnline: lightPeerOnline } = useLightPeer();
+  const { isOnline: lightPeerOnline, peerId: myPeerId } = useLightPeer();
   // SOL is connected either via wallet-adapter OR via Phantom multi-chain
   const solConnected = connected || !!(phantomMultiChain?.chains.includes("solana"));
   const [showWalletModal, setShowWalletModal] = useState(false);
@@ -2934,13 +2954,20 @@ export default function Dashboard() {
     swipeTouchStartX.current = null;
   };
 
+  // Unread peer messages badge — poll every 30s
+  const { data: unreadMsgData } = trpc.peerMessages.unreadCount.useQuery(
+    { myPeerId: myPeerId ?? "" },
+    { enabled: !!myPeerId, refetchInterval: 30_000 }
+  );
+  const unreadMsgCount = unreadMsgData?.count ?? 0;
+
   const navItems = [
     { id: "dashboard" as NavPage, icon: Cpu, label: "Overview" },
     { id: "chat" as NavPage, icon: Bot, label: "Agent" },
     { id: "swaps" as NavPage, icon: ArrowLeftRight, label: "Swaps" },
     { id: "activity" as NavPage, icon: Activity, label: "History" },
     { id: "analytics" as NavPage, icon: BarChart3, label: "Analytics" },
-    { id: "network" as NavPage, icon: Network, label: "Network" },
+    { id: "network" as NavPage, icon: Network, label: "Network", badge: activePage !== "network" ? unreadMsgCount : 0 },
     { id: "settings" as NavPage, icon: Settings, label: "Settings" },
     // Terminal is intentionally excluded from nav — accessible via "Full log →" link on Overview
   ];
