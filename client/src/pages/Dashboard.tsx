@@ -3109,32 +3109,69 @@ export default function Dashboard() {
               </span>
             </button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs">
-                  <div className="space-y-1 py-0.5">
-                    <div className="flex items-center gap-2 justify-between">
-                      <span className="text-muted-foreground">You (local node)</span>
-                      <span className={lightPeerOnline ? "text-emerald-400 font-mono" : "text-muted-foreground/60 font-mono"}>
-                        {lightPeerOnline ? "online" : "offline"}
+                <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden" style={{ minWidth: 220 }}>
+                  <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
+                    <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">P2P Network</p>
+                  </div>
+                  <div className="px-3 py-2 space-y-2">
+                    {/* Self node */}
+                    <div className="flex items-center gap-2">
+                      <span className={[
+                        "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                        lightPeerOnline ? "bg-emerald-400 shadow-[0_0_4px_rgba(52,211,153,0.8)]" : "bg-slate-500"
+                      ].join(" ")} />
+                      <span className="flex-1 font-mono text-[11px] text-foreground truncate">
+                        {myPeerId ? myPeerId.slice(0, 8) + "…" + myPeerId.slice(-4) : "—"}
                       </span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400">you</span>
+                      <span className={[
+                        "text-[10px] font-mono",
+                        lightPeerOnline ? "text-emerald-400" : "text-muted-foreground/50"
+                      ].join(" ")}>{lightPeerOnline ? "online" : "offline"}</span>
                     </div>
-                    {(signalingPeers?.length ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 justify-between">
-                        <span className="text-muted-foreground">Signaling peers</span>
-                        <span className="font-mono text-foreground">{signalingPeers?.length ?? 0}</span>
+                    {/* Signaling peers */}
+                    {(signalingPeers?.length ?? 0) > 0 ? (
+                      signalingPeers!.slice(0, 4).map(p => (
+                        <div key={p.peerId} className="flex items-center gap-2">
+                          <span className={[
+                            "w-1.5 h-1.5 rounded-full flex-shrink-0",
+                            p.dataChannel?.readyState === 'open'
+                              ? "bg-cyan-400 shadow-[0_0_4px_rgba(34,211,238,0.7)]"
+                              : "bg-amber-400/70"
+                          ].join(" ")} />
+                          <span className="flex-1 font-mono text-[11px] text-foreground/80 truncate">
+                            {p.alias || (p.peerId.slice(0, 8) + "…" + p.peerId.slice(-4))}
+                          </span>
+                          {p.pairs.length > 0 && (
+                            <span className="text-[10px] text-muted-foreground font-mono">{p.pairs[0]}</span>
+                          )}
+                          <span className={[
+                            "text-[10px] font-mono",
+                            p.dataChannel?.readyState === 'open' ? "text-cyan-400" : "text-amber-400/80"
+                          ].join(" ")}>
+                            {p.dataChannel?.readyState === 'open' ? 'direct' : 'relay'}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-slate-600" />
+                        <span className="text-muted-foreground/60 text-[11px] italic">No remote peers yet</span>
                       </div>
                     )}
-                    {(headerPeers ?? 0) > 0 && (
-                      <div className="flex items-center gap-2 justify-between">
-                        <span className="text-muted-foreground">Oracle VM peers</span>
-                        <span className="font-mono text-foreground">{headerPeers ?? 0}</span>
-                      </div>
+                    {(signalingPeers?.length ?? 0) > 4 && (
+                      <p className="text-[10px] text-muted-foreground/60 text-right">+{(signalingPeers?.length ?? 0) - 4} more</p>
                     )}
-                    <div className="border-t border-border pt-1 mt-1 flex items-center gap-2 justify-between">
-                      <span className="text-muted-foreground font-semibold">Total</span>
-                      <span className="font-mono font-semibold text-foreground">
-                        {Math.max(signalingPeers?.length ?? 0, headerPeers ?? 0) + (lightPeerOnline ? 1 : 0)}
-                      </span>
-                    </div>
+                  </div>
+                  {/* Footer total */}
+                  <div className="px-3 py-1.5 border-t border-border/60 flex items-center justify-between bg-muted/30">
+                    <span className="text-muted-foreground font-medium">Total peers</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {Math.max(signalingPeers?.length ?? 0, headerPeers ?? 0) + (lightPeerOnline ? 1 : 0)}
+                    </span>
+                  </div>
+                  <div className="px-3 py-1 border-t border-border/40 bg-muted/20">
+                    <p className="text-[10px] text-muted-foreground/50 text-center">Click to open Network page</p>
                   </div>
                 </TooltipContent>
               </Tooltip>

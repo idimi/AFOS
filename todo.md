@@ -1069,3 +1069,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Header Peer Count Fix
 
 - [x] Fix top header peer count badge showing "1 peer" when there are 2 peers (You + 1 remote) — now reads signaling peers from LightPeerContext and adds self node to total
+
+## Header Peer Tooltip Enhancement
+
+- [x] Enhance peer count tooltip: show peer IDs, connection type (direct/relay), status dots, trading pairs, total breakdown with proper values
