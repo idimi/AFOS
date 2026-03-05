@@ -1062,7 +1062,7 @@ export default function ChatPage() {
               Connect Wallet
             </button>
             <p className="text-[10px] text-muted-foreground">
-              Supports Phantom, MetaMask, Coinbase, Xverse · Non-custodial
+              Supports Phantom, MetaMask, Coinbase, Solflare, Tap Wallet · Non-custodial
             </p>
           </div>
         </div>

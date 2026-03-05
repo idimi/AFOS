@@ -162,10 +162,10 @@ function ToggleRow({
         </button>
       </div>
       {warning && value && (
-        <div className="flex items-start gap-2 p-2.5 rounded-lg"
-          style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-amber-300/80">{warning}</p>
+        <div className="flex items-start gap-2 p-3 rounded-lg"
+          style={{ background: "rgba(245,158,11,0.15)", border: "1.5px solid rgba(180,110,0,0.5)" }}>
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: "#92400e" }} />
+          <p className="text-[11px] font-semibold" style={{ color: "#78350f" }}>{warning}</p>
         </div>
       )}
     </div>
@@ -409,7 +409,7 @@ export default function AgentSettings() {
             {parseFloat(effectiveSlippage) > 1 && (
               <div className="flex items-center gap-1.5 mt-1.5">
                 <AlertTriangle className="w-3 h-3 text-amber-400" />
-                <p className="text-[11px] text-amber-300/80">High slippage — you may receive a worse rate.</p>
+                <p className="text-[11px] font-semibold" style={{ color: "#78350f" }}>High slippage — you may receive a worse rate.</p>
               </div>
             )}
           </div>
@@ -502,29 +502,7 @@ export default function AgentSettings() {
           </div>
         </SectionCard>
 
-        {/* ── Admin link ────────────────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.28 }}
-          className="rounded-2xl p-4 flex items-center justify-between"
-          style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
-        >
-          <div>
-            <p className="text-sm font-medium text-foreground">Operator Configuration</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              LLM model, IntercomSwap node, Bitcoin/Solana RPC, Worker settings — admin only.
-            </p>
-          </div>
-          <a
-            href="/admin"
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0"
-            style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "#818cf8" }}
-          >
-            Admin Panel
-            <ChevronRight className="w-3.5 h-3.5" />
-          </a>
-        </motion.div>
+
 
       </div>
 

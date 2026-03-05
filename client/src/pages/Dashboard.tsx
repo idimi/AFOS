@@ -303,8 +303,8 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         id: "welcome",
         role: "assistant" as const,
         content: connected
-          ? "Hi! I'm AFOS. Try: *swap 1 USDT to SOL* or *what's the SOL price?*"
-          : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping, or ask me anything — e.g. *what's the SOL price?*",
+          ? "Hi! I'm AFOS. Try: *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *how much SOL can I get for $500?*"
+          : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping — e.g. *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *bridge 1 SOL to Bitcoin*.",
         timestamp: Date.now(),
         type: "text" as const,
       },
