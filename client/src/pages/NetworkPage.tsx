@@ -437,7 +437,15 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
   const [open, setOpen] = useState(autoOpen ?? false);
   const [draft, setDraft] = useState(initialDraft ?? '');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textarea whenever draft changes
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   const { data: thread = [], refetch } = trpc.peerMessages.getThread.useQuery(
     { myPeerId, otherPeerId, limit: 50 },
@@ -447,6 +455,10 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
   const sendMsg = trpc.peerMessages.send.useMutation({
     onSuccess: () => {
       setDraft('');
+      // Collapse textarea back to single row after send
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+      }
       refetch();
     },
   });
@@ -485,7 +497,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
     sendMsg.mutate({ fromPeerId: myPeerId, toPeerId: otherPeerId, body });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -545,34 +557,40 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
             )}
           </div>
 
-          {/* Input */}
-          <div className="flex gap-1 mt-1">
-            <input
+          {/* Input — auto-resizing textarea */}
+          <div className="flex flex-col gap-1 mt-1">
+            <textarea
               ref={inputRef}
-              type="text"
               value={draft}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={`Message ${otherAlias}…`}
+              placeholder={`Message ${otherAlias}… (Enter to send, Shift+Enter for newline)`}
               maxLength={500}
-              className="flex-1 min-w-0 px-2 py-1 rounded-md text-[10px] bg-transparent outline-none"
+              rows={1}
+              className="w-full px-2 py-1.5 rounded-md text-[10px] bg-transparent outline-none resize-none leading-relaxed"
               style={{
                 border: '1px solid var(--border)',
                 color: 'var(--foreground)',
+                minHeight: '28px',
+                maxHeight: '120px',
+                overflowY: 'auto',
               }}
             />
-            <button
-              onClick={handleSend}
-              disabled={!draft.trim() || sendMsg.isPending}
-              className="shrink-0 px-2 py-1 rounded-md text-[9px] font-semibold transition-all disabled:opacity-40"
-              style={{
-                background: 'rgba(6,182,212,0.15)',
-                border: '1px solid rgba(6,182,212,0.3)',
-                color: '#06b6d4',
-              }}
-            >
-              {sendMsg.isPending ? '…' : 'Send'}
-            </button>
+            <div className="flex items-center justify-between">
+              <span className="text-[8px] text-muted-foreground/40">{draft.length}/500</span>
+              <button
+                onClick={handleSend}
+                disabled={!draft.trim() || sendMsg.isPending}
+                className="shrink-0 px-2.5 py-1 rounded-md text-[9px] font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: 'rgba(6,182,212,0.15)',
+                  border: '1px solid rgba(6,182,212,0.3)',
+                  color: '#06b6d4',
+                }}
+              >
+                {sendMsg.isPending ? '…' : 'Send'}
+              </button>
+            </div>
           </div>
         </div>
       )}

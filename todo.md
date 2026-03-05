@@ -1108,3 +1108,7 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Pair Badge → Direct Message Quick Trade
 
 - [x] Clicking an active pair badge in PeerDetail opens DM section and pre-fills input with trade inquiry template for that pair
+
+## PeerChat Input UX
+
+- [x] Replace single-line input with auto-resizing textarea in PeerChat DM panel
