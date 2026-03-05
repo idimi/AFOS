@@ -62,7 +62,7 @@ function TokenBadge({ symbol }: { symbol: string }) {
 }
 
 // ─── Route Badge ────────────────────────────────────────────────────────────
-// Shows which execution route was selected: IntercomSwap P2P, Jupiter, 1inch, or Direct HTLC
+// Shows which execution route was selected: IntercomSwap P2P, Jupiter, 0x, 1inch, or Direct HTLC
 const ROUTE_STYLES: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
   p2p: {
     bg:     "rgba(20,241,149,0.12)",
@@ -77,6 +77,13 @@ const ROUTE_STYLES: Record<string, { bg: string; text: string; border: string; d
     border: "rgba(153,69,255,0.3)",
     dot:    "#9945FF",
     label:  "Jupiter DEX",
+  },
+  zerox: {
+    bg:     "rgba(99,102,241,0.12)",
+    text:   "#6366f1",
+    border: "rgba(99,102,241,0.3)",
+    dot:    "#6366f1",
+    label:  "0x Protocol",
   },
   oneinch: {
     bg:     "rgba(98,126,234,0.12)",
@@ -105,6 +112,7 @@ function getRouteStyle(route: string) {
   const r = route.toLowerCase();
   if (r.includes("p2p") || r.includes("intercomswap")) return ROUTE_STYLES.p2p;
   if (r.includes("jupiter"))  return ROUTE_STYLES.jupiter;
+  if (r.includes("0x") || r.includes("zerox")) return ROUTE_STYLES.zerox;
   if (r.includes("1inch"))    return ROUTE_STYLES.oneinch;
   if (r.includes("htlc"))     return ROUTE_STYLES.htlc;
   return ROUTE_STYLES.default;
@@ -1019,7 +1027,7 @@ export default function ChatPage() {
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground text-center mt-2">
-            AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 1inch
+            AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 0x Protocol · 1inch
           </p>
         </div>
       ) : (

@@ -1016,13 +1016,25 @@ const JUPITER_MINTS: Record<string, string> = {
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
 };
 
-// 1inch API key placeholder — will be wired when user provides key
-// Set VITE_ONEINCH_API_KEY in environment to enable live ETH pair comparisons
+// 0x API key for Ethereum DEX quotes (primary)
+const ZEROX_API_KEY = import.meta.env.VITE_ZEROX_API_KEY as string | undefined;
+
+// 1inch API key placeholder — fallback for both SOL and ETH when configured
 const ONEINCH_API_KEY = import.meta.env.VITE_ONEINCH_API_KEY as string | undefined;
 
-// ERC-20 token addresses for 1inch (Ethereum)
-const ONEINCH_TOKENS: Record<string, string> = {
-  ETH:  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", // native ETH
+// ERC-20 token addresses for 0x / 1inch (Ethereum)
+// 0x v2 uses WETH address for native ETH; 1inch uses the 0xEeee... placeholder
+const WETH_ADDRESS = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+const ETH_NATIVE   = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+const ETH_TOKENS: Record<string, string> = {
+  ETH:  WETH_ADDRESS, // 0x v2 uses WETH for native ETH
+  USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+};
+// 1inch still uses the native ETH placeholder
+const ONEINCH_ETH_TOKENS: Record<string, string> = {
+  ETH:  ETH_NATIVE,
   USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
@@ -1030,7 +1042,7 @@ const ONEINCH_TOKENS: Record<string, string> = {
 
 interface DexRefRate {
   rate: number | null;       // output-per-input rate (e.g. USDT per BTC)
-  source: "jupiter" | "1inch" | "none";
+  source: "jupiter" | "0x" | "1inch" | "none";
   loading: boolean;
   error: string | null;
 }
@@ -1038,7 +1050,7 @@ interface DexRefRate {
 /**
  * Fetches a DEX reference rate for the given pair:
  * - Jupiter (jup.ag v6) for SOL-ecosystem pairs
- * - 1inch (v5.2, chain 1) for ETH-ecosystem pairs
+ * - 0x API (primary) for ETH-ecosystem pairs, 1inch as fallback
  * - Returns null rate for BTC pairs (no on-chain DEX)
  * @param inputAmount - actual human-readable input amount to quote (e.g. 0.001 BTC). Defaults to 0.001.
  */
@@ -1050,19 +1062,16 @@ function useDexRefRate(
   inputAmount?: number,
 ): DexRefRate {
   const [state, setState] = useState<DexRefRate>({ rate: null, source: "none", loading: false, error: null });
-  // Use the provided inputAmount or fall back to 0.001 as the canonical quote size
   const quoteAmount = inputAmount && inputAmount > 0 ? inputAmount : 0.001;
 
   useEffect(() => {
     const from = fromSym.replace("-ETH", "").replace("-SOL", "");
     const to   = toSym.replace("-ETH", "").replace("-SOL", "");
 
-    // Determine which DEX to use
     const isSolPair = (from === "SOL" || JUPITER_MINTS[from]) && (to === "SOL" || JUPITER_MINTS[to]);
-    const isEthPair = (from === "ETH" || ONEINCH_TOKENS[from]) && (to === "ETH" || ONEINCH_TOKENS[to]);
+    const isEthPair = (from === "ETH" || ETH_TOKENS[from]) && (to === "ETH" || ETH_TOKENS[to]);
 
     if (!isSolPair && !isEthPair) {
-      // BTC or cross-chain — use price ratio as fallback reference
       const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
       setState({ rate: fallbackRate, source: "none", loading: false, error: null });
       return;
@@ -1099,44 +1108,78 @@ function useDexRefRate(
           setState({ rate: null, source: "jupiter", loading: false, error: String(err) });
         });
     } else if (isEthPair) {
-      if (!ONEINCH_API_KEY) {
-        // 1inch API key not configured — use price ratio as placeholder
-        const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
-        setState({ rate: fallbackRate, source: "1inch", loading: false, error: "API key not configured" });
-        return;
-      }
-      const srcToken  = ONEINCH_TOKENS[from];
-      const dstToken  = ONEINCH_TOKENS[to];
-      if (!srcToken || !dstToken) {
+      // Primary: 0x API
+      const sellToken = ETH_TOKENS[from];
+      const buyToken  = ETH_TOKENS[to];
+      if (!sellToken || !buyToken) {
         setState({ rate: toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null, source: "none", loading: false, error: null });
         return;
       }
-      const srcDecimals = from === "ETH" ? 18 : 6;
-      const dstDecimals = to === "ETH" ? 18 : 6;
-      const amount = Math.round(quoteAmount * Math.pow(10, srcDecimals)).toFixed(0);
-      fetch(`https://api.1inch.dev/swap/v6.0/1/quote?src=${srcToken}&dst=${dstToken}&amount=${amount}`, {
-        headers: { Authorization: `Bearer ${ONEINCH_API_KEY}` },
-      })
-        .then(r => r.json())
-        .then((data: { dstAmount?: string; error?: string }) => {
-          if (cancelled) return;
-          if (data.error || !data.dstAmount) {
-            setState({ rate: null, source: "1inch", loading: false, error: data.error ?? "No quote" });
-            return;
-          }
-          const dstAmount = parseInt(data.dstAmount, 10) / Math.pow(10, dstDecimals);
-          const srcAmount = parseFloat(amount) / Math.pow(10, srcDecimals);
-          const rate = dstAmount / srcAmount;
-          setState({ rate, source: "1inch", loading: false, error: null });
-        })
-        .catch(err => {
-          if (cancelled) return;
-          setState({ rate: null, source: "1inch", loading: false, error: String(err) });
+      const srcDecimals = from === "ETH" ? 18 : (from === "WBTC" ? 8 : 6);
+      const dstDecimals = to === "ETH" ? 18 : (to === "WBTC" ? 8 : 6);
+      const sellAmount = BigInt(Math.round(quoteAmount * Math.pow(10, srcDecimals))).toString();
+
+      if (ZEROX_API_KEY) {
+        // 0x Swap API v2 (Permit2) price endpoint
+        const params = new URLSearchParams({
+          chainId: "1",
+          sellToken,
+          buyToken,
+          sellAmount,
         });
+        fetch(`https://api.0x.org/swap/permit2/price?${params}`, {
+          headers: { "0x-api-key": ZEROX_API_KEY, "0x-version": "v2" },
+        })
+          .then(r => r.json())
+          .then((data: { buyAmount?: string; price?: string; validationErrors?: unknown[] }) => {
+            if (cancelled) return;
+            if (data.validationErrors || !data.buyAmount) {
+              // Fallback to 1inch or price ratio
+              const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
+              setState({ rate: fallbackRate, source: "0x", loading: false, error: "No 0x quote" });
+              return;
+            }
+            const buyAmt = Number(data.buyAmount) / Math.pow(10, dstDecimals);
+            const sellAmt = Number(sellAmount) / Math.pow(10, srcDecimals);
+            const rate = buyAmt / sellAmt;
+            setState({ rate, source: "0x", loading: false, error: null });
+          })
+          .catch(err => {
+            if (cancelled) return;
+            setState({ rate: null, source: "0x", loading: false, error: String(err) });
+          });
+      } else if (ONEINCH_API_KEY) {
+        // Fallback: 1inch (uses native ETH placeholder)
+        const oneinchSell = ONEINCH_ETH_TOKENS[from] ?? sellToken;
+        const oneinchBuy  = ONEINCH_ETH_TOKENS[to] ?? buyToken;
+        const amount = sellAmount;
+        fetch(`https://api.1inch.dev/swap/v6.0/1/quote?src=${oneinchSell}&dst=${oneinchBuy}&amount=${amount}`, {
+          headers: { Authorization: `Bearer ${ONEINCH_API_KEY}` },
+        })
+          .then(r => r.json())
+          .then((data: { dstAmount?: string; error?: string }) => {
+            if (cancelled) return;
+            if (data.error || !data.dstAmount) {
+              setState({ rate: null, source: "1inch", loading: false, error: data.error ?? "No quote" });
+              return;
+            }
+            const dstAmount = parseInt(data.dstAmount, 10) / Math.pow(10, dstDecimals);
+            const srcAmount = parseFloat(amount) / Math.pow(10, srcDecimals);
+            const rate = dstAmount / srcAmount;
+            setState({ rate, source: "1inch", loading: false, error: null });
+          })
+          .catch(err => {
+            if (cancelled) return;
+            setState({ rate: null, source: "1inch", loading: false, error: String(err) });
+          });
+      } else {
+        // No API keys configured — use price ratio as placeholder
+        const fallbackRate = toUsdPrice > 0 ? fromUsdPrice / toUsdPrice : null;
+        setState({ rate: fallbackRate, source: "0x", loading: false, error: "API key not configured" });
+      }
     }
 
     return () => { cancelled = true; };
-  // Re-fetch when pair or quoteAmount changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromSym, toSym, quoteAmount]);
 
@@ -1315,12 +1358,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
           {dexLoading ? (
             <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
               <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "1inch" ? "1inch" : "Jupiter"}…`}</span>
+              <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"}…`}</span>
             </div>
           ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
             <div className="text-right">
-              <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : "#1470ef" }}>
-                {dexRef.source === "jupiter" ? "Jupiter" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
+              <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : dexRef.source === "0x" ? "#6366f1" : "#1470ef" }}>
+                {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
               </div>
               {beatsDex && dexBeatsPct !== null && (
                 <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
@@ -1328,7 +1371,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
             </div>
           ) : dexRef.rate && dexRef.source !== "none" ? (
             <div className="text-[9px] text-slate-500">
-              {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
+              {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
             </div>
           ) : (
             <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
@@ -1510,7 +1553,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                         className="text-[10px] px-2 py-0.5 rounded-full font-bold"
                         style={{ background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
                       >
-                        ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
+                        ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
                       </span>
                     </div>
                   )}
@@ -1571,7 +1614,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                           className="text-[8px] px-1.5 py-0.5 rounded-full font-bold"
                           style={{ background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.4)", color: "#10b981" }}
                         >
-                          ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
+                          ★ Best · beats {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"} +{dexBeatsPct!.toFixed(2)}%
                         </span>
                       </div>
                     )}

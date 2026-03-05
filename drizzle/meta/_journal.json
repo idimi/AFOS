@@ -64,6 +64,13 @@
       "when": 1772695267236,
       "tag": "0008_stale_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1772724886444,
+      "tag": "0009_luxuriant_sentinel",
+      "breakpoints": true
     }
   ]
 }

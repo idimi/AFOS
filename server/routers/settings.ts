@@ -12,7 +12,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { getUserSettings, upsertUserSettings } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 
-const preferredRouteEnum = z.enum(["intercomswap", "jupiter", "oneinch", "best"]);
+const preferredRouteEnum = z.enum(["intercomswap", "jupiter", "zerox", "oneinch", "best"]);
 const themeEnum = z.enum(["dark", "light", "system"]);
 
 export const settingsRouter = router({

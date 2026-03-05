@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` MODIFY COLUMN `preferredRoute` enum('intercomswap','jupiter','zerox','oneinch','best') NOT NULL DEFAULT 'best';

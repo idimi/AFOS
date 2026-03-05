@@ -37,6 +37,7 @@ const CHAIN_COLORS: Record<string, string> = {
 const ROUTE_COLORS: Record<string, string> = {
   "IntercomSwap P2P": "#14F195",
   "Jupiter DEX":      "#9945FF",
+  "0x Protocol":      "#6366f1",
   "1inch":            "#627EEA",
   "Direct HTLC":      "#F7931A",
 };

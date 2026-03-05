@@ -58,16 +58,23 @@ const ROUTES = [
     badgeColor: null,
   },
   {
+    id: "zerox",
+    label: "0x Protocol (Ethereum)",
+    description: "0x API DEX aggregator on Ethereum (0.20% fee)",
+    badge: "Active",
+    badgeColor: "#6366f1",
+  },
+  {
     id: "oneinch",
-    label: "1inch (Ethereum)",
-    description: "Aggregated DEX liquidity on Ethereum (0.20% fee)",
-    badge: null,
-    badgeColor: null,
+    label: "1inch (SOL + ETH)",
+    description: "1inch aggregator — fallback for Solana & Ethereum (requires API key)",
+    badge: "Needs Key",
+    badgeColor: "#f59e0b",
   },
   {
     id: "best",
     label: "Best Available",
-    description: "Automatically picks the route with the best rate and lowest fee",
+    description: "Auto-selects: P2P → 0x (ETH) / Jupiter (SOL) → 1inch fallback",
     badge: null,
     badgeColor: null,
   },
@@ -288,7 +295,7 @@ export default function AgentSettings() {
   const [autoConfirm, setAutoConfirm] = useState(false);
   const [slippage, setSlippage] = useState("0.5");
   const [customSlippage, setCustomSlippage] = useState("");
-  const [preferredRoute, setPreferredRoute] = useState<"intercomswap" | "jupiter" | "oneinch" | "best">("best");
+  const [preferredRoute, setPreferredRoute] = useState<"intercomswap" | "jupiter" | "zerox" | "oneinch" | "best">("best");
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
 
   // Populate local draft when remote data arrives

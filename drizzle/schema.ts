@@ -156,8 +156,8 @@ export const userSettings = mysqlTable("user_settings", {
   autoConfirm:      int("autoConfirm").default(0).notNull(), // 0 = false, 1 = true (MySQL tinyint)
   /** Slippage tolerance as a percentage, e.g. 0.5 means 0.5% */
   slippagePct:      varchar("slippagePct", { length: 8 }).default("0.5").notNull(),
-  /** Preferred swap route: intercomswap | jupiter | oneinch | best */
-  preferredRoute:   mysqlEnum("preferredRoute", ["intercomswap", "jupiter", "oneinch", "best"]).default("best").notNull(),
+  /** Preferred swap route: intercomswap | jupiter | zerox | oneinch | best */
+  preferredRoute:   mysqlEnum("preferredRoute", ["intercomswap", "jupiter", "zerox", "oneinch", "best"]).default("best").notNull(),
   /** Appearance theme preference: dark | light | system */
   theme:            mysqlEnum("theme", ["dark", "light", "system"]).default("dark").notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
@@ -207,7 +207,7 @@ export const DEFAULT_USER_SETTINGS = {
   maxTxAmountUsd: 500,
   autoConfirm: false,
   slippagePct: "0.5",
-  preferredRoute: "best" as const,
+  preferredRoute: "best" as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best",
   theme: "dark" as const,
 };
 

@@ -1,28 +1,33 @@
 /**
  * agentSwapEth.ts — Server-side Ethereum agent swap execution
  *
- * Routing priority (same as Solana path):
+ * Routing priority:
  *   1. IntercomSwap Oracle VM RFQ → P2P HTLC or DEX via Oracle VM
- *   2. Direct 1inch aggregator swap (ETH_AGENT_KEY signs + broadcasts)
+ *   2. 0x Protocol v2 (primary DEX, no KYC, 0.20% fee)  ← ZEROX_API_KEY required
+ *   3. 1inch v6 (fallback DEX, 0.20% fee)               ← ONEINCH_API_KEY required (coming soon)
  *
  * Fee model:
  *   P2P route  → P2P_FEE_BPS  = 15 (0.15%) output-side deduction
- *   DEX route  → PLATFORM_FEE_BPS = 20 (0.20%) via 1inch referral
+ *   DEX route  → PLATFORM_FEE_BPS = 20 (0.20%) via 0x/1inch referral
  *
  * Environment variables required:
- *   ETH_AGENT_KEY  — Ethereum private key (hex, with or without 0x prefix)
- *   ETH_RPC_URL    — Ethereum JSON-RPC endpoint (defaults to public Cloudflare)
- *   ORACLE_API_URL — IntercomSwap Oracle VM base URL
+ *   ETH_AGENT_KEY   — Ethereum private key (hex, with or without 0x prefix)
+ *   ETH_RPC_URL     — Ethereum JSON-RPC endpoint (defaults to Cloudflare)
+ *   ORACLE_API_URL  — IntercomSwap Oracle VM base URL
+ *   ZEROX_API_KEY   — 0x Protocol API key (primary DEX, no KYC)
+ *   ONEINCH_API_KEY — 1inch API key (fallback DEX, coming soon — requires KYC)
  */
 
 import { ethers } from "ethers";
 import { recordSwapAnalytic } from "./htlcMonitor";
+import { executeZeroxSwap } from "./zeroxSwap";
 
 // ─── Fee constants (must match chat.ts) ──────────────────────────────────────
 const P2P_FEE_BPS      = 15;   // 0.15% for IntercomSwap P2P
 const PLATFORM_FEE_BPS = 20;   // 0.20% for 1inch DEX
 
-// ─── 1inch v6 helpers ─────────────────────────────────────────────────────────
+// ─── 1inch v6 helpers (FALLBACK — requires ONEINCH_API_KEY) ─────────────────
+// Kept in code and ready to activate once ONEINCH_API_KEY is provided.
 const ONEINCH_BASE = "https://api.1inch.dev/swap/v6.0/1"; // Ethereum mainnet
 
 const ETH_NATIVE = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
@@ -41,15 +46,23 @@ function resolveEthToken(symbol: string) {
   return ETH_TOKENS[upper] ?? null;
 }
 
+function get1inchHeaders(): Record<string, string> {
+  const key = process.env.ONEINCH_API_KEY;
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (key) headers["Authorization"] = `Bearer ${key}`;
+  return headers;
+}
+
 async function get1inchQuote(
   fromAddr: string,
   toAddr: string,
   amountRaw: string,
 ): Promise<{ toAmount: string } | null> {
+  if (!process.env.ONEINCH_API_KEY) return null; // 1inch requires API key
   try {
     const url = `${ONEINCH_BASE}/quote?src=${fromAddr}&dst=${toAddr}&amount=${amountRaw}`;
     const res = await fetch(url, {
-      headers: { Accept: "application/json" },
+      headers: get1inchHeaders(),
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return null;
@@ -66,12 +79,13 @@ async function get1inchSwapTx(
   walletAddress: string,
   slippage = 1,
 ): Promise<{ tx: { to: string; data: string; value: string; gas: number } } | null> {
+  if (!process.env.ONEINCH_API_KEY) return null; // 1inch requires API key
   try {
     const url =
       `${ONEINCH_BASE}/swap?src=${fromAddr}&dst=${toAddr}` +
       `&amount=${amountRaw}&from=${walletAddress}&slippage=${slippage}&disableEstimate=true`;
     const res = await fetch(url, {
-      headers: { Accept: "application/json" },
+      headers: get1inchHeaders(),
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) {
@@ -79,7 +93,11 @@ async function get1inchSwapTx(
       console.warn(`[1inch ETH] swap tx failed: ${res.status} ${err.slice(0, 120)}`);
       return null;
     }
-    return await res.json() as { tx: { to: string; data: string; value: string; gas: number } };
+    const data = await res.json() as {
+      tx?: { to: string; data: string; value: string; gas: number };
+      transaction?: { to: string; data: string; value: string; gas: number };
+    };
+    return data.tx ? { tx: data.tx } : (data.transaction ? { tx: data.transaction } : null);
   } catch (err) {
     console.warn("[1inch ETH] swap tx error:", err);
     return null;
@@ -251,12 +269,11 @@ export async function executeEthAgentSwap(params: {
     }
   }
 
-  // ── Step 3: Direct 1inch fallback (same-chain only) ──────────────────────────
+  // ── Step 3: 0x Protocol (primary DEX fallback — same-chain only) ────────────
   // Cross-chain swaps (e.g., ETH→SOL, ETH→BTC) MUST go through Oracle VM P2P.
-  // 1inch only supports same-chain (Ethereum→Ethereum) swaps.
   const isCrossChain = fromChain.toLowerCase() !== toChain.toLowerCase();
   if (isCrossChain) {
-    console.log(`[ETH Agent Swap] Cross-chain swap (${fromChain}→${toChain}) — Oracle VM required, no 1inch fallback`);
+    console.log(`[ETH Agent Swap] Cross-chain swap (${fromChain}→${toChain}) — Oracle VM required, no DEX fallback`);
     return {
       success: false,
       demo: false,
@@ -274,7 +291,27 @@ export async function executeEthAgentSwap(params: {
     };
   }
 
-  console.log("[ETH Agent Swap] Falling back to direct 1inch signing");
+  console.log("[ETH Agent Swap] Falling back to 0x Protocol (primary DEX)");
+
+  const zeroxResult = await executeZeroxSwap({ fromToken, toToken, amount, toChain });
+  if (zeroxResult.success) {
+    void recordSwapAnalytic({
+      fromChain:    "ethereum",
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+      fromToken:    fromToken.toUpperCase(),
+      toToken:      toToken.toUpperCase(),
+      amount:       String(amount),
+      route:        "0x Protocol (agent direct)",
+      status:       "completed",
+      txId:         zeroxResult.txHash ?? "",
+      feeBps:       PLATFORM_FEE_BPS,
+      feeAmountOut: String(zeroxResult.feeAmountOut.toFixed(8)),
+    }).catch(() => {});
+    return zeroxResult;
+  }
+
+  console.warn(`[ETH Agent Swap] 0x failed: ${zeroxResult.message}`);
+  console.log("[ETH Agent Swap] Falling back to 1inch (requires ONEINCH_API_KEY)");
 
   const fromAsset = resolveEthToken(fromToken);
   const toAsset   = resolveEthToken(toToken);
@@ -324,7 +361,7 @@ export async function executeEthAgentSwap(params: {
       message:
         "Failed to build 1inch swap transaction. " +
         "The agent wallet may have insufficient ETH for gas (need ≥0.01 ETH). " +
-        "Note: 1inch API may require an API key for swap transactions.",
+        "Note: 1inch requires ONEINCH_API_KEY — add it in Settings to enable.",
     };
   }
 
@@ -387,7 +424,7 @@ export async function executeEthAgentSwap(params: {
       fromToken:    fromToken.toUpperCase(),
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
-      route:        "1inch DEX (agent direct)",
+      route:        "1inch DEX (agent direct, fallback)",
       status:       "completed",
       txId:         response.hash,
       feeBps:       PLATFORM_FEE_BPS,

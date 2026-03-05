@@ -275,7 +275,7 @@ describe("Cross-chain swap routing", () => {
     // Must detect cross-chain and skip 1inch
     expect(src).toContain("isCrossChain");
     expect(src).toContain("Cross-chain swap");
-    expect(src).toContain("Oracle VM required, no 1inch fallback");
+    expect(src).toContain("Oracle VM required, no DEX fallback");
   });
 
   it("SOL agent should skip Jupiter fallback for cross-chain swaps", async () => {

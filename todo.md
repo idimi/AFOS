@@ -1175,3 +1175,20 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix unresponsive scroll on Network page mobile (overflow-hidden blocking touch scroll)
 - [x] DashboardLayout main container: added overflow-y-auto so all pages scroll on mobile
 - [x] NetworkPage root div: overflow-y-auto on mobile, overflow-hidden on sm+ (desktop sidebar layout)
+
+## DEX Routing Architecture Overhaul
+
+- [x] Add ZEROX_API_KEY + VITE_ZEROX_API_KEY secrets (validated with live 0x v2 API test)
+- [x] Implement 0x API swap module for Ethereum with 0.2% referral fee (server/zeroxSwap.ts)
+- [x] Update agentSwapEth.ts: primary = 0x API, fallback = 1inch stub (ready when ONEINCH_API_KEY provided)
+- [x] Update Solana path: Jupiter primary (0.2% fee confirmed), 1inch SOL fallback stub
+- [x] Fix SwapPage routing bug: wire handleSwap to trpc.chat.executeAgentSwap instead of Oracle VM direct
+- [x] Update Settings preferredRoute dropdown: add "0x Protocol" option, 1inch shows "Needs Key" badge
+- [x] Update route labels in ChatPage/SwapPage/Swaps/SwapAnalytics to show "0x Protocol" for ETH swaps
+- [x] Update fee display in all pages to show 0.2% for all routes
+- [x] Keep 1inch code for both SOL and ETH but gate behind ONEINCH_API_KEY presence check
+- [x] Fix 0x v2 API: use permit2/price endpoint, 0x-version: v2 header, WETH address for native ETH
+- [x] Fix 0x v2 fee params: swapFeeBps/swapFeeRecipient/swapFeeToken (not integratorFee)
+- [x] Write vitest tests for 0x API integration (3 tests passing)
+- [x] Update multiChainAgentSwap test for new cross-chain message
+- [x] All 208 tests passing across 15 test files

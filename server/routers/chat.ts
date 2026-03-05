@@ -7,12 +7,12 @@
  *
  * Routing per chain:
  *   Solana:   IntercomSwap P2P → Jupiter DEX fallback
- *   Ethereum: IntercomSwap P2P → 1inch aggregator fallback
+ *   Ethereum: IntercomSwap P2P → 0x Protocol (primary DEX) → 1inch (fallback, requires ONEINCH_API_KEY)
  *   Bitcoin:  IntercomSwap P2P → Direct HTLC (mempool.space) fallback
  *
  * Execution procedures:
  *   buildSwapTx      — Solana swaps (P2P primary + Jupiter fallback)
- *   executeEthSwap   — Ethereum swaps (P2P primary + 1inch fallback)
+ *   executeEthSwap   — Ethereum swaps (P2P primary + 0x DEX + 1inch fallback)
  *   executeBtcSwap   — Bitcoin swaps (P2P primary + direct HTLC fallback)
  *
  * Flow:
@@ -73,7 +73,7 @@ function defaultChain(symbol: string): SupportedChain {
 
 const JUPITER_QUOTE_URL = "https://lite-api.jup.ag/swap/v1/quote";
 const JUPITER_SWAP_URL  = "https://lite-api.jup.ag/swap/v1/swap";
-const PLATFORM_FEE_BPS  = 20;  // 0.20% — DEX fallback (Jupiter/1inch referral, collected on-chain)
+const PLATFORM_FEE_BPS  = 20;  // 0.20% — DEX fallback (Jupiter/0x/1inch referral, collected on-chain)
 const P2P_FEE_BPS       = 15;  // 0.15% — P2P primary route (output-side deduction, cheaper to reward P2P)
 
 // SOL_FEE_ACCOUNT — the Solana wallet that receives Jupiter referral fees (0.20% per DEX swap).
@@ -198,8 +198,37 @@ async function getJupiterSwapTx(
   return res.json();
 }
 
-// ─── 1inch (Ethereum DEX aggregator) ─────────────────────────────────────────
-// 1inch v5 public API — no API key required for quote-only calls
+// ─── 0x Protocol (primary Ethereum DEX aggregator) ──────────────────────────
+const ZEROX_BASE = "https://api.0x.org/swap/permit2";
+
+async function getZeroxPrice(
+  sellTokenAddr: string,
+  buyTokenAddr:  string,
+  sellAmountRaw: string,
+): Promise<{ buyAmount: string } | null> {
+  const key = process.env.ZEROX_API_KEY;
+  if (!key) return null;
+  try {
+    const params = new URLSearchParams({
+      chainId:    "1",
+      sellToken:  sellTokenAddr,
+      buyToken:   buyTokenAddr,
+      sellAmount: sellAmountRaw,
+    });
+    const res = await fetch(`${ZEROX_BASE}/price?${params}`, {
+      headers: { "0x-api-key": key, "0x-version": "v2", Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) { console.warn("[0x] Price failed:", res.status); return null; }
+    return await res.json() as { buyAmount: string };
+  } catch (err) {
+    console.warn("[0x] Price error:", err);
+    return null;
+  }
+}
+
+// ─── 1inch (Ethereum DEX fallback — requires ONEINCH_API_KEY) ────────────────
+// Kept in code and ready to activate once ONEINCH_API_KEY is provided.
 
 const ONEINCH_BASE = "https://api.1inch.dev/swap/v6.0/1"; // Ethereum mainnet chain ID 1
 
@@ -640,14 +669,22 @@ async function buildQuote(
     };
   }
 
-  // ── Ethereum → Ethereum: 1inch ────────────────────────────────────────────
+  // ── Ethereum → Ethereum: 0x Protocol (primary) → 1inch (fallback) ──────────
   if (fromAsset.chain === "ethereum" && toAsset.chain === "ethereum") {
     const amountRaw = BigInt(Math.floor(swapAmount * Math.pow(10, fromAsset.decimals))).toString();
-    const q1inch = await get1inchQuote(fromAsset, toAsset, amountRaw);
-
-    if (q1inch) {
-      const toAmountHuman  = parseInt(q1inch.toAmount) / Math.pow(10, toAsset.decimals);
-      // 1inch DEX: 0.20% fee via referral — collected on-chain, show for transparency
+    const ethNativeAddr = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+    const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+    // 0x v2 uses WETH address for native ETH
+    const sell0x = (fromAsset.address ?? ethNativeAddr).toLowerCase() === ethNativeAddr.toLowerCase() ? WETH : (fromAsset.address ?? ethNativeAddr);
+    const buy0x  = (toAsset.address ?? ethNativeAddr).toLowerCase() === ethNativeAddr.toLowerCase() ? WETH : (toAsset.address ?? ethNativeAddr);
+    // Try 0x Protocol first (primary DEX, no KYC)
+    const q0x = await getZeroxPrice(
+      sell0x,
+      buy0x,
+      amountRaw,
+    );
+    if (q0x) {
+      const toAmountHuman  = parseInt(q0x.buyAmount) / Math.pow(10, toAsset.decimals);
       const platformFeeOut = toAmountHuman * (PLATFORM_FEE_BPS / 10000);
       const netToAmount    = toAmountHuman;
       const platformFee    = swapAmount * (PLATFORM_FEE_BPS / 10000);
@@ -664,12 +701,35 @@ async function buildQuote(
         platformFeeOut,
         feeBps:         PLATFORM_FEE_BPS,
         feeToken:       toAsset.symbol,
-        route:          "1inch (Ethereum)",
+        route:          "0x Protocol (Ethereum)",
+        rawQuote:       q0x,
+      };
+    }
+    // Try 1inch as fallback (requires ONEINCH_API_KEY)
+    const q1inch = await get1inchQuote(fromAsset, toAsset, amountRaw);
+    if (q1inch) {
+      const toAmountHuman  = parseInt(q1inch.toAmount) / Math.pow(10, toAsset.decimals);
+      const platformFeeOut = toAmountHuman * (PLATFORM_FEE_BPS / 10000);
+      const netToAmount    = toAmountHuman;
+      const platformFee    = swapAmount * (PLATFORM_FEE_BPS / 10000);
+      return {
+        fromAmount:     swapAmount,
+        toAmount:       toAmountHuman,
+        netToAmount,
+        fromAmountUsd:  swapAmount * fromPrice,
+        toAmountUsd:    netToAmount * toPrice,
+        rate:           netToAmount / swapAmount,
+        priceImpact:    0,
+        platformFee,
+        platformFeeUsd: platformFee * fromPrice,
+        platformFeeOut,
+        feeBps:         PLATFORM_FEE_BPS,
+        feeToken:       toAsset.symbol,
+        route:          "1inch (Ethereum, fallback)",
         rawQuote:       q1inch,
       };
     }
-
-    // Fallback: estimate via prices if 1inch unavailable — P2P fee (0.15%) applies
+    // Final fallback: estimate via prices — P2P fee (0.15%) applies
     const estimatedOut1   = (swapAmount * fromPrice) / (toPrice || 1);
     const platformFeeOut1 = estimatedOut1 * (P2P_FEE_BPS / 10000);
     const netToAmount1    = estimatedOut1 - platformFeeOut1;
@@ -1466,9 +1526,10 @@ export const chatRouter = router({
       const chain = fromChain.toLowerCase();
 
       // ── Apply preferredRoute: skip P2P when user prefers a specific DEX ────
-      // preferredRoute "best" = P2P-first (default behaviour)
-      // preferredRoute "jupiter"     = skip P2P, go straight to Jupiter (Solana only)
-      // preferredRoute "oneinch"     = skip P2P, go straight to 1inch (Ethereum only)
+      // preferredRoute "best"         = P2P-first (default behaviour)
+      // preferredRoute "jupiter"      = skip P2P, go straight to Jupiter (Solana only)
+      // preferredRoute "zerox"        = skip P2P, go straight to 0x Protocol (Ethereum only)
+      // preferredRoute "oneinch"      = skip P2P, go straight to 1inch (Ethereum only, requires ONEINCH_API_KEY)
       // preferredRoute "intercomswap" = force P2P, throw if no peer found
       const preferredRoute = userPrefs.preferredRoute;
 

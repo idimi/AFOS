@@ -24,8 +24,9 @@ import { toast } from "sonner";
 import { useWallet } from "@/contexts/WalletContext";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "@/components/ConnectWalletModal";
+import { trpc } from "@/lib/trpc";
 import {
-  getPrices, getSwapQuote, submitRfq, executeSwap, getSwaps,
+  getPrices, getSwapQuote, getSwaps,
   onSSEEvent, isSSEConnected,
   type SupportedChain, type SwapQuote, type RfqResult, type TokenPrice
 } from "@/lib/afosApi";
@@ -299,42 +300,43 @@ export default function SwapPage() {
     }
   }, [isConnected]);
 
+  // ── tRPC executeAgentSwap mutation (replaces broken Oracle VM direct call) ────────
+  const executeAgentSwapMutation = trpc.chat.executeAgentSwap.useMutation();
+
   const handleSwap = async () => {
     if (!canSwap) return;
     setSwapStep("confirming");
     setErrorMsg(null);
 
     try {
-      toast.info("Broadcasting RFQ to IntercomSwap P2P network…", { duration: 2500 });
+      toast.info("Routing swap via AFOS agent…", { duration: 2000 });
       setSwapStep("executing");
 
-      const rfqRes = await submitRfq(fromToken, toToken, fromAmountNum, fromChain, toChain);
-      if (!rfqRes.success) throw new Error("RFQ failed — no peers responded");
+      const result = await executeAgentSwapMutation.mutateAsync({
+        fromToken,
+        toToken,
+        amount: fromAmountNum,
+        fromChain,
+        toChain,
+      });
 
-      const { result } = rfqRes;
-      const routeLabel = result.route === "p2p"
-        ? `P2P peer (${result.p2pQuotes} quote${result.p2pQuotes !== 1 ? "s" : ""})`
-        : `DEX fallback (${result.dexRoute})`;
-      toast.info(`Quote accepted via ${routeLabel}`, { duration: 2500 });
-      toast.info("Locking atomic escrow…", { duration: 2000 });
+      if (!result.success) {
+        throw new Error((result as { error?: string }).error ?? "Swap failed — agent returned an error");
+      }
 
-      let walletAddress: string | undefined;
-      if (fromChain === "ethereum" && ethWallet?.address) walletAddress = ethWallet.address;
-      else if (fromChain === "bitcoin" && btcWallet?.address) walletAddress = btcWallet.address;
+      const routeLabel = result.route ?? "DEX";
+      toast.info(`Swap executed via ${routeLabel}`, { duration: 2000 });
 
-      const execResult = await executeSwap(result.rfqId, walletAddress, fromChain) as {
-        success?: boolean;
-        txHash?: string;
-        tx?: string;
-        error?: string;
-      };
-
-      const hash = execResult?.txHash ?? execResult?.tx ?? result.rfqId;
+      const hash = result.txHash ?? "pending";
       setTxHash(hash);
       setSwapStep("done");
 
       const toTokenDef = TOKENS.find(t => t.symbol === toToken && t.chain === toChain);
-      const outAmt = quote ? formatAmount(quote.outAmount, toTokenDef?.decimals ?? 8) : "?";
+      const outAmt = result.outAmount
+        ? formatAmount(Number(result.outAmount), toTokenDef?.decimals ?? 8)
+        : quote
+        ? formatAmount(quote.outAmount, toTokenDef?.decimals ?? 8)
+        : "?";
       toast.success("Swap settled!", {
         description: `${fromAmount} ${fromToken} → ${outAmt} ${toToken}`,
       });

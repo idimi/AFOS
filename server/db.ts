@@ -100,7 +100,7 @@ export type UserSettingsResult = {
   maxTxAmountUsd: number;
   autoConfirm: boolean;
   slippagePct: string;
-  preferredRoute: "intercomswap" | "jupiter" | "oneinch" | "best";
+  preferredRoute: "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best";
   theme: "dark" | "light" | "system";
 };
 
