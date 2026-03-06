@@ -512,16 +512,10 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
   return (
     <div className="rounded-2xl border border-cyan-500/15 bg-card flex flex-col" style={{ height: 340 }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg relative shrink-0">
-            <img src="/afos-icon.png" alt="AFOS" className="w-7 h-7 rounded-lg object-contain ring-1 ring-border/40 shadow-sm" />
-            <div className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-card" />
-          </div>
-          <div>
-            <p className="text-xs font-bold text-foreground leading-none">AFOS Agent</p>
-            <p className="text-[10px] text-muted-foreground font-mono">gemini-2.5-flash-lite</p>
-          </div>
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Agent online
         </div>
         <div className="flex items-center gap-1.5">
           <button

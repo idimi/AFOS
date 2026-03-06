@@ -1451,3 +1451,6 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Add page header row to Overview content area (AFOS logo + subtitle + status badges, matching Swaps page style)
 - [x] Replace fixed StackHealthStrip with compact 5-dot StackStatusPill in topbar (reclaim vertical space, tooltip shows full service list)
+
+## MiniChatWidget Header Cleanup
+- [x] Remove redundant "AFOS Agent / gemini-2.5-flash-lite" logo+name row from MiniChatWidget header (page header already shows AFOS logo); replaced with minimal "● Agent online" status pill
