@@ -261,7 +261,7 @@ export function AgentChatHero() {
             <div>
               <p className="text-xs font-bold text-white leading-none">AFOS Agent</p>
               <p className="text-[9px] font-mono mt-0.5" style={{ color: "oklch(0.55 0.04 255)" }}>
-                autonomous · cross-chain · P2P
+                autonomous · cross-chain · P2P · Hyperswarm · Intercomswap Powered by Trac Network
               </p>
             </div>
           </div>

@@ -1438,3 +1438,4 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Centralise IS_BETA flag in shared/const.ts so it can be toggled in one place
 - [x] Animate BETA badge with subtle pulse/shimmer effect (CSS keyframes, non-distracting)
 - [x] Add condensed mobile hero animation in AgentChatHero for small screens
+- [x] Update AgentChatHero header subtitle to include "Hyperswarm · Intercomswap Powered by Trac Network"
