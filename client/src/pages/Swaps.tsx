@@ -2850,7 +2850,14 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
                 </div>
               </div>
               <div className="flex items-center justify-between mt-1.5">
-                <span className="text-xs text-muted-foreground">${parseFloat(toUsd).toLocaleString()}</span>
+                <span
+                  className="text-sm font-semibold"
+                  style={{ color: parseFloat(toUsd) > 0 ? '#10b981' : 'var(--muted-foreground)' }}
+                >
+                  {parseFloat(toUsd) > 0
+                    ? `≈ $${parseFloat(toUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : '$0.00'}
+                </span>
                 <span className="text-[10px] text-muted-foreground">
                   {liveQuote ? `via ${liveQuote.route}` : `1 ${fromToken.symbol} ≈ ${rate.toFixed(4)} ${toToken.symbol}`}
                 </span>

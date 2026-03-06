@@ -1584,3 +1584,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Update AuthGate to show "Connect wallet" instead of "Sign in with Manus"
 - [x] Add manual Refresh button to MarketTicker price staleness footer
 - [x] Add vitest for admin wallet allowlist logic (server/admin.wallet.test.ts)
+
+## USD Value in "You Receive" Panel
+
+- [x] Make toUsd value in Swaps "You receive" panel more prominent (larger font, green colour) to match "You pay" USD display
