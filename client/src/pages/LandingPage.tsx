@@ -13,9 +13,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, Zap, Shield, Globe, Lock, ChevronRight,
   ArrowLeftRight, Cpu, Network, Activity, ExternalLink,
-  CheckCircle2, X, MoreHorizontal, Sun, Moon, Monitor
+  CheckCircle2, X, MoreHorizontal, Sun, Moon, Monitor, Wallet
 } from "lucide-react";
 import { getLoginUrl } from "@/const";
+import { trpc } from "@/lib/trpc";
 
 // ─── Animated counter ─────────────────────────────────────────────────────────
 function AnimatedNumber({ value, prefix = "", suffix = "", decimals = 0 }: {
@@ -183,6 +184,12 @@ export default function LandingPage() {
   const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
   const prefsRef = useRef<HTMLDivElement>(null);
 
+  // Live prices — refetch every 30s
+  const { data: livePrice } = trpc.prices.live.useQuery(undefined, {
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+  });
+
   // Apply theme on mount and on change
   useEffect(() => { applyTheme(theme); }, [theme]);
 
@@ -217,14 +224,14 @@ export default function LandingPage() {
           borderBottom: "1px solid oklch(0.32 0.04 255 / 0.2)",
         }}
       >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-sm"
-            style={{ background: "oklch(0.72 0.18 195 / 0.2)", border: "1px solid oklch(0.72 0.18 195 / 0.4)", color: "oklch(0.72 0.18 195)" }}
-          >
-            A
-          </div>
-          <span className="font-bold text-sm tracking-wide">AFOS</span>
+        <div className="flex items-center gap-2.5">
+          {/* AFOS logo — transparent PNG works on both dark and light backgrounds */}
+          <img
+            src="https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/afos-logo_4d9b6801.png"
+            alt="AFOS"
+            className="h-9 w-auto object-contain"
+            style={{ filter: "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.35))" }}
+          />
           <span
             className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
             style={{ background: "oklch(0.72 0.18 195 / 0.15)", border: "1px solid oklch(0.72 0.18 195 / 0.3)", color: "oklch(0.72 0.18 195)" }}
@@ -404,6 +411,18 @@ export default function LandingPage() {
                   <ArrowRight className="w-4 h-4" />
                 </a>
                 <a
+                  href="/app#connect+swaps"
+                  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-90 hover:scale-[1.02]"
+                  style={{
+                    background: "oklch(0.16 0.03 265)",
+                    border: "1px solid oklch(0.72 0.18 195 / 0.5)",
+                    color: "oklch(0.72 0.18 195)",
+                  }}
+                >
+                  <Wallet className="w-4 h-4" />
+                  Connect Wallet
+                </a>
+                <a
                   href="#how-it-works"
                   className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-80"
                   style={{
@@ -467,10 +486,14 @@ export default function LandingPage() {
                 >
                   <p className="text-[10px] text-muted-foreground mb-1">You send</p>
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl font-black" style={{ color: "#F7931A" }}>0.1 BTC</span>
+                    <span className="text-2xl font-black" style={{ color: "#F7931A" }}>
+                      {livePrice ? `${livePrice.btcAmount} BTC` : "0.1 BTC"}
+                    </span>
                     <ChainBadge name="Bitcoin" color="#F7931A" symbol="₿" />
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">≈ $7,120.00</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    ≈ ${livePrice ? livePrice.btcUsd.toLocaleString() : "—"}
+                  </p>
                 </div>
 
                 {/* Arrow */}
@@ -490,10 +513,14 @@ export default function LandingPage() {
                 >
                   <p className="text-[10px] text-muted-foreground mb-1">You receive</p>
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl font-black" style={{ color: "#9945FF" }}>80.1 SOL</span>
+                    <span className="text-2xl font-black" style={{ color: "#9945FF" }}>
+                      {livePrice ? `${livePrice.solAmount} SOL` : "— SOL"}
+                    </span>
                     <ChainBadge name="Solana" color="#9945FF" symbol="◎" />
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">≈ $7,105.00 · 0.15% fee</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    ≈ ${livePrice ? livePrice.solUsd.toLocaleString() : "—"} · 0.15% fee
+                  </p>
                 </div>
 
                 {/* Stats row */}

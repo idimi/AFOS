@@ -1397,3 +1397,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add ··· button to LandingPage navbar before "Launch App"
 - [x] Popover shows "Global preferences" with Theme toggle (Auto / Light / Dark)
 - [x] Theme change persists via localStorage and applies to the whole app
+
+## Landing Page Logo, Live Prices & Connect Wallet CTA
+
+- [x] Upload AFOS logo to CDN and use in landing page navbar (transparent, works in dark/light mode)
+- [x] Update OG image in index.html to use AFOS logo CDN URL
+- [x] Add live price tRPC procedure (prices.live) to routers.ts (CoinGecko, 30s cache)
+- [x] Wire hero swap card to live BTC/SOL prices from tRPC (refetches every 30s)
+- [x] Add Connect Wallet CTA button in hero (links to /app#connect+swaps)
+- [x] Add URL hash deep-link handler in Dashboard (#connect opens wallet modal, #swaps navigates to swaps tab)

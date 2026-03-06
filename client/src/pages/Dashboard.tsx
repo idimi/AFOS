@@ -2942,6 +2942,20 @@ export default function Dashboard() {
     return () => window.removeEventListener('afos:navigate-swaps', handler);
   }, []);
 
+  // Handle deep-link hashes from the landing page CTA:
+  //   /app#connect       → open wallet modal
+  //   /app#swaps         → navigate to swaps tab
+  //   /app#connect+swaps → both
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (!hash) return;
+    const parts = hash.split('+');
+    if (parts.includes('swaps')) setActivePage('swaps');
+    if (parts.includes('connect')) setShowWalletModal(true);
+    // Clean hash without reload
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  }, []);
+
   // Swipe-right from left edge to open drawer
   const swipeTouchStartX = useRef<number | null>(null);
   const handleGlobalTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
