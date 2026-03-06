@@ -1589,12 +1589,16 @@ function TradingViewChart({
 function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
-  const [prices, setPrices] = useState({
-    BTC: { price: 67090, change: 0 },
-    ETH: { price: 2000, change: 0 },
-    SOL: { price: 87.2, change: 0 },
+  const [prices, setPrices] = useState<{
+    BTC: { price: number | null; change: number };
+    ETH: { price: number | null; change: number };
+    SOL: { price: number | null; change: number };
+  }>({
+    BTC: { price: null, change: 0 },
+    ETH: { price: null, change: 0 },
+    SOL: { price: null, change: 0 },
   });
-  const [priceSource, setPriceSource] = useState<'live' | 'mock'>('mock');
+  const [priceSource, setPriceSource] = useState<'loading' | 'live' | 'error'>('loading');
   // Persist chart pair + timeframe in localStorage
   const [activePair, setActivePairState] = useState<string | null>(() => {
     try { return localStorage.getItem("afos_chart_pair") ?? "BTC/USDT"; } catch { return "BTC/USDT"; }
@@ -1624,13 +1628,13 @@ function MarketTicker() {
     const fetchLivePrices = async () => {
       try {
         const priceData = await getPrices();
-          setPrices({
-            BTC: { price: priceData.BTC?.usd ?? 67090, change: priceData.BTC?.change24h ?? 0 },
-            ETH: { price: priceData.ETH?.usd ?? 2000, change: priceData.ETH?.change24h ?? 0 },
-            SOL: { price: priceData.SOL?.usd ?? 87.2, change: priceData.SOL?.change24h ?? 0 },
-          });
-          setPriceSource('live');
-      } catch { /* keep current prices */ }
+        setPrices({
+          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
+          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
+          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
+        });
+        setPriceSource('live');
+      } catch { setPriceSource('error'); }
     };
     fetchLivePrices();
     const timer = setInterval(fetchLivePrices, 30000);
@@ -1656,7 +1660,7 @@ function MarketTicker() {
           <BarChart3 className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Market</h3>
           <span className="text-[10px] text-muted-foreground font-mono">
-            {priceSource === 'live' ? 'Binance · Jupiter live' : 'IntercomSwap rates'}
+            {priceSource === 'live' ? 'CoinGecko live' : priceSource === 'error' ? 'Price feed unavailable' : 'Loading…'}
           </span>
         </div>
         {activePair ? (
@@ -1704,15 +1708,21 @@ function MarketTicker() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p className="text-sm font-mono text-foreground font-bold">
-                      ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
-                    </p>
-                    <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${
-                      t.change >= 0 ? "text-emerald-400" : "text-red-400"
-                    }`}>
-                      {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                      {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
-                    </span>
+                    {t.price !== null ? (
+                      <>
+                        <p className="text-sm font-mono text-foreground font-bold">
+                          ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
+                        </p>
+                        <span className={`text-[10px] font-mono flex items-center gap-0.5 justify-end ${
+                          t.change >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {t.change >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                          {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
+                        </span>
+                      </>
+                    ) : (
+                      <p className="text-sm font-mono text-muted-foreground">—</p>
+                    )}
                   </div>
                   <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
                     isActive ? "rotate-90" : ""
@@ -1910,9 +1920,14 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
               <div className="text-lg font-bold text-foreground">{avgConfidence}%</div>
             </div>
             <div className="flex items-end gap-0.5 h-7">
-              {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
-                <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
-              ))}
+              {confidenceTrend.length > 0
+                ? confidenceTrend.map(c => (
+                    <div key={c.i} className="w-2 rounded-sm bg-cyan-500/50" style={{ height: `${Math.max(20, c.value)}%` }} />
+                  ))
+                : Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="w-2 rounded-sm bg-muted-foreground/15" style={{ height: '20%' }} />
+                  ))
+              }
             </div>
           </div>
           <div className="flex flex-col justify-center p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
@@ -2484,9 +2499,14 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
             <div className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-0.5">Confidence</div>
             <div className="text-lg font-bold text-foreground">{avgConfidence}%</div>
             <div className="flex items-end gap-0.5 h-4 mt-1">
-              {(confidenceTrend.length > 0 ? confidenceTrend : [{i:0,value:85},{i:1,value:87},{i:2,value:85},{i:3,value:90},{i:4,value:88}]).map(c => (
-                <div key={c.i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: `${Math.max(20, c.value)}%` }} />
-              ))}
+              {confidenceTrend.length > 0
+                ? confidenceTrend.map(c => (
+                    <div key={c.i} className="flex-1 rounded-sm bg-cyan-500/40" style={{ height: `${Math.max(20, c.value)}%` }} />
+                  ))
+                : Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex-1 rounded-sm bg-muted-foreground/15" style={{ height: '20%' }} />
+                  ))
+              }
             </div>
           </div>
           <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
@@ -2512,10 +2532,14 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
 function MobileMarketCard() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
-  const [prices, setPrices] = useState({
-    BTC: { price: 96420, change: +3.2 },
-    ETH: { price: 2680, change: +0.8 },
-    SOL: { price: 142.80, change: -1.1 },
+  const [prices, setPrices] = useState<{
+    BTC: { price: number | null; change: number };
+    ETH: { price: number | null; change: number };
+    SOL: { price: number | null; change: number };
+  }>({
+    BTC: { price: null, change: 0 },
+    ETH: { price: null, change: 0 },
+    SOL: { price: null, change: 0 },
   });
   // Persist chart pair + timeframe in localStorage (shared key with desktop)
   const [activePair, setActivePairState] = useState<string | null>(() => {
@@ -2533,14 +2557,20 @@ function MobileMarketCard() {
     try { localStorage.setItem("afos_chart_tf", tf); } catch { /* ignore */ }
   };
 
+  // Fetch live prices (same as desktop MarketTicker)
   useEffect(() => {
-    const t = setInterval(() => {
-      setPrices(prev => ({
-        BTC: { price: prev.BTC.price + (Math.random() - 0.5) * 50, change: prev.BTC.change + (Math.random() - 0.5) * 0.1 },
-        ETH: { price: prev.ETH.price + (Math.random() - 0.5) * 5, change: prev.ETH.change + (Math.random() - 0.5) * 0.1 },
-        SOL: { price: prev.SOL.price + (Math.random() - 0.5) * 0.5, change: prev.SOL.change + (Math.random() - 0.5) * 0.1 },
-      }));
-    }, 4000);
+    const fetchPrices = async () => {
+      try {
+        const priceData = await getPrices();
+        setPrices({
+          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
+          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
+          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
+        });
+      } catch { /* keep null until next retry */ }
+    };
+    fetchPrices();
+    const t = setInterval(fetchPrices, 30000);
     return () => clearInterval(t);
   }, []);
 
@@ -2605,15 +2635,21 @@ function MobileMarketCard() {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right">
-                    <p className="text-xs font-mono text-foreground font-bold">
-                      ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
-                    </p>
-                    <span className={`text-[9px] font-mono flex items-center gap-0.5 justify-end ${
-                      t.change >= 0 ? "text-emerald-400" : "text-red-400"
-                    }`}>
-                      {t.change >= 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
-                      {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
-                    </span>
+                    {t.price !== null ? (
+                      <>
+                        <p className="text-xs font-mono text-foreground font-bold">
+                          ${t.price.toLocaleString(undefined, { maximumFractionDigits: t.price > 1000 ? 0 : 2 })}
+                        </p>
+                        <span className={`text-[9px] font-mono flex items-center gap-0.5 justify-end ${
+                          t.change >= 0 ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          {t.change >= 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
+                          {t.change >= 0 ? "+" : ""}{t.change.toFixed(1)}%
+                        </span>
+                      </>
+                    ) : (
+                      <p className="text-xs font-mono text-muted-foreground">—</p>
+                    )}
                   </div>
                   <ChevronRight className={`w-3 h-3 text-muted-foreground transition-transform duration-200 ${isActive ? "rotate-90" : ""}`} />
                 </div>

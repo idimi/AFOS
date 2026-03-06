@@ -72,13 +72,15 @@ const CHAINS = {
 };
 
 const TOKENS = [
-  { symbol: "BTC",      name: "Bitcoin",          chain: "bitcoin",  balance: 0.04821, usdPrice: 43418, icon: "₿", color: "#f7931a", tvSymbol: "BITSTAMP:BTCUSD" },
-  { symbol: "ETH",      name: "Ethereum",          chain: "ethereum", balance: 0.812,   usdPrice: 2998,  icon: "Ξ", color: "#627eea", tvSymbol: "BINANCE:ETHUSD" },
-  { symbol: "SOL",      name: "Solana",            chain: "solana",   balance: 12.5,    usdPrice: 150,   icon: "◎", color: "#9945ff", tvSymbol: "BINANCE:SOLUSD" },
-  { symbol: "USDT",     name: "Tether (Solana)",   chain: "solana",   balance: 1240,    usdPrice: 1,     icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:SOLUSD" },
-  { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 890,     usdPrice: 1,     icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
-  { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 500,     usdPrice: 1,     icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
-  { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 320,     usdPrice: 1,     icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
+  // balance: 0 = disconnected default; live balances come from getTokenBalance() / liveBalances map
+  // usdPrice: 0 = loading default; overridden by livePrices from getPrices() once fetched
+  { symbol: "BTC",      name: "Bitcoin",          chain: "bitcoin",  balance: 0, usdPrice: 0, icon: "₿", color: "#f7931a", tvSymbol: "BITSTAMP:BTCUSD" },
+  { symbol: "ETH",      name: "Ethereum",          chain: "ethereum", balance: 0, usdPrice: 0, icon: "Ξ", color: "#627eea", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "SOL",      name: "Solana",            chain: "solana",   balance: 0, usdPrice: 0, icon: "◎", color: "#9945ff", tvSymbol: "BINANCE:SOLUSD" },
+  { symbol: "USDT",     name: "Tether (Solana)",   chain: "solana",   balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:SOLUSD" },
+  { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
+  { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
@@ -408,6 +410,7 @@ function RecentSwaps() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const fetchSwaps = async () => {
@@ -421,6 +424,21 @@ function RecentSwaps() {
     const unsubExec = onSSEEvent('swap_executed', () => { fetchSwaps(); });
     const unsubRfq = onSSEEvent('rfq_result', () => { fetchSwaps(); });
     return () => { clearInterval(t); unsubExec(); unsubRfq(); };
+  }, []);
+
+  // Fetch live prices for USD value display
+  useEffect(() => {
+    const fetchPrices = async () => {
+      try {
+        const priceData = await getPrices();
+        const map: Record<string, number> = {};
+        Object.entries(priceData).forEach(([sym, p]) => { map[sym] = p.usd; });
+        setLivePrices(map);
+      } catch { /* keep previous */ }
+    };
+    fetchPrices();
+    const t = setInterval(fetchPrices, 60_000);
+    return () => clearInterval(t);
   }, []);
 
   const handleCopyTx = (txHash: string, id: string) => {
@@ -467,7 +485,8 @@ function RecentSwaps() {
               const isExpanded = expandedId === swap.rfqId;
               const txHash = syntheticTxHash(swap.rfqId);
               const chain = swap.toChain ?? swap.fromChain ?? 'solana';
-              const usdValue = (swap.inAmount ?? 0) * (swap.fromToken === 'BTC' ? 67000 : swap.fromToken === 'ETH' ? 2000 : swap.fromToken === 'SOL' ? 87 : 1);
+              const tokenPrice = livePrices[swap.fromToken] ?? (swap.fromToken === 'USDT' || swap.fromToken === 'USDC' || swap.fromToken === 'USDT-ETH' || swap.fromToken === 'USDC-SOL' ? 1 : null);
+              const usdValue = tokenPrice !== null ? (swap.inAmount ?? 0) * tokenPrice : null;
               const peer = peerFromSwap(swap);
               const isoTime = new Date(swap.timestamp).toLocaleString();
               const statusColor = swap.route === 'p2p' ? '#10b981' : '#f59e0b';
@@ -554,7 +573,7 @@ function RecentSwaps() {
                             </div>
                             <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
                               <div className="text-[9px] text-muted-foreground/50">USD Value</div>
-                              <div className="text-[10px] font-mono text-amber-400 mt-0.5">${(usdValue ?? 0).toFixed(2)}</div>
+                              <div className="text-[10px] font-mono text-amber-400 mt-0.5">{usdValue !== null ? `$${usdValue.toFixed(2)}` : '—'}</div>
                             </div>
                             <div className="px-2.5 py-1.5 rounded-lg" style={{ background: "var(--muted)" }}>
                               <div className="text-[9px] text-muted-foreground/50">Counterparty</div>
@@ -598,35 +617,38 @@ function RecentSwaps() {
 // ─── Chain Stats Bar ──────────────────────────────────────────────────────────
 
 function ChainStatsBar() {
-  const [prices, setPrices] = useState({
-    BTC: { price: 67000, change: 0 },
-    ETH: { price: 2000, change: 0 },
-    SOL: { price: 87, change: 0 },
+  const [prices, setPrices] = useState<{
+    BTC: { price: number | null; change: number };
+    ETH: { price: number | null; change: number };
+    SOL: { price: number | null; change: number };
+  }>({
+    BTC: { price: null, change: 0 },
+    ETH: { price: null, change: 0 },
+    SOL: { price: null, change: 0 },
   });
-  const [source, setSource] = useState<'live' | 'fallback'>('fallback');
+  const [source, setSource] = useState<'loading' | 'live' | 'error'>('loading');
 
   useEffect(() => {
-    // Fetch real prices from AFOS backend
     const fetchPrices = async () => {
       try {
         const priceData = await getPrices();
-          setPrices({
-            BTC: { price: priceData.BTC?.usd ?? 67000, change: priceData.BTC?.change24h ?? 0 },
-            ETH: { price: priceData.ETH?.usd ?? 2000, change: priceData.ETH?.change24h ?? 0 },
-            SOL: { price: priceData.SOL?.usd ?? 87, change: priceData.SOL?.change24h ?? 0 },
-          });
-          setSource('live');
-      } catch { /* keep fallback prices */ }
+        setPrices({
+          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
+          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
+          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
+        });
+        setSource('live');
+      } catch { setSource('error'); }
     };
     fetchPrices();
-    const interval = setInterval(fetchPrices, 30000); // refresh every 30s
+    const interval = setInterval(fetchPrices, 30000);
     return () => clearInterval(interval);
   }, []);
 
   const stats = [
-    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "Binance Live" : "Bitcoin (fallback)" },
-    { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "Binance Live" : "Ethereum (fallback)" },
-    { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "Jupiter Live" : "Solana (fallback)" },
+    { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
+    { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
+    { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
   ];
 
   return (
@@ -644,10 +666,16 @@ function ChainStatsBar() {
           <div className="text-lg sm:text-xl font-bold" style={{ color: stat.color }}>{stat.icon}</div>
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <span className="text-xs sm:text-sm font-bold font-mono text-foreground">${stat.price.toLocaleString()}</span>
-              <span className={`text-[10px] font-mono ${stat.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {stat.change >= 0 ? "▲" : "▼"}{Math.abs(stat.change)}%
-              </span>
+              {stat.price !== null ? (
+                <>
+                  <span className="text-xs sm:text-sm font-bold font-mono text-foreground">${stat.price.toLocaleString()}</span>
+                  <span className={`text-[10px] font-mono ${stat.change >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                    {stat.change >= 0 ? "▲" : "▼"}{Math.abs(stat.change)}%
+                  </span>
+                </>
+              ) : (
+                <span className="text-xs font-mono text-muted-foreground">—</span>
+              )}
             </div>
             <div className="text-[10px] text-slate-500 truncate">{stat.network}</div>
           </div>
@@ -1350,7 +1378,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
             <div className={`w-1.5 h-1.5 rounded-full ${dataSource === "live" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
-            {dataSource === "live" ? "P2P SSE quotes" : "Simulated (no SSE quotes yet)"} · {fromToken.symbol}/{toToken.symbol}
+            {dataSource === "live" ? "P2P SSE quotes" : "Waiting for P2P quotes…"} · {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
         <div className="text-right">
@@ -1712,33 +1740,7 @@ const KIND_LABELS: Record<FeedMsgKind, string> = {
   "swap.settle": "SETTLE",
 };
 
-function generateFeedMsg(): FeedMessage {
-  const kinds: FeedMsgKind[] = ["swap.svc_announce", "swap.rfq", "swap.quote", "swap.quote_accept", "swap.cancel", "swap.settle"];
-  const weights = [0.25, 0.30, 0.20, 0.10, 0.10, 0.05];
-  const r = Math.random();
-  let cumulative = 0;
-  let kind: FeedMsgKind = "swap.rfq";
-  for (let i = 0; i < kinds.length; i++) {
-    cumulative += weights[i];
-    if (r < cumulative) { kind = kinds[i]; break; }
-  }
-  const peers = ["GammaNode", "AlphaNode", "BetaSwap", "DeltaNode", "IotaSwap", "ZetaHub"];
-  const peer = peers[Math.floor(Math.random() * peers.length)];
-  const channel = FEED_CHANNELS[Math.floor(Math.random() * FEED_CHANNELS.length)];
-  const now = new Date();
-  const ts = `${now.getHours().toString().padStart(2,"0")}:${now.getMinutes().toString().padStart(2,"0")}:${now.getSeconds().toString().padStart(2,"0")}.${now.getMilliseconds().toString().padStart(3,"0")}`;
-  const btcAmt = (Math.random() * 0.1 + 0.001).toFixed(5);
-  const usdtAmt = (parseFloat(btcAmt) * 43418 * (1 + (Math.random()-0.5)*0.02)).toFixed(2);
-  const payloads: Record<FeedMsgKind, Record<string, unknown>> = {
-    "swap.svc_announce": { peer_id: peer, pairs: ["BTC/USDT", "BTC/SOL"], fee_bps: Math.floor(Math.random()*30+5), version: "1.2.0", channels: Math.floor(Math.random()*8+1) },
-    "swap.rfq": { from: "BTC", to: "USDT", amount: btcAmt, min_fee_bps: 10, max_fee_bps: 50, refund_window_min: 20, expiry: "+5m" },
-    "swap.quote": { from: "BTC", to: "USDT", amount: btcAmt, quote_usdt: usdtAmt, fee_bps: Math.floor(Math.random()*20+5), rate: (parseFloat(usdtAmt)/parseFloat(btcAmt)).toFixed(2), expires_in: "45s" },
-    "swap.quote_accept": { quote_id: `q_${Math.random().toString(36).slice(2,8)}`, peer, amount: btcAmt, rate: (43418*(1+(Math.random()-0.5)*0.01)).toFixed(2) },
-    "swap.cancel": { reason: ["timeout", "rate_mismatch", "liquidity"][Math.floor(Math.random()*3)], rfq_id: `rfq_${Math.random().toString(36).slice(2,8)}` },
-    "swap.settle": { tx_hash: `0x${Array.from({length:12},()=>Math.floor(Math.random()*16).toString(16)).join("")}...`, amount_btc: btcAmt, amount_usdt: usdtAmt, settlement_ms: Math.floor(Math.random()*4000+800) },
-  };
-  return { id: `${Date.now()}_${Math.random()}`, ts, kind, channel, peer, payload: payloads[kind] };
-}
+// generateFeedMsg removed — feed is live-only; no simulation in production
 
 /** Map SSE event types to FeedMsgKind */
 const SSE_KIND_MAP: Partial<Record<string, FeedMsgKind>> = {
@@ -1758,16 +1760,13 @@ function makeFeedTs(): string {
 }
 
 function LiveFeedTab() {
-  // Start empty — SSE events will populate; simulation fills after 5s if none arrive
   const [messages, setMessages] = useState<FeedMessage[]>([]);
   const [filterKind, setFilterKind] = useState<FeedMsgKind | "all">("all");
   const [filterChannel, setFilterChannel] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [paused, setPaused] = useState(false);
-  const [feedStatus, setFeedStatus] = useState<"connecting" | "live" | "fallback">("connecting");
+  const [feedStatus, setFeedStatus] = useState<"connecting" | "live">("connecting");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const simRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const hasRealEvents = useRef(false);
   const pausedRef = useRef(paused);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -1798,7 +1797,6 @@ function LiveFeedTab() {
           peer,
           payload: d,
         };
-        hasRealEvents.current = true;
         setFeedStatus("live");
         pushMsg(msg);
       })
@@ -1807,26 +1805,7 @@ function LiveFeedTab() {
     return () => unsubs.forEach(u => u());
   }, [pushMsg]);
 
-  // Fallback simulation: if no real SSE events after 5s, start simulating
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (!hasRealEvents.current) {
-        setFeedStatus("fallback");
-        // Seed with initial messages
-        setMessages(Array.from({ length: 8 }, generateFeedMsg));
-        simRef.current = setInterval(() => {
-          if (!pausedRef.current) {
-            setMessages(prev => [generateFeedMsg(), ...prev].slice(0, 80));
-          }
-        }, 2200);
-      }
-    }, 5000);
-
-    return () => {
-      clearTimeout(fallbackTimer);
-      if (simRef.current) { clearInterval(simRef.current); simRef.current = null; }
-    };
-  }, []);
+  // No fallback simulation — feed is live-only in production
 
   const filtered = messages.filter(m => {
     if (filterKind !== "all" && m.kind !== filterKind) return false;
@@ -1845,7 +1824,7 @@ function LiveFeedTab() {
           }}>
           <div className={`w-1.5 h-1.5 rounded-full ${feedStatus === "live" ? "bg-emerald-400 animate-pulse" : feedStatus === "connecting" ? "bg-amber-400 animate-pulse" : "bg-slate-400"}`} />
           <span className={`text-[10px] font-mono ${feedStatus === "live" ? "text-emerald-400" : feedStatus === "connecting" ? "text-amber-400" : "text-slate-400"}`}>
-            {feedStatus === "live" ? "SSE Live" : feedStatus === "connecting" ? "Connecting…" : "Simulated"}
+            {feedStatus === "live" ? "SSE Live" : "Connecting…"}
           </span>
         </div>
         <select value={filterKind} onChange={e => setFilterKind(e.target.value as FeedMsgKind | "all")}
@@ -1920,7 +1899,14 @@ function LiveFeedTab() {
             ))}
           </AnimatePresence>
           {filtered.length === 0 && (
-            <div className="py-12 text-center text-muted-foreground text-xs">No messages match filters</div>
+            <div className="py-12 text-center space-y-2">
+              <div className="text-xs text-muted-foreground">
+                {feedStatus === "connecting" ? "Connecting to P2P network…" : "Waiting for P2P events"}
+              </div>
+              <div className="text-[10px] text-muted-foreground/50">
+                {feedStatus === "connecting" ? "Establishing SSE connection to Oracle VM" : "No swap activity yet — events will appear here in real time"}
+              </div>
+            </div>
           )}
         </div>
       </div>

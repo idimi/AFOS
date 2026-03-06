@@ -1490,3 +1490,45 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace hardcoded `bg-emerald-400 animate-pulse` dot in topbar with TopbarAgentDot component
 - [x] TopbarAgentDot reads AFOS Agent service state from useStackHealth: green (live) / amber+pulse (degraded) / slate+pulse (checking) / red (offline)
 - [x] Added `title` attribute to dot for hover tooltip showing current state label
+
+## Production Beta — Remove All Mock Data
+
+### Swaps.tsx
+- [ ] TOKENS array: zero out static `balance` fields (0 for all) — live balances come from `getTokenBalance()` which overrides with wallet data; static values only show when wallet disconnected (should show 0, not fake amounts)
+- [ ] TOKENS array: zero out static `usdPrice` fields for BTC/ETH/SOL (set to 0) — `livePrices` from `getPrices()` already overrides these; static fallback should not show stale prices
+- [ ] `TokenSelector` component (old, unused): remove entirely — replaced by inline Uniswap-style dropdowns in SwapPage
+- [ ] `RecentSwaps` USD value (line 470): replace hardcoded `67000/2000/87` with `livePrices` from context or a shared price hook
+- [ ] `MarketTickerStrip` (line 602): initial state prices `67000/2000/87` — already fetches live via `getPrices()` but seeds with stale values; seed with `0` and show `—` until live data arrives
+- [ ] `generateFeedMsg()` + fallback simulation (lines 1715-1820): remove the 5s fallback simulation entirely — show "Waiting for P2P events…" empty state instead of fake messages
+- [ ] Order book `buildFallbackOrders()` label: change "Simulated (no SSE quotes yet)" to "Waiting for P2P quotes…" and show empty state instead of fake orders
+
+### Dashboard.tsx
+- [ ] `MarketTicker` initial state (line 1593): seed prices with `0` not stale values; show `—` until `getPrices()` resolves
+- [ ] `MobileMarketCard` (line 2516): remove `Math.random()` price random walk entirely — replace with same `getPrices()` fetch + 30s interval (same as desktop `MarketTicker`)
+- [ ] Confidence trend fallback bars (lines 1913, 2487): remove hardcoded `[{i:0,value:85},…]` fallback — show empty bars or a "No data yet" micro-label when `confidenceTrend.length === 0`
+
+### NetworkPage.tsx
+- [ ] Peer latency (line 2051): remove `Math.round(20 + Math.random() * 80)` — set to `0` (unknown) and show `—` in UI until a real ping is recorded
+- [ ] Invite code (line 2673): `Math.random().toString(36)` is fine for a unique code — keep but rename label from "SWAP" suffix to just the peer key hash; this is acceptable as a local invite token
+
+### Pages confirmed CLEAN (no mock data):
+- SwapHistory.tsx — all data from `trpc.swaps.*` queries
+- SwapAnalytics.tsx — all data from `trpc.analytics.*` queries
+- AgentSettings.tsx — all data from `trpc.settings.*` + `trpc.peerBlocks.*`
+- AdminPanel.tsx — all data from `trpc.adminConfig.*` + `trpc.analytics.*` + `trpc.htlcWallet.*`
+
+## Production Beta — Remove All Mock Data (Completed)
+
+- [x] Swaps.tsx: Zero out hardcoded token balances in TOKENS array (was 0.04821 BTC, 0.812 ETH, 12.5 SOL, etc.)
+- [x] Swaps.tsx: Remove stale usdPrice seeds from TOKENS array (was 43418/2998/150)
+- [x] Swaps.tsx: Fix ChainStatsBar — seed at null, show dash until live CoinGecko data arrives (was 67000/2000/87 hardcoded fallbacks)
+- [x] Swaps.tsx: Fix RecentSwaps USD value — fetch live prices via getPrices(), use null when unavailable (was hardcoded BTC=67000/ETH=2000/SOL=87)
+- [x] Swaps.tsx: Remove generateFeedMsg mock simulation from LiveFeedTab — live-only feed in production
+- [x] Swaps.tsx: Fix LiveOrderBook "Simulated (no SSE quotes yet)" label → "Waiting for P2P quotes…"
+- [x] Dashboard.tsx: Fix MarketTicker — seed at null, show dash until live data (was 67090/2000/87.2 hardcoded)
+- [x] Dashboard.tsx: Fix MobileMarketCard — replace Math.random() random walk with real getPrices() fetch
+- [x] Dashboard.tsx: Fix confidence trend fallback bars — show muted empty bars instead of hardcoded [85,87,85,90,88] values
+- [x] NetworkPage.tsx: Replace Math.random() latency with 0 / "N/A" display (real latency not available from Hyperswarm)
+- [x] NetworkPage.tsx: Replace Math.random() invite code with crypto.randomUUID() (cryptographically secure)
+- [x] Verified: SwapAnalytics, SwapHistory, Settings, AdminPanel, AgentControl — no mock data found
+- [x] TypeScript: 0 errors after all changes

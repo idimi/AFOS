@@ -427,7 +427,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
                 fontFamily="monospace"
                 opacity={0.7}
               >
-                {peer.latency}ms
+                {peer.latency > 0 ? `${peer.latency}ms` : 'N/A'}
               </text>
             )}
 
@@ -2048,7 +2048,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         region: "Hyperswarm",
         lat: pos.lat,
         lng: pos.lng,
-        latency: Math.round(20 + Math.random() * 80), // Estimated — no real ping yet
+        latency: 0, // Real latency not available from Hyperswarm; shown as N/A in UI
         volume24h: 0,
         pairs: ["BTC/USDT", "SOL/USDT"],
         online: op.isConnected,
@@ -2670,7 +2670,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               />
               <button onClick={() => {
                 if (!inviteCode.trim()) { toast.error("Enter a peer alias"); return; }
-                const code = `AFOS-${Math.random().toString(36).slice(2,6).toUpperCase()}-SWAP`;
+                const code = `AFOS-${crypto.randomUUID().replace(/-/g,'').slice(0,6).toUpperCase()}-SWAP`;
                 setInvites(prev => [...prev, { code, peer: inviteCode, created: new Date(), used: false }]);
                 setInviteCode("");
                 toast.success("Invite created", { description: code });
