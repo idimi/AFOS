@@ -8,12 +8,12 @@
  * Layout: Asymmetric hero → stats bar → how-it-works → features grid → CTA footer
  */
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, Zap, Shield, Globe, Lock, ChevronRight,
   ArrowLeftRight, Cpu, Network, Activity, ExternalLink,
-  CheckCircle2, X
+  CheckCircle2, X, MoreHorizontal, Sun, Moon, Monitor
 } from "lucide-react";
 import { getLoginUrl } from "@/const";
 
@@ -154,9 +154,54 @@ const COMPARISON = [
   { feature: "AI-powered swap agent", afos: true, uni: false, jup: false, inch: false },
 ];
 
+// ─── Theme persistence helpers ───────────────────────────────────────────────
+type ThemeMode = "auto" | "light" | "dark";
+
+function getStoredTheme(): ThemeMode {
+  try { return (localStorage.getItem("afos-theme") as ThemeMode) ?? "auto"; } catch { return "auto"; }
+}
+
+function applyTheme(mode: ThemeMode) {
+  const root = document.documentElement;
+  if (mode === "dark") {
+    root.classList.add("dark"); root.classList.remove("light");
+  } else if (mode === "light") {
+    root.classList.add("light"); root.classList.remove("dark");
+  } else {
+    // auto — follow system
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    root.classList.toggle("dark", prefersDark);
+    root.classList.toggle("light", !prefersDark);
+  }
+  try { localStorage.setItem("afos-theme", mode); } catch { /* ignore */ }
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(getStoredTheme);
+  const prefsRef = useRef<HTMLDivElement>(null);
+
+  // Apply theme on mount and on change
+  useEffect(() => { applyTheme(theme); }, [theme]);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!prefsOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (prefsRef.current && !prefsRef.current.contains(e.target as Node)) {
+        setPrefsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [prefsOpen]);
+
+  const handleTheme = (mode: ThemeMode) => {
+    setTheme(mode);
+    applyTheme(mode);
+  };
 
   return (
     <div
@@ -195,7 +240,72 @@ export default function LandingPage() {
           <a href="#compare" className="hover:text-foreground transition-colors">Compare</a>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* ··· Preferences button + popover */}
+          <div className="relative" ref={prefsRef}>
+            <button
+              onClick={() => setPrefsOpen(o => !o)}
+              className="flex items-center justify-center w-9 h-9 rounded-xl transition-all"
+              style={{
+                background: prefsOpen ? "oklch(0.22 0.04 265)" : "oklch(0.14 0.03 265)",
+                border: `1px solid ${prefsOpen ? "oklch(0.72 0.18 195 / 0.4)" : "oklch(0.32 0.04 255 / 0.3)"}`,
+                color: prefsOpen ? "oklch(0.72 0.18 195)" : "oklch(0.65 0.04 255)",
+              }}
+              aria-label="Preferences"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+
+            <AnimatePresence>
+              {prefsOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute right-0 top-12 w-72 rounded-2xl p-4 z-50"
+                  style={{
+                    background: "oklch(0.12 0.025 265)",
+                    border: "1px solid oklch(0.28 0.04 255 / 0.5)",
+                    boxShadow: "0 20px 60px oklch(0 0 0 / 0.6), 0 0 0 1px oklch(0.72 0.18 195 / 0.06)",
+                  }}
+                >
+                  <p className="text-sm font-bold text-white mb-4">Global preferences</p>
+
+                  {/* Theme row */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm" style={{ color: "oklch(0.72 0.06 255)" }}>Theme</span>
+                    <div
+                      className="flex items-center gap-0.5 p-1 rounded-xl"
+                      style={{ background: "oklch(0.18 0.03 265)", border: "1px solid oklch(0.28 0.04 255 / 0.4)" }}
+                    >
+                      {([
+                        { mode: "auto" as ThemeMode, icon: <Monitor className="w-3.5 h-3.5" />, label: "Auto" },
+                        { mode: "light" as ThemeMode, icon: <Sun className="w-3.5 h-3.5" />, label: "" },
+                        { mode: "dark" as ThemeMode, icon: <Moon className="w-3.5 h-3.5" />, label: "" },
+                      ]).map(({ mode, icon, label }) => (
+                        <button
+                          key={mode}
+                          onClick={() => handleTheme(mode)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                          style={{
+                            background: theme === mode ? "oklch(0.72 0.18 195 / 0.15)" : "transparent",
+                            border: `1px solid ${theme === mode ? "oklch(0.72 0.18 195 / 0.4)" : "transparent"}`,
+                            color: theme === mode ? "oklch(0.72 0.18 195)" : "oklch(0.55 0.04 255)",
+                          }}
+                        >
+                          {icon}
+                          {label && <span>{label}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Launch App */}
           <a
             href="/app"
             className="hidden md:flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all hover:opacity-90"

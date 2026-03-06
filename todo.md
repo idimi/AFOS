@@ -1391,3 +1391,9 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Pass connected wallet address from frontend to all history queries
 - [x] Add "My Swaps / All Swaps" toggle for admin users
 - [x] Update CSV export to respect wallet scope
+
+## Landing Page Preferences Popover
+
+- [x] Add ··· button to LandingPage navbar before "Launch App"
+- [x] Popover shows "Global preferences" with Theme toggle (Auto / Light / Dark)
+- [x] Theme change persists via localStorage and applies to the whole app
