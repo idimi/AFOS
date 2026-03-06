@@ -1637,3 +1637,9 @@ The Overview should be an **operator's command center** — a single glance tell
 ## SEO — Sitemap & Canonical
 - [x] Create sitemap.xml in client/public/ referencing afos.trade
 - [x] Add canonical link tag to client/index.html
+
+## WhatsApp og:image Thumbnail Fix
+- [ ] Fix og:image not showing as thumbnail on WhatsApp share preview
+
+## og:image Logo Update
+- [x] Regenerate og:image using the actual AFOS logo instead of plain bold text
