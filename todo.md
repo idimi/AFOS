@@ -1413,3 +1413,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Replace cramped navbar logo with proper sized AFOS icon + wordmark (h-8 icon, text-lg bold)
 - [x] Replace footer "A" circle placeholder with real AFOS logo image + wordmark
 - [x] Ensure logo looks professional in both dark and light mode
+- [x] Fix landing page navbar logo — use full horizontal AFOS logo image (icon + wordmark) matching app sidebar style
+- [x] Fix landing page footer logo — use full horizontal AFOS logo image matching app sidebar style
+- [x] Match AFOS wordmark font from logo — cropped wordmark directly from official logo, used as image
+- [x] Make AFOS logo branding consistent everywhere — created shared AfosLogo component, updated landing navbar, footer, sidebar, mobile drawer, and Swaps page header

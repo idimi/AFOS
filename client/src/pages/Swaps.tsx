@@ -28,6 +28,7 @@ import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConne
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
+import { AfosLogo } from "@/components/AfosLogo";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -2655,7 +2656,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">AFOS</h1>
+          <AfosLogo size="md" />
           <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
             P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
           </p>

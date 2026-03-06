@@ -37,6 +37,7 @@ import SwapAnalytics from "./SwapAnalytics";
 import { trpc } from "@/lib/trpc";
 import { usePeerMessageChime } from "../hooks/usePeerMessageChime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AfosLogo } from "@/components/AfosLogo";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
 
@@ -59,18 +60,8 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
       <div className="absolute inset-0 overflow-hidden flex flex-col" style={{ pointerEvents: "none" }} />
 
       {/* Header */}
-      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 gap-2.5 overflow-hidden">
-        <img src="/afos-icon.png" alt="AFOS" className="w-8 h-8 rounded-lg shrink-0 object-contain ring-1 ring-border/40 shadow-sm" />
-        <AnimatePresence>
-          {open && (
-            <motion.span
-              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }}
-              transition={{ duration: 0.15 }}
-              className="text-sm font-bold text-foreground whitespace-nowrap tracking-wide flex-1">
-              AFOS
-            </motion.span>
-          )}
-        </AnimatePresence>
+      <div className="h-14 flex items-center px-3 border-b border-border shrink-0 overflow-hidden">
+        <AfosLogo size="md" showWordmark={open} />
       </div>
 
       {/* Floating toggle tab — top of sidebar, right edge */}
@@ -193,10 +184,7 @@ function MobileSidebarDrawer({
           >
             {/* Header */}
             <div className="h-14 flex items-center justify-between px-4 border-b border-border shrink-0">
-              <div className="flex items-center gap-2.5">
-                <img src="/afos-icon.png" alt="AFOS" className="w-8 h-8 rounded-lg object-contain ring-1 ring-border/40 shadow-sm" />
-                <span className="text-sm font-bold text-foreground tracking-wide">AFOS</span>
-              </div>
+              <AfosLogo size="md" />
               <button
                 onClick={onClose}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"

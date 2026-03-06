@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
+import { AfosLogo } from "@/components/AfosLogo";
 
 // ─── Animated counter ─────────────────────────────────────────────────────────
 function AnimatedNumber({ value, prefix = "", suffix = "", decimals = 0 }: {
@@ -224,32 +225,8 @@ export default function LandingPage() {
           borderBottom: "1px solid oklch(0.32 0.04 255 / 0.2)",
         }}
       >
-        <a href="/" className="flex items-center gap-3 group">
-          {/* AFOS icon — glowing blue A mark */}
-          <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/afos-icon_17336ddd.png"
-            alt="AFOS"
-            className="h-9 w-9 object-contain flex-shrink-0"
-            style={{ filter: "drop-shadow(0 0 8px oklch(0.72 0.18 195 / 0.5))" }}
-          />
-          {/* Wordmark */}
-          <span
-            className="text-xl font-black tracking-tight leading-none"
-            style={{
-              background: "linear-gradient(135deg, oklch(0.92 0.01 220) 0%, oklch(0.72 0.18 195) 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            AFOS
-          </span>
-          <span
-            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-            style={{ background: "oklch(0.72 0.18 195 / 0.15)", border: "1px solid oklch(0.72 0.18 195 / 0.3)", color: "oklch(0.72 0.18 195)" }}
-          >
-            BETA
-          </span>
+        <a href="/" className="flex items-center group">
+          <AfosLogo size="lg" glow />
         </a>
 
         {/* Desktop nav links */}
@@ -863,27 +840,8 @@ export default function LandingPage() {
         className="py-8 px-6 text-center"
         style={{ borderTop: "1px solid oklch(0.32 0.04 255 / 0.2)" }}
       >
-        <div className="flex items-center justify-center gap-3 mb-3">
-          <img
-            src="https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/afos-icon_17336ddd.png"
-            alt="AFOS"
-            className="h-7 w-7 object-contain"
-            style={{ filter: "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.4))" }}
-          />
-          <div className="flex flex-col items-start">
-            <span
-              className="text-sm font-black tracking-tight leading-none"
-              style={{
-                background: "linear-gradient(135deg, oklch(0.92 0.01 220) 0%, oklch(0.72 0.18 195) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
-            >
-              AFOS
-            </span>
-            <span className="text-[9px] text-muted-foreground mt-0.5">Agentic Financial Operating System</span>
-          </div>
+        <div className="flex items-center justify-center mb-3">
+          <AfosLogo size="xl" glow />
         </div>
         <p className="text-[10px] text-muted-foreground">
           Non-custodial · Open protocol · Beta
