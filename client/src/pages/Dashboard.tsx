@@ -26,7 +26,7 @@ import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "../contexts/ChatContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { getPrices, getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, getRelayPeers, type RfqResult, type WalletAsset } from "../lib/afosApi";
+import { getStats, getAgentStatus, getSwaps, getWallet, onSSEEvent, isSSEConnected, getRelayPeers, type RfqResult, type WalletAsset } from "../lib/afosApi";
 import Swaps from "./Swaps";
 import SwapHistory from "./SwapHistory";
 import AgentSettings from "./AgentSettings";
@@ -38,6 +38,7 @@ import { trpc } from "@/lib/trpc";
 import { usePeerMessageChime } from "../hooks/usePeerMessageChime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AfosLogo } from "@/components/AfosLogo";
+import { usePrices } from "../contexts/PriceContext";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
 
@@ -1589,16 +1590,13 @@ function TradingViewChart({
 function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
-  const [prices, setPrices] = useState<{
-    BTC: { price: number | null; change: number };
-    ETH: { price: number | null; change: number };
-    SOL: { price: number | null; change: number };
-  }>({
-    BTC: { price: null, change: 0 },
-    ETH: { price: null, change: 0 },
-    SOL: { price: null, change: 0 },
-  });
-  const [priceSource, setPriceSource] = useState<'loading' | 'live' | 'error'>('loading');
+  // ── Shared price context (replaces local getPrices() polling) ──
+  const { prices: rawPrices, source: priceSource } = usePrices();
+  const prices = {
+    BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
+    ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
+    SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+  };
   // Persist chart pair + timeframe in localStorage
   const [activePair, setActivePairState] = useState<string | null>(() => {
     try { return localStorage.getItem("afos_chart_pair") ?? "BTC/USDT"; } catch { return "BTC/USDT"; }
@@ -1623,23 +1621,6 @@ function MarketTicker() {
     { label: "4h", value: "240" },
     { label: "1D", value: "D" },
   ];
-
-  useEffect(() => {
-    const fetchLivePrices = async () => {
-      try {
-        const priceData = await getPrices();
-        setPrices({
-          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
-          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
-          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
-        });
-        setPriceSource('live');
-      } catch { setPriceSource('error'); }
-    };
-    fetchLivePrices();
-    const timer = setInterval(fetchLivePrices, 30000);
-    return () => clearInterval(timer);
-  }, []);
 
   const tickers = [
     { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
@@ -2532,15 +2513,13 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
 function MobileMarketCard() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
-  const [prices, setPrices] = useState<{
-    BTC: { price: number | null; change: number };
-    ETH: { price: number | null; change: number };
-    SOL: { price: number | null; change: number };
-  }>({
-    BTC: { price: null, change: 0 },
-    ETH: { price: null, change: 0 },
-    SOL: { price: null, change: 0 },
-  });
+  // ── Shared price context (replaces local getPrices() polling) ──
+  const { prices: rawPrices } = usePrices();
+  const prices = {
+    BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
+    ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
+    SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+  };
   // Persist chart pair + timeframe in localStorage (shared key with desktop)
   const [activePair, setActivePairState] = useState<string | null>(() => {
     try { return localStorage.getItem("afos_chart_pair") ?? null; } catch { return null; }
@@ -2556,23 +2535,6 @@ function MobileMarketCard() {
     setIntervalTFState(tf);
     try { localStorage.setItem("afos_chart_tf", tf); } catch { /* ignore */ }
   };
-
-  // Fetch live prices (same as desktop MarketTicker)
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const priceData = await getPrices();
-        setPrices({
-          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
-          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
-          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
-        });
-      } catch { /* keep null until next retry */ }
-    };
-    fetchPrices();
-    const t = setInterval(fetchPrices, 30000);
-    return () => clearInterval(t);
-  }, []);
 
   const tickers = [
     { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
@@ -2735,6 +2697,8 @@ function statusTextColor(s: ServiceStatus): string {
 
 /** Shared hook — runs the health checks and exposes service state */
 function useStackHealth() {
+  // Use shared price context for latency + status — avoids a duplicate API call
+  const { prices: healthPrices, latencyMs: priceLatencyMs, source: priceSource } = usePrices();
   const [services, setServices] = useState<ServiceState[]>([
     { name: 'AFOS Agent',    status: 'checking' },
     { name: 'Bitcoin',      status: 'checking' },
@@ -2758,19 +2722,19 @@ function useStackHealth() {
       updateService('AFOS Agent', 'offline');
     }
     updateService('IntercomSwap', isSSEConnected() ? 'live' : 'degraded');
-    try {
-      const t1 = Date.now();
-      const prices = await getPrices();
-      const lat = Date.now() - t1;
-      updateService('Bitcoin',  (prices['BTC']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-      updateService('Solana',   (prices['SOL']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-      updateService('Ethereum', (prices['ETH']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-    } catch {
+    // Price service health is derived from shared PriceContext — no extra fetch needed
+    const lat = priceLatencyMs ?? undefined;
+    if (priceSource === 'live') {
+      updateService('Bitcoin',  (healthPrices['BTC']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
+      updateService('Solana',   (healthPrices['SOL']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
+      updateService('Ethereum', (healthPrices['ETH']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
+    } else if (priceSource === 'error') {
       updateService('Bitcoin',  'offline');
       updateService('Solana',   'offline');
       updateService('Ethereum', 'offline');
     }
-  }, [updateService]);
+    // If priceSource === 'loading', keep existing 'checking' state
+  }, [updateService, healthPrices, priceLatencyMs, priceSource]);
 
   useEffect(() => {
     checkAll();

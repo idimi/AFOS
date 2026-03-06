@@ -9,6 +9,7 @@ import { WalletProvider } from "./contexts/WalletContext";
 import { MultiChainWalletProvider } from "./contexts/MultiChainWalletContext";
 import { LightPeerProvider } from "./contexts/LightPeerContext";
 import { ChatProvider } from "./contexts/ChatContext";
+import { PriceProvider } from "./contexts/PriceContext";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { WalletChatBridge } from "./components/WalletChatBridge";
 import Dashboard from "./pages/Dashboard";
@@ -45,11 +46,13 @@ function App() {
             <LightPeerProvider>
             <ChatProvider>
             <WalletModalProvider>
+            <PriceProvider>
             <TooltipProvider>
               <WalletChatBridge />
               <Toaster />
               <Router />
             </TooltipProvider>
+            </PriceProvider>
             </WalletModalProvider>
             </ChatProvider>
             </LightPeerProvider>

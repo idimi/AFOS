@@ -1543,3 +1543,29 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Confirmed OracleVmSync only pulls from real Oracle VM API (not mock data)
 - [x] Verified all 8 pages have proper empty states: SwapHistory, SwapAnalytics, AdminPanel, Dashboard all show "No data yet" states when tables are empty
 - [x] TypeScript: 0 errors after wipe
+
+## Shared PriceContext + Real Peer Latency
+
+- [ ] Create client/src/contexts/PriceContext.tsx — single 30s polling context, usePrices() hook
+- [ ] Replace getPrices() in Dashboard.tsx MarketTicker with usePrices()
+- [ ] Replace getPrices() in Dashboard.tsx MobileMarketCard with usePrices()
+- [ ] Replace getPrices() in Swaps.tsx ChainStatsBar with usePrices()
+- [ ] Replace getPrices() in Swaps.tsx RecentSwaps with usePrices()
+- [ ] Wire PriceContext.Provider into client/src/App.tsx
+- [ ] Implement real pingPeer() latency measurement in NetworkPage.tsx on 30s interval
+- [ ] Update latency display to show real ms values and N/A when ping fails
+
+## Shared PriceContext + Real Latency (Production Optimization)
+
+- [x] Create PriceContext.tsx — single shared context with 30s polling, usePrices() hook, useTokenPrice() helper
+- [x] Replace MarketTicker independent getPrices() polling with usePrices()
+- [x] Replace MobileMarketCard independent getPrices() polling with usePrices()
+- [x] Replace ChainStatsBar independent getPrices() polling with usePrices()
+- [x] Replace RecentSwaps independent getPrices() polling with usePrices()
+- [x] Replace SwapPage independent getPrices() polling with usePrices()
+- [x] Wire useStackHealth to use shared PriceContext latency (eliminates duplicate health-check fetch)
+- [x] Remove getPrices import from Dashboard.tsx (no longer needed directly)
+- [x] Remove getPrices import from Swaps.tsx (no longer needed directly)
+- [x] Wire PriceProvider into App.tsx provider tree
+- [x] NetworkPage real latency: already fully implemented via handlePing() + pingPeer() + 30s auto-re-ping loop
+- [x] TypeScript check: 0 errors

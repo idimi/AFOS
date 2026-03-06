@@ -24,11 +24,12 @@ import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Wallet } from "lucide-react";
-import { getPrices, getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
+import { getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
 import { AfosLogo } from "@/components/AfosLogo";
+import { usePrices } from "../contexts/PriceContext";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -410,7 +411,11 @@ function RecentSwaps() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  // ── Shared price context (replaces local getPrices() polling) ──
+  const { prices: rawPrices } = usePrices();
+  const livePrices: Record<string, number> = Object.fromEntries(
+    Object.entries(rawPrices).map(([sym, p]) => [sym, p.usd])
+  );
 
   useEffect(() => {
     const fetchSwaps = async () => {
@@ -424,21 +429,6 @@ function RecentSwaps() {
     const unsubExec = onSSEEvent('swap_executed', () => { fetchSwaps(); });
     const unsubRfq = onSSEEvent('rfq_result', () => { fetchSwaps(); });
     return () => { clearInterval(t); unsubExec(); unsubRfq(); };
-  }, []);
-
-  // Fetch live prices for USD value display
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const priceData = await getPrices();
-        const map: Record<string, number> = {};
-        Object.entries(priceData).forEach(([sym, p]) => { map[sym] = p.usd; });
-        setLivePrices(map);
-      } catch { /* keep previous */ }
-    };
-    fetchPrices();
-    const t = setInterval(fetchPrices, 60_000);
-    return () => clearInterval(t);
   }, []);
 
   const handleCopyTx = (txHash: string, id: string) => {
@@ -617,33 +607,13 @@ function RecentSwaps() {
 // ─── Chain Stats Bar ──────────────────────────────────────────────────────────
 
 function ChainStatsBar() {
-  const [prices, setPrices] = useState<{
-    BTC: { price: number | null; change: number };
-    ETH: { price: number | null; change: number };
-    SOL: { price: number | null; change: number };
-  }>({
-    BTC: { price: null, change: 0 },
-    ETH: { price: null, change: 0 },
-    SOL: { price: null, change: 0 },
-  });
-  const [source, setSource] = useState<'loading' | 'live' | 'error'>('loading');
-
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const priceData = await getPrices();
-        setPrices({
-          BTC: { price: priceData.BTC?.usd ?? null, change: priceData.BTC?.change24h ?? 0 },
-          ETH: { price: priceData.ETH?.usd ?? null, change: priceData.ETH?.change24h ?? 0 },
-          SOL: { price: priceData.SOL?.usd ?? null, change: priceData.SOL?.change24h ?? 0 },
-        });
-        setSource('live');
-      } catch { setSource('error'); }
-    };
-    fetchPrices();
-    const interval = setInterval(fetchPrices, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // ── Shared price context (replaces local getPrices() polling) ──
+  const { prices: rawPrices, source } = usePrices();
+  const prices = {
+    BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
+    ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
+    SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+  };
 
   const stats = [
     { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
@@ -2311,8 +2281,11 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [quoteTimestamp, setQuoteTimestamp] = useState<number | null>(null);
   const [quoteSecondsLeft, setQuoteSecondsLeft] = useState<number>(QUOTE_TTL);
   const quoteCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Live token prices from backend
-  const [livePrices, setLivePrices] = useState<Record<string, number>>({});
+  // Live token prices from shared PriceContext (replaces local getPrices() polling)
+  const { prices: _swapRawPrices } = usePrices();
+  const livePrices: Record<string, number> = Object.fromEntries(
+    Object.entries(_swapRawPrices).map(([sym, p]) => [sym, p.usd])
+  );
   // Live P2P peers from SSE + getAgentStatus
   const [livePeers, setLivePeers] = useState<LivePeer[]>([]);
   const [activePeerCount, setActivePeerCount] = useState(0);
@@ -2323,21 +2296,6 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
   // Collapsible chart on mobile (hidden by default)
   const [chartOpen, setChartOpen] = useState(false);
-
-  // Fetch live prices on mount
-  useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const prices = await getPrices();
-          const priceMap: Record<string, number> = {};
-          Object.entries(prices).forEach(([sym, p]) => { priceMap[sym] = p.usd; });
-          setLivePrices(priceMap);
-      } catch { /* keep static prices */ }
-    };
-    fetchPrices();
-    const interval = setInterval(fetchPrices, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Fetch live peers from relay registry + getAgentStatus + SSE events
   useEffect(() => {
