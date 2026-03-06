@@ -1454,3 +1454,8 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## MiniChatWidget Header Cleanup
 - [x] Remove redundant "AFOS Agent / gemini-2.5-flash-lite" logo+name row from MiniChatWidget header (page header already shows AFOS logo); replaced with minimal "● Agent online" status pill
+
+## StackStatusPill + Topbar Polish
+- [x] Fix StackStatusPill pill color to match peer button (violet scheme, consistent dark/light mode)
+- [x] Fix StackStatusPill tooltip to match P2P Network tooltip style (bg-popover, border, shadow-lg, service names visible)
+- [x] Add "Hyperswarm" to Overview page header subtitle (visual editor change)

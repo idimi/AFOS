@@ -2758,11 +2758,7 @@ function useStackHealth() {
 function StackStatusPill() {
   const { services, liveCount, totalCount } = useStackHealth();
   const allLive = liveCount === totalCount;
-  const pillColor = allLive
-    ? 'bg-emerald-500/10 border-emerald-500/20'
-    : liveCount >= 3
-    ? 'bg-amber-500/10 border-amber-500/20'
-    : 'bg-red-500/10 border-red-500/20';
+  // Pill always uses the same violet scheme as the peer button — health state shown only via dot colors
   const countColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
 
   return (
@@ -2770,7 +2766,7 @@ function StackStatusPill() {
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all active:scale-95 ${pillColor}`}
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 duration-300 bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40"
             aria-label={`Stack health: ${liveCount}/${totalCount} services live`}
           >
             <div className="flex items-center gap-0.5">
@@ -2784,23 +2780,24 @@ function StackStatusPill() {
             <span className={`text-[10px] font-mono ${countColor}`}>{liveCount}/{totalCount}</span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="p-0 overflow-hidden" style={{ minWidth: 200 }}>
+        <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg" style={{ minWidth: 210 }}>
           <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
             <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
           </div>
-          <div className="px-3 py-2 space-y-1.5">
+          <div className="px-3 py-2 space-y-2">
             {services.map(s => (
               <div key={s.name} className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor(s.status)}`} />
-                <span className="flex-1 text-[11px] font-mono text-popover-foreground">{s.name}</span>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
+                <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
                 <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
                   {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
                 </span>
               </div>
             ))}
           </div>
-          <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40">
-            <p className={`text-[10px] font-mono text-center ${countColor}`}>{liveCount}/{totalCount} services live</p>
+          <div className="px-3 py-1.5 border-t border-border/60 flex items-center justify-between bg-muted/40">
+            <span className="text-muted-foreground font-medium">Services live</span>
+            <span className={`font-mono font-bold ${countColor}`}>{liveCount}/{totalCount}</span>
           </div>
         </TooltipContent>
       </Tooltip>
@@ -3278,7 +3275,7 @@ export default function Dashboard() {
                   <div>
                     <AfosLogo size="md" />
                     <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
-                      Autonomous operator dashboard · P2P · IntercomSwap · Trac Network
+                      Autonomous operator dashboard · P2P · Hyperswarm · IntercomSwap · Trac Network
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2">
