@@ -1616,3 +1616,6 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Footer Cleanup
 - [x] Remove P2P Network link from landing page footer
+
+## GitHub Star Badge
+- [x] Add shields.io star count badge next to GitHub footer link
