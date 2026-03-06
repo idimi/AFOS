@@ -1449,5 +1449,5 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Overview Page Header + StackHealthStrip Improvements
 
-- [ ] Add page header row to Overview content area (AFOS logo + subtitle + status badges, matching Swaps page style)
-- [ ] Replace fixed StackHealthStrip with compact collapsible status indicator in topbar (reclaim vertical space)
+- [x] Add page header row to Overview content area (AFOS logo + subtitle + status badges, matching Swaps page style)
+- [x] Replace fixed StackHealthStrip with compact 5-dot StackStatusPill in topbar (reclaim vertical space, tooltip shows full service list)

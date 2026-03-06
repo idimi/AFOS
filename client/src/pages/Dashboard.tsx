@@ -2710,7 +2710,8 @@ function statusTextColor(s: ServiceStatus): string {
   return 'text-slate-500';
 }
 
-function StackHealthStrip() {
+/** Shared hook — runs the health checks and exposes service state */
+function useStackHealth() {
   const [services, setServices] = useState<ServiceState[]>([
     { name: 'AFOS Agent',    status: 'checking' },
     { name: 'Bitcoin',      status: 'checking' },
@@ -2725,8 +2726,6 @@ function StackHealthStrip() {
 
   const checkAll = useCallback(async () => {
     const t0 = Date.now();
-
-    // 1. AFOS Agent — getAgentStatus()
     try {
       const agentStatus = await getAgentStatus();
       const lat = Date.now() - t0;
@@ -2735,21 +2734,14 @@ function StackHealthStrip() {
     } catch {
       updateService('AFOS Agent', 'offline');
     }
-
-    // 2. IntercomSwap — SSE connection state
     updateService('IntercomSwap', isSSEConnected() ? 'live' : 'degraded');
-
-    // 3–5. Bitcoin / Solana / Ethereum — check via getPrices()
     try {
       const t1 = Date.now();
       const prices = await getPrices();
       const lat = Date.now() - t1;
-      const hasBtc = prices['BTC']?.usd != null && prices['BTC'].usd > 0;
-      const hasSol = prices['SOL']?.usd != null && prices['SOL'].usd > 0;
-      const hasEth = prices['ETH']?.usd != null && prices['ETH'].usd > 0;
-      updateService('Bitcoin',  hasBtc ? 'live' : 'degraded', lat);
-      updateService('Solana',   hasSol ? 'live' : 'degraded', lat);
-      updateService('Ethereum', hasEth ? 'live' : 'degraded', lat);
+      updateService('Bitcoin',  (prices['BTC']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
+      updateService('Solana',   (prices['SOL']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
+      updateService('Ethereum', (prices['ETH']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
     } catch {
       updateService('Bitcoin',  'offline');
       updateService('Solana',   'offline');
@@ -2757,38 +2749,68 @@ function StackHealthStrip() {
     }
   }, [updateService]);
 
-  // Initial check + poll every 30s + react to SSE connection changes
   useEffect(() => {
     checkAll();
     const interval = setInterval(checkAll, 30_000);
-    // Also re-check IntercomSwap status whenever SSE reconnects
-    const unsubInit = onSSEEvent('init', () => {
-      updateService('IntercomSwap', 'live');
-    });
-    return () => {
-      clearInterval(interval);
-      unsubInit();
-    };
+    const unsubInit = onSSEEvent('init', () => { updateService('IntercomSwap', 'live'); });
+    return () => { clearInterval(interval); unsubInit(); };
   }, [checkAll, updateService]);
 
   const liveCount = services.filter(s => s.status === 'live').length;
-  const totalCount = services.length;
+  return { services, liveCount, totalCount: services.length };
+}
+
+/** Compact 5-dot pill for the topbar */
+function StackStatusPill() {
+  const { services, liveCount, totalCount } = useStackHealth();
   const allLive = liveCount === totalCount;
+  const pillColor = allLive
+    ? 'bg-emerald-500/10 border-emerald-500/20'
+    : liveCount >= 3
+    ? 'bg-amber-500/10 border-amber-500/20'
+    : 'bg-red-500/10 border-red-500/20';
   const countColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <div className="flex items-center gap-3 px-5 py-2.5 border-t border-border bg-muted/20 shrink-0">
-      <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">Stack</span>
-      <div className="flex items-center gap-3 flex-1 flex-wrap">
-        {services.map(s => (
-          <div key={s.name} className="flex items-center gap-1.5" title={s.latency != null ? `${s.latency}ms` : s.status}>
-            <div className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`} />
-            <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>{s.name}</span>
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            className={`hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all active:scale-95 ${pillColor}`}
+            aria-label={`Stack health: ${liveCount}/${totalCount} services live`}
+          >
+            <div className="flex items-center gap-0.5">
+              {services.map(s => (
+                <span
+                  key={s.name}
+                  className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`}
+                />
+              ))}
+            </div>
+            <span className={`text-[10px] font-mono ${countColor}`}>{liveCount}/{totalCount}</span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="p-0 overflow-hidden" style={{ minWidth: 200 }}>
+          <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
+            <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
           </div>
-        ))}
-      </div>
-      <span className={`text-[10px] font-mono ${countColor}`}>{liveCount}/{totalCount} live</span>
-    </div>
+          <div className="px-3 py-2 space-y-1.5">
+            {services.map(s => (
+              <div key={s.name} className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor(s.status)}`} />
+                <span className="flex-1 text-[11px] font-mono text-popover-foreground">{s.name}</span>
+                <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
+                  {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="px-3 py-1.5 border-t border-border/60 bg-muted/40">
+            <p className={`text-[10px] font-mono text-center ${countColor}`}>{liveCount}/{totalCount} services live</p>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -3173,6 +3195,9 @@ export default function Dashboard() {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            {/* Stack health pill */}
+            <StackStatusPill />
+
             {/* Multi-chain wallet badge */}
             <button
               onClick={() => setShowWalletModal(true)}
@@ -3253,8 +3278,68 @@ export default function Dashboard() {
           <div className="flex-1 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto">
 
+              {/* ── OVERVIEW PAGE HEADER (desktop + mobile) ── */}
+              <div className="max-w-[1280px] mx-auto px-4 sm:px-5 pt-4 sm:pt-5 pb-0">
+                <div className="flex items-center justify-between mb-5">
+                  <div>
+                    <AfosLogo size="md" />
+                    <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
+                      Autonomous operator dashboard · P2P · IntercomSwap · Trac Network
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div
+                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                      style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}
+                    >
+                      <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+                      <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">Agent Live</span>
+                      <span className="text-[10px] font-mono text-emerald-400 sm:hidden">Live</span>
+                    </div>
+                    <div
+                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                      style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                    >
+                      <Users className="w-3 h-3 text-cyan-400" />
+                      <span className="text-[10px] font-mono text-cyan-400">
+                        {(() => {
+                          const signalingCount = signalingPeers?.length ?? 0;
+                          const oracleCount = headerPeers ?? 0;
+                          const remoteCount = Math.max(signalingCount, oracleCount);
+                          const total = remoteCount + (lightPeerOnline ? 1 : 0);
+                          return total > 0 ? total : <span className="text-muted-foreground">—</span>;
+                        })()}
+                      </span>
+                    </div>
+                    {lightPeerOnline && (
+                      <div
+                        className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                        style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}
+                      >
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
+                        </span>
+                        <span className="text-[10px] font-mono text-cyan-400 hidden sm:inline">Non-custodial</span>
+                        <span className="text-[10px] font-mono text-cyan-400 sm:hidden">NC</span>
+                      </div>
+                    )}
+                    {!lightPeerOnline && (
+                      <div
+                        className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                        style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+                      >
+                        <Shield className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">Non-custodial</span>
+                        <span className="text-[10px] font-mono text-muted-foreground sm:hidden">NC</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* ── DESKTOP: 2-column layout ── */}
-              <div className="hidden lg:block p-5">
+              <div className="hidden lg:block px-5 pb-5">
                 <div className="max-w-[1280px] mx-auto grid grid-cols-12 gap-5">
 
                 {/* LEFT col — Mini Chat + Metrics + Quick Actions + Market (with charts) */}
@@ -3276,7 +3361,7 @@ export default function Dashboard() {
               </div>
 
               {/* ── MOBILE: optimized single-column layout ── */}
-              <div className="lg:hidden flex flex-col gap-3 p-3 pb-6">
+              <div className="lg:hidden flex flex-col gap-3 px-3 pb-6 pt-0">
                 {/* 1. Portfolio strip — live total across all chains */}
                 <MobilePortfolioStrip />
 
@@ -3303,8 +3388,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Stack health strip at bottom */}
-            <StackHealthStrip />
           </div>
         )}
       </div>
