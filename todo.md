@@ -1817,3 +1817,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix Phantom (Solana) wallet auto-reconnect on page refresh
 - [x] Fix MetaMask/Coinbase (Ethereum) wallet auto-reconnect on page refresh
 - [x] Fix Xverse/Tap (Bitcoin) wallet auto-reconnect on page refresh
+
+## Settings Panel Tabbed UI
+
+- [x] Refactor AgentSettings.tsx to use 4-tab layout: Trading, Network, Privacy, Appearance
+- [x] Trading tab: Trade Preferences (max amount, slippage), Swap Execution (auto-confirm), Preferred Swap Route
+- [x] Network tab: LP Mode (Liquidity Provider) with pairs/min-size, Auto-accept P2P RFQs
+- [x] Privacy tab: Blocked Peers, Muted Peers
+- [x] Appearance tab: Theme selector, Danger Zone (reset settings, clear blocks/mutes)
+- [x] Save button present on Trading, Network, and Appearance tabs; LP Mode prefs (localStorage) auto-save on toggle
+- [x] AnimatePresence slide transition between tabs
