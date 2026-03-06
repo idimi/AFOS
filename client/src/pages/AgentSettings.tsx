@@ -590,7 +590,34 @@ export default function AgentSettings() {
           />
         </SectionCard>
 
-        {/* ── Auto-accept P2P RFQs ────────────────────────────────────────────────── */}
+             {/* ── LP Mode ─────────────────────────────────────────────────────────────── */}
+        <SectionCard
+          icon={Wifi}
+          title="LP Mode (Liquidity Provider)"
+          color="text-cyan-400"
+          border="rgba(6,182,212,0.2)"
+          bg="rgba(6,182,212,0.04)"
+          delay={0.09}
+        >
+          <ToggleRow
+            label="Enable LP Mode"
+            description="Broadcast your wallet as a liquidity provider on the AFOS P2P network. When enabled, peers can discover you, send RFQ requests, and you can respond with quotes. Disable this to browse the Order Book without being visible to other peers."
+            value={lightPeer.prefs?.enabled ?? false}
+            onChange={(v) => lightPeer.setPrefs({ enabled: v })}
+            warning="LP Mode is ON. Your peer ID and accepted trading pairs are visible to all nodes on the network. Make sure your wallets are funded before accepting RFQs."
+          />
+          {lightPeer.prefs?.enabled && (
+            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg"
+              style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-mono text-emerald-400">
+                {lightPeer.isOnline ? `Online · ${lightPeer.peerId?.slice(0, 16)}…` : "Connecting to P2P network…"}
+              </span>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Auto-accept P2P RFQs ──────────────────────────────────────────── */}
         <SectionCard
           icon={Wifi}
           title="Auto-accept P2P RFQs"

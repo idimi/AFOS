@@ -1596,9 +1596,10 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
 
 // ─── Empty State for Topology ─────────────────────────────────────────────────
 
-function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signalingRemotePeers, directPeerCount, onConnectWallet }: {
+function EmptyTopology({ lightPeerOnline, lightPeerId, lpEnabled, signalingConnected, signalingRemotePeers, directPeerCount, onConnectWallet }: {
   lightPeerOnline: boolean;
   lightPeerId: string | null;
+  lpEnabled: boolean;
   signalingConnected: boolean;
   signalingRemotePeers: { peerId: string }[];
   directPeerCount: number;
@@ -1642,6 +1643,26 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signa
         </div>
       )}
 
+      {/* LP Mode disabled — user has a peerId but hasn't opted in as LP */}
+      {lightPeerId && !lpEnabled && !lightPeerOnline && (
+        <div className="mb-4 px-4 py-3 rounded-xl text-center w-full max-w-xs"
+          style={{ background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.25)" }}>
+          <div className="flex items-center gap-2 justify-center mb-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+            <span className="text-[11px] font-bold text-slate-400">LP Mode is off</span>
+          </div>
+          <p className="text-[10px] text-slate-500 mb-2">
+            You are not broadcasting as a liquidity provider. Enable LP Mode in Agent Settings to respond to peer RFQs and appear in the Order Book.
+          </p>
+          <a
+            href="/agent-settings"
+            className="inline-block px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.35)", color: "#94a3b8" }}>
+            Open Agent Settings
+          </a>
+        </div>
+      )}
+
       {/* Light peer enabled but waiting for remote peers */}
       {lightPeerId && lightPeerOnline && (
         <div className="mb-4 px-4 py-2 rounded-xl text-center w-full max-w-xs"
@@ -1676,7 +1697,7 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signa
           <div className="flex-1 min-w-0">
             <div className="text-[10px] font-mono font-bold" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }}>AFOS P2P DHT</div>
             <div className="text-[9px]" style={{ color: lightPeerOnline ? "rgba(6,182,212,0.6)" : "rgba(100,116,139,0.6)" }}>
-              {lightPeerOnline ? `Light Peer · ${lightPeerId?.slice(0, 12)}… · Active` : "Connect wallet to activate"}
+              {lightPeerOnline ? `Light Peer · ${lightPeerId?.slice(0, 12)}… · Active` : "Enable LP Mode to activate"}
             </div>
           </div>
           <Globe className="w-3 h-3 shrink-0" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }} />
@@ -1694,7 +1715,7 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signa
             <div className="text-[9px]" style={{ color: signalingConnected ? "rgba(168,85,247,0.6)" : "rgba(100,116,139,0.6)" }}>
               {signalingConnected
                 ? `Connected · ${signalingRemotePeers.length} peer${signalingRemotePeers.length !== 1 ? 's' : ''} · ${directPeerCount} direct`
-                : lightPeerOnline ? "Connecting…" : "Connect wallet to activate"}
+                : lightPeerOnline ? "Connecting…" : "Enable LP Mode to activate"}
             </div>
           </div>
           <Wifi className="w-3 h-3 shrink-0" style={{ color: signalingConnected ? "#a855f7" : "#64748b" }} />
@@ -2829,6 +2850,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         <EmptyTopology
           lightPeerOnline={lightPeer.isOnline}
           lightPeerId={lightPeer.peerId}
+          lpEnabled={lightPeer.prefs?.enabled ?? false}
           signalingConnected={lightPeer.signalingConnected}
           signalingRemotePeers={lightPeer.remotePeers}
           directPeerCount={lightPeer.directPeerCount}
