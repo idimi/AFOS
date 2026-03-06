@@ -1406,3 +1406,10 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire hero swap card to live BTC/SOL prices from tRPC (refetches every 30s)
 - [x] Add Connect Wallet CTA button in hero (links to /app#connect+swaps)
 - [x] Add URL hash deep-link handler in Dashboard (#connect opens wallet modal, #swaps navigates to swaps tab)
+
+## Branding Improvement — Navbar & Footer Logo
+
+- [x] Re-upload AFOS logo PNG at full resolution to CDN
+- [x] Replace cramped navbar logo with proper sized AFOS icon + wordmark (h-8 icon, text-lg bold)
+- [x] Replace footer "A" circle placeholder with real AFOS logo image + wordmark
+- [x] Ensure logo looks professional in both dark and light mode
