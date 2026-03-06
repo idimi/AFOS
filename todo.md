@@ -1472,6 +1472,6 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Global — viewport-fit=cover in index.html, pb-safe CSS utility added to index.css, MobileSidebarDrawer footer pb-safe
 
 ## StackStatusPill + Agent Live Badge Polish
-- [ ] Wire Overview header "Agent Live" badge to useStackHealth (AFOS Agent service state)
-- [ ] Add title attribute to each dot span in StackStatusPill (service name on hover)
-- [ ] Animate pill count text color on liveCount drop (flash transition like peerFlash)
+- [x] Wire Overview header "Agent Live" badge to useStackHealth (AFOS Agent service state) — AgentLiveBadge component, transitions green/amber/red
+- [x] Add title attribute to each dot span in StackStatusPill (service name on hover)
+- [x] Animate pill count text color on liveCount drop (countFlash state, mirrors peerFlash pattern, pill border also flashes)

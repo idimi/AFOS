@@ -2754,30 +2754,86 @@ function useStackHealth() {
   return { services, liveCount, totalCount: services.length };
 }
 
+/** Overview header badge — wired to AFOS Agent service state from useStackHealth */
+function AgentLiveBadge() {
+  const { services } = useStackHealth();
+  const agentSvc = services.find(s => s.name === 'AFOS Agent');
+  const agentStatus = agentSvc?.status ?? 'offline';
+  const agentLive = agentStatus === 'live';
+  const agentDegraded = agentStatus === 'degraded';
+  const agentBg = agentLive
+    ? 'rgba(16,185,129,0.1)'
+    : agentDegraded
+    ? 'rgba(245,158,11,0.1)'
+    : 'rgba(239,68,68,0.08)';
+  const agentBorder = agentLive
+    ? '1px solid rgba(16,185,129,0.25)'
+    : agentDegraded
+    ? '1px solid rgba(245,158,11,0.25)'
+    : '1px solid rgba(239,68,68,0.25)';
+  const agentTextColor = agentLive ? 'text-emerald-400' : agentDegraded ? 'text-amber-400' : 'text-red-400';
+  const agentLabel = agentLive ? 'Agent Live' : agentDegraded ? 'Agent Degraded' : 'Agent Offline';
+  const agentLabelShort = agentLive ? 'Live' : agentDegraded ? 'Degraded' : 'Offline';
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-all duration-500"
+      style={{ background: agentBg, border: agentBorder }}
+    >
+      <Radio className={`w-3 h-3 ${agentTextColor} ${agentLive ? 'animate-pulse' : ''}`} />
+      <span className={`text-[10px] font-mono ${agentTextColor} hidden sm:inline`}>{agentLabel}</span>
+      <span className={`text-[10px] font-mono ${agentTextColor} sm:hidden`}>{agentLabelShort}</span>
+    </div>
+  );
+}
+
 /** Compact 5-dot pill for the topbar */
 function StackStatusPill() {
   const { services, liveCount, totalCount } = useStackHealth();
   const allLive = liveCount === totalCount;
   // Pill always uses the same violet scheme as the peer button — health state shown only via dot colors
-  const countColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
+  const baseCountColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
+
+  // Flash animation when liveCount changes — mirrors peerFlash pattern
+  const [countFlash, setCountFlash] = useState<'down' | 'recover' | null>(null);
+  const prevLiveCount = useRef(liveCount);
+  useEffect(() => {
+    if (prevLiveCount.current !== liveCount) {
+      const direction = liveCount < prevLiveCount.current ? 'down' : 'recover';
+      setCountFlash(direction);
+      setTimeout(() => setCountFlash(null), 1200);
+      prevLiveCount.current = liveCount;
+    }
+  }, [liveCount]);
+
+  const countColor = countFlash === 'down'
+    ? 'text-red-300'
+    : countFlash === 'recover'
+    ? 'text-emerald-300'
+    : baseCountColor;
+  const pillFlashClass = countFlash === 'down'
+    ? 'bg-red-500/20 border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.4)]'
+    : countFlash === 'recover'
+    ? 'bg-emerald-500/20 border-emerald-500/50 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
+    : 'bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40';
 
   return (
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
           <button
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 duration-300 bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40"
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 duration-300 ${pillFlashClass}`}
             aria-label={`Stack health: ${liveCount}/${totalCount} services live`}
           >
             <div className="flex items-center gap-0.5">
               {services.map(s => (
                 <span
                   key={s.name}
+                  title={s.name}
                   className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`}
                 />
               ))}
             </div>
-            <span className={`text-[10px] font-mono ${countColor}`}>{liveCount}/{totalCount}</span>
+            <span className={`text-[10px] font-mono transition-colors duration-300 ${countColor}`}>{liveCount}/{totalCount}</span>
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg" style={{ minWidth: 210 }}>
@@ -3279,14 +3335,7 @@ export default function Dashboard() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 sm:gap-2">
-                    <div
-                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
-                      style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}
-                    >
-                      <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
-                      <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">Agent Live</span>
-                      <span className="text-[10px] font-mono text-emerald-400 sm:hidden">Live</span>
-                    </div>
+                    <AgentLiveBadge />
                     <div
                       className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
                       style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
