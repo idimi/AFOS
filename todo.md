@@ -1602,3 +1602,7 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix: navigating to /app via "Launch App" does not scroll to top — add scroll-to-top on route change
 - [x] Fix: scroll-to-top on mobile — reset inner scrollable container (contentRef) on Dashboard mount and page change
+
+## Peer Card Dark Mode Redesign
+
+- [x] Redesign expanded peer card in dark mode — replace flat purple background with deep dark card + violet accent border/glow, better text contrast, cleaner stat boxes

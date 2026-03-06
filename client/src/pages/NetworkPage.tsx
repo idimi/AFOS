@@ -2894,8 +2894,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
               className="rounded-xl cursor-pointer transition-all overflow-hidden"
               animate={{ scale: isSelected ? 0.99 : 1 }}
               style={{
-                background: isSelected ? "var(--accent)" : "var(--card)",
-                border: `1px solid ${isSelected ? "rgba(6,182,212,0.4)" : isBlocked ? "rgba(239,68,68,0.25)" : "var(--border)"}`,
+                background: isSelected ? "rgba(15,15,25,0.95)" : "var(--card)",
+                border: `1px solid ${isSelected ? "rgba(139,92,246,0.55)" : isBlocked ? "rgba(239,68,68,0.25)" : "var(--border)"}`,
+                boxShadow: isSelected ? "0 0 0 1px rgba(139,92,246,0.15), 0 4px 24px rgba(139,92,246,0.12)" : undefined,
                 opacity: isBlocked ? 0.6 : 1,
               }}
             >
@@ -3008,28 +3009,28 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                     transition={{ duration: 0.18 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-3 pb-3 pt-1 border-t border-border/60">
+                    <div className="px-3 pb-3 pt-2 border-t" style={{ borderColor: "rgba(139,92,246,0.25)" }}>
                       {/* Stats grid */}
-                      <div className="grid grid-cols-3 gap-2 mb-2.5">
-                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
-                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.reputation}%</div>
-                          <div className="text-[8px] text-muted-foreground">uptime</div>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="rounded-lg px-2 py-2 text-center" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}>
+                          <div className="text-[13px] font-mono font-bold" style={{ color: "#a78bfa" }}>{peer.reputation}%</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">uptime</div>
                         </div>
-                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
-                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.channels}</div>
-                          <div className="text-[8px] text-muted-foreground">channels</div>
+                        <div className="rounded-lg px-2 py-2 text-center" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}>
+                          <div className="text-[13px] font-mono font-bold" style={{ color: "#a78bfa" }}>{peer.channels}</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">channels</div>
                         </div>
-                        <div className="rounded-lg px-2 py-1.5 text-center" style={{ background: "var(--muted)" }}>
-                          <div className="text-[11px] font-mono font-semibold text-foreground">{peer.version}</div>
-                          <div className="text-[8px] text-muted-foreground">version</div>
+                        <div className="rounded-lg px-2 py-2 text-center" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.18)" }}>
+                          <div className="text-[13px] font-mono font-bold" style={{ color: "#a78bfa" }}>{peer.version}</div>
+                          <div className="text-[9px] text-muted-foreground mt-0.5">version</div>
                         </div>
                       </div>
                       {/* Pairs */}
                       {peer.pairs.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 mb-2.5">
                           {peer.pairs.map(pair => (
                             <span key={pair} className="px-2 py-0.5 rounded-md text-[9px] font-mono"
-                              style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)", color: "rgba(6,182,212,0.85)" }}>
+                              style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.22)", color: "rgba(6,182,212,0.9)" }}>
                               {pair}
                             </span>
                           ))}
@@ -3038,14 +3039,14 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
                       {/* View full profile button */}
                       <button
                         onClick={(e) => { e.stopPropagation(); setSelectedId(peer.id); }}
-                        className="mt-2.5 w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all"
+                        className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-semibold transition-all hover:opacity-90 active:scale-[0.98]"
                         style={{
-                          background: "rgba(6,182,212,0.08)",
-                          border: "1px solid rgba(6,182,212,0.2)",
-                          color: "#06b6d4",
+                          background: "rgba(139,92,246,0.12)",
+                          border: "1px solid rgba(139,92,246,0.3)",
+                          color: "#c4b5fd",
                         }}
                       >
-                        <Users className="w-3 h-3" />
+                        <Users className="w-3.5 h-3.5" />
                         View Full Profile
                       </button>
                     </div>
