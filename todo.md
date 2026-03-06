@@ -1426,3 +1426,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Swap card replaced by agent chat as primary hero element
 - [x] Integrate into LandingPage.tsx hero section replacing current layout
 - [x] Mobile responsive — chat hero hidden on mobile (lg:block), copy + CTAs visible on all sizes
+
+## Add Traditional Swap Card to CTA Section
+
+- [x] Add the live P2P swap card next to the "Trade without compromise" CTA section at the bottom of the landing page
+- [x] Add BETA badge at top-right of AFOS wordmark in navbar logo

@@ -23,6 +23,8 @@ interface AfosLogoProps {
   className?: string;
   /** Glow effect on the icon (landing page style) */
   glow?: boolean;
+  /** Show a BETA badge at the top-right of the wordmark */
+  beta?: boolean;
 }
 
 const sizeMap: Record<LogoSize, { icon: string; wordmark: string; gap: string; ring: string; rounded: string }> = {
@@ -33,7 +35,7 @@ const sizeMap: Record<LogoSize, { icon: string; wordmark: string; gap: string; r
   xl: { icon: "w-12 h-12", wordmark: "h-8",   gap: "gap-3",   ring: "ring-1 ring-white/10",   rounded: "rounded-xl"  },
 };
 
-export function AfosLogo({ size = "md", showWordmark = true, className = "", glow = false }: AfosLogoProps) {
+export function AfosLogo({ size = "md", showWordmark = true, className = "", glow = false, beta = false }: AfosLogoProps) {
   const s = sizeMap[size];
 
   return (
@@ -45,12 +47,28 @@ export function AfosLogo({ size = "md", showWordmark = true, className = "", glo
         style={glow ? { filter: "drop-shadow(0 0 10px oklch(0.72 0.18 195 / 0.35))" } : undefined}
       />
       {showWordmark && (
-        <img
-          src={WORDMARK_URL}
-          alt="AFOS"
-          className={`${s.wordmark} object-contain shrink-0`}
-          style={glow ? { filter: "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.25))" } : undefined}
-        />
+        <span className="relative inline-flex items-center">
+          <img
+            src={WORDMARK_URL}
+            alt="AFOS"
+            className={`${s.wordmark} object-contain shrink-0`}
+            style={glow ? { filter: "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.25))" } : undefined}
+          />
+          {beta && (
+            <span
+              className="absolute -top-2.5 -right-7 text-[8px] font-black tracking-widest px-1 py-0.5 rounded"
+              style={{
+                background: "oklch(0.72 0.18 195 / 0.18)",
+                border: "1px solid oklch(0.72 0.18 195 / 0.5)",
+                color: "oklch(0.72 0.18 195)",
+                lineHeight: 1,
+                letterSpacing: "0.12em",
+              }}
+            >
+              BETA
+            </span>
+          )}
+        </span>
       )}
     </span>
   );
