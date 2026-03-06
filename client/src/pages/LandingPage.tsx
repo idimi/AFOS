@@ -18,6 +18,7 @@ import {
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
+import { AgentChatHero } from "@/components/AgentChatHero";
 
 // ─── Animated counter ─────────────────────────────────────────────────────────
 function AnimatedNumber({ value, prefix = "", suffix = "", decimals = 0 }: {
@@ -346,9 +347,9 @@ export default function LandingPage() {
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <section className="relative min-h-screen flex items-center pt-20 pb-16 px-6">
         <GridBackground />
-        <div className="relative z-10 max-w-6xl mx-auto w-full">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            {/* Left: copy */}
+        <div className="relative z-10 max-w-7xl mx-auto w-full">
+          <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 xl:gap-16 items-center">
+            {/* Left: copy + CTA */}
             <div>
               <motion.div
                 initial={{ opacity: 0, y: -12 }}
@@ -369,11 +370,11 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1, duration: 0.6 }}
-                className="text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.1] tracking-tight mb-6"
+                className="text-4xl sm:text-5xl lg:text-[3.4rem] xl:text-6xl font-black leading-[1.08] tracking-tight mb-5"
               >
-                The first{" "}
-                <span style={{ color: "oklch(0.72 0.18 195)" }}>cross-chain</span>
-                {" "}P2P DEX.
+                Your{" "}
+                <span style={{ color: "oklch(0.72 0.18 195)" }}>autonomous</span>
+                {" "}cross-chain agent.
               </motion.h1>
 
               <motion.p
@@ -382,14 +383,14 @@ export default function LandingPage() {
                 transition={{ delay: 0.2, duration: 0.6 }}
                 className="text-base text-muted-foreground leading-relaxed mb-8 max-w-lg"
               >
-                Trade BTC, ETH, and SOL directly peer-to-peer — no bridges, no wrapped tokens, no AMM pools. Atomic HTLC settlement means your funds never touch a custodian.
+                Just tell the AFOS agent what you want — it finds the best peer, negotiates the rate, locks HTLC escrows on both chains, and settles atomically. No bridges, no custodians, no manual steps.
               </motion.p>
 
               <motion.div
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.6 }}
-                className="flex flex-wrap gap-3 mb-10"
+                className="flex flex-wrap gap-3 mb-8"
               >
                 <a
                   href="/app"
@@ -438,102 +439,14 @@ export default function LandingPage() {
               </motion.div>
             </div>
 
-            {/* Right: animated swap card */}
+            {/* Right: animated agent chat hero (primary) */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.35, duration: 0.7 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.8, ease: "easeOut" }}
               className="hidden lg:block"
             >
-              <div
-                className="rounded-3xl p-6 relative overflow-hidden"
-                style={{
-                  background: "oklch(0.12 0.025 255 / 0.7)",
-                  border: "1px solid oklch(0.32 0.04 255 / 0.4)",
-                  backdropFilter: "blur(20px)",
-                  boxShadow: "0 0 80px oklch(0.72 0.18 195 / 0.08)",
-                }}
-              >
-                {/* Glow accent */}
-                <div
-                  className="absolute top-0 right-0 w-48 h-48 rounded-full opacity-20 pointer-events-none"
-                  style={{ background: "radial-gradient(circle, oklch(0.72 0.18 195 / 0.5) 0%, transparent 70%)", transform: "translate(30%, -30%)" }}
-                />
-
-                <div className="flex items-center justify-between mb-5">
-                  <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Live P2P Swap</p>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] text-emerald-400 font-bold">ATOMIC</span>
-                  </div>
-                </div>
-
-                {/* From */}
-                <div
-                  className="rounded-2xl p-4 mb-2"
-                  style={{ background: "oklch(0.16 0.03 265 / 0.8)", border: "1px solid oklch(0.32 0.04 255 / 0.25)" }}
-                >
-                  <p className="text-[10px] text-muted-foreground mb-1">You send</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-black" style={{ color: "#F7931A" }}>
-                      {livePrice ? `${livePrice.btcAmount} BTC` : "0.1 BTC"}
-                    </span>
-                    <ChainBadge name="Bitcoin" color="#F7931A" symbol="₿" />
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    ≈ ${livePrice ? livePrice.btcUsd.toLocaleString() : "—"}
-                  </p>
-                </div>
-
-                {/* Arrow */}
-                <div className="flex justify-center my-3">
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center"
-                    style={{ background: "oklch(0.72 0.18 195 / 0.15)", border: "1px solid oklch(0.72 0.18 195 / 0.4)" }}
-                  >
-                    <ArrowLeftRight className="w-4 h-4" style={{ color: "oklch(0.72 0.18 195)" }} />
-                  </div>
-                </div>
-
-                {/* To */}
-                <div
-                  className="rounded-2xl p-4 mb-5"
-                  style={{ background: "oklch(0.16 0.03 265 / 0.8)", border: "1px solid oklch(0.32 0.04 255 / 0.25)" }}
-                >
-                  <p className="text-[10px] text-muted-foreground mb-1">You receive</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-2xl font-black" style={{ color: "#9945FF" }}>
-                      {livePrice ? `${livePrice.solAmount} SOL` : "— SOL"}
-                    </span>
-                    <ChainBadge name="Solana" color="#9945FF" symbol="◎" />
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    ≈ ${livePrice ? livePrice.solUsd.toLocaleString() : "—"} · 0.15% fee
-                  </p>
-                </div>
-
-                {/* Stats row */}
-                <div className="grid grid-cols-3 gap-3 mb-5">
-                  {[
-                    { label: "Slippage", value: "0.00%", color: "#10b981" },
-                    { label: "Bridge", value: "None", color: "#10b981" },
-                    { label: "Settlement", value: "HTLC", color: "oklch(0.72 0.18 195)" },
-                  ].map(s => (
-                    <div key={s.label} className="text-center">
-                      <p className="text-xs font-bold" style={{ color: s.color }}>{s.value}</p>
-                      <p className="text-[9px] text-muted-foreground">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <a
-                  href="/app"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-90"
-                  style={{ background: "oklch(0.72 0.18 195)", color: "oklch(0.085 0.02 260)" }}
-                >
-                  Start Trading <ArrowRight className="w-4 h-4" />
-                </a>
-              </div>
+              <AgentChatHero />
             </motion.div>
           </div>
         </div>

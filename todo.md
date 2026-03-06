@@ -1417,3 +1417,12 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix landing page footer logo — use full horizontal AFOS logo image matching app sidebar style
 - [x] Match AFOS wordmark font from logo — cropped wordmark directly from official logo, used as image
 - [x] Make AFOS logo branding consistent everywhere — created shared AfosLogo component, updated landing navbar, footer, sidebar, mobile drawer, and Swaps page header
+
+## Landing Page Hero Redesign — Agentic Chat as Primary Hero
+
+- [x] Build animated AgentChatHero component — futuristic chat simulation showing AFOS agent autonomously executing a cross-chain swap
+- [x] Chat animation sequence: user types "swap 0.1 BTC to SOL" → agent thinks → finds peer → negotiates → HTLC locks → settlement complete
+- [x] Futuristic design: glowing borders, typing indicators, agent status pulses, scan-line effects
+- [x] Swap card replaced by agent chat as primary hero element
+- [x] Integrate into LandingPage.tsx hero section replacing current layout
+- [x] Mobile responsive — chat hero hidden on mobile (lg:block), copy + CTAs visible on all sizes
