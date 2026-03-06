@@ -28,6 +28,7 @@ import { getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSw
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
+import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
 
@@ -1229,6 +1230,46 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
   const [flash, setFlash] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<"live" | "fallback">("live");
   const hasRealQuotes = useRef(false);
+
+  // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
+  const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
+    refetchInterval: 10_000,
+    staleTime: 8_000,
+  });
+
+  // Merge signaling peers into the order book when they support the current pair
+  useEffect(() => {
+    if (!signalingPeers || signalingPeers.length === 0) return;
+    const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
+    const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
+    const matchingPeers = signalingPeers.filter(p =>
+      p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
+    );
+    if (matchingPeers.length === 0) return;
+    // Convert signaling peers to OrderBookEntry rows
+    const peerEntries: OrderBookEntry[] = matchingPeers.map(p => ({
+      id: `sig_${p.peerId}`,
+      rfqId: undefined,
+      peer: p.alias || p.peerId.slice(0, 10),
+      fromSymbol: fromToken.symbol,
+      toSymbol: toToken.symbol,
+      fromAmount: 0,
+      toAmount: 0,
+      rate: baseRate,
+      usdValue: 0,
+      expiresIn: Math.max(0, 90 - Math.round((Date.now() - p.lastHeartbeat) / 1000)),
+      latency: Math.max(1, Math.round((Date.now() - p.connectedAt) / 1000)),
+      reputation: Math.min(100, p.score ?? 80),
+    }));
+    hasRealQuotes.current = true;
+    setDataSource("live");
+    setOrders(prev => {
+      // Merge: keep existing SSE orders, add/update signaling peer rows
+      const sseOrders = prev.filter(o => !o.id.startsWith("sig_"));
+      return [...peerEntries, ...sseOrders].slice(0, 10).sort((a, b) => b.rate - a.rate);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signalingPeers, fromToken.symbol, toToken.symbol, baseRate]);
 
   // Pair change: clear orders and reset real-quote flag
   useEffect(() => {

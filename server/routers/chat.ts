@@ -2056,4 +2056,23 @@ export const chatRouter = router({
         };
       }
     }),
+
+  /**
+   * Return the current live signaling peer list for the Order Book.
+   * Each peer includes their peerId, alias, accepted pairs, wallet addresses,
+   * connection time, and last heartbeat. No WebSocket refs are exposed.
+   */
+  getPeerList: publicProcedure.query(() => {
+    const peerList = getSignalingPeerList();
+    return peerList.map(p => ({
+      peerId:          p.peerId,
+      alias:           p.alias,
+      pairs:           p.pairs,
+      walletAddresses: p.walletAddresses,
+      connectedAt:     p.connectedAt,
+      lastHeartbeat:   p.lastHeartbeat,
+      // Compute a simple "online" score: 100 if heartbeat < 30s ago, else decays
+      score: Math.max(0, Math.round(100 - (Date.now() - p.lastHeartbeat) / 1000)),
+    }));
+  }),
 });

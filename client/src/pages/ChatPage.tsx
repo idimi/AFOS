@@ -459,14 +459,14 @@ function MessageBubble({
               className="w-3.5 h-3.5 rounded-full border-2 border-transparent"
               style={{ borderTopColor: "#06b6d4", borderRightColor: "rgba(6,182,212,0.3)" }}
             />
-            <span style={{ color: "#67e8f9" }}>Scanning P2P network for a matching peer…</span>
+            <span style={{ color: "#67e8f9" }}>{msg.content}</span>
             <motion.span
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ duration: 1.5, repeat: Infinity }}
-              className="ml-auto text-[10px]"
+              className="ml-auto text-[10px] shrink-0"
               style={{ color: "rgba(6,182,212,0.5)" }}
             >
-              live
+              {msg.content.startsWith("Still") ? "⏳" : "live"}
             </motion.span>
           </div>
         )}
@@ -594,7 +594,7 @@ export default function ChatPage() {
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
-  const { peerId: myPeerId, peerAlias: myPeerAlias } = useLightPeer();
+  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers } = useLightPeer();
 
   const [input, setInput] = useState("");
   const [executingId, setExecutingId] = useState<string | null>(null);
@@ -677,14 +677,29 @@ export default function ChatPage() {
 
     // Insert a temporary "Searching for peer..." skeleton for swap intents
     const searchingMsgId = `searching-${Date.now()}`;
+    const peerCount = remotePeers.length;
     if (isSwapIntent) {
       addMessage({
         id: searchingMsgId,
         role: "assistant",
-        content: "Scanning P2P network for a matching peer…",
+        content: peerCount > 0
+          ? `Scanning ${peerCount} peer${peerCount !== 1 ? 's' : ''} on the P2P network…`
+          : "Scanning P2P network for a matching peer…",
         type: "peer_searching",
         timestamp: Date.now(),
       } as ChatMessage);
+    }
+
+    // 8-second timeout fallback — update the skeleton message text if still waiting
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    if (isSwapIntent) {
+      timeoutHandle = setTimeout(() => {
+        setMessages(prev => prev.map(m =>
+          m.id === searchingMsgId
+            ? { ...m, content: "Still searching… this may take a moment" }
+            : m
+        ));
+      }, 8000);
     }
 
     try {
@@ -703,7 +718,8 @@ export default function ChatPage() {
         senderAlias: myPeerAlias ?? undefined,
       });
 
-      // Remove the searching skeleton before adding the real result
+      // Clear the 8s timeout and remove the searching skeleton before adding the real result
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (isSwapIntent) {
         setMessages(prev => prev.filter(m => m.id !== searchingMsgId));
       }
@@ -736,7 +752,8 @@ export default function ChatPage() {
         });
       }
     } catch (err) {
-      // Remove the searching skeleton on error too
+      // Clear the 8s timeout and remove the searching skeleton on error too
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (isSwapIntent) {
         setMessages(prev => prev.filter(m => m.id !== searchingMsgId));
       }
@@ -749,7 +766,7 @@ export default function ChatPage() {
     } finally {
       setIsTyping(false);
     }
-  }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances, myPeerId, myPeerAlias, setMessages]);
+  }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances, myPeerId, myPeerAlias, remotePeers, setMessages]);
 
   // Open wallet modal for a specific chain based on the quote's FROM token
   const openWalletForChain = useCallback((fromToken: string, fromChain?: SupportedChain) => {

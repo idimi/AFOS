@@ -1738,3 +1738,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Pass senderPeerId from LightPeerContext to sendMessage so agent excludes requester from peer search
 - [x] Show matched peer alias on P2P quote card (e.g. "@lp-a709a6 matched")
 - [x] Add "No peer found — routing via Jupiter/0x" badge on DEX fallback quote cards
+
+## Chat & Order Book UX Improvements (Round 2)
+
+- [x] Add peer count indicator to searching skeleton ("scanning 5 peers…" from remotePeers.length)
+- [x] Add 8-second timeout fallback message in chat ("Still searching… this may take a moment")
+- [x] Add tRPC procedure: chat.getPeerList — returns signaling peer list with pairs and rates
+- [x] Wire Swaps page Order Book to signaling registry via tRPC — show all online peers as rows
