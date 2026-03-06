@@ -539,7 +539,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground text-center py-1">
-                      Connect your Solana wallet to swap via IntercomSwap.
+                      Connect your Solana wallet to swap via AFOS P2P.
                     </p>
 
                     {/* Phantom — multi-chain */}
@@ -599,7 +599,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground text-center py-1">
-                      Connect your Ethereum wallet to swap via IntercomSwap.
+                      Connect your Ethereum wallet to swap via AFOS P2P.
                     </p>
 
                     {/* Phantom — multi-chain */}
@@ -662,7 +662,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground text-center py-1">
-                      Connect your Bitcoin wallet to swap via IntercomSwap.
+                      Connect your Bitcoin wallet to swap via AFOS P2P.
                     </p>
 
                     {/* Phantom — multi-chain */}

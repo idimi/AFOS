@@ -762,13 +762,13 @@ function NodeHealthTab() {
       const t0 = Date.now();
       const resp = await fetch("https://intercomswap.io", { method: "HEAD", signal: AbortSignal.timeout(5000) });
       results.push({
-        name: "IntercomSwap Signaling",
+        name: "AFOS Signaling",
         status: resp.ok || resp.status < 500 ? "live" : "degraded",
         detail: `HTTP ${resp.status}`,
         latency: `${Date.now() - t0}ms`,
       });
     } catch {
-      results.push({ name: "IntercomSwap Signaling", status: "offline", detail: "Unreachable" });
+      results.push({ name: "AFOS Signaling", status: "offline", detail: "Unreachable" });
     }
 
     setNodes(results);
@@ -1067,7 +1067,7 @@ function OperatorConfigTab() {
 
   const DEFAULT_CFG = {
     llmModel: "kimi-k2-turbo",
-    systemPrompt: "You are an autonomous financial agent. Execute swaps via IntercomSwap when instructed.",
+    systemPrompt: "You are an autonomous financial agent. Execute swaps via AFOS P2P when instructed.",
     rendezvousChannel: "0000intercomswapbtcusdt",
     peerMode: "maker-taker" as "maker" | "taker" | "maker-taker",
     minSwapUsdt: "10",
@@ -1177,7 +1177,7 @@ function OperatorConfigTab() {
         </div>
       </OperatorConfigCard>
 
-      <OperatorConfigCard icon={Network} title="IntercomSwap Node" color="text-emerald-400">
+      <OperatorConfigCard icon={Network} title="AFOS P2P Node" color="text-emerald-400">
         <OperatorConfigField label="Rendezvous Channel" value={cfg.rendezvousChannel} onChange={set("rendezvousChannel")} mono placeholder="0000intercomswapbtcusdt" />
         <div className="grid grid-cols-2 gap-2">
           <OperatorConfigField label="Min Swap (USDT)" value={cfg.minSwapUsdt} onChange={set("minSwapUsdt")} placeholder="10" />
@@ -1235,7 +1235,7 @@ function OperatorConfigTab() {
         </div>
         <div className="p-2.5 rounded-xl" style={{ background: "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.2)" }}>
           <p className="text-[9px] font-mono text-violet-300/70">
-            Worker polls IntercomSwap every {cfg.tickInterval}ms. When tradeauto is ON, auto-accepts quotes below {cfg.feeBpsCap} bps and under {cfg.maxTradeBtc} BTC. HTLC refund window: {cfg.minRefundHours}–{cfg.maxRefundHours}h.
+            Worker polls AFOS P2P every {cfg.tickInterval}ms. When tradeauto is ON, auto-accepts quotes below {cfg.feeBpsCap} bps and under {cfg.maxTradeBtc} BTC. HTLC refund window: {cfg.minRefundHours}–{cfg.maxRefundHours}h.
           </p>
         </div>
       </OperatorConfigCard>

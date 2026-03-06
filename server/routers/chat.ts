@@ -2,13 +2,13 @@
  * AFOS Conversational Agent Router — Multi-Chain v3 (Unified P2P-First Architecture)
  *
  * All three chains follow the same pattern:
- *   PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+ *   PRIMARY: AFOS P2P network (agent-coordinated, no Oracle VM)
  *   FALLBACK: Chain-specific aggregator
  *
  * Routing per chain:
- *   Solana:   IntercomSwap P2P → Jupiter DEX fallback
- *   Ethereum: IntercomSwap P2P → 0x Protocol (primary DEX) → 1inch (fallback, requires ONEINCH_API_KEY)
- *   Bitcoin:  IntercomSwap P2P → Direct HTLC (mempool.space) fallback
+ *   Solana:   AFOS P2P → Jupiter DEX fallback
+ *   Ethereum: AFOS P2P → 0x Protocol (primary DEX) → 1inch (fallback, requires ONEINCH_API_KEY)
+ *   Bitcoin:  AFOS P2P → Direct HTLC (mempool.space) fallback
  *
  * Execution procedures:
  *   buildSwapTx      — Solana swaps (P2P primary + Jupiter fallback)
@@ -19,7 +19,7 @@
  *   1. Parse user intent with LLM (fromToken, toToken, fromChain, toChain, amount)
  *   2. Fetch real quote from the appropriate DEX/aggregator
  *   3. Return structured quote_card response for frontend confirmation
- *   4. On confirmation: submit RFQ to IntercomSwap P2P → fallback to chain aggregator
+ *   4. On confirmation: match peer via AFOS P2P signaling → fallback to chain aggregator
  */
 
 import { z } from "zod";
@@ -34,6 +34,7 @@ import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap } from "../agentSwapBtc";
 import { getUserSettings } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
+import { getSignalingPeerList, sendToPeer } from "../signaling";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -333,92 +334,136 @@ async function get1inchSwapTx(
   }
 }
 
-// ─── Shared IntercomSwap P2P RFQ helper ───────────────────────────────────────
+// ─── Agent P2P Peer Matching (Signaling Server — no Oracle VM needed) ──────────
 // Used by all three chain execution procedures (Solana, Ethereum, Bitcoin)
 
 interface P2PQuoteResult {
   rfqId?: string;
   peerId?: string;
+  peerAlias?: string;
   counterpartyPubKey?: string;
   counterpartyAddress?: string;
+  counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string };
   rate?: number;
   outAmount?: number;
   route?: string;
 }
 
 /**
- * Submit an RFQ to the IntercomSwap Oracle VM and wait for a P2P peer quote.
- * Returns the best peer quote, or null if no peer responds within the timeout.
+ * Find a matching light peer from the in-memory signaling server registry.
  *
- * This is the PRIMARY route for all three chains. If it returns null,
- * each chain falls back to its own aggregator (Jupiter / 1inch / direct HTLC).
+ * A peer matches when:
+ *  - They are registered on the signaling server (live WebSocket connection)
+ *  - They have declared the reverse pair (e.g. user wants SOL→USDT, peer has USDT/SOL)
+ *  - They are not the requesting user (different peerId / wallet)
+ *
+ * This replaces the Oracle VM RFQ entirely — no external server needed.
+ * The signaling server is built into the AFOS backend.
  */
-async function submitIntercomSwapRfq(params: {
+function findSignalingPeer(params: {
   fromToken: string;
   toToken: string;
-  amount: number;
   fromChain: string;
   toChain: string;
-  timeoutMs?: number;
-}): Promise<P2PQuoteResult | null> {
-  const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
-  const { fromToken, toToken, amount, fromChain, toChain, timeoutMs = 8000 } = params;
+  amount: number;
+  prices: Record<string, number>;
+  senderPeerId?: string;
+  senderWallet?: string;
+}): P2PQuoteResult | null {
+  const { fromToken, toToken, fromChain, toChain, amount, prices, senderPeerId, senderWallet } = params;
 
-  try {
-    console.log(`[IntercomSwap P2P] Submitting RFQ: ${fromToken} (${fromChain}) → ${toToken} (${toChain}), amount=${amount}`);
+  const peers = getSignalingPeerList();
+  if (peers.length === 0) return null;
 
-    const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fromToken, toToken, amount, fromChain, toChain }),
-      signal: AbortSignal.timeout(timeoutMs),
-    }).catch(() => null);
+  // The pair the requester wants: they give fromToken, they want toToken
+  // A matching peer must offer the reverse: they give toToken, they want fromToken
+  const wantedPair   = `${toToken}/${fromToken}`;   // peer offers toToken in exchange for fromToken
+  const altPair      = `${fromToken}/${toToken}`;   // some peers list both directions
+  const crossChain   = fromChain !== toChain;
 
-    if (!rfqRes?.ok) {
-      console.log(`[IntercomSwap P2P] RFQ failed: ${rfqRes?.status ?? "timeout/network error"}`);
-      return null;
+  for (const peer of peers) {
+    // Skip the requesting user's own peer
+    if (senderPeerId && peer.peerId === senderPeerId) continue;
+    if (senderWallet) {
+      const wallets = Object.values(peer.walletAddresses ?? {});
+      if (wallets.some(w => w?.toLowerCase() === senderWallet.toLowerCase())) continue;
     }
 
-    const rfqData = await rfqRes.json().catch(() => null) as {
-      success?: boolean;
-      result?: {
-        rfqId?: string; id?: string;
-        peerId?: string; responderId?: string;
-        counterpartyPubKey?: string; peerPubKey?: string;
-        counterpartyAddress?: string; peerAddress?: string;
-        rate?: number; price?: number;
-        outAmount?: number;
-        route?: string;
-        p2pQuotes?: number;
-      };
-    } | null;
+    const hasPair = peer.pairs.some(p => {
+      const norm = p.toUpperCase();
+      return norm === wantedPair || norm === altPair ||
+        // Cross-chain: accept any pair involving both tokens regardless of chain suffix
+        (crossChain && (norm.includes(fromToken) || norm.includes(toToken)));
+    });
 
-    if (!rfqData?.success || !rfqData?.result) {
-      console.log("[IntercomSwap P2P] No matching peer found.");
-      return null;
-    }
+    if (!hasPair) continue;
 
-    const r = rfqData.result;
-    const quote: P2PQuoteResult = {
-      rfqId:               r.rfqId ?? r.id,
-      peerId:              r.peerId ?? r.responderId,
-      counterpartyPubKey:  r.counterpartyPubKey ?? r.peerPubKey,
-      counterpartyAddress: r.counterpartyAddress ?? r.peerAddress,
-      rate:                r.rate ?? r.price,
-      outAmount:           r.outAmount,
-      route:               r.route ?? ((r.p2pQuotes ?? 0) > 0 ? "p2p" : "dex"),
-    };
+    // Calculate the rate based on live prices
+    const fromPrice = prices[fromToken.toUpperCase()] ?? (fromToken.includes("USD") ? 1 : 0);
+    const toPrice   = prices[toToken.toUpperCase()]   ?? (toToken.includes("USD")   ? 1 : 0);
+    if (!fromPrice || !toPrice) continue;
+
+    const rate      = fromPrice / toPrice;
+    const outAmount = amount * rate * (1 - P2P_FEE_BPS / 10000); // apply P2P fee
+    const rfqId     = `rfq_${Date.now()}_${peer.peerId.slice(0, 8)}`;
 
     console.log(
-      `[IntercomSwap P2P] Peer matched: ${quote.peerId ?? "unknown"} ` +
-      `rate=${quote.rate} rfqId=${quote.rfqId} route=${quote.route}`
+      `[AFOS Agent] P2P peer matched from signaling registry: ${peer.alias} (${peer.peerId.slice(0, 12)}…) ` +
+      `pair=${wantedPair} rate=${rate.toFixed(6)} outAmount=${outAmount.toFixed(6)}`
     );
-    return quote;
 
-  } catch (err) {
-    console.warn("[IntercomSwap P2P] RFQ error:", err);
-    return null;
+    return {
+      rfqId,
+      peerId:              peer.peerId,
+      peerAlias:           peer.alias,
+      counterpartyWallets: peer.walletAddresses,
+      counterpartyPubKey:  peer.walletAddresses?.solana,
+      counterpartyAddress: peer.walletAddresses?.ethereum ?? peer.walletAddresses?.bitcoin,
+      rate,
+      outAmount,
+      route:               crossChain ? "AFOS P2P (cross-chain)" : "AFOS P2P",
+    };
   }
+
+  console.log(`[AFOS Agent] No signaling peer found for ${fromToken}→${toToken}. Falling back to DEX.`);
+  return null;
+}
+
+/**
+ * Push an agent RFQ notification to the matched peer via the signaling server WebSocket.
+ * The peer's browser receives this as an `agent_rfq` message and shows an incoming swap card.
+ */
+function sendAgentRfqToPeer(params: {
+  rfqId: string;
+  targetPeerId: string;
+  fromToken: string;
+  toToken: string;
+  fromChain: string;
+  toChain: string;
+  amount: number;
+  outAmount: number;
+  rate: number;
+  requesterAlias?: string;
+  requesterPeerId?: string;
+  requesterWallet?: string;
+  expiresAt: number;
+}): boolean {
+  return sendToPeer(params.targetPeerId, {
+    type:            "agent_rfq",
+    rfqId:           params.rfqId,
+    fromToken:       params.fromToken,
+    toToken:         params.toToken,
+    fromChain:       params.fromChain,
+    toChain:         params.toChain,
+    amount:          params.amount,
+    outAmount:       params.outAmount,
+    rate:            params.rate,
+    requesterAlias:  params.requesterAlias ?? "Anonymous",
+    requesterPeerId: params.requesterPeerId,
+    requesterWallet: params.requesterWallet,
+    expiresAt:       params.expiresAt,
+    timestamp:       Date.now(),
+  });
 }
 
 // ─── Price fetching ──────────────────────────────────────────────────────────
@@ -528,9 +573,9 @@ Supported assets:
 
 Routing:
   - Solana swaps (SOL/USDT/USDC) → Jupiter DEX (instant, on-chain)
-  - Ethereum swaps (ETH/USDT_ETH/USDC_ETH) → 1inch aggregator + IntercomSwap
-  - Bitcoin swaps (BTC) → IntercomSwap P2P network
-  - Cross-chain swaps → IntercomSwap P2P bridge
+  - Ethereum swaps (ETH/USDT_ETH/USDC_ETH) → 1inch aggregator + AFOS P2P
+  - Bitcoin swaps (BTC) → AFOS P2P network
+  - Cross-chain swaps → AFOS P2P bridge
 
 Current live prices (source: ${priceSource ?? "live"}): ${JSON.stringify(prices)}
 ${walletBalances ? `User wallet balances: ${JSON.stringify(walletBalances)}` : ""}
@@ -747,19 +792,19 @@ async function buildQuote(
       platformFeeOut: platformFeeOut1,
       feeBps:         P2P_FEE_BPS,
       feeToken:       toAsset.symbol,
-      route:          "IntercomSwap P2P (Ethereum)",
+      route:          "AFOS P2P (Ethereum)",
       rawQuote:       null,
     };
   }
 
-  // ── Cross-chain or Bitcoin: IntercomSwap P2P — 0.15% output-side fee ────────
+  // ── Cross-chain or Bitcoin: AFOS P2P — 0.15% output-side fee ────────
   const estimatedOut   = (swapAmount * fromPrice) / (toPrice || 1);
   const platformFeeOut = estimatedOut * (P2P_FEE_BPS / 10000);
   const netToAmount    = estimatedOut - platformFeeOut;
   const platformFee    = swapAmount * (P2P_FEE_BPS / 10000);
   const routeLabel = fromAsset.chain === "bitcoin" || toAsset.chain === "bitcoin"
-    ? "IntercomSwap P2P (Bitcoin bridge)"
-    : "IntercomSwap P2P (cross-chain)";
+    ? "AFOS P2P (Bitcoin bridge)"
+    : "AFOS P2P (cross-chain)";
 
   return {
     fromAmount:     swapAmount,
@@ -813,6 +858,12 @@ export const chatRouter = router({
   /**
    * Send a message to the AFOS conversational agent.
    * Returns either a text reply or a swap quote card for any of the 7 supported assets.
+   *
+   * P2P-first flow:
+   *  1. Parse intent
+   *  2. Search signaling server for a matching peer (no Oracle VM)
+   *  3a. Peer found → push agent_rfq to peer, return quote_card with p2p route + peer info
+   *  3b. No peer → build DEX quote (Jupiter / 0x / 1inch) and return quote_card
    */
   sendMessage: publicProcedure
     .input(
@@ -823,10 +874,14 @@ export const chatRouter = router({
         walletBalances: z.array(z.object({ symbol: z.string(), amount: z.string() })).optional(),
         /** Manus OAuth openId — used to load user settings (max tx, slippage, preferred route) */
         openId:         z.string().optional(),
+        /** Sender's signaling peerId — used to exclude them from peer matching */
+        senderPeerId:   z.string().optional(),
+        /** Sender's peer alias — shown to the counterparty in the incoming RFQ card */
+        senderAlias:    z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { message, history, walletBalances, openId, walletAddress: senderWalletAddress } = input;
+      const { message, history, walletBalances, openId, walletAddress: senderWalletAddress, senderPeerId, senderAlias } = input;
 
       // Load user settings (non-blocking — falls back to defaults if DB unavailable)
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -834,6 +889,24 @@ export const chatRouter = router({
 
       const { prices, source: priceSource } = await getTokenPricesWithSource();
       const intent = await parseIntent(message, history, prices, walletBalances, priceSource);
+
+      // ── Handle accept/decline RFQ from counterparty (User B) ──────────────────────────
+      const acceptMatch = message.match(/accept\s+swap.*rfq:([\w_]+)/i);
+      const declineMatch = message.match(/decline\s+swap.*rfq:([\w_]+)/i);
+      if (acceptMatch) {
+        const rfqId = acceptMatch[1];
+        return {
+          type: "text" as const,
+          content: `Great! I'm coordinating the HTLC atomic swap for RFQ \`${rfqId}\`. The requester will be notified and both sides will be guided through signing. Please connect your wallet if you haven't already, and I'll walk you through locking your side of the swap.`,
+        };
+      }
+      if (declineMatch) {
+        const rfqId = declineMatch[1];
+        return {
+          type: "text" as const,
+          content: `Understood — I've declined the swap request (RFQ \`${rfqId.slice(0, 12)}…\`). The requester will be notified and I'll route their swap via DEX instead.`,
+        };
+      }
 
       if (intent.type !== "swap") {
         return {
@@ -898,6 +971,85 @@ export const chatRouter = router({
         ? `This swap (~$${estimatedUsd.toFixed(2)}) is close to your $${userPrefs.maxTxAmountUsd} transaction limit.`
         : undefined;
 
+      // ── Step 1: Try P2P peer matching via signaling server (no Oracle VM) ───────────────
+      const skipP2P = userPrefs.preferredRoute === "jupiter" || userPrefs.preferredRoute === "zerox";
+      let p2pMatch: P2PQuoteResult | null = null;
+
+      if (!skipP2P) {
+        p2pMatch = findSignalingPeer({
+          fromToken:    from.symbol,
+          toToken:      to.symbol,
+          fromChain:    from.chain,
+          toChain:      to.chain,
+          amount:       swapAmount,
+          prices,
+          senderPeerId: senderPeerId,
+          senderWallet: senderWalletAddress,
+        });
+      }
+
+      // ── Step 2a: P2P peer found — notify counterparty and return P2P quote ─────────
+      if (p2pMatch && p2pMatch.peerId && p2pMatch.rfqId) {
+        const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
+
+        // Push agent_rfq to the matched peer's browser via signaling WebSocket
+        const delivered = sendAgentRfqToPeer({
+          rfqId:           p2pMatch.rfqId,
+          targetPeerId:    p2pMatch.peerId,
+          fromToken:       from.symbol,
+          toToken:         to.symbol,
+          fromChain:       from.chain,
+          toChain:         to.chain,
+          amount:          swapAmount,
+          outAmount:       p2pMatch.outAmount ?? 0,
+          rate:            p2pMatch.rate ?? 0,
+          requesterAlias:  senderAlias ?? senderWalletAddress?.slice(0, 8) ?? "Anonymous",
+          requesterPeerId: senderPeerId,
+          requesterWallet: senderWalletAddress,
+          expiresAt,
+        });
+
+        const peerLabel = p2pMatch.peerAlias ?? p2pMatch.peerId?.slice(0, 8) ?? "peer";
+        const routeLabel = `AFOS P2P — matched @${peerLabel}`;
+
+        return {
+          type: "quote_card" as const,
+          content: delivered
+            ? `P2P peer found! Swap request sent to **@${peerLabel}**. Waiting for their confirmation…`
+            : `P2P peer found (@${peerLabel}) but they may be offline. You can still proceed — the swap will route via DEX if they don't respond.`,
+          limitWarning: nearLimitWarning,
+          p2pPeer: {
+            peerId:   p2pMatch.peerId,
+            alias:    p2pMatch.peerAlias,
+            rfqId:    p2pMatch.rfqId,
+            wallets:  p2pMatch.counterpartyWallets,
+            delivered,
+            expiresAt,
+          },
+          quoteData: {
+            fromToken:      from.symbol,
+            fromChain:      from.chain,
+            toToken:        to.symbol,
+            toChain:        to.chain,
+            fromAmount:     swapAmount,
+            toAmount:       p2pMatch.outAmount ?? 0,
+            netToAmount:    p2pMatch.outAmount ?? 0,
+            fromAmountUsd:  estimatedUsd,
+            toAmountUsd:    (p2pMatch.outAmount ?? 0) * (prices[to.symbol] ?? 1),
+            rate:           p2pMatch.rate ?? 0,
+            priceImpact:    0,
+            platformFee:    swapAmount * (P2P_FEE_BPS / 10000),
+            platformFeeUsd: estimatedUsd * (P2P_FEE_BPS / 10000),
+            platformFeeOut: (p2pMatch.outAmount ?? 0) * (P2P_FEE_BPS / 10000),
+            feeBps:         P2P_FEE_BPS,
+            feeToken:       to.symbol,
+            route:          routeLabel,
+            quoteResponse:  null,
+          },
+        };
+      }
+
+      // ── Step 2b: No peer found — fall back to DEX quote ─────────────────────────
       const quoteResult = await buildQuote(fromAsset, toAsset, swapAmount, prices, slippageBps);
 
       if ("error" in quoteResult) {
@@ -906,8 +1058,11 @@ export const chatRouter = router({
 
       return {
         type: "quote_card" as const,
-        content: `Here's your swap quote for ${swapAmount} ${fromToken} → ${toToken}:`,
+        content: skipP2P
+          ? `Here's your swap quote for ${swapAmount} ${from.symbol} → ${to.symbol}:`
+          : `No P2P peer available right now. Here's the best DEX rate for ${swapAmount} ${from.symbol} → ${to.symbol}:`,
         limitWarning: nearLimitWarning,
+        p2pPeer: null,
         quoteData: {
           fromToken:      from.symbol,
           fromChain:      from.chain,
@@ -933,7 +1088,7 @@ export const chatRouter = router({
 
   /**
    * Build a Solana swap transaction.
-   * PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+   * PRIMARY: AFOS P2P network (agent-coordinated, no Oracle VM)
    * FALLBACK: Jupiter DEX aggregator
    *
    * Called when user clicks "Confirm Swap" for a Solana quote card.
@@ -955,7 +1110,7 @@ export const chatRouter = router({
         toChain:        z.enum(["solana", "ethereum", "bitcoin"]).optional(),
         /** Human-readable swap amount (e.g. 1.5) — used for P2P RFQ */
         amount:         z.number().positive().optional(),
-        /** Skip IntercomSwap P2P and go straight to Jupiter */
+        /** Skip AFOS P2P and go straight to Jupiter */
         skipP2P:        z.boolean().optional().default(false),
         /** Manus OAuth openId — used to enforce per-user settings */
         openId:         z.string().optional(),
@@ -990,20 +1145,21 @@ export const chatRouter = router({
 
       if (!userPublicKey) throw new Error("Wallet not connected");
 
-      // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
-      // Attempt P2P route first when token/amount context is available.
-      // Cross-chain swaps always go through P2P; same-chain Solana swaps
-      // also try P2P first for potentially better rates.
+      // ── Step 1: Agent P2P peer discovery via signaling server ───────────────
+      // No Oracle VM needed — query the in-memory signaling registry directly.
       let p2pQuote: P2PQuoteResult | null = null;
       const isCrossChain = toChain && toChain !== "solana";
 
       if (!skipP2P && fromToken && toToken && amount) {
-        p2pQuote = await submitIntercomSwapRfq({
+        const { prices: p2pPrices } = await getTokenPricesWithSource();
+        p2pQuote = findSignalingPeer({
           fromToken:  fromToken.toUpperCase(),
           toToken:    toToken.toUpperCase(),
-          amount,
           fromChain:  fromChain ?? "solana",
           toChain:    toChain   ?? "solana",
+          amount,
+          prices:     p2pPrices,
+          senderWallet: userPublicKey,
         });
       }
 
@@ -1017,19 +1173,19 @@ export const chatRouter = router({
           fromToken:  fromToken ?? "SOL",
           toToken:    toToken   ?? "USDT",
           amount:     String(amount ?? 0),
-          route:      "IntercomSwap P2P",
+          route:      "AFOS P2P",
           status:     "completed",
           peerId:     p2pQuote.peerId ?? undefined,
           walletAddress: userPublicKey,
         }).catch(() => {/* non-fatal */});
         return {
-          route:          "IntercomSwap P2P" as const,
+          route:          "AFOS P2P" as const,
           p2pQuote,
           swapTransaction: null,
           message:
-            `IntercomSwap P2P peer matched (${p2pQuote.peerId ?? "peer"}). ` +
-            `Rate: ${p2pQuote.rate ?? "N/A"}. ` +
-            "Coordinating HTLC lock with counterparty via Oracle VM.",
+            `P2P peer matched: @${p2pQuote.peerAlias ?? p2pQuote.peerId?.slice(0, 8) ?? "peer"}. ` +
+            `Rate: ${p2pQuote.rate?.toFixed(6) ?? "N/A"}. ` +
+            "Agent coordinating HTLC lock — please sign the transaction in your wallet.",
         };
       }
 
@@ -1070,7 +1226,7 @@ export const chatRouter = router({
 
   /**
    * Execute an Ethereum swap via the agent.
-   * PRIMARY: IntercomSwap P2P network (Oracle VM RFQ)
+   * PRIMARY: AFOS P2P network (agent-coordinated, no Oracle VM)
    * FALLBACK: 1inch aggregator (builds eth_sendTransaction calldata)
    *
    * In browser mode: returns tx calldata for wallet.eth_sendTransaction().
@@ -1143,16 +1299,19 @@ export const chatRouter = router({
       const toAsset   = getAsset(toSymbol,   toChain   as SupportedChain)
         ?? getAsset(toSymbol,   "ethereum");
 
-      // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
+      // ── Step 1: Agent P2P peer discovery via signaling server ───────────────
       let p2pQuote: P2PQuoteResult | null = null;
 
       if (!skipP2P) {
-        p2pQuote = await submitIntercomSwapRfq({
+        const { prices: p2pPrices } = await getTokenPricesWithSource();
+        p2pQuote = findSignalingPeer({
           fromToken:  fromSymbol.toUpperCase(),
           toToken:    toSymbol.toUpperCase(),
-          amount,
           fromChain,
           toChain,
+          amount,
+          prices:     p2pPrices,
+          senderWallet: fromAddress,
         });
       }
 

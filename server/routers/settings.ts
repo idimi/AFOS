@@ -42,12 +42,11 @@ export const settingsRouter = router({
 
       try {
         if (input.routeId === "intercomswap" || input.routeId === "best") {
-          const res = await fetch(`${ORACLE_API}/health`, {
-            signal: AbortSignal.timeout(5000),
-          });
+          // Test the local AFOS signaling server (no Oracle VM needed)
+          const { getSignalingPeerCount } = await import("../signaling.js");
+          const peerCount = getSignalingPeerCount();
           const latencyMs = Date.now() - start;
-          if (!res.ok) return { ok: false, latencyMs, message: `Oracle VM returned HTTP ${res.status}` };
-          return { ok: true, latencyMs, message: `IntercomSwap Oracle reachable (${latencyMs}ms)` };
+          return { ok: true, latencyMs, message: `AFOS P2P signaling server online — ${peerCount} peer${peerCount !== 1 ? "s" : ""} connected (${latencyMs}ms)` };
         }
 
         if (input.routeId === "jupiter") {

@@ -31,12 +31,25 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded";
+  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
   limitWarning?: string;
   limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
+  incomingRfqData?: {
+    rfqId: string;
+    fromToken: string;
+    toToken: string;
+    fromChain: string;
+    toChain: string;
+    amount: number;
+    outAmount: number;
+    rate: number;
+    requesterAlias?: string;
+    requesterPeerId?: string;
+    expiresAt: number;
+  };
 }
 
 export function makeWelcomeMessage(connected: boolean): ChatMessage {

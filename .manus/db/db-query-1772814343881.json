@@ -1,0 +1,26 @@
+{
+  "query": "\n-- Clear all swap/trade data\nDELETE FROM swap_analytics;\nDELETE FROM peer_reputation;\nDELETE FROM admin_audit_log;\n\n-- Verify cleared\nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'admin_audit_log', COUNT(*) FROM admin_audit_log\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \n-- Clear all swap/trade data\nDELETE FROM swap_analytics;\nDELETE FROM peer_reputation;\nDELETE FROM admin_audit_log;\n\n-- Verify cleared\nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'admin_audit_log', COUNT(*) FROM admin_audit_log\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps;\n",
+  "rows": [
+    {
+      "tbl": "admin_audit_log",
+      "cnt": "0"
+    },
+    {
+      "tbl": "swap_analytics",
+      "cnt": "0"
+    },
+    {
+      "tbl": "peer_reputation",
+      "cnt": "0"
+    },
+    {
+      "tbl": "htlc_swaps",
+      "cnt": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "tbl\tcnt\nadmin_audit_log\t0\nswap_analytics\t0\npeer_reputation\t0\nhtlc_swaps\t0\n",
+  "stderr": "",
+  "execution_time_ms": 524
+}

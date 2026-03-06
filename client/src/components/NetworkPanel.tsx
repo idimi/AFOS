@@ -185,7 +185,7 @@ function MyNodeTab() {
             <p className="font-semibold mb-0.5">Connect a wallet to become a peer</p>
             <p className="text-blue-400/70">
               When you connect Phantom, MetaMask, or any supported wallet, you automatically
-              join the IntercomSwap P2P network as a quoting peer — no server required.
+              join the AFOS P2P network as a quoting peer — no server required.
             </p>
           </div>
         </div>
@@ -425,7 +425,7 @@ function LivePeersTab({ fromToken, toToken, livePeers, activePeerCount }: {
         </div>
       )}
       <div className="pt-2 border-t border-white/10 flex items-center justify-between">
-        <span className="text-[10px] text-slate-400 font-medium">IntercomSwap DHT</span>
+        <span className="text-[10px] text-slate-400 font-medium">AFOS P2P DHT</span>
         <span className={`text-[10px] font-mono font-semibold ${
           activePeerCount > 0 ? "text-cyan-400" : "text-amber-400"
         }`}>

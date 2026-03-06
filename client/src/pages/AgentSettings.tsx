@@ -49,8 +49,8 @@ const SLIPPAGE_PRESETS = ["0.1", "0.5", "1.0", "2.0"];
 const ROUTES = [
   {
     id: "intercomswap",
-    label: "IntercomSwap P2P",
-    description: "Best rates via peer-to-peer atomic swaps (0.15% fee)",
+    label: "AFOS P2P",
+    description: "Best rates via agent-coordinated P2P atomic swaps (0.15% fee)",
     badge: "Active",
     badgeColor: "#6366f1",
   },

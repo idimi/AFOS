@@ -1439,7 +1439,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                       title={
                         peer.origin === 'hyperswarm'
                           ? 'Hyperswarm DHT — Full node · Oracle VM · Supports HTLC atomic swaps, channel routing, and relay bridging'
-                          : 'IntercomSwap DHT — Browser Light Peer · Wallet-connected · Supports P2P RFQ and HTLC atomic swaps'
+                          : 'AFOS P2P DHT — Browser Light Peer · Wallet-connected · Supports P2P RFQ and HTLC atomic swaps'
                       }
                       style={{
                         background: peer.origin === 'hyperswarm' ? 'rgba(16,185,129,0.12)' : 'rgba(6,182,212,0.12)',
@@ -1573,7 +1573,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
             {remotePeers.length === 0 ? (
               <>
                 <p className="text-[10px] text-muted-foreground">No remote peers connected</p>
-                <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm + IntercomSwap DHT...</p>
+                <p className="text-[9px] text-muted-foreground/60 mt-1">Scanning Hyperswarm + AFOS P2P DHT...</p>
               </>
             ) : (
               <>
@@ -1668,7 +1668,7 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, signalingConnected, signa
           <div className="w-1.5 h-1.5 rounded-full animate-pulse"
             style={{ background: lightPeerOnline ? "#06b6d4" : "#64748b", animationDelay: "0.5s" }} />
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] font-mono font-bold" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }}>IntercomSwap DHT</div>
+            <div className="text-[10px] font-mono font-bold" style={{ color: lightPeerOnline ? "#06b6d4" : "#64748b" }}>AFOS P2P DHT</div>
             <div className="text-[9px]" style={{ color: lightPeerOnline ? "rgba(6,182,212,0.6)" : "rgba(100,116,139,0.6)" }}>
               {lightPeerOnline ? `Light Peer · ${lightPeerId?.slice(0, 12)}… · Active` : "Connect wallet to activate"}
             </div>
@@ -2414,7 +2414,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
         <div>
           <h1 className="text-lg sm:text-xl font-bold text-foreground tracking-tight">P2P Network</h1>
           <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
-            Hyperswarm DHT + IntercomSwap DHT · Dual-layer P2P · Atomic swap channels
+            Hyperswarm DHT + AFOS P2P DHT · Dual-layer P2P · Atomic swap channels
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 sm:hidden">
             {livePeers.filter(p => p.online).length}/{livePeers.length} peers online
@@ -2451,9 +2451,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             <span className="text-[10px] font-mono text-emerald-400 hidden sm:inline">Hyperswarm</span>
             <span className="text-[10px] font-mono text-emerald-400 sm:hidden">HW</span>
           </div>
-          {/* IntercomSwap DHT badge — reflects Light Peer status */}
+          {/* AFOS P2P DHT badge — reflects Light Peer status */}
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg"
-            title={lightPeer.isOnline ? "IntercomSwap DHT — Light Peer connected" : "IntercomSwap DHT — Light Peer offline"}
+            title={lightPeer.isOnline ? "AFOS P2P DHT — Light Peer connected" : "AFOS P2P DHT — Light Peer offline"}
             style={{
               background: lightPeer.isOnline ? "rgba(6,182,212,0.1)" : "rgba(100,116,139,0.1)",
               border: `1px solid ${lightPeer.isOnline ? "rgba(6,182,212,0.25)" : "rgba(100,116,139,0.2)"}`,
@@ -3229,7 +3229,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
             <div className="space-y-1.5">
               {[
                 { label: "Channel", value: "intercomswap-rfq-mainnet" },
-                { label: "Protocol", value: "Hyperswarm + IntercomSwap DHT" },
+                { label: "Protocol", value: "Hyperswarm + AFOS P2P DHT" },
                 { label: "Node Key", value: oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Loading..." },
                 { label: "Escrow", value: "HTLC Atomic Swap" },
                 { label: "Settlement", value: "SOL · ETH · BTC" },

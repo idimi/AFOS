@@ -40,6 +40,7 @@ export type SignalingEvent =
   | "peer_left"
   | "peer_message"
   | "rfq_broadcast"
+  | "agent_rfq"
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
@@ -453,6 +454,11 @@ export class SignalingClient {
           fromPeerId: msg.fromPeerId,
           rfq: msg.rfq,
         });
+        break;
+
+      case "agent_rfq":
+        // Agent-dispatched RFQ — server pushes this directly to the matched peer
+        this.emit("agent_rfq", msg);
         break;
 
       case "error":

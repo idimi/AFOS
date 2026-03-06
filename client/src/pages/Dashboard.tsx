@@ -388,11 +388,11 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       return;
     }
 
-    // Non-Solana swaps (Ethereum) route through IntercomSwap — redirect user to Swaps page
+    // Non-Solana swaps (Ethereum) route through AFOS P2P — redirect user to Swaps page
     if (fromChain !== "solana") {
       addMessage({
         role: "assistant",
-        content: `This ${fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} swap routes via IntercomSwap. Head to the **Swaps** page with your ${fromChain === "ethereum" ? "MetaMask" : "Bitcoin"} wallet connected to confirm.`,
+        content: `This ${fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} swap routes via AFOS P2P. Head to the **Swaps** page with your ${fromChain === "ethereum" ? "MetaMask" : "Bitcoin"} wallet connected to confirm.`,
         type: "text",
       });
       return;
@@ -415,11 +415,12 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         amount:        quoteData.fromAmount,
       });
 
-      // P2P route: HTLC coordinated by LightPeerContext / Oracle VM
-      if (solResult.route === "IntercomSwap P2P") {
+      // P2P route: HTLC coordinated by agent via signaling server
+      if (solResult.route === "AFOS P2P") {
+        const peerLabel = solResult.p2pQuote?.peerAlias ?? solResult.p2pQuote?.peerId?.slice(0, 8) ?? "peer";
         addMessage({
           role: "assistant",
-          content: solResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Agent coordinating HTLC — please sign the transaction in your wallet.`,
           type: "text",
         });
         return;
@@ -597,7 +598,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
                     style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
                   >
                     {buildSwapTx.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    {buildSwapTx.isPending ? "Building tx…" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via IntercomSwap`}
+                    {buildSwapTx.isPending ? "Building tx…" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via AFOS P2P`}
                   </button>
                 </div>
               </div>
@@ -1031,7 +1032,7 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
     toAmt: (s.outAmount ?? 0).toFixed(4),
     status: allSwaps.pending.some(p => p.rfqId === s.rfqId) ? 'pending' as const : 'complete' as const,
     time: new Date(s.timestamp).toLocaleTimeString(),
-    protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `Jupiter DEX`,
+    protocol: s.route === 'p2p' ? 'AFOS P2P' : `Jupiter DEX`,
   }));
 
   const STATUS_STYLE = {
@@ -1996,7 +1997,7 @@ function MobileHeroBanner({ onNavigateToTerminal, onNavigateToChat }: {
   onNavigateToChat: () => void;
 }) {
   const [uptime, setUptime] = useState(0);
-  const [currentTask, setCurrentTask] = useState("Monitoring IntercomSwap DHT topic");
+  const [currentTask, setCurrentTask] = useState("Monitoring AFOS P2P DHT topic");
   const [walletTotal, setWalletTotal] = useState<number | null>(null);
   const haptic = useHaptic();
 
@@ -2385,7 +2386,7 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
     toAmt: (s.outAmount ?? 0).toFixed(4),
     status: 'complete' as 'complete' | 'pending' | 'failed',
     time: new Date(s.timestamp).toLocaleTimeString(),
-    protocol: s.route === 'p2p' ? 'IntercomSwap P2P' : `DEX: ${s.dexRoute}`,
+    protocol: s.route === 'p2p' ? 'AFOS P2P' : `DEX: ${s.dexRoute}`,
   }));
 
   const STATUS_STYLE = {

@@ -1,7 +1,7 @@
 /**
  * AFOS — Swaps Page
  * Design: Glassmorphism + Agentic Sci-Fi (dark navy-black, cyan-teal accents, gold financial values)
- * Protocol: IntercomSwap P2P atomic swap — RFQ → HTLC escrow → atomic settlement
+ * Protocol: AFOS P2P atomic swap — RFQ → HTLC escrow → atomic settlement
  * Chains: Bitcoin (on-chain), Ethereum, Solana
  * Fee structure: Platform 5% + Trade 10%, capped at 15% total
  */
@@ -499,7 +499,7 @@ function RecentSwaps() {
                         <span style={{ color: TOKEN_COLORS[swap.toToken] ?? '#06b6d4' }}>{(swap.outAmount ?? 0).toFixed(4)} {swap.toToken}</span>
                       </div>
                       <div className="text-[9px] text-muted-foreground/60">
-                        {swap.route === 'p2p' ? 'IntercomSwap P2P' : `DEX · ${swap.dexRoute || 'Jupiter'}`}
+                        {swap.route === 'p2p' ? 'AFOS P2P' : `DEX · ${swap.dexRoute || 'Jupiter'}`}
                       </div>
                     </div>
 
@@ -1665,7 +1665,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
 
       {/* Footer */}
       <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
-        <span className="text-[9px] text-slate-600">IntercomSwap DHT</span>
+        <span className="text-[9px] text-slate-600">AFOS P2P DHT</span>
         <div className="flex items-center gap-1.5">
           <div className={`w-1 h-1 rounded-full ${dataSource === "live" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
           <span className={`text-[9px] ${dataSource === "live" ? "text-emerald-500" : "text-amber-500"}`}>
@@ -2609,7 +2609,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
         <div>
           <AfosLogo size="md" />
           <p className="text-xs text-slate-500 mt-0.5 hidden sm:block">
-            P2P atomic swaps via IntercomSwap · RFQ → HTLC → Settlement
+            P2P atomic swaps via AFOS P2P · RFQ → HTLC → Settlement
           </p>
         </div>
           <div className="flex items-center gap-1.5 sm:gap-2">

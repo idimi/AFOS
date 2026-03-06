@@ -35,7 +35,7 @@ const CHAIN_COLORS: Record<string, string> = {
 };
 
 const ROUTE_COLORS: Record<string, string> = {
-  "IntercomSwap P2P": "#14F195",
+  "AFOS P2P": "#14F195",
   "Jupiter DEX":      "#9945FF",
   "0x Protocol":      "#6366f1",
   "1inch":            "#627EEA",
@@ -270,7 +270,7 @@ export default function SwapAnalytics() {
           <KpiCard
             label="P2P Ratio"
             value={`${summary?.p2pRatio ?? "0.0"}%`}
-            sub="IntercomSwap P2P"
+            sub="AFOS P2P"
             icon={Radio}
             color="#14F195"
             loading={loadingSummary}

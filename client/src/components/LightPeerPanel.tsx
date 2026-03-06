@@ -261,7 +261,7 @@ export default function LightPeerPanel() {
                     <p className="font-semibold mb-0.5">Connect a wallet to become a peer</p>
                     <p className="text-blue-400/70">
                       When you connect Phantom, MetaMask, or any supported wallet, you automatically
-                      join the IntercomSwap P2P network as a quoting peer — no server required.
+                      join the AFOS P2P network as a quoting peer — no server required.
                     </p>
                   </div>
                 </div>

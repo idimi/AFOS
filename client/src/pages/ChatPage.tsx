@@ -62,14 +62,14 @@ function TokenBadge({ symbol }: { symbol: string }) {
 }
 
 // ─── Route Badge ────────────────────────────────────────────────────────────
-// Shows which execution route was selected: IntercomSwap P2P, Jupiter, 0x, 1inch, or Direct HTLC
+// Shows which execution route was selected: AFOS P2P, Jupiter, 0x, 1inch, or Direct HTLC
 const ROUTE_STYLES: Record<string, { bg: string; text: string; border: string; dot: string; label: string }> = {
   p2p: {
     bg:     "rgba(20,241,149,0.12)",
     text:   "#14F195",
     border: "rgba(20,241,149,0.3)",
     dot:    "#14F195",
-    label:  "IntercomSwap P2P",
+    label:  "AFOS P2P",
   },
   jupiter: {
     bg:     "rgba(153,69,255,0.12)",
@@ -405,12 +405,16 @@ function MessageBubble({
   onCancelSwap,
   executingId,
   onRequestConnect,
+  onAcceptRfq,
+  onDeclineRfq,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
   onCancelSwap: (msgId: string) => void;
   executingId: string | null;
   onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
+  onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number) => void;
+  onDeclineRfq?: (rfqId: string) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -469,6 +473,52 @@ function MessageBubble({
           </div>
         )}
 
+        {/* Incoming P2P RFQ from agent matching */}
+        {msg.type === "incoming_rfq" && msg.incomingRfqData && (
+          <div className="w-full mt-2 rounded-xl border p-3 space-y-3" style={{ background: "rgba(99,102,241,0.08)", borderColor: "rgba(99,102,241,0.3)" }}>
+            <div className="flex items-center gap-2 text-xs font-semibold" style={{ color: "#818cf8" }}>
+              <span>🤝</span>
+              <span>AFOS Agent P2P Match</span>
+              <span className="ml-auto text-[10px] font-normal" style={{ color: "var(--muted-foreground)" }}>
+                Expires {new Date(msg.incomingRfqData.expiresAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg p-2" style={{ background: "var(--muted)" }}>
+                <p className="text-muted-foreground mb-0.5">You send</p>
+                <p className="font-semibold text-foreground">{msg.incomingRfqData.outAmount.toFixed(4)} {msg.incomingRfqData.toToken}</p>
+                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.toChain}</p>
+              </div>
+              <div className="rounded-lg p-2" style={{ background: "var(--muted)" }}>
+                <p className="text-muted-foreground mb-0.5">You receive</p>
+                <p className="font-semibold text-foreground">{msg.incomingRfqData.amount.toFixed(4)} {msg.incomingRfqData.fromToken}</p>
+                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.fromChain}</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  const rfq = msg.incomingRfqData!;
+                  onAcceptRfq?.(rfq.rfqId, rfq.fromToken, rfq.toToken, rfq.amount, rfq.outAmount);
+                }}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
+              >
+                Accept Swap
+              </button>
+              <button
+                onClick={() => {
+                  const rfq = msg.incomingRfqData!;
+                  onDeclineRfq?.(rfq.rfqId);
+                }}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
+                style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        )}
         {/* Tx success */}
         {msg.type === "tx_success" && msg.txHash && msg.quoteData && (
           <TxSuccessCard
@@ -547,6 +597,35 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Listen for agent_rfq events — show incoming swap card when agent matches this user as counterparty
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const rfq = (e as CustomEvent).detail as {
+        rfqId: string;
+        fromToken: string;
+        toToken: string;
+        fromChain: string;
+        toChain: string;
+        amount: number;
+        outAmount: number;
+        rate: number;
+        requesterAlias?: string;
+        requesterPeerId?: string;
+        expiresAt: number;
+      };
+      if (!rfq?.rfqId) return;
+      const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
+      addMessage({
+        role: "assistant",
+        type: "incoming_rfq",
+        content: `The AFOS agent matched you with **@${alias}** who wants to swap **${rfq.amount.toFixed(4)} ${rfq.fromToken}** for your **${rfq.outAmount.toFixed(4)} ${rfq.toToken}**. Do you want to accept this P2P swap?`,
+        incomingRfqData: rfq,
+      });
+    };
+    window.addEventListener("afos:agent-rfq", handler);
+    return () => window.removeEventListener("afos:agent-rfq", handler);
+  }, [addMessage]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
@@ -671,7 +750,7 @@ export default function ChatPage() {
         return;
       }
 
-      // ── Ethereum swaps: IntercomSwap P2P primary + 1inch fallback ────────────────
+      // ── Ethereum swaps: AFOS P2P primary + 1inch fallback ────────────────
       if (quoteData.fromChain === "ethereum" || quoteData.toChain === "ethereum") {
         const ethAddress = ethereum?.address ?? "";
         if (!ethAddress) {
@@ -700,14 +779,15 @@ export default function ChatPage() {
         }
 
         // P2P route: HTLC will be coordinated by LightPeerContext / Oracle VM
-        if (ethResult.route === "IntercomSwap P2P") {
-          toast.success("P2P peer matched!", { description: `Peer: ${ethResult.p2pQuote?.peerId ?? "unknown"}` });
+        if (ethResult.route === "AFOS P2P") {
+          const p2pQ = ethResult.p2pQuote as { peerId?: string; rfqId?: string } | null | undefined;
+          toast.success("P2P peer matched!", { description: `Peer: ${p2pQ?.peerId ?? "unknown"}` });
           setMessages(prev => prev.map(m =>
-            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: ethResult.p2pQuote?.rfqId ?? "p2p" } : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2pQ?.rfqId ?? "p2p" } : m
           ));
           addMessage({
             role: "assistant",
-            content: ethResult.nextStep ?? ethResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+            content: ethResult.nextStep ?? ethResult.message ?? "AFOS P2P peer matched. Coordinating HTLC via Oracle VM.",
             type: "text",
           });
           setExecutingId(null);
@@ -765,7 +845,7 @@ export default function ChatPage() {
         return;
       }
 
-      // ── Solana swaps: IntercomSwap P2P primary + Jupiter fallback ──────────────
+      // ── Solana swaps: AFOS P2P primary + Jupiter fallback ──────────────
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: effectivePublicKey!.toString(),
@@ -777,15 +857,16 @@ export default function ChatPage() {
         openId,
       });
 
-      // P2P route matched: HTLC coordinated by LightPeerContext
-      if (solResult.route === "IntercomSwap P2P") {
-        toast.success("P2P peer matched!", { description: `Peer: ${solResult.p2pQuote?.peerId ?? "unknown"}` });
+      // P2P route matched: HTLC coordinated by agent via signaling server
+      if (solResult.route === "AFOS P2P") {
+        const peerLabel = solResult.p2pQuote?.peerAlias ?? solResult.p2pQuote?.peerId?.slice(0, 8) ?? "peer";
+        toast.success("P2P peer matched!", { description: `Peer: @${peerLabel}` });
         setMessages(prev => prev.map(m =>
           m.id === msgId ? { ...m, type: "tx_success" as const, txHash: solResult.p2pQuote?.rfqId ?? "p2p" } : m
         ));
         addMessage({
           role: "assistant",
-          content: solResult.message ?? "IntercomSwap P2P peer matched. Coordinating HTLC via Oracle VM.",
+          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Agent coordinating HTLC — please sign the transaction in your wallet.`,
           type: "text",
         });
         setExecutingId(null);
@@ -946,6 +1027,13 @@ export default function ChatPage() {
               onCancelSwap={handleCancelSwap}
               executingId={executingId}
               onRequestConnect={openWalletForChain}
+              onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
+                const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;
+                handleSend(text);
+              }}
+              onDeclineRfq={(rfqId) => {
+                handleSend(`decline swap rfq:${rfqId}`);
+              }}
             />
           ) : null
         ))}
@@ -1027,7 +1115,7 @@ export default function ChatPage() {
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground text-center mt-2">
-            AFOS never holds your keys · All swaps are self-custodial · Powered by IntercomSwap P2P · Jupiter · 0x Protocol · 1inch
+            AFOS never holds your keys · All swaps are self-custodial · Powered by AFOS P2P · Jupiter · 0x Protocol · 1inch
           </p>
         </div>
       ) : (

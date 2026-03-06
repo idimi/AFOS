@@ -56,7 +56,7 @@ const CHAT_SEQUENCE: ChatStep[] = [
   {
     type: "agent_action",
     text: "Scanning P2P network for counterparties",
-    subtext: "Broadcasting RFQ to 12 peers on IntercomSwap relay",
+    subtext: "Broadcasting RFQ to 12 peers on AFOS P2P relay",
     icon: <Radio className="w-3.5 h-3.5" />,
     tag: "SCANNING",
     tagColor: "#06b6d4",
@@ -261,7 +261,7 @@ export function AgentChatHero() {
             <div>
               <p className="text-xs font-bold text-white leading-none">AFOS Agent</p>
               <p className="text-[9px] font-mono mt-0.5" style={{ color: "oklch(0.55 0.04 255)" }}>
-                P2P · Hyperswarm · Intercomswap Powered by Trac Network
+                P2P · Hyperswarm · AFOS P2P · Trac Network
               </p>
             </div>
           </div>

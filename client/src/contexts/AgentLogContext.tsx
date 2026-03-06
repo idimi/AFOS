@@ -72,7 +72,7 @@ const BOOT_ENTRIES: TerminalEntry[] = [
   },
   {
     id: "boot-3", ts: "00:00:00.120", level: "info",
-    message: "Connecting to IntercomSwap rendezvous…", tool: "intercomswap_peer_start",
+    message: "Connecting to AFOS P2P rendezvous…", tool: "intercomswap_peer_start",
   },
   {
     id: "boot-4", ts: "00:00:00.310", level: "success",

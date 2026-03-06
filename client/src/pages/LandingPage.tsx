@@ -402,7 +402,7 @@ export default function LandingPage() {
                   style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
                 >
                   <Network className="w-3 h-3" />
-                  Powered by Intercomswap
+                  Powered by AFOS P2P
                 </a>
               </motion.div>
 
@@ -690,7 +690,7 @@ export default function LandingPage() {
             <FeatureCard
               icon={Network}
               title="Peer network"
-              description="Connect directly with counterparties via the IntercomSwap P2P network. Build reputation, set custom rates, trade privately."
+              description="Connect directly with counterparties via the AFOS P2P network. Build reputation, set custom rates, trade privately."
               color="#14F195"
               delay={0.25}
             />
@@ -937,7 +937,7 @@ export default function LandingPage() {
                 style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
               >
                 <Network className="w-2.5 h-2.5" />
-                Powered by Intercomswap
+                Powered by AFOS P2P
               </div>
             </div>
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground">

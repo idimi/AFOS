@@ -98,8 +98,8 @@ function broadcastExcept(senderPeerId: string, message: object) {
   });
 }
 
-/** Broadcast to ALL connected peers */
-function broadcastAll(message: object) {
+/** Broadcast to ALL connected peers — exported for server-side use */
+export function broadcastAll(message: object) {
   const data = JSON.stringify(message);
   Array.from(peers.values()).forEach((peer) => {
     if (peer.ws.readyState === WebSocket.OPEN) {
@@ -108,8 +108,8 @@ function broadcastAll(message: object) {
   });
 }
 
-/** Send to a specific peer by ID */
-function sendToPeer(peerId: string, message: object): boolean {
+/** Send to a specific peer by ID — exported for server-side use (e.g. agent RFQ dispatch) */
+export function sendToPeer(peerId: string, message: object): boolean {
   const peer = peers.get(peerId);
   if (peer && peer.ws.readyState === WebSocket.OPEN) {
     peer.ws.send(JSON.stringify(message));

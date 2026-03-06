@@ -1643,3 +1643,91 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## og:image Logo Update
 - [x] Regenerate og:image using the actual AFOS logo instead of plain bold text
+
+## Pivot: Normal User Swap (No Agentic P2P HTLC)
+- [x] Disable Oracle VM Sync job via admin API/DB
+- [x] Clear all swap/trade/HTLC data from the database
+- [ ] Remove/hide agentic P2P HTLC UI elements from the app
+- [ ] Pivot swap flow to normal user-assisted swapping with AI agent
+
+## Agent-Coordinated P2P Swap System (Core Feature)
+
+### Architecture
+- User connects wallet → registers as light peer on signaling server
+- User asks agent to swap → agent queries signaling server for matching peer
+- If peer found: agent broadcasts RFQ, counterparty sees incoming swap card in their chat → both sign HTLCs
+- If no peer found: agent falls back to Jupiter (SOL), 0x (ETH), or 1inch (ETH/multi-chain)
+
+### Phase 1: Peer Matching in Chat Router
+- [ ] Add `findMatchingPeer()` helper in chat.ts — queries `/api/signaling/peers` for peers offering the reverse pair
+- [ ] Add peer matching step to `sendMessage` procedure — after parsing intent, check for P2P match before DEX quote
+- [ ] Return `route: "p2p"` with matched peer info when a peer is found
+- [ ] Return `route: "dex-fallback"` with DEX quote when no peer found
+
+### Phase 2: RFQ Broadcast & Counterparty Notification
+- [ ] Add `broadcastRfqToPeer()` server-side helper — sends RFQ to specific peer via signaling server WebSocket
+- [ ] Add `sendRfq` tRPC procedure — called by agent when a peer match is found
+- [ ] Add incoming RFQ listener in LightPeerContext — receives RFQ from signaling server
+- [ ] Show incoming swap card in counterparty's chat UI: "User wants to swap X SOL for your Y USDT — Accept/Reject?"
+
+### Phase 3: HTLC Coordination
+- [ ] When counterparty accepts: agent guides User A to sign HTLC lock tx (Phantom/Xverse/MetaMask)
+- [ ] After User A locks: agent notifies User B to sign counter-HTLC
+- [ ] Both signed: atomic settlement on-chain
+- [ ] Timeout/reject: both sides refund automatically
+
+### Phase 4: DEX Fallback
+- [ ] Jupiter fallback for SOL pairs (already partially implemented)
+- [ ] 0x API fallback for ETH pairs
+- [ ] 1inch fallback for multi-chain ETH pairs
+- [ ] Agent clearly communicates to user: "No peer found, routing via Jupiter DEX"
+
+### Phase 5: UI Updates
+- [ ] Chat shows "Searching for peer..." state while agent looks for match
+- [ ] Chat shows "Peer found! @alias wants to swap X for Y" when matched
+- [ ] Chat shows "No peer available, using Jupiter DEX" when falling back
+- [ ] Incoming RFQ card in chat for counterparty with Accept/Reject buttons
+- [x] Remove Oracle VM dependency from price feed — use CoinGecko/Jupiter directly (already done)
+
+## Full Agent-Coordinated Swap System (Revised Scope)
+
+The agent is the complete coordinator — no Oracle VM needed. Users connect wallet, talk to agent, agent does everything.
+
+### Agent Capabilities (all from chat)
+- [ ] Balance check: agent reads connected wallet balances and reports them
+- [ ] Price check: agent fetches live prices from CoinGecko/Binance
+- [ ] P2P peer search: agent queries signaling server registry for matching peer
+- [ ] RFQ dispatch: agent pushes swap request to matched peer via signaling WebSocket
+- [ ] DEX fallback: if no peer found, agent routes via Jupiter (SOL), 0x (ETH), 1inch (ETH fallback)
+- [ ] HTLC coordination: agent guides both users through signing (Solana, Ethereum, Bitcoin)
+- [ ] Cross-chain swaps: agent coordinates multi-chain HTLC (e.g. SOL → ETH, BTC → SOL)
+- [ ] Multi-chain swaps: agent handles any supported pair across all three chains
+
+### Server Changes
+- [x] Replace submitIntercomSwapRfq (Oracle VM) with findSignalingPeer() using getSignalingPeerList()
+- [x] Add sendAgentRfqToPeer() that uses sendToPeer() to push agent_rfq message to counterparty
+- [ ] Add tRPC procedure: chat.findPeerAndQuote — returns P2P match or DEX quote
+- [x] Update buildSwapTx, executeEthSwap, executeBtcSwap to use signaling peer matching instead of Oracle VM
+- [x] Add accept/decline RFQ handling in sendMessage (regex match on message text)
+- [ ] Add dedicated tRPC procedures: chat.acceptRfq and chat.rejectRfq
+
+### Client Changes
+- [x] Add agent_rfq handler to signalingClient message switch
+- [x] Add agent_rfq listener in LightPeerContext — fires CustomEvent for ChatPage
+- [ ] ChatPage: show "Searching for peer..." skeleton while agent looks
+- [x] ChatPage: show incoming RFQ card for counterparty (Accept/Reject buttons)
+- [ ] ChatPage: show "Peer found — @alias" badge on quote card when P2P matched
+- [ ] ChatPage: show "No peer available — using Jupiter/0x" when DEX fallback
+- [ ] sendMessage: pass senderPeerId from LightPeerContext so agent knows who is asking
+
+## Unified Swap Page (Trading Interface)
+- [x] Fix TypeScript errors in chat.ts from signaling peer matching changes
+- [x] Fix signaling.ts exports (getSignalingPeerList, sendToPeer)
+- [ ] Build unified SwapPage with TradingView chart (top-left), Live Order Book (bottom-left), Swap Panel (right), HTLC Escrow info, Recent Swaps feed, Network panel
+- [ ] Order Book shows live P2P quotes from signaling peers + DEX fallback indicator
+- [ ] Swap Panel: sell/buy inputs, token selectors, fee display, Agent Mode toggle, Connect Wallet button
+- [ ] HTLC Escrow section: lock time, refund window, escrow program, fee cap
+- [ ] Recent Swaps feed: live list of completed swaps with route badges (P2P / DEX)
+- [ ] Network panel: My Node status, Live Peers list from signaling server
+- [ ] Pair selector tabs: BTC/USDT, ETH/USDT, SOL/USDT, ETH/BTC, SOL/BTC
+- [ ] All data synced: order book, swap panel, chart, and agent all use the same selected pair

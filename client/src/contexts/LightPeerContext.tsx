@@ -2,7 +2,7 @@
  * LightPeerContext — Browser Wallet as a P2P Quoting Peer
  *
  * When a wallet is connected, the browser automatically registers as a
- * "light peer" on the IntercomSwap P2P network. No server or Oracle VM node
+ * "light peer" on the AFOS P2P network. No server or AFOS agent
  * is required — the wallet public key becomes the peer identity.
  *
  * Flow:
@@ -236,7 +236,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         }),
       });
       clearTimeout(timeoutId);
-    } catch { /* Oracle VM may not be reachable — signaling server is primary */ }
+    } catch { /* Oracle VM not needed 2014 signaling server is primary — signaling server is primary */ }
     announceToRelay(id, alias, prefsRef.current.acceptedPairs).catch(() => {});
   }, []);
 
@@ -337,6 +337,58 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...(rfq as object) } }));
     }));
 
+    // Handle agent-dispatched RFQs (agent matched this peer with a requester)
+    unsubs.push(client.on("agent_rfq", (data) => {
+      const rfq = data as {
+        rfqId: string;
+        fromToken: string;
+        toToken: string;
+        fromChain: string;
+        toChain: string;
+        amount: number;
+        outAmount: number;
+        rate: number;
+        requesterAlias?: string;
+        requesterPeerId?: string;
+        requesterWallet?: string;
+        expiresAt: number;
+      };
+      if (!rfq.rfqId || !rfq.fromToken || !rfq.toToken) return;
+      // Build IncomingRfq from agent_rfq data
+      const incoming: IncomingRfq = {
+        rfqId: rfq.rfqId,
+        fromToken: rfq.fromToken,
+        toToken: rfq.toToken,
+        amount: rfq.amount,
+        fromChain: rfq.fromChain ?? "solana",
+        toChain: rfq.toChain ?? "solana",
+        requestorPeer: rfq.requesterPeerId ?? rfq.requesterAlias ?? "unknown",
+        expiresAt: rfq.expiresAt,
+        suggestedRate: rfq.rate,
+        suggestedOutAmount: rfq.outAmount,
+        status: "pending",
+        receivedAt: Date.now(),
+      };
+      setIncomingRfqs(prev => {
+        if (prev.some(r => r.rfqId === rfq.rfqId)) return prev;
+        return [incoming, ...prev].slice(0, 20);
+      });
+      // Dispatch to chat page so the agent shows the incoming swap card
+      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: rfq }));
+      // Show toast notification
+      const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
+      toast(`Incoming swap from ${alias}`, {
+        description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} — Agent matched you`,
+        duration: 15000,
+        action: {
+          label: "View in Agent",
+          onClick: () => {
+            window.dispatchEvent(new CustomEvent("afos:open-agent-chat"));
+          },
+        },
+      });
+    }));
+
     // Connect and register
     client.connect();
     client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses);
@@ -344,7 +396,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Also do legacy HTTP announce (best-effort fallback)
     announce(peerId, peerAlias);
 
-    // Legacy heartbeat (for Oracle VM compatibility)
+    // Legacy heartbeat (best-effort fallback)
     heartbeatRef.current = setInterval(() => {
       announce(peerId, peerAlias);
       setLastHeartbeat(Date.now());
@@ -503,7 +555,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, []);
 
-  // ── Submit quote to Oracle VM ─────────────────────────────────────────────
+  // ── Submit quote to AFOS agent ─────────────────────────────────────────────
   const submitQuote = useCallback(async (rfq: IncomingRfq) => {
     try {
       await fetch(`${BACKEND_URL}/api/rfq/${rfq.rfqId}/quote`, {
@@ -520,7 +572,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           timestamp: Date.now(),
         }),
       });
-    } catch { /* best-effort — Oracle VM may not support this endpoint yet */ }
+    } catch { /* best-effort — best-effort 2014 agent handles matching */ }
   }, [peerId, peerAlias]);
 
   // ── Accept RFQ with in-browser HTLC signing ───────────────────────────────
@@ -532,7 +584,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       prev.map(r => r.rfqId === rfqId ? { ...r, status: "accepted" } : r)
     );
 
-    // Step 1: Submit quote to Oracle VM
+    // Step 1: Submit quote to AFOS agent
     await submitQuote(rfq);
 
     // Step 2: In-browser HTLC lock signing
@@ -664,7 +716,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           } else {
             // Wallet may not support direct tx — fall back gracefully
             setHtlcSigning({ rfqId, step: "settled" });
-            toast.success("Quote accepted", { description: "HTLC will be coordinated via Oracle VM." });
+            toast.success("Quote accepted", { description: "HTLC will be coordinated by AFOS agent." });
           }
         }
       } else if ((chain === "bitcoin" || chain === "btc") && bitcoin?.connected) {
@@ -716,18 +768,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             // Fallback: Oracle VM coordinates HTLC
             setHtlcSigning({ rfqId, step: "settled" });
             toast.success("Quote accepted", {
-              description: `Bitcoin HTLC will be coordinated via Oracle VM. (${msg.slice(0, 60)})`,
+              description: `Bitcoin HTLC will be coordinated by AFOS agent. (${msg.slice(0, 60)})`,
             });
           }
         }
       } else {
-        // No wallet signing available — Oracle VM will coordinate HTLC
+        // No wallet signing available — AFOS agent will coordinate HTLC
         setHtlcSigning({ rfqId, step: "locking" });
         await new Promise(r => setTimeout(r, 1000));
         setHtlcSigning({ rfqId, step: "settled" });
         toast.success(
           `Quote accepted — ${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.suggestedOutAmount.toFixed(4)} ${rfq.toToken}`,
-          { description: "HTLC escrow coordinated via Oracle VM node." }
+          { description: "HTLC escrow coordinated via AFOS agent." }
         );
       }
     } catch (err: unknown) {

@@ -431,7 +431,7 @@ export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: Rfq
 
 /**
  * GET /api/wallet
- * Returns Oracle VM node wallet balances for all 7 assets across 3 chains.
+ * Returns AFOS agent wallet balances for all 7 assets across 3 chains.
  * Normalises each asset to include chain field derived from the `network` field.
  */
 export async function getWallet(): Promise<WalletData> {
