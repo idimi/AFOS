@@ -1591,7 +1591,13 @@ function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
   // ── Shared price context (replaces local getPrices() polling) ──
-  const { prices: rawPrices, source: priceSource, lastUpdated } = usePrices();
+  const { prices: rawPrices, source: priceSource, lastUpdated, refresh: refreshPrices } = usePrices();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleManualRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    refreshPrices();
+    setTimeout(() => setIsRefreshing(false), 1500);
+  }, [refreshPrices]);
 
   // ── Staleness counter — ticks every second ──
   const [secsAgo, setSecsAgo] = useState<number | null>(null);
@@ -1799,12 +1805,23 @@ function MarketTicker() {
             <span className="text-[10px] font-mono text-red-400">Stale — {Math.floor(secsAgo / 60)}m ago</span>
           )}
         </div>
-        {priceSource === 'error' && (
-          <span className="text-[9px] font-mono text-red-400 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
-            feed error
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {priceSource === 'error' && (
+            <span className="text-[9px] font-mono text-red-400 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+              feed error
+            </span>
+          )}
+          <button
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+            title="Refresh prices now"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-mono transition-all hover:opacity-80 disabled:opacity-40"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+            <RefreshCw className={`w-2.5 h-2.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
     </div>
   );

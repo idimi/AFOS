@@ -19,8 +19,14 @@ import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import QRCode from "react-qr-code";
-import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
+import ConnectWalletModal from "@/components/ConnectWalletModal";
+
+// Admin wallet allowlist — set via VITE_ADMIN_WALLETS env var (comma-separated)
+const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
+  .split(",")
+  .map((w: string) => w.trim())
+  .filter(Boolean);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TreasuryWallet {
@@ -918,7 +924,7 @@ function UsersTab() {
 // ─── Auth Gate (replaces the old password gate) ───────────────────────────────
 // Shows a login prompt if not authenticated, or a "not admin" screen if logged
 // in but not an admin. The real enforcement happens server-side via adminProcedure.
-function AuthGate({ state }: { state: "loading" | "unauthenticated" | "not_admin" }) {
+function AuthGate({ state, onConnect }: { state: "loading" | "unauthenticated" | "not_admin"; onConnect?: () => void }) {
   return (
     <div className="min-h-screen flex items-center justify-center px-4"
       style={{ background: "var(--background)" }}>
@@ -949,26 +955,26 @@ function AuthGate({ state }: { state: "loading" | "unauthenticated" | "not_admin
             {state === "unauthenticated" && (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Sign in with your Manus account to continue.<br />
-                  Only accounts with <span className="text-red-400 font-semibold">admin</span> role can access this panel.
+                  Connect an authorised wallet to continue.<br />
+                  Only <span className="text-red-400 font-semibold">admin wallets</span> can access this panel.
                 </p>
-                <a
-                  href={getLoginUrl()}
+                <button
+                  onClick={onConnect}
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-sm font-bold transition-all"
                   style={{ background: "rgba(59,130,246,0.2)", border: "1px solid rgba(59,130,246,0.4)", color: "#60a5fa" }}>
-                  <LogIn className="w-4 h-4" />
-                  Sign in with Manus
-                </a>
+                  <Wallet className="w-4 h-4" />
+                  Connect Wallet
+                </button>
               </>
             )}
             {state === "not_admin" && (
               <>
                 <p className="text-xs text-muted-foreground">
-                  Your account does not have admin privileges.<br />
+                  Connected wallet is not on the admin allowlist.<br />
                   Contact the system owner to request access.
                 </p>
                 <p className="text-[9px] font-mono text-muted-foreground/50">
-                  Access is controlled via the <code>role</code> field in the users table.
+                  Access is controlled via the <code>VITE_ADMIN_WALLETS</code> environment variable.
                 </p>
               </>
             )}
@@ -2174,17 +2180,31 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 export default function AdminPanel() {
-  const { user, loading, logout } = useAuth();
+  const { phantomMultiChain } = useMultiChainWallet();
+  const [showConnectModal, setShowConnectModal] = React.useState(false);
 
-  // Still loading session
-  if (loading) return <AuthGate state="loading" />;
+  const connectedSolAddress = phantomMultiChain?.solanaAddress ?? null;
 
-  // Not logged in at all → show login prompt
-  if (!user) return <AuthGate state="unauthenticated" />;
+  // No wallet connected yet
+  if (!connectedSolAddress) {
+    return (
+      <>
+        <AuthGate state="unauthenticated" onConnect={() => setShowConnectModal(true)} />
+        {showConnectModal && (
+          <ConnectWalletModal
+            open={showConnectModal}
+            onClose={() => setShowConnectModal(false)}
+          />
+        )}
+      </>
+    );
+  }
 
-  // Logged in but not admin → show access denied
-  if (user.role !== "admin") return <AuthGate state="not_admin" />;
+  // Wallet connected but not in admin allowlist
+  if (!ADMIN_WALLETS.includes(connectedSolAddress)) {
+    return <AuthGate state="not_admin" />;
+  }
 
-  // Authenticated admin → show the dashboard
-  return <AdminDashboard onLogout={logout} />;
+  // Authorised admin wallet → show the dashboard
+  return <AdminDashboard onLogout={() => {}} />;
 }

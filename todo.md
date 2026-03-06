@@ -1574,3 +1574,13 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Expose lastUpdated from PriceContext and add "Updated Xs ago" staleness indicator to MarketTicker footer
 - [x] Replace inline USD value derivation in swap form with useTokenPrice() convenience hook
+
+## Fix /admin Route Auth
+
+- [x] Replace Manus OAuth session check with wallet-based owner check for /admin route
+
+- [x] Store 3 owner Solana wallets as VITE_ADMIN_WALLETS env var
+- [x] Replace useAuth() Manus OAuth check in AdminPanel with wallet-based allowlist check
+- [x] Update AuthGate to show "Connect wallet" instead of "Sign in with Manus"
+- [x] Add manual Refresh button to MarketTicker price staleness footer
+- [x] Add vitest for admin wallet allowlist logic (server/admin.wallet.test.ts)
