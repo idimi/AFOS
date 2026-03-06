@@ -1793,3 +1793,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix: Order Book shows "You LP" row with phantom 10 BTC/ETH/SOL offer before user connects wallet or requests quotes
 - [x] Fix: ownQuote now requires wallet to be connected AND token prices to be loaded before rendering the "You" row
+
+## Bug Fix: Oracle VM Agent Swaps Appearing in User Swap History
+
+- [x] Fix: RecentSwaps widget now reads from local DB (trpc.history.list) instead of Oracle VM /api/swaps proxy
+- [x] Fix: history.list and history.stats return empty when no wallet connected (no more anonymous global view)
+- [x] Fix: adminGlobalView flag added so admin "All Swaps" toggle still works
+- [x] Fix: Oracle VM sync job permanently disabled via admin_config.oracleSyncEnabled = 0 in DB
+- [x] Fix: Oracle VM restarted to clear stale swap history and peer registry (all in-memory)

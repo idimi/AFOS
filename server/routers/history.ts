@@ -37,6 +37,9 @@ export const historyRouter = router({
       search:          z.string().max(100).default(""),
       limit:           z.number().int().min(1).max(100).default(50),
       offset:          z.number().int().min(0).default(0),
+      // Admin-only flag: pass true to see all swaps regardless of wallet connection.
+      // When false (default) and no walletAddresses provided, returns empty.
+      adminGlobalView: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -44,6 +47,12 @@ export const historyRouter = router({
 
       const since = sinceDate(input.days);
       const isWalletScoped = input.walletAddresses.length > 0;
+
+      // Guard: never show all rows to unauthenticated / no-wallet users.
+      // Only admins explicitly passing adminGlobalView=true bypass this.
+      if (!isWalletScoped && !input.adminGlobalView) {
+        return { rows: [], total: 0, isWalletScoped: false };
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const conditions: any[] = [gte(swapAnalytics.createdAt, since)];
@@ -98,6 +107,7 @@ export const historyRouter = router({
     .input(z.object({
       walletAddresses: z.array(z.string()).default([]),
       days:            z.number().int().min(1).max(365).default(90),
+      adminGlobalView: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -105,6 +115,11 @@ export const historyRouter = router({
 
       const since = sinceDate(input.days);
       const isWalletScoped = input.walletAddresses.length > 0;
+
+      // Guard: return zero stats when no wallet connected and not admin global view
+      if (!isWalletScoped && !input.adminGlobalView) {
+        return { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
+      }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const conditions: any[] = [gte(swapAnalytics.createdAt, since)];

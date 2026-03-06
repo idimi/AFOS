@@ -408,8 +408,6 @@ function peerFromSwap(swap: RfqResult): string {
 }
 
 function RecentSwaps() {
-  const [swaps, setSwaps] = useState<RfqResult[]>([]);
-  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   // ── Shared price context (replaces local getPrices() polling) ──
@@ -418,19 +416,44 @@ function RecentSwaps() {
     Object.entries(rawPrices).map(([sym, p]) => [sym, p.usd])
   );
 
-  useEffect(() => {
-    const fetchSwaps = async () => {
-      try {
-        const data = await getSwaps();
-        setSwaps([...data.completed, ...data.pending].sort((a, b) => b.timestamp - a.timestamp).slice(0, 8));
-      } catch { /* keep previous */ } finally { setLoading(false); }
-    };
-    fetchSwaps();
-    const t = setInterval(fetchSwaps, 30000);
-    const unsubExec = onSSEEvent('swap_executed', () => { fetchSwaps(); });
-    const unsubRfq = onSSEEvent('rfq_result', () => { fetchSwaps(); });
-    return () => { clearInterval(t); unsubExec(); unsubRfq(); };
-  }, []);
+  // ── Pull only from local DB (browser-initiated swaps only, no Oracle VM agent swaps) ──
+  const { publicKey } = useWallet();
+  const { bitcoin, ethereum } = useMultiChainWallet();
+  const walletAddresses = useMemo(() => {
+    const addrs: string[] = [];
+    if (publicKey) addrs.push(publicKey.toString());
+    if (bitcoin?.address) addrs.push(bitcoin.address);
+    if (ethereum?.address) addrs.push(ethereum.address);
+    return addrs;
+  }, [publicKey, bitcoin?.address, ethereum?.address]);
+
+  const { data: historyData, isLoading: loading } = trpc.history.list.useQuery(
+    { walletAddresses, limit: 8, offset: 0, days: 90, status: 'all', search: '' },
+    { refetchInterval: 30000 }
+  );
+
+  // Map DB rows to the RfqResult-like shape used by the render below
+  const swaps = useMemo(() => {
+    if (!historyData?.rows) return [];
+    return historyData.rows.map(r => ({
+      rfqId:     r.rfqId ?? r.txId ?? String(r.id),
+      fromToken: r.fromToken,
+      toToken:   r.toToken,
+      inAmount:  parseFloat(r.amount ?? '0'),
+      outAmount: r.outAmount != null ? parseFloat(r.outAmount) : 0,
+      rate:      0,
+      route:     r.route?.toLowerCase().includes('p2p') ? 'p2p' : 'dex',
+      dexRoute:  r.route ?? undefined,
+      feeUsd:    r.platformFeeUsd != null ? parseFloat(r.platformFeeUsd) : undefined,
+      timestamp: r.createdAt ? new Date(r.createdAt).getTime() : Date.now(),
+      fromChain: r.fromChain ?? undefined,
+      toChain:   r.toChain ?? undefined,
+      peerId:    r.peerId ?? undefined,
+      status:    r.status,
+      platformFeeBps: 0,
+      p2pQuotes:       0,
+    } as RfqResult));
+  }, [historyData]);
 
   const handleCopyTx = (txHash: string, id: string) => {
     navigator.clipboard.writeText(txHash).then(() => {

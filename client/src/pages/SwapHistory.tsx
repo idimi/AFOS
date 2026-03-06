@@ -321,6 +321,9 @@ export default function SwapHistory() {
     : filters.status === "refunded" ? "refunded"
     : "all";
 
+  // adminGlobalView: true only when admin has explicitly toggled "All Swaps"
+  const adminGlobalView = isAdmin && showAllSwaps;
+
   // Fetch real data from tRPC — true server-side pagination with server-side search
   const { data: historyData, isLoading: historyLoading, isFetching, refetch } = trpc.history.list.useQuery({
     walletAddresses,
@@ -329,11 +332,13 @@ export default function SwapHistory() {
     search: debouncedSearch,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
+    adminGlobalView,
   }, { refetchInterval: 30000, placeholderData: (prev) => prev });
 
   const { data: statsData } = trpc.history.stats.useQuery({
     walletAddresses,
     days,
+    adminGlobalView,
   }, { refetchInterval: 30000 });
 
   // Map DB rows to SwapRecord

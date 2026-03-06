@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO admin_config (oracleSyncEnabled, createdAt, updatedAt)\nVALUES (0, NOW(), NOW())\nON DUPLICATE KEY UPDATE oracleSyncEnabled = 0, updatedAt = NOW();",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute INSERT INTO admin_config (oracleSyncEnabled, createdAt, updatedAt)\nVALUES (0, NOW(), NOW())\nON DUPLICATE KEY UPDATE oracleSyncEnabled = 0, updatedAt = NOW();",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 64
+}
