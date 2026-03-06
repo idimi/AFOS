@@ -2968,6 +2968,13 @@ export default function Dashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<"trading" | "network" | "privacy" | "appearance" | undefined>(undefined);
+
+  // Navigate to Settings and optionally jump to a specific tab
+  const navigateToSettings = (tab?: "trading" | "network" | "privacy" | "appearance") => {
+    setSettingsDefaultTab(tab);
+    setActivePage("settings");
+  };
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
@@ -3168,11 +3175,11 @@ export default function Dashboard() {
     if (activePage === "swaps") return <Swaps onNavigateToChat={(prefill) => {
       if (prefill) sessionStorage.setItem('afos_chat_prefill', prefill);
       setActivePage("chat");
-    }} />;
+    }} onNavigateToSettings={() => navigateToSettings("network")} />;
     if (activePage === "activity") return <SwapHistory />;
-    if (activePage === "settings") return <AgentSettings />;
+    if (activePage === "settings") return <AgentSettings defaultTab={settingsDefaultTab} />;
     if (activePage === "analytics") return <SwapAnalytics />;
-    if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} onNavigateToSettings={() => setActivePage("settings")} />;
+    if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} onNavigateToSettings={() => navigateToSettings("network")} />;
     if (activePage === "terminal") return <TerminalPage />;
     return null;
   };

@@ -1186,7 +1186,7 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
@@ -1194,6 +1194,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   fromAmount?: number; // current swap input amount for DEX depth comparison
   walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
   lpEnabled?: boolean; // whether the user has LP Mode enabled
+  onNavigateToSettings?: () => void;
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1462,12 +1463,21 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           <span className="text-amber-400 mt-0.5 flex-shrink-0">⚡</span>
           <span className="text-amber-300/80 leading-relaxed">
             You are not visible as an LP. Enable{" "}
-            <a
-              href="/settings"
-              className="underline text-amber-400 hover:text-amber-300 transition-colors"
-            >
-              LP Mode in Agent Settings
-            </a>{" "}
+            {onNavigateToSettings ? (
+              <button
+                onClick={onNavigateToSettings}
+                className="underline text-amber-400 hover:text-amber-300 transition-colors bg-transparent border-0 p-0 cursor-pointer font-inherit text-[11px]"
+              >
+                LP Mode in Agent Settings
+              </button>
+            ) : (
+              <a
+                href="/settings"
+                className="underline text-amber-400 hover:text-amber-300 transition-colors"
+              >
+                LP Mode in Agent Settings
+              </a>
+            )}{" "}
             to appear here and respond to peer RFQs.
           </span>
         </div>
@@ -2315,7 +2325,7 @@ function AutopostTab() {
 
 // ─── Main Swaps Page ──────────────────────────────────────────────────────────
 
-export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefill?: string) => void } = {}) {
+export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNavigateToChat?: (prefill?: string) => void; onNavigateToSettings?: () => void } = {}) {
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
@@ -3392,6 +3402,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             fromAmount={parseFloat(fromAmount) || undefined}
             walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
             lpEnabled={lightPeer.prefs?.enabled ?? false}
+            onNavigateToSettings={onNavigateToSettings}
           />
         </div>
 

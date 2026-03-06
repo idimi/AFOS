@@ -248,7 +248,7 @@ function SectionCard({
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────────
-export default function AgentSettings() {
+export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {}) {
   const { isAuthenticated } = useAuth();
   const lightPeer = useLightPeer();
 
@@ -257,8 +257,13 @@ export default function AgentSettings() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  // ── Active tab ────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabId>("trading");
+  // ── Active tab ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? "trading");
+
+  // If the caller changes defaultTab (e.g. navigating from Network page), jump to it
+  useEffect(() => {
+    if (defaultTab) setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   // ── Blocked peers ─────────────────────────────────────────────────────────────
   const { data: blockedPeersRaw = [], refetch: refetchBlocked } = trpc.peerBlocks.listBlocked.useQuery(

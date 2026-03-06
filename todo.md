@@ -1827,3 +1827,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Appearance tab: Theme selector, Danger Zone (reset settings, clear blocks/mutes)
 - [x] Save button present on Trading, Network, and Appearance tabs; LP Mode prefs (localStorage) auto-save on toggle
 - [x] AnimatePresence slide transition between tabs
+
+## Settings Deep-link: defaultTab Prop
+
+- [x] Add optional defaultTab prop to AgentSettings component
+- [x] Wire Network page "Open Agent Settings" button to pass defaultTab="network"
+- [x] Ensure Dashboard.tsx passes defaultTab through to AgentSettings when navigating
