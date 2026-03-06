@@ -18,7 +18,7 @@ import {
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
-import { AgentChatHero } from "@/components/AgentChatHero";
+import { AgentChatHero, MobileAgentHero } from "@/components/AgentChatHero";
 
 // ─── Animated counter ─────────────────────────────────────────────────────────
 function AnimatedNumber({ value, prefix = "", suffix = "", decimals = 0 }: {
@@ -227,7 +227,7 @@ export default function LandingPage() {
         }}
       >
         <a href="/" className="flex items-center group">
-          <AfosLogo size="lg" glow beta />
+          <AfosLogo size="lg" glow />
         </a>
 
         {/* Desktop nav links */}
@@ -439,7 +439,17 @@ export default function LandingPage() {
               </motion.div>
             </div>
 
-            {/* Right: animated agent chat hero (primary) */}
+            {/* Mobile: condensed agent hero (visible only on small screens) */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.6 }}
+              className="lg:hidden w-full"
+            >
+              <MobileAgentHero />
+            </motion.div>
+
+            {/* Desktop: full animated agent chat hero */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}

@@ -451,4 +451,128 @@ export function AgentChatHero() {
   );
 }
 
+// ─── Mobile condensed hero ──────────────────────────────────────────────────
+// Shows a single animated step at a time — compact enough for small screens.
+
+const MOBILE_STEPS = [
+  { tag: "SCANNING",  tagColor: "#06b6d4",  text: "Finding best peer for 0.1 BTC → SOL",   icon: <Radio className="w-4 h-4" /> },
+  { tag: "MATCHED",   tagColor: "#10b981",  text: "Peer matched · 79.74 SOL · Score 98/100", icon: <CheckCircle2 className="w-4 h-4" /> },
+  { tag: "LOCKING",   tagColor: "#f59e0b",  text: "Locking HTLC escrow on Bitcoin chain",    icon: <Lock className="w-4 h-4" /> },
+  { tag: "LOCKED",    tagColor: "#8b5cf6",  text: "Peer locked SOL escrow · Same hash",      icon: <Lock className="w-4 h-4" /> },
+  { tag: "SETTLING",  tagColor: "#06b6d4",  text: "Revealing secret → atomic settlement",   icon: <Unlock className="w-4 h-4" /> },
+  { tag: "SETTLED",   tagColor: "#10b981",  text: "Swap complete · 79.74 SOL received",     icon: <Zap className="w-4 h-4" /> },
+];
+
+export function MobileAgentHero() {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setIdx(i => (i + 1) % MOBILE_STEPS.length), 2000);
+    return () => clearInterval(t);
+  }, []);
+
+  const step = MOBILE_STEPS[idx];
+
+  return (
+    <div
+      className="relative w-full rounded-2xl overflow-hidden mt-6"
+      style={{
+        background: "oklch(0.09 0.02 260 / 0.95)",
+        border: "1px solid oklch(0.28 0.04 255 / 0.45)",
+        boxShadow: "0 0 40px oklch(0.72 0.18 195 / 0.08)",
+      }}
+    >
+      {/* Header bar */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5"
+        style={{ borderBottom: "1px solid oklch(0.28 0.04 255 / 0.35)" }}
+      >
+        <div className="flex items-center gap-2">
+          <img src="/afos-icon.png" alt="AFOS" className="w-6 h-6 rounded-lg object-contain ring-1 ring-white/10" />
+          <span className="text-xs font-bold text-white">AFOS Agent</span>
+          <span className="text-[9px] font-mono" style={{ color: "oklch(0.55 0.04 255)" }}>autonomous · P2P</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[9px] font-mono font-bold text-emerald-400">LIVE</span>
+        </div>
+      </div>
+
+      {/* Animated step */}
+      <div className="px-4 py-4">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={idx}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="flex items-center gap-3"
+          >
+            {/* Icon */}
+            <div
+              className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center"
+              style={{
+                background: `${step.tagColor}18`,
+                border: `1px solid ${step.tagColor}40`,
+              }}
+            >
+              <span style={{ color: step.tagColor }}>{step.icon}</span>
+            </div>
+            {/* Text */}
+            <div className="flex-1 min-w-0">
+              <span
+                className="inline-block text-[8px] font-mono font-bold px-1.5 py-0.5 rounded mb-1 uppercase tracking-widest"
+                style={{
+                  background: `${step.tagColor}18`,
+                  border: `1px solid ${step.tagColor}35`,
+                  color: step.tagColor,
+                }}
+              >
+                {step.tag}
+              </span>
+              <p className="text-sm font-medium text-white leading-snug">{step.text}</p>
+            </div>
+            {/* Step counter */}
+            <span className="text-[9px] font-mono shrink-0" style={{ color: "oklch(0.45 0.03 255)" }}>
+              {idx + 1}/{MOBILE_STEPS.length}
+            </span>
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Progress dots */}
+        <div className="flex items-center gap-1.5 mt-4 justify-center">
+          {MOBILE_STEPS.map((_, i) => (
+            <div
+              key={i}
+              className="rounded-full transition-all duration-300"
+              style={{
+                width: i === idx ? 16 : 6,
+                height: 4,
+                background: i === idx ? "oklch(0.72 0.18 195)" : "oklch(0.28 0.04 255 / 0.5)",
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* User prompt row */}
+      <div
+        className="px-4 py-2.5 flex items-center gap-2"
+        style={{ borderTop: "1px solid oklch(0.28 0.04 255 / 0.3)" }}
+      >
+        <span className="text-xs flex-1 truncate" style={{ color: "oklch(0.45 0.03 255)" }}>
+          swap 0.1 BTC to SOL
+        </span>
+        <div
+          className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: "oklch(0.72 0.18 195 / 0.15)", border: "1px solid oklch(0.72 0.18 195 / 0.3)" }}
+        >
+          <ArrowRight className="w-3 h-3" style={{ color: "oklch(0.72 0.18 195)" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default AgentChatHero;

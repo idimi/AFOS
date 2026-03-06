@@ -1431,3 +1431,10 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Add the live P2P swap card next to the "Trade without compromise" CTA section at the bottom of the landing page
 - [x] Add BETA badge at top-right of AFOS wordmark in navbar logo
+
+## BETA Badge & Mobile Hero Improvements
+
+- [x] Add BETA badge to every AfosLogo instance (sidebar, mobile drawer, footer, all pages)
+- [x] Centralise IS_BETA flag in shared/const.ts so it can be toggled in one place
+- [x] Animate BETA badge with subtle pulse/shimmer effect (CSS keyframes, non-distracting)
+- [x] Add condensed mobile hero animation in AgentChatHero for small screens
