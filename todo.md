@@ -1485,3 +1485,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Remove "● Agent online" dot from MiniChatWidget header — replaced with plain "Agent" label
 - [x] Remove live dot from AgentInsights card header (desktop + mobile)
 - [x] Keep topbar "● AFOS Agent" as single canonical live indicator
+
+## Wire Topbar ● AFOS Agent Dot to Health State
+- [x] Replace hardcoded `bg-emerald-400 animate-pulse` dot in topbar with TopbarAgentDot component
+- [x] TopbarAgentDot reads AFOS Agent service state from useStackHealth: green (live) / amber+pulse (degraded) / slate+pulse (checking) / red (offline)
+- [x] Added `title` attribute to dot for hover tooltip showing current state label

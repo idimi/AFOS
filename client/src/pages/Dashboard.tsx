@@ -2885,6 +2885,24 @@ function StackStatusPill() {
   );
 }
 
+/** Topbar ● dot — reflects AFOS Agent health from useStackHealth */
+function TopbarAgentDot() {
+  const { services } = useStackHealth();
+  const agentSvc = services.find(s => s.name === 'AFOS Agent');
+  const status = agentSvc?.status ?? 'checking';
+  const dotClass =
+    status === 'live'     ? 'bg-emerald-400 animate-pulse' :
+    status === 'degraded' ? 'bg-amber-400 animate-pulse' :
+    status === 'checking' ? 'bg-slate-400 animate-pulse' :
+                            'bg-red-500';
+  const label =
+    status === 'live'     ? 'AFOS Agent online' :
+    status === 'degraded' ? 'AFOS Agent degraded' :
+    status === 'checking' ? 'AFOS Agent checking…' :
+                            'AFOS Agent offline';
+  return <div className={`w-2 h-2 rounded-full ${dotClass}`} title={label} />;
+}
+
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
@@ -3123,7 +3141,7 @@ export default function Dashboard() {
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <TopbarAgentDot />
             <span className="text-sm text-muted-foreground font-mono hidden md:block">AFOS Agent</span>
             <span className="text-muted-foreground/40 hidden md:block">·</span>
             <TooltipProvider delayDuration={200}>
