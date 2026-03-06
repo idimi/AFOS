@@ -1479,3 +1479,9 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Mobile Overview Header Cleanup
 - [x] Hide badge row on mobile (redundant with topbar peer/stack pills) — badge row now hidden sm:hidden on mobile
 - [x] Add compact one-line status summary below logo on mobile: "N/5 live · N peers · NC" — OverviewStatusLine component, sm:hidden
+
+## Remove Duplicate "Live" Indicators
+- [x] Remove "● live" badge from PortfolioCard (Overview content area)
+- [x] Remove "● Agent online" dot from MiniChatWidget header — replaced with plain "Agent" label
+- [x] Remove live dot from AgentInsights card header (desktop + mobile)
+- [x] Keep topbar "● AFOS Agent" as single canonical live indicator

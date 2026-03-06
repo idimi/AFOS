@@ -514,8 +514,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground font-mono">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Agent online
+          Agent
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -1862,7 +1861,6 @@ function AgentInsights({ onNavigateToTerminal }: { onNavigateToTerminal: () => v
         <div className="flex items-center gap-2">
           <Gauge className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Agent Insights</h3>
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
         <button
           onClick={onNavigateToTerminal}
@@ -2087,10 +2085,6 @@ function MobilePortfolioStrip() {
         <p className="text-[10px] text-muted-foreground mt-0.5">
           {anyConnected ? `Live · ${connectedChains.join(" + ")} connected` : "Connect a wallet to see your balance"}
         </p>
-      </div>
-      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
-        <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-[10px] font-mono text-emerald-400">live</span>
       </div>
     </div>
   );
@@ -2455,7 +2449,6 @@ function MobileAgentActivity({ onNavigateToTerminal }: { onNavigateToTerminal: (
         <div className="flex items-center gap-2">
           <Gauge className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">Agent Insights</span>
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
         </div>
         <button
           onClick={onNavigateToTerminal}
