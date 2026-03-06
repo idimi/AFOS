@@ -1761,3 +1761,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Order Book: add 30s TTL to cached peer quotes — re-query stale rows automatically
 - [x] Auto-accept audit log: write each auto-accepted RFQ to swap_analytics so it appears in SwapHistory
 - [x] Slippage guard: compare peer's offered rate against oracle price before auto-accepting; reject if spread exceeds user's slippage tolerance
+
+## SSE p2p_rfq Slippage Guard
+
+- [x] LightPeerContext: apply oracle-rate slippage guard to SSE p2p_rfq auto-accept path (same logic as agent_rfq path)
+- [x] LightPeerContext: show warning toast when SSE auto-accept is blocked by slippage guard

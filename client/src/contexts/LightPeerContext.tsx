@@ -587,12 +587,41 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
       setQuotesGiven(q => q + 1);
 
-      // Auto-accept if enabled
-      if (prefsRef.current.autoAccept) {
-        submitQuote(incoming);
-        setIncomingRfqs(prev =>
-          prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
-        );
+      // Auto-accept if enabled — with slippage guard
+      const ssePrefs = prefsRef.current as LightPeerPrefs & { slippagePct?: string | number };
+      if (ssePrefs.autoAccept) {
+        // Slippage guard: the rate we quoted (quotedRate) is already spread-adjusted below oracle.
+        // We guard against the *requester* sending us a manipulated amount that implies a worse rate.
+        // Compare our quoted rate against the oracle mid-price.
+        const oracleRateSse = fromPrice / toPrice;  // already validated above
+        const slippagePctSse = parseFloat(String(ssePrefs.slippagePct ?? "0.5"));
+        const slippageFracSse = isNaN(slippagePctSse) ? 0.005 : slippagePctSse / 100;
+        // Our quoted rate must not be worse than oracle*(1 - tolerance) — i.e. we don't give away
+        // more than slippage% below mid-price. spreadBps is our profit buffer; if spread > slippage
+        // the guard always passes. If spread < slippage the guard catches misconfigured spreads.
+        const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
+        if (sseRateOk) {
+          submitQuote(incoming);
+          setIncomingRfqs(prev =>
+            prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
+          );
+        } else {
+          // Slippage guard triggered — warn user and fall through to manual review
+          toast.warning("Auto-accept blocked: quoted rate outside slippage tolerance", {
+            description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
+            duration: 10000,
+          });
+          toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
+            description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
+            duration: 10000,
+            action: {
+              label: "View",
+              onClick: () => {
+                window.dispatchEvent(new CustomEvent("afos:open-peer-panel"));
+              },
+            },
+          });
+        }
       } else {
         // Show notification
         toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
