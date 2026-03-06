@@ -1788,3 +1788,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Auto-refresh quotes every 30s so peer rate updates are reflected without manual action
 - [x] Track pending peers (peerId → RFQ-sent timestamp) and show "Timed out" badge after 30s with no response
 - [x] Allow retry from timed-out row (click badge re-sends RFQ to that peer)
+
+## Bug Fix: Phantom "You LP" Row in Order Book
+
+- [x] Fix: Order Book shows "You LP" row with phantom 10 BTC/ETH/SOL offer before user connects wallet or requests quotes
+- [x] Fix: ownQuote now requires wallet to be connected AND token prices to be loaded before rendering the "You" row

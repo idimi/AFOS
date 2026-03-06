@@ -3312,14 +3312,22 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             toToken={toToken}
             onAccept={handleAcceptOrder}
             ownQuote={(() => {
+              // Only show "You LP" row when:
+              // 1. A wallet is actually connected (can settle trades)
+              // 2. Light peer is online and LP mode is enabled
+              // 3. Token prices have loaded (avoid phantom "10 BTC" from price=0)
+              const walletActuallyConnected = connected || !!(ethWallet?.address) || !!(btcWallet?.address);
+              if (!walletActuallyConnected) return null;
               if (!lightPeer.isOnline || !lightPeer.prefs.enabled) return null;
               const pair = `${fromToken.symbol}/${toToken.symbol}`;
               if (!lightPeer.prefs.acceptedPairs.includes(pair)) return null;
+              // Require prices to have loaded before showing the row
+              if (fromToken.usdPrice <= 0 || toToken.usdPrice <= 0) return null;
               const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
               const spreadMultiplier = 1 + lightPeer.prefs.spreadBps / 10000;
               const myRate = baseRate * spreadMultiplier;
               const myFromAmount = Math.max(
-                lightPeer.prefs.minTradeUsd / (fromToken.usdPrice || 1),
+                lightPeer.prefs.minTradeUsd / fromToken.usdPrice,
                 0.001,
               );
               const myToAmount = parseFloat((myFromAmount * myRate).toFixed(6));
