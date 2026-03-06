@@ -1186,18 +1186,17 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
   ownQuote?: OrderBookEntry | null;
   fromAmount?: number; // current swap input amount for DEX depth comparison
+  walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
-  // Get our own peerId so we can pass it as requesterPeerId in requestPeerQuote.
-  // The LP's agent_rfq handler will skip the echo if rfq.requesterPeerId === their own peerId.
-  const { peerId: ownPeerId } = useLightPeer();
+  void getReputation; // available for future use
 
   // Debounce the fromAmount so the DEX quote only re-fetches 500ms after the user stops typing
   const [debouncedFromAmount, setDebouncedFromAmount] = useState<number | undefined>(fromAmount);
@@ -1228,11 +1227,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
   // Record quote events for reputation tracking
   const recordQuoteRef = useRef(recordQuote);
   recordQuoteRef.current = recordQuote;
-  // Start with empty — real SSE quotes will populate; fallback fills after 3s if none arrive
+  // Start with empty — real SSE p2p_quote events populate the order book
   const [orders, setOrders] = useState<OrderBookEntry[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
-  const [dataSource, setDataSource] = useState<"live" | "fallback">("live");
-  const hasRealQuotes = useRef(false);
+  const rfqSentRef = useRef(false);
 
   // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
@@ -1240,92 +1238,35 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
     staleTime: 8_000,
   });
 
-  const trpcUtils = trpc.useUtils();
-  // Track when each peer was last quoted (peerId → timestamp ms). Reset on pair change.
-  // A quote is considered stale after PEER_QUOTE_TTL_MS and will be re-requested.
-  const PEER_QUOTE_TTL_MS = 30_000;
-  const quotedPeersRef = useRef<Map<string, number>>(new Map());
-
-  // Pair change: clear orders, reset flags, and clear the quoted-peers map
+  // Pair change: clear orders and reset RFQ-sent flag
   useEffect(() => {
     setOrders([]);
-    hasRealQuotes.current = false;
-    setDataSource("live");
-    quotedPeersRef.current = new Map();
+    rfqSentRef.current = false;
   }, [fromToken.symbol, toToken.symbol]);
 
-  // Merge signaling peers into the order book when they support the current pair.
-  // For each new peer, proactively request a real quote via requestPeerQuote so the
-  // Rate column shows the actual offered rate instead of a placeholder.
+  // When wallet is connected and peers are online, broadcast a real RFQ so peers
+  // respond with genuine p2p_quote SSE events that populate the Rate column.
+  // Re-broadcast when the pair changes or new peers come online.
   useEffect(() => {
-    if (!signalingPeers || signalingPeers.length === 0) return;
+    if (!walletConnected) return;
     const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
     const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
-    const matchingPeers = signalingPeers.filter(p =>
+    const matchingPeers = (signalingPeers ?? []).filter(p =>
       p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
     );
     if (matchingPeers.length === 0) return;
-    // Convert signaling peers to OrderBookEntry rows (rate=0 = pending quote)
-    const peerEntries: OrderBookEntry[] = matchingPeers.map(p => ({
-      id: `sig_${p.peerId}`,
-      rfqId: undefined,
-      peer: p.alias || p.peerId.slice(0, 10),
-      fromSymbol: fromToken.symbol,
-      toSymbol: toToken.symbol,
-      fromAmount: 0,
-      toAmount: 0,
-      rate: 0,   // 0 = pending quote; spinner shown until real rate arrives
-      usdValue: 0,
-      expiresIn: Math.max(0, 90 - Math.round((Date.now() - p.lastHeartbeat) / 1000)),
-      latency: Math.max(1, Math.round((Date.now() - p.connectedAt) / 1000)),
-      reputation: Math.min(100, p.score ?? 80),
-    }));
-    hasRealQuotes.current = true;
-    setDataSource("live");
-    setOrders(prev => {
-      // Merge: keep existing SSE orders, add/update signaling peer rows
-      const sseOrders = prev.filter(o => !o.id.startsWith("sig_"));
-      return [...peerEntries, ...sseOrders].slice(0, 10).sort((a, b) => b.rate - a.rate);
-    });
-    // Proactively request real quotes from peers that are new or have stale quotes (TTL expired)
-    const quoteAmount = Math.max(fromAmount ?? 1, 1);
-    const now = Date.now();
-    matchingPeers.forEach(p => {
-      const lastQuotedAt = quotedPeersRef.current.get(p.peerId);
-      const isStale = !lastQuotedAt || (now - lastQuotedAt) >= PEER_QUOTE_TTL_MS;
-      if (!isStale) return;
-      // Mark as quoted now (before the async call so concurrent renders don't double-fire)
-      quotedPeersRef.current.set(p.peerId, now);
-      // Reset the row to rate=0 (spinner) so the user sees it's refreshing
-      if (lastQuotedAt) {
-        setOrders(prev => prev.map(o =>
-          o.id === `sig_${p.peerId}` ? { ...o, rate: 0 } : o
-        ));
-      }
-      trpcUtils.chat.requestPeerQuote.fetch({
-        peerId:          p.peerId,
-        fromToken:       fromToken.symbol,
-        toToken:         toToken.symbol,
-        amount:          quoteAmount,
-        // Pass our own peerId so the LP's agent_rfq handler can skip the echo
-        ...(ownPeerId ? { requesterPeerId: ownPeerId } : {}),
-      }).then(result => {
-        if (!result || result.rate <= 0) {
-          // Quote failed — remove placeholder so we don't show 0.0000
-          setOrders(prev => prev.filter(o => o.id !== `sig_${p.peerId}`));
-          return;
-        }
-        setOrders(prev => prev.map(o =>
-          o.id === `sig_${p.peerId}`
-            ? { ...o, rate: result.rate, toAmount: parseFloat(result.outAmount.toFixed(6)) }
-            : o
-        ));
-      }).catch(() => {
-        setOrders(prev => prev.filter(o => o.id !== `sig_${p.peerId}`));
-      });
-    });
+    // Broadcast a real RFQ to all online peers via the Oracle VM
+    const quoteAmount = Math.max(fromAmount ?? 0.001, 0.001);
+    rfqSentRef.current = true;
+    submitRfq(
+      fromToken.symbol,
+      toToken.symbol,
+      quoteAmount,
+      fromToken.chain as import("../lib/afosApi").SupportedChain,
+      toToken.chain as import("../lib/afosApi").SupportedChain,
+    ).catch(() => { /* best-effort — p2p_quote SSE events will arrive if peers respond */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signalingPeers, fromToken.symbol, toToken.symbol]);
+  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1359,8 +1300,6 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
         latency: d.latency ?? 20,
         reputation: 97.5,
       };
-      hasRealQuotes.current = true;
-      setDataSource("live");
       setFlash(entry.id);
       setTimeout(() => setFlash(null), 800);
       // Record this quote for peer reputation tracking
@@ -1375,41 +1314,23 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 
-  // Fallback: if no real quotes after 3s, seed with simulated data
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (!hasRealQuotes.current) {
-        setOrders(buildFallbackOrders(fromToken.symbol, toToken.symbol, baseRate));
-        setDataSource("fallback");
-      }
-    }, 3000);
-    return () => clearTimeout(fallbackTimer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromToken.symbol, toToken.symbol]);
-
-  // Tick down expiry every 4s; if fallback, occasionally refresh a row
+  // Tick down expiry every 4s; remove expired rows
   useEffect(() => {
     const interval = setInterval(() => {
       setOrders(prev => {
         if (prev.length === 0) return prev;
-        const updated = prev.map(o => ({
+        return prev.map(o => ({
           ...o,
           expiresIn: Math.max(0, o.expiresIn - 4),
         })).filter(o => o.expiresIn > 0);
-        // In fallback mode, replenish expired rows
-        if (!hasRealQuotes.current && updated.length < 5) {
-          const fresh = buildFallbackOrders(fromToken.symbol, toToken.symbol, baseRate);
-          return [...updated, ...fresh.slice(0, 7 - updated.length)].sort((a, b) => b.rate - a.rate);
-        }
-        return updated;
       });
     }, 4000);
     return () => clearInterval(interval);
-  }, [fromToken.symbol, toToken.symbol, baseRate]);
+  }, []);
 
   // Include own quote in best rate calculation
   const allRates = [
-    ...orders.map(o => o.rate).filter(r => r > 0),  // exclude pending (rate=0) entries
+    ...orders.map(o => o.rate).filter(r => r > 0),
     ...(ownQuote ? [ownQuote.rate] : []),
   ];
   const bestRate = allRates.length > 0 ? Math.max(...allRates) : baseRate;
@@ -1435,10 +1356,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-bold text-foreground">Live Order Book</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${dataSource === "live" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
-            {dataSource === "live" ? "P2P SSE quotes" : "Waiting for P2P quotes…"} · {fromToken.symbol}/{toToken.symbol}
+            {walletConnected ? "P2P SSE quotes" : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
         <div className="text-right">
@@ -1480,11 +1401,20 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
         <span>Action</span>
       </div>
 
-      {/* Empty state while waiting for first real quotes */}
-      {orders.length === 0 && (
+      {/* Empty state */}
+      {orders.length === 0 && !ownQuote && (
         <div className="flex flex-col items-center justify-center py-8 gap-2">
-          <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-          <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
+          {walletConnected ? (
+            <>
+              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
+            </>
+          ) : (
+            <>
+              <Wallet className="w-5 h-5 text-slate-500" />
+              <p className="text-[10px] text-slate-500">Connect wallet to request live quotes</p>
+            </>
+          )}
         </div>
       )}
 
@@ -1771,10 +1701,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
       <div className="px-4 py-2.5 border-t flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
         <span className="text-[9px] text-slate-600">AFOS P2P DHT</span>
         <div className="flex items-center gap-1.5">
-          <div className={`w-1 h-1 rounded-full ${dataSource === "live" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
-          <span className={`text-[9px] ${dataSource === "live" ? "text-emerald-500" : "text-amber-500"}`}>
-            {dataSource === "live" ? "SSE Live" : "Fallback"}
-          </span>
+          <div className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[9px] text-emerald-500">SSE Live</span>
         </div>
       </div>
     </div>
@@ -3360,6 +3288,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
               } satisfies OrderBookEntry;
             })()}
             fromAmount={parseFloat(fromAmount) || undefined}
+            walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
           />
         </div>
 

@@ -1771,3 +1771,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix: SSE p2p_rfq handler fires "Incoming swap from Order Book" toast for own-originated RFQs (user is requester, not responder)
 - [x] Fix: also suppress the toast when the user has no peerId (not connected to signaling)
+
+## Real P2P RFQ Flow in Order Book (Remove Synthetic Fallback)
+
+- [x] Remove requestPeerQuote synthetic server-side rate computation from Swaps.tsx LiveOrderBook
+- [x] Remove quotedPeersRef TTL logic (no longer needed without synthetic quotes)
+- [x] Replace with real SSE p2p_rfq broadcast to all online peers when user has wallet + swap amount
+- [x] Populate Rate column only from genuine p2p_quote SSE responses from peers
+- [x] Show "Connect wallet to request quotes" prompt in Order Book when wallet not connected
+- [x] Remove "Fallback" indicator from Order Book footer
+- [x] Show "Waiting for P2P quotes..." status while RFQ is in flight
