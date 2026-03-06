@@ -1801,3 +1801,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: adminGlobalView flag added so admin "All Swaps" toggle still works
 - [x] Fix: Oracle VM sync job permanently disabled via admin_config.oracleSyncEnabled = 0 in DB
 - [x] Fix: Oracle VM restarted to clear stale swap history and peer registry (all in-memory)
+
+## LP Mode Enhancements
+
+- [x] Add accepted trading pairs selector under LP Mode toggle in Agent Settings
+- [x] Add minimum trade size (USD) field under LP Mode toggle in Agent Settings
+- [x] Add LP Mode off banner to the Swaps page Order Book

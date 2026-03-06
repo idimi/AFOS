@@ -1186,13 +1186,14 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
   ownQuote?: OrderBookEntry | null;
   fromAmount?: number; // current swap input amount for DEX depth comparison
   walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
+  lpEnabled?: boolean; // whether the user has LP Mode enabled
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1451,6 +1452,26 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           )}
         </div>
       </div>
+
+      {/* LP Mode off banner — shown when user hasn't opted in as LP */}
+      {!lpEnabled && (
+        <div
+          className="mx-4 mt-3 mb-1 flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-[11px]"
+          style={{ background: "rgba(234,179,8,0.06)", border: "1px solid rgba(234,179,8,0.2)" }}
+        >
+          <span className="text-amber-400 mt-0.5 flex-shrink-0">⚡</span>
+          <span className="text-amber-300/80 leading-relaxed">
+            You are not visible as an LP. Enable{" "}
+            <a
+              href="/settings"
+              className="underline text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              LP Mode in Agent Settings
+            </a>{" "}
+            to appear here and respond to peer RFQs.
+          </span>
+        </div>
+      )}
 
       {/* Column headers — desktop only */}
       <div
@@ -3370,6 +3391,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
             })()}
             fromAmount={parseFloat(fromAmount) || undefined}
             walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
+            lpEnabled={lightPeer.prefs?.enabled ?? false}
           />
         </div>
 

@@ -607,13 +607,82 @@ export default function AgentSettings() {
             warning="LP Mode is ON. Your peer ID and accepted trading pairs are visible to all nodes on the network. Make sure your wallets are funded before accepting RFQs."
           />
           {lightPeer.prefs?.enabled && (
-            <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg"
-              style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-mono text-emerald-400">
-                {lightPeer.isOnline ? `Online · ${lightPeer.peerId?.slice(0, 16)}…` : "Connecting to P2P network…"}
-              </span>
-            </div>
+            <>
+              {/* Online status pill */}
+              <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg"
+                style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-[11px] font-mono text-emerald-400">
+                  {lightPeer.isOnline ? `Online · ${lightPeer.peerId?.slice(0, 16)}…` : "Connecting to P2P network…"}
+                </span>
+              </div>
+
+              {/* ── Accepted trading pairs ── */}
+              <div className="mt-4 space-y-2">
+                <p className="text-xs font-medium text-foreground">Accepted Trading Pairs</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Select which pairs you are willing to quote. Only peers requesting these pairs will send you RFQs.
+                </p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {["SOL/USDT", "SOL/USDC", "ETH/USDT", "ETH/USDC", "BTC/USDT", "BTC/ETH", "BTC/SOL"].map((pair) => {
+                    const accepted = (lightPeer.prefs?.acceptedPairs ?? []).includes(pair);
+                    return (
+                      <button
+                        key={pair}
+                        onClick={() => {
+                          const current = lightPeer.prefs?.acceptedPairs ?? [];
+                          const next = accepted
+                            ? current.filter((p) => p !== pair)
+                            : [...current, pair];
+                          // Must keep at least one pair
+                          if (next.length === 0) return;
+                          lightPeer.setPrefs({ acceptedPairs: next });
+                        }}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all hover:opacity-90 active:scale-95"
+                        style={{
+                          background: accepted ? "rgba(6,182,212,0.15)" : "rgba(100,116,139,0.08)",
+                          border: `1px solid ${accepted ? "rgba(6,182,212,0.4)" : "rgba(100,116,139,0.2)"}`,
+                          color: accepted ? "#06b6d4" : "var(--muted-foreground)",
+                        }}
+                      >
+                        {accepted ? "✓ " : ""}{pair}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-muted-foreground/60">
+                  {(lightPeer.prefs?.acceptedPairs ?? []).length} of 7 pairs selected
+                </p>
+              </div>
+
+              {/* ── Minimum trade size ── */}
+              <div className="mt-4 space-y-2">
+                <label className="text-xs font-medium text-foreground">Minimum Trade Size (USD)</label>
+                <p className="text-[11px] text-muted-foreground">
+                  RFQs below this value will be automatically ignored. Prevents dust and spam requests.
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground font-mono">$</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1_000_000}
+                    value={lightPeer.prefs?.minTradeUsd ?? 10}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (!isNaN(val) && val >= 1) {
+                        lightPeer.setPrefs({ minTradeUsd: val });
+                      }
+                    }}
+                    className="flex-1 rounded-xl px-3 py-2 text-sm font-mono bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+                    placeholder="10"
+                  />
+                </div>
+                <p className="text-[10px] text-muted-foreground/60">
+                  Current: ${lightPeer.prefs?.minTradeUsd ?? 10} minimum · Max: ${lightPeer.prefs?.maxTradeUsd ?? 10000}
+                </p>
+              </div>
+            </>
           )}
         </SectionCard>
 
