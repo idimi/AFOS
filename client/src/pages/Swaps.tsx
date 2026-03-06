@@ -29,7 +29,7 @@ import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { usePeerReputation } from "../hooks/usePeerReputation";
 import { AfosLogo } from "@/components/AfosLogo";
-import { usePrices } from "../contexts/PriceContext";
+import { usePrices, useTokenPrice } from "../contexts/PriceContext";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -2281,11 +2281,20 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const [quoteTimestamp, setQuoteTimestamp] = useState<number | null>(null);
   const [quoteSecondsLeft, setQuoteSecondsLeft] = useState<number>(QUOTE_TTL);
   const quoteCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Live token prices from shared PriceContext (replaces local getPrices() polling)
-  const { prices: _swapRawPrices } = usePrices();
-  const livePrices: Record<string, number> = Object.fromEntries(
-    Object.entries(_swapRawPrices).map(([sym, p]) => [sym, p.usd])
-  );
+  // Live token prices from shared PriceContext via useTokenPrice() hooks
+  const btcPrice = useTokenPrice("BTC");
+  const ethPrice = useTokenPrice("ETH");
+  const solPrice = useTokenPrice("SOL");
+  // Build a lookup map so existing code that references livePrices[symbol] still works
+  const livePrices: Record<string, number> = {
+    BTC:      btcPrice  ?? 0,
+    ETH:      ethPrice  ?? 0,
+    SOL:      solPrice  ?? 0,
+    USDT:     1,
+    USDC:     1,
+    "USDT-ETH": 1,
+    "USDC-SOL": 1,
+  };
   // Live P2P peers from SSE + getAgentStatus
   const [livePeers, setLivePeers] = useState<LivePeer[]>([]);
   const [activePeerCount, setActivePeerCount] = useState(0);
@@ -2423,11 +2432,9 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quoteTimestamp, liveQuote]);
 
-  // Derived values — use live prices when available
-  const fromTokenData = TOKENS.find(t => t.symbol === fromToken.symbol) || TOKENS[0];
-  const toTokenData = TOKENS.find(t => t.symbol === toToken.symbol) || TOKENS[3];
-  const fromPrice = livePrices[fromToken.symbol] || fromTokenData.usdPrice;
-  const toPrice = livePrices[toToken.symbol] || toTokenData.usdPrice;
+  // Derived values — use live prices from shared PriceContext
+  const fromPrice = livePrices[fromToken.symbol] ?? 0;
+  const toPrice = livePrices[toToken.symbol] ?? 0;
 
   const rate = toPrice > 0 ? fromPrice / toPrice : 0;
   const toAmount = liveQuote?.outAmount != null

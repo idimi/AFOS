@@ -1569,3 +1569,8 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire PriceProvider into App.tsx provider tree
 - [x] NetworkPage real latency: already fully implemented via handlePing() + pingPeer() + 30s auto-re-ping loop
 - [x] TypeScript check: 0 errors
+
+## Price Staleness Indicator + useTokenPrice Hook
+
+- [x] Expose lastUpdated from PriceContext and add "Updated Xs ago" staleness indicator to MarketTicker footer
+- [x] Replace inline USD value derivation in swap form with useTokenPrice() convenience hook

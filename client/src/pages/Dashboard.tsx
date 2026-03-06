@@ -1591,7 +1591,19 @@ function MarketTicker() {
   const { theme } = useTheme();
   const tvTheme = theme === "light" ? "light" : "dark";
   // ── Shared price context (replaces local getPrices() polling) ──
-  const { prices: rawPrices, source: priceSource } = usePrices();
+  const { prices: rawPrices, source: priceSource, lastUpdated } = usePrices();
+
+  // ── Staleness counter — ticks every second ──
+  const [secsAgo, setSecsAgo] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => {
+      if (!lastUpdated) { setSecsAgo(null); return; }
+      setSecsAgo(Math.floor((Date.now() - lastUpdated.getTime()) / 1000));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lastUpdated]);
   const prices = {
     BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
     ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
@@ -1769,7 +1781,31 @@ function MarketTicker() {
       </AnimatePresence>
 
       {/* Bottom padding when no chart */}
-      {!activePair && <div className="pb-3" />}
+      {!activePair && <div className="pb-1" />}
+
+      {/* ── Staleness footer ── */}
+      <div className="flex items-center justify-between px-4 py-2 border-t border-border/40 mt-1">
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-muted-foreground" />
+          {secsAgo === null ? (
+            <span className="text-[10px] font-mono text-muted-foreground">Waiting for data…</span>
+          ) : secsAgo < 5 ? (
+            <span className="text-[10px] font-mono text-emerald-400">Just updated</span>
+          ) : secsAgo < 35 ? (
+            <span className="text-[10px] font-mono text-emerald-400">Updated {secsAgo}s ago</span>
+          ) : secsAgo < 90 ? (
+            <span className="text-[10px] font-mono text-amber-400">Updated {secsAgo}s ago</span>
+          ) : (
+            <span className="text-[10px] font-mono text-red-400">Stale — {Math.floor(secsAgo / 60)}m ago</span>
+          )}
+        </div>
+        {priceSource === 'error' && (
+          <span className="text-[9px] font-mono text-red-400 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+            feed error
+          </span>
+        )}
+      </div>
     </div>
   );
 }
