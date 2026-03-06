@@ -13,6 +13,8 @@
  */
 
 import { IS_BETA } from "@shared/const";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 const WORDMARK_URL =
   "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/afos-wordmark-clean_83ee0809.png";
@@ -42,6 +44,20 @@ const sizeMap: Record<
 
 export function AfosLogo({ size = "md", showWordmark = true, className = "", glow = false }: AfosLogoProps) {
   const s = sizeMap[size];
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // In light mode the wordmark PNG (white text on transparent) is nearly invisible.
+  // Apply invert + hue-rotate to turn it into a dark navy/slate colour that reads well
+  // on a white background, while keeping the cyan accent tint.
+  const isLight = mounted && resolvedTheme === "light";
+  const wordmarkFilter = isLight
+    ? "invert(1) hue-rotate(180deg) brightness(0.15) saturate(1.4)"
+    : glow
+    ? "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.25))"
+    : undefined;
 
   return (
     <>
@@ -84,14 +100,14 @@ export function AfosLogo({ size = "md", showWordmark = true, className = "", glo
               src={WORDMARK_URL}
               alt="AFOS"
               className={`${s.wordmark} object-contain shrink-0`}
-              style={glow ? { filter: "drop-shadow(0 0 6px oklch(0.72 0.18 195 / 0.25))" } : undefined}
+              style={{ filter: wordmarkFilter }}
             />
             {IS_BETA && (
               <span
                 className={`afos-beta-badge absolute ${s.badgeOffset} ${s.badge} font-black tracking-widest rounded`}
                 style={{
                   border: "1px solid oklch(0.72 0.18 195 / 0.55)",
-                  color: "oklch(0.72 0.18 195)",
+                  color: isLight ? "oklch(0.35 0.18 195)" : "oklch(0.72 0.18 195)",
                   lineHeight: 1,
                   letterSpacing: "0.12em",
                 }}

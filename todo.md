@@ -1588,3 +1588,12 @@ The Overview should be an **operator's command center** — a single glance tell
 ## USD Value in "You Receive" Panel
 
 - [x] Make toUsd value in Swaps "You receive" panel more prominent (larger font, green colour) to match "You pay" USD display
+
+## Production Build Fix
+
+- [ ] Diagnose and fix blank page issue when site is published to production
+
+## AFOS Logo Light Mode Fix
+
+- [x] Fix AFOS wordmark PNG visibility in light mode — apply CSS filter (invert+hue-rotate+brightness) so white-on-transparent PNG reads as dark navy on white background
+- [x] Fix BETA badge colour in light mode to use darker cyan tint
