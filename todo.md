@@ -1601,3 +1601,4 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Scroll-to-Top on Route Change
 
 - [x] Fix: navigating to /app via "Launch App" does not scroll to top — add scroll-to-top on route change
+- [x] Fix: scroll-to-top on mobile — reset inner scrollable container (contentRef) on Dashboard mount and page change

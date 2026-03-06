@@ -2968,6 +2968,7 @@ export default function Dashboard() {
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   // Invite link: ?peer=<peerId> in hash navigates to Network page and highlights the peer
   // Initialise invitePeerId from hash OR sessionStorage (persists across wallet connect flow)
@@ -2975,6 +2976,12 @@ export default function Dashboard() {
     const stored = sessionStorage.getItem('afos:invite-peer');
     return stored ?? null;
   });
+
+  // Reset scroll position to top when Dashboard mounts or activePage changes
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, left: 0 });
+    window.scrollTo({ top: 0, left: 0 });
+  }, [activePage]);
 
   // Auto-navigate to Network page if there's a stored invite peer (e.g. after wallet connect redirect)
   useEffect(() => {
@@ -3414,11 +3421,11 @@ export default function Dashboard() {
 
         {/* Content */}
         {subPage ? (
-          <main className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>{subPage}</main>
+          <main ref={contentRef} className="flex-1 overflow-y-auto min-h-0" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>{subPage}</main>
         ) : (
           /* ── OVERVIEW ── */
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-auto">
+            <div ref={!subPage ? contentRef : undefined} className="flex-1 overflow-auto">
 
               {/* ── OVERVIEW PAGE HEADER (desktop + mobile) ── */}
               <div className="max-w-[1280px] mx-auto px-4 sm:px-5 pt-4 sm:pt-5 pb-0">
