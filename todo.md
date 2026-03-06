@@ -1755,3 +1755,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] AgentSettings: add auto-accept P2P RFQs section card with toggle and max USD input
 - [x] AgentSettings: sync DB autoAcceptRfq into LightPeerPrefs.autoAccept so existing auto-accept logic works
 - [x] LightPeerContext: add auto-accept check to agent_rfq handler (not just SSE handler)
+
+## Order Book TTL, Auto-Accept Audit Log, Slippage Guard
+
+- [x] Order Book: add 30s TTL to cached peer quotes — re-query stale rows automatically
+- [x] Auto-accept audit log: write each auto-accepted RFQ to swap_analytics so it appears in SwapHistory
+- [x] Slippage guard: compare peer's offered rate against oracle price before auto-accepting; reject if spread exceeds user's slippage tolerance

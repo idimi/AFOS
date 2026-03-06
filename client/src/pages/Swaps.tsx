@@ -1238,15 +1238,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
   });
 
   const trpcUtils = trpc.useUtils();
-  // Track which peers we've already requested quotes from (reset on pair change)
-  const quotedPeersRef = useRef<Set<string>>(new Set());
+  // Track when each peer was last quoted (peerId → timestamp ms). Reset on pair change.
+  // A quote is considered stale after PEER_QUOTE_TTL_MS and will be re-requested.
+  const PEER_QUOTE_TTL_MS = 30_000;
+  const quotedPeersRef = useRef<Map<string, number>>(new Map());
 
-  // Pair change: clear orders, reset flags, and clear the quoted-peers set
+  // Pair change: clear orders, reset flags, and clear the quoted-peers map
   useEffect(() => {
     setOrders([]);
     hasRealQuotes.current = false;
     setDataSource("live");
-    quotedPeersRef.current = new Set();
+    quotedPeersRef.current = new Map();
   }, [fromToken.symbol, toToken.symbol]);
 
   // Merge signaling peers into the order book when they support the current pair.
@@ -1282,11 +1284,21 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
       const sseOrders = prev.filter(o => !o.id.startsWith("sig_"));
       return [...peerEntries, ...sseOrders].slice(0, 10).sort((a, b) => b.rate - a.rate);
     });
-    // Proactively request real quotes from peers we haven't quoted yet
+    // Proactively request real quotes from peers that are new or have stale quotes (TTL expired)
     const quoteAmount = Math.max(fromAmount ?? 1, 1);
+    const now = Date.now();
     matchingPeers.forEach(p => {
-      if (quotedPeersRef.current.has(p.peerId)) return;
-      quotedPeersRef.current.add(p.peerId);
+      const lastQuotedAt = quotedPeersRef.current.get(p.peerId);
+      const isStale = !lastQuotedAt || (now - lastQuotedAt) >= PEER_QUOTE_TTL_MS;
+      if (!isStale) return;
+      // Mark as quoted now (before the async call so concurrent renders don't double-fire)
+      quotedPeersRef.current.set(p.peerId, now);
+      // Reset the row to rate=0 (spinner) so the user sees it's refreshing
+      if (lastQuotedAt) {
+        setOrders(prev => prev.map(o =>
+          o.id === `sig_${p.peerId}` ? { ...o, rate: 0 } : o
+        ));
+      }
       trpcUtils.chat.requestPeerQuote.fetch({
         peerId:    p.peerId,
         fromToken: fromToken.symbol,

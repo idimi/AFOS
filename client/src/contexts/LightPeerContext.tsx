@@ -376,14 +376,26 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // Dispatch to chat page so the agent shows the incoming swap card
       window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: rfq }));
       // Auto-accept if enabled and within configured limits
-      const prefs_ = prefsRef.current as LightPeerPrefs & { autoAcceptRfq?: boolean; autoAcceptMaxUsd?: number };
+      const prefs_ = prefsRef.current as LightPeerPrefs & {
+        autoAcceptRfq?: boolean;
+        autoAcceptMaxUsd?: number;
+        slippagePct?: string | number;
+      };
       const autoAcceptEnabled = prefs_.autoAcceptRfq ?? prefs_.autoAccept;
       const autoAcceptCap = (prefs_.autoAcceptMaxUsd && prefs_.autoAcceptMaxUsd > 0)
         ? prefs_.autoAcceptMaxUsd
         : prefs_.maxTradeUsd;
-      // Estimate USD value: use outAmount * rate as a rough proxy
-      const tradeUsdEstimate = rfq.outAmount > 0 ? rfq.outAmount * rfq.rate : rfq.amount * rfq.rate;
-      if (autoAcceptEnabled && tradeUsdEstimate <= autoAcceptCap) {
+      // Estimate USD value of the trade
+      const fromPriceAA = pricesRef.current[rfq.fromToken?.toUpperCase() ?? ""] ?? 0;
+      const tradeUsdEstimate = fromPriceAA > 0 ? rfq.amount * fromPriceAA : rfq.outAmount * rfq.rate;
+      // Slippage guard: compare peer's offered rate against oracle mid-price
+      const toPriceAA = pricesRef.current[rfq.toToken?.toUpperCase() ?? ""] ?? 0;
+      const oracleRate = (fromPriceAA > 0 && toPriceAA > 0) ? fromPriceAA / toPriceAA : 0;
+      const slippagePctNum = parseFloat(String(prefs_.slippagePct ?? "0.5"));
+      const slippageFrac = isNaN(slippagePctNum) ? 0.005 : slippagePctNum / 100;
+      // Peer rate must be within slippage tolerance of oracle rate
+      const rateOk = oracleRate <= 0 || rfq.rate >= oracleRate * (1 - slippageFrac);
+      if (autoAcceptEnabled && tradeUsdEstimate <= autoAcceptCap && rateOk) {
         submitQuote(incoming);
         setIncomingRfqs(prev =>
           prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
@@ -392,6 +404,45 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         toast.success(`Auto-accepted swap from ${autoAlias}`, {
           description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken}`,
           duration: 8000,
+        });
+        // Write to swap_analytics audit log via tRPC mutation (fire-and-forget)
+        void fetch("/api/trpc/chat.logAutoAcceptedRfq", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            "0": {
+              json: {
+                rfqId:     rfq.rfqId,
+                fromToken: rfq.fromToken,
+                toToken:   rfq.toToken,
+                fromChain: rfq.fromChain,
+                toChain:   rfq.toChain,
+                amount:    rfq.amount,
+                outAmount: rfq.outAmount,
+                rate:      rfq.rate,
+                peerAlias: rfq.requesterAlias,
+                peerId:    rfq.requesterPeerId,
+              },
+            },
+          }),
+        }).catch(() => { /* best-effort */ });
+      } else if (autoAcceptEnabled && !rateOk) {
+        // Slippage guard triggered — notify user and fall through to manual review
+        const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
+        toast.warning(`Auto-accept blocked: rate outside slippage tolerance`, {
+          description: `Peer offered ${rfq.rate.toFixed(6)} vs oracle ${oracleRate.toFixed(6)} (>${(slippageFrac * 100).toFixed(2)}% slip)`,
+          duration: 10000,
+        });
+        toast(`Incoming swap from ${alias}`, {
+          description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} — Agent matched you`,
+          duration: 15000,
+          action: {
+            label: "View in Agent",
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent("afos:open-agent-chat"));
+            },
+          },
         });
       } else {
         // Show toast notification for manual review

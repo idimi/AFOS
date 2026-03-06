@@ -2107,6 +2107,52 @@ export const chatRouter = router({
     }),
 
   /**
+   * Write an auto-accepted P2P RFQ to swap_analytics so the user can audit
+   * what the agent accepted on their behalf in SwapHistory.
+   */
+  logAutoAcceptedRfq: publicProcedure
+    .input(z.object({
+      rfqId:         z.string(),
+      fromToken:     z.string(),
+      toToken:       z.string(),
+      fromChain:     z.string().optional(),
+      toChain:       z.string().optional(),
+      amount:        z.number(),
+      outAmount:     z.number(),
+      rate:          z.number(),
+      peerAlias:     z.string().optional(),
+      peerId:        z.string().optional(),
+      walletAddress: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const fromChain = (input.fromChain ?? defaultChain(input.fromToken)) as SupportedChain;
+      const toChain   = (input.toChain   ?? defaultChain(input.toToken))   as SupportedChain;
+      const { prices } = await getTokenPricesWithSource();
+      const fromSym   = input.fromToken.toUpperCase();
+      const fromPrice = prices[fromSym] ?? (fromSym.includes("USD") ? 1 : 0);
+      const amountUsd = fromPrice > 0 ? (input.amount * fromPrice).toFixed(4) : undefined;
+      const feeBps    = P2P_FEE_BPS;
+      const feeOut    = input.outAmount * (feeBps / 10_000);
+      await recordSwapAnalytic({
+        fromChain,
+        toChain,
+        fromToken:     input.fromToken,
+        toToken:       input.toToken,
+        amount:        input.amount.toFixed(8),
+        amountUsd,
+        route:         "AFOS P2P (auto-accepted)",
+        status:        "completed",
+        peerId:        input.peerId ?? input.peerAlias,
+        feeBps,
+        feeAmountOut:  feeOut.toFixed(8),
+        outAmount:     input.outAmount.toFixed(8),
+        walletAddress: input.walletAddress,
+        rfqId:         input.rfqId,
+      });
+      return { ok: true };
+    }),
+
+  /**
    * Return the current live signaling peer list for the Order Book.
    * Each peer includes their peerId, alias, accepted pairs, wallet addresses,
    * connection time, and last heartbeat. No WebSocket refs are exposed.

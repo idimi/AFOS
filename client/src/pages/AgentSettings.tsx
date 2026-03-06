@@ -396,6 +396,16 @@ export default function AgentSettings() {
         localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
       } catch { /* best-effort */ }
     }
+    // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
+    // uses the user's configured tolerance when auto-accepting RFQs
+    if ('slippagePct' in remoteSettings) {
+      try {
+        const stored = localStorage.getItem("afos_light_peer_prefs");
+        const parsed = stored ? JSON.parse(stored) : {};
+        parsed.slippagePct = remoteSettings.slippagePct;
+        localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
+      } catch { /* best-effort */ }
+    }
   }, [remoteSettings]);
 
   const effectiveSlippage = customSlippage || slippage;
