@@ -1,0 +1,9 @@
+{
+  "query": "\nSET FOREIGN_KEY_CHECKS = 0;\nTRUNCATE TABLE admin_audit_log;\nTRUNCATE TABLE peer_reports;\nTRUNCATE TABLE peer_mutes;\nTRUNCATE TABLE peer_blocks;\nTRUNCATE TABLE peer_messages;\nTRUNCATE TABLE peer_reputation;\nTRUNCATE TABLE swap_analytics;\nTRUNCATE TABLE htlc_swaps;\nTRUNCATE TABLE user_settings;\nTRUNCATE TABLE users;\nTRUNCATE TABLE admin_config;\nTRUNCATE TABLE operator_config;\nSET FOREIGN_KEY_CHECKS = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSET FOREIGN_KEY_CHECKS = 0;\nTRUNCATE TABLE admin_audit_log;\nTRUNCATE TABLE peer_reports;\nTRUNCATE TABLE peer_mutes;\nTRUNCATE TABLE peer_blocks;\nTRUNCATE TABLE peer_messages;\nTRUNCATE TABLE peer_reputation;\nTRUNCATE TABLE swap_analytics;\nTRUNCATE TABLE htlc_swaps;\nTRUNCATE TABLE user_settings;\nTRUNCATE TABLE users;\nTRUNCATE TABLE admin_config;\nTRUNCATE TABLE operator_config;\nSET FOREIGN_KEY_CHECKS = 1;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 2841
+}

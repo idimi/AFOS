@@ -1532,3 +1532,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] NetworkPage.tsx: Replace Math.random() invite code with crypto.randomUUID() (cryptographically secure)
 - [x] Verified: SwapAnalytics, SwapHistory, Settings, AdminPanel, AgentControl — no mock data found
 - [x] TypeScript: 0 errors after all changes
+
+## Production Beta — Database Wipe & Fresh Start (Completed)
+
+- [x] Audited all 12 database tables: users, htlc_swaps, swap_analytics, peer_reputation, user_settings, peer_messages, peer_blocks, peer_mutes, peer_reports, admin_config, operator_config, admin_audit_log
+- [x] Truncated all 12 tables (TRUNCATE with FOREIGN_KEY_CHECKS=0 to reset auto-increment)
+- [x] Re-seeded admin_config singleton (id=1) with clean production defaults (fee 20bps, min $10, max $1000, no treasury wallets)
+- [x] Re-seeded operator_config singleton (id=1) with clean production defaults (kimi-k2-turbo, maker-taker, tradeauto=off)
+- [x] Verified no seed scripts exist anywhere in the project
+- [x] Confirmed OracleVmSync only pulls from real Oracle VM API (not mock data)
+- [x] Verified all 8 pages have proper empty states: SwapHistory, SwapAnalytics, AdminPanel, Dashboard all show "No data yet" states when tables are empty
+- [x] TypeScript: 0 errors after wipe

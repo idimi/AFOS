@@ -1,0 +1,73 @@
+{
+  "query": "SELECT COUNT(*) as htlc_count FROM htlc_swaps; SELECT COUNT(*) as analytics_count FROM swap_analytics; SELECT COUNT(*) as reputation_count FROM peer_reputation; SELECT COUNT(*) as settings_count FROM user_settings; SELECT COUNT(*) as messages_count FROM peer_messages; SELECT COUNT(*) as blocks_count FROM peer_blocks; SELECT COUNT(*) as mutes_count FROM peer_mutes; SELECT COUNT(*) as reports_count FROM peer_reports; SELECT COUNT(*) as admin_config_count FROM admin_config; SELECT COUNT(*) as operator_config_count FROM operator_config; SELECT COUNT(*) as audit_log_count FROM admin_audit_log;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COUNT(*) as htlc_count FROM htlc_swaps; SELECT COUNT(*) as analytics_count FROM swap_analytics; SELECT COUNT(*) as reputation_count FROM peer_reputation; SELECT COUNT(*) as settings_count FROM user_settings; SELECT COUNT(*) as messages_count FROM peer_messages; SELECT COUNT(*) as blocks_count FROM peer_blocks; SELECT COUNT(*) as mutes_count FROM peer_mutes; SELECT COUNT(*) as reports_count FROM peer_reports; SELECT COUNT(*) as admin_config_count FROM admin_config; SELECT COUNT(*) as operator_config_count FROM operator_config; SELECT COUNT(*) as audit_log_count FROM admin_audit_log;",
+  "rows": [
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "analytics_count"
+    },
+    {
+      "htlc_count": "326"
+    },
+    {
+      "htlc_count": "reputation_count"
+    },
+    {
+      "htlc_count": "76"
+    },
+    {
+      "htlc_count": "settings_count"
+    },
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "messages_count"
+    },
+    {
+      "htlc_count": "6"
+    },
+    {
+      "htlc_count": "blocks_count"
+    },
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "mutes_count"
+    },
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "reports_count"
+    },
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "admin_config_count"
+    },
+    {
+      "htlc_count": "1"
+    },
+    {
+      "htlc_count": "operator_config_count"
+    },
+    {
+      "htlc_count": "1"
+    },
+    {
+      "htlc_count": "audit_log_count"
+    },
+    {
+      "htlc_count": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "htlc_count\n0\nanalytics_count\n326\nreputation_count\n76\nsettings_count\n0\nmessages_count\n6\nblocks_count\n0\nmutes_count\n0\nreports_count\n0\nadmin_config_count\n1\noperator_config_count\n1\naudit_log_count\n0\n",
+  "stderr": "",
+  "execution_time_ms": 834
+}
