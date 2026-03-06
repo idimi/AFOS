@@ -1,7 +1,8 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AgentLogProvider } from "./contexts/AgentLogContext";
@@ -17,10 +18,21 @@ import Swaps from "./pages/Swaps";
 import AdminPanel from "./pages/AdminPanel";
 import LandingPage from "./pages/LandingPage";
 
+/** Scrolls the window to the top whenever the pathname changes. */
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location]);
+  return null;
+}
+
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
-    <Switch>
+    <>
+      <ScrollToTop />
+      <Switch>
       {/* Public landing page — no auth required */}
       <Route path={"/"} component={LandingPage} />
       {/* Authenticated app shell */}
@@ -31,6 +43,7 @@ function Router() {
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
+    </>
   );
 }
 

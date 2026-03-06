@@ -1597,3 +1597,7 @@ The Overview should be an **operator's command center** — a single glance tell
 
 - [x] Fix AFOS wordmark PNG visibility in light mode — apply CSS filter (invert+hue-rotate+brightness) so white-on-transparent PNG reads as dark navy on white background
 - [x] Fix BETA badge colour in light mode to use darker cyan tint
+
+## Scroll-to-Top on Route Change
+
+- [x] Fix: navigating to /app via "Launch App" does not scroll to top — add scroll-to-top on route change
