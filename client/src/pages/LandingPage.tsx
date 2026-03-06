@@ -915,14 +915,6 @@ export default function LandingPage() {
               <a href="#features" className="hover:text-foreground transition-colors">Features</a>
               <a href="#compare" className="hover:text-foreground transition-colors">Compare</a>
               <a
-                href="https://intercomswap.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-foreground transition-colors flex items-center gap-1"
-              >
-                P2P Network <ExternalLink className="w-2.5 h-2.5" />
-              </a>
-              <a
                 href="https://github.com/idimi/AFOS"
                 target="_blank"
                 rel="noopener noreferrer"

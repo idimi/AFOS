@@ -1613,3 +1613,6 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Footer & Scroll Polish
 - [x] Add "View on GitHub" link to footer pointing to github.com/idimi/AFOS
 - [x] Add smooth scroll: `html { scroll-behavior: smooth; }` in index.css
+
+## Footer Cleanup
+- [x] Remove P2P Network link from landing page footer
