@@ -1596,7 +1596,7 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
 
 // ─── Empty State for Topology ─────────────────────────────────────────────────
 
-function EmptyTopology({ lightPeerOnline, lightPeerId, lpEnabled, signalingConnected, signalingRemotePeers, directPeerCount, onConnectWallet }: {
+function EmptyTopology({ lightPeerOnline, lightPeerId, lpEnabled, signalingConnected, signalingRemotePeers, directPeerCount, onConnectWallet, onNavigateToSettings }: {
   lightPeerOnline: boolean;
   lightPeerId: string | null;
   lpEnabled: boolean;
@@ -1604,6 +1604,7 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, lpEnabled, signalingConne
   signalingRemotePeers: { peerId: string }[];
   directPeerCount: number;
   onConnectWallet?: () => void;
+  onNavigateToSettings?: () => void;
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 px-6">
@@ -1654,12 +1655,12 @@ function EmptyTopology({ lightPeerOnline, lightPeerId, lpEnabled, signalingConne
           <p className="text-[10px] text-slate-500 mb-2">
             You are not broadcasting as a liquidity provider. Enable LP Mode in Agent Settings to respond to peer RFQs and appear in the Order Book.
           </p>
-          <a
-            href="/agent-settings"
-            className="inline-block px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all hover:opacity-90 active:scale-95"
+          <button
+            onClick={() => onNavigateToSettings?.()}
+            className="inline-block px-3 py-1.5 rounded-lg text-[10px] font-bold font-mono transition-all hover:opacity-90 active:scale-95 cursor-pointer"
             style={{ background: "rgba(100,116,139,0.15)", border: "1px solid rgba(100,116,139,0.35)", color: "#94a3b8" }}>
             Open Agent Settings
-          </a>
+          </button>
         </div>
       )}
 
@@ -1891,10 +1892,11 @@ function ReputationLeaderboard() {
 
 // ─── Main Network Page ────────────────────────────────────────────────────────
 
-export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
+export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavigateToSettings }: {
   invitePeerId?: string | null;
   onInvitePeerHandled?: () => void;
-} = {}) {
+  onNavigateToSettings?: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<"topology" | "channels" | "invites" | "leaderboard">("topology");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pulseIds, setPulseIds] = useState<Set<string>>(new Set());
@@ -2855,6 +2857,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
           signalingRemotePeers={lightPeer.remotePeers}
           directPeerCount={lightPeer.directPeerCount}
           onConnectWallet={() => window.dispatchEvent(new CustomEvent('afos:open-wallet'))}
+          onNavigateToSettings={onNavigateToSettings}
         />
       )}
 

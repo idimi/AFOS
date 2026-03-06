@@ -3172,7 +3172,7 @@ export default function Dashboard() {
     if (activePage === "activity") return <SwapHistory />;
     if (activePage === "settings") return <AgentSettings />;
     if (activePage === "analytics") return <SwapAnalytics />;
-    if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} />;
+    if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} onNavigateToSettings={() => setActivePage("settings")} />;
     if (activePage === "terminal") return <TerminalPage />;
     return null;
   };
