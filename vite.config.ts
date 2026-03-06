@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type Plugin, type ViteDevServer } from "vite";
 import { vitePluginManusRuntime } from "vite-plugin-manus-runtime";
+import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 // =============================================================================
 // Manus Debug Collector - Vite Plugin
@@ -150,7 +151,24 @@ function vitePluginManusDebugCollector(): Plugin {
   };
 }
 
-const plugins = [react(), tailwindcss(), jsxLocPlugin(), vitePluginManusRuntime(), vitePluginManusDebugCollector()];
+const plugins = [
+  react(),
+  tailwindcss(),
+  jsxLocPlugin(),
+  vitePluginManusRuntime(),
+  vitePluginManusDebugCollector(),
+  // Polyfill Node.js globals (Buffer, process, etc.) for browser builds.
+  // Required by @solana/web3.js, bitcoinjs-lib, and other crypto libraries.
+  nodePolyfills({
+    // Only polyfill what we actually need to keep bundle size small
+    include: ["buffer", "process", "util", "stream", "events"],
+    globals: {
+      Buffer: true,
+      global: true,
+      process: true,
+    },
+  }),
+];
 
 export default defineConfig({
   plugins,

@@ -1619,3 +1619,12 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## GitHub Star Badge
 - [x] Add shields.io star count badge next to GitHub footer link
+
+## Production Build Fix (Blank Page on Publish)
+- [ ] Fix SyntaxError: Identifier 'se' has already been declared (duplicate variable in bundle)
+- [ ] Fix ReferenceError: Buffer is not defined (Node.js global missing in browser build)
+- [ ] Verify production build compiles cleanly and app loads on published domain
+
+## Production Build Fix — Buffer Polyfill
+- [x] Add vite-plugin-node-polyfills to fix Buffer is not defined in browser build
+- [x] Investigate SyntaxError duplicate identifier in production (root cause: old checkpoint; new build resolves it)
