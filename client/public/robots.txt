@@ -1,0 +1,23 @@
+# robots.txt — AFOS (afos.trade)
+# https://www.robotstxt.org/robotstxt.html
+
+User-agent: *
+Allow: /
+
+# Block internal/private routes from indexing
+Disallow: /admin
+Disallow: /api/
+Disallow: /dashboard
+Disallow: /swap
+Disallow: /history
+Disallow: /network
+Disallow: /settings
+Disallow: /chat
+Disallow: /terminal
+
+# Allow the landing page and public assets
+Allow: /$
+Allow: /assets/
+
+# Sitemap
+Sitemap: https://afos.trade/sitemap.xml

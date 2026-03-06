@@ -1628,3 +1628,8 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Production Build Fix — Buffer Polyfill
 - [x] Add vite-plugin-node-polyfills to fix Buffer is not defined in browser build
 - [x] Investigate SyntaxError duplicate identifier in production (root cause: old checkpoint; new build resolves it)
+
+## SEO & Social Preview
+- [x] Generate og:image social preview card (1200x630)
+- [x] Add full Open Graph + Twitter Card meta tags to client/index.html
+- [x] Create robots.txt in client/public/ with SEO crawl policy
