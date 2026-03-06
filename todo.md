@@ -1440,3 +1440,14 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add condensed mobile hero animation in AgentChatHero for small screens
 - [x] Update AgentChatHero header subtitle to include "Hyperswarm · Intercomswap Powered by Trac Network"
 - [x] Fix Overview/Dashboard page layout — apply centered max-width container matching Swaps page style
+
+## Consistent Max-Width Centering Across Sub-Pages
+
+- [x] Apply max-w-[1280px] mx-auto centering to History (Swap History) page
+- [x] Apply max-w-[1280px] mx-auto centering to Analytics page
+- [x] Apply max-w-[1280px] mx-auto centering to Network page header/stats (keep topology map full-width)
+
+## Overview Page Header + StackHealthStrip Improvements
+
+- [ ] Add page header row to Overview content area (AFOS logo + subtitle + status badges, matching Swaps page style)
+- [ ] Replace fixed StackHealthStrip with compact collapsible status indicator in topbar (reclaim vertical space)
