@@ -111,7 +111,9 @@ export interface LightPeerState {
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_PREFS: LightPeerPrefs = {
-  enabled: true,
+  // Disabled by default — users must explicitly opt in as LPs in Agent Settings.
+  // This prevents every browser visitor from appearing as a phantom LP peer.
+  enabled: false,
   spreadBps: 30,
   minTradeUsd: 10,
   maxTradeUsd: 10000,
@@ -173,7 +175,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [prefs, setPrefsState] = useState<LightPeerPrefs>(() => {
     try {
       const saved = localStorage.getItem("afos_light_peer_prefs");
-      return saved ? { ...DEFAULT_PREFS, ...JSON.parse(saved) } : DEFAULT_PREFS;
+      if (!saved) return DEFAULT_PREFS;
+      const parsed = JSON.parse(saved) as Partial<LightPeerPrefs>;
+      // Migration: if the user never explicitly opted in as LP (no "lp_opted_in" flag),
+      // reset enabled to false regardless of what was stored. This clears the old
+      // default-true behaviour that auto-registered every visitor as a peer.
+      const hasExplicitlyOptedIn = localStorage.getItem("afos_lp_opted_in") === "true";
+      if (!hasExplicitlyOptedIn && parsed.enabled) {
+        parsed.enabled = false;
+        localStorage.setItem("afos_light_peer_prefs", JSON.stringify({ ...DEFAULT_PREFS, ...parsed }));
+      }
+      return { ...DEFAULT_PREFS, ...parsed };
     } catch {
       return DEFAULT_PREFS;
     }
@@ -910,11 +922,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     setHtlcSigning(null);
   }, []);
 
-  // ── Update prefs ──────────────────────────────────────────────────────────
+  // ── Update prefs ────────────────────────────────────────────
   const setPrefs = useCallback((partial: Partial<LightPeerPrefs>) => {
     setPrefsState(prev => {
       const next = { ...prev, ...partial };
       localStorage.setItem("afos_light_peer_prefs", JSON.stringify(next));
+      // Track explicit opt-in so the migration guard doesn't reset it on next load
+      if (partial.enabled === true) {
+        localStorage.setItem("afos_lp_opted_in", "true");
+      } else if (partial.enabled === false) {
+        localStorage.removeItem("afos_lp_opted_in");
+      }
       return next;
     });
   }, []);
