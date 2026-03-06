@@ -19,6 +19,7 @@ import { trpc } from "@/lib/trpc";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { OpenTradesTab, RefundsTab, HtlcSearchBar } from "./SwapHistoryTabs";
+import { useAuth } from "@/_core/hooks/useAuth";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -249,11 +250,18 @@ interface Filters {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function SwapHistory() {
+  // Auth context — used for admin "All Swaps" toggle
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
+  // Admin toggle: admins can switch between wallet-scoped and global view
+  const [showAllSwaps, setShowAllSwaps] = useState(false);
+
   // Wallet context — collect all connected wallet addresses
   const { publicKey } = useWallet();
   const { bitcoin, ethereum } = useMultiChainWallet();
 
-  const walletAddresses = useMemo(() => {
+  const connectedAddresses = useMemo(() => {
     const addrs: string[] = [];
     if (publicKey) addrs.push(publicKey.toString());
     if (bitcoin?.address) addrs.push(bitcoin.address);
@@ -261,7 +269,10 @@ export default function SwapHistory() {
     return addrs;
   }, [publicKey, bitcoin?.address, ethereum?.address]);
 
-  const hasWallet = walletAddresses.length > 0;
+  // When admin toggles "All Swaps", pass empty array to get global view
+  const walletAddresses = isAdmin && showAllSwaps ? [] : connectedAddresses;
+
+  const hasWallet = connectedAddresses.length > 0;
 
   const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
   const [filters, setFilters] = useState<Filters>({
@@ -435,7 +446,36 @@ export default function SwapHistory() {
         )}
       </div>
 
-      {/* Wallet scope banner */}
+      {/* Admin toggle: My Swaps / All Swaps */}
+      {isAdmin && hasWallet && (
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => setShowAllSwaps(false)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: !showAllSwaps ? "rgba(6,182,212,0.12)" : "var(--muted)",
+              border: `1px solid ${!showAllSwaps ? "rgba(6,182,212,0.4)" : "var(--border)"}`,
+              color: !showAllSwaps ? "#22d3ee" : "var(--muted-foreground)",
+            }}
+          >
+            <Wallet className="w-3 h-3" />
+            My Swaps
+          </button>
+          <button
+            onClick={() => setShowAllSwaps(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+            style={{
+              background: showAllSwaps ? "rgba(139,92,246,0.12)" : "var(--muted)",
+              border: `1px solid ${showAllSwaps ? "rgba(139,92,246,0.4)" : "var(--border)"}`,
+              color: showAllSwaps ? "#a78bfa" : "var(--muted-foreground)",
+            }}
+          >
+            <Shield className="w-3 h-3" />
+            All Swaps
+          </button>
+        </div>
+      )}
+      {/* Wallet scope banner — shown when no wallet connected */}
       {!hasWallet && (
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-xl mb-4 text-xs"

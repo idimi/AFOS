@@ -14,12 +14,17 @@ import { WalletChatBridge } from "./components/WalletChatBridge";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
 import AdminPanel from "./pages/AdminPanel";
+import LandingPage from "./pages/LandingPage";
+
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Dashboard} />
-      <Route path={"/swaps"} component={Dashboard} />
+      {/* Public landing page — no auth required */}
+      <Route path={"/"} component={LandingPage} />
+      {/* Authenticated app shell */}
+      <Route path={"/app"} component={Dashboard} />
+      <Route path={"/app/:rest*"} component={Dashboard} />
       {/* Hidden admin panel — not linked from consumer UI */}
       <Route path={"/admin"} component={AdminPanel} />
       <Route path={"/404"} component={NotFound} />

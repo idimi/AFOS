@@ -1376,3 +1376,18 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add lastOracleSyncAt and lastSyncInserted fields to admin_config or a new sync_status table
 - [x] Update oracleVmSync job to write lastOracleSyncAt after each run
 - [x] Add Oracle VM Sync Status card to Settings → Diagnostics section
+
+## Public Landing Page
+
+- [x] Create LandingPage.tsx with hero, how-it-works, features grid, and Launch App CTA
+- [x] Route / to LandingPage (public, no auth required)
+- [x] Route /app to the existing dashboard (authenticated)
+- [x] Update DashboardLayout links to use /app prefix
+- [x] Add responsive mobile layout to landing page
+
+## Wallet-Scoped History
+
+- [x] Add walletAddress filter param to history.list, history.openTrades, history.refunds, history.exportCsv tRPC procedures
+- [x] Pass connected wallet address from frontend to all history queries
+- [x] Add "My Swaps / All Swaps" toggle for admin users
+- [x] Update CSV export to respect wallet scope
