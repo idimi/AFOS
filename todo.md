@@ -1475,3 +1475,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Wire Overview header "Agent Live" badge to useStackHealth (AFOS Agent service state) — AgentLiveBadge component, transitions green/amber/red
 - [x] Add title attribute to each dot span in StackStatusPill (service name on hover)
 - [x] Animate pill count text color on liveCount drop (countFlash state, mirrors peerFlash pattern, pill border also flashes)
+
+## Mobile Overview Header Cleanup
+- [x] Hide badge row on mobile (redundant with topbar peer/stack pills) — badge row now hidden sm:hidden on mobile
+- [x] Add compact one-line status summary below logo on mobile: "N/5 live · N peers · NC" — OverviewStatusLine component, sm:hidden

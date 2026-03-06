@@ -2754,6 +2754,37 @@ function useStackHealth() {
   return { services, liveCount, totalCount: services.length };
 }
 
+/** Mobile-only compact status line below the logo: "5/5 live · 4 peers · NC" */
+function OverviewStatusLine({
+  signalingPeers,
+  headerPeers,
+  lightPeerOnline,
+}: {
+  signalingPeers: { peerId: string }[] | null;
+  headerPeers: number | null;
+  lightPeerOnline: boolean;
+}) {
+  const { liveCount, totalCount } = useStackHealth();
+  const signalingCount = signalingPeers?.length ?? 0;
+  const oracleCount = headerPeers ?? 0;
+  const peerTotal = Math.max(signalingCount, oracleCount) + (lightPeerOnline ? 1 : 0);
+  const allLive = liveCount === totalCount;
+  const stackColor = allLive ? 'text-emerald-400' : liveCount >= 3 ? 'text-amber-400' : 'text-red-400';
+  return (
+    <p className="text-[10px] font-mono text-muted-foreground mt-0.5 sm:hidden flex items-center gap-1">
+      <span className={stackColor}>{liveCount}/{totalCount} live</span>
+      <span className="opacity-40">·</span>
+      <span className="text-cyan-400">{peerTotal > 0 ? peerTotal : '—'} peers</span>
+      {lightPeerOnline && (
+        <>
+          <span className="opacity-40">·</span>
+          <span className="text-cyan-400">NC</span>
+        </>
+      )}
+    </p>
+  );
+}
+
 /** Overview header badge — wired to AFOS Agent service state from useStackHealth */
 function AgentLiveBadge() {
   const { services } = useStackHealth();
@@ -3330,14 +3361,22 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between mb-5">
                   <div>
                     <AfosLogo size="md" />
+                    {/* Desktop subtitle */}
                     <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
                       Autonomous operator dashboard · P2P · Hyperswarm · IntercomSwap · Trac Network
                     </p>
+                    {/* Mobile one-line status summary — replaces the badge row */}
+                    <OverviewStatusLine
+                      signalingPeers={signalingPeers}
+                      headerPeers={headerPeers}
+                      lightPeerOnline={lightPeerOnline}
+                    />
                   </div>
-                  <div className="flex items-center gap-1.5 sm:gap-2">
+                  {/* Badge row — desktop only; mobile uses the compact status line above */}
+                  <div className="hidden sm:flex items-center gap-2">
                     <AgentLiveBadge />
                     <div
-                      className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                       style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
                     >
                       <Users className="w-3 h-3 text-cyan-400" />
@@ -3351,27 +3390,24 @@ export default function Dashboard() {
                         })()}
                       </span>
                     </div>
-                    {lightPeerOnline && (
+                    {lightPeerOnline ? (
                       <div
-                        className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                         style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}
                       >
                         <span className="relative flex h-1.5 w-1.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
                           <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
                         </span>
-                        <span className="text-[10px] font-mono text-cyan-400 hidden sm:inline">Non-custodial</span>
-                        <span className="text-[10px] font-mono text-cyan-400 sm:hidden">NC</span>
+                        <span className="text-[10px] font-mono text-cyan-400">Non-custodial</span>
                       </div>
-                    )}
-                    {!lightPeerOnline && (
+                    ) : (
                       <div
-                        className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
                         style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
                       >
                         <Shield className="w-3 h-3 text-muted-foreground" />
-                        <span className="text-[10px] font-mono text-muted-foreground hidden sm:inline">Non-custodial</span>
-                        <span className="text-[10px] font-mono text-muted-foreground sm:hidden">NC</span>
+                        <span className="text-[10px] font-mono text-muted-foreground">Non-custodial</span>
                       </div>
                     )}
                   </div>
