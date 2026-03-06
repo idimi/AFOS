@@ -1459,3 +1459,19 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Fix StackStatusPill pill color to match peer button (violet scheme, consistent dark/light mode)
 - [x] Fix StackStatusPill tooltip to match P2P Network tooltip style (bg-popover, border, shadow-lg, service names visible)
 - [x] Add "Hyperswarm" to Overview page header subtitle (visual editor change)
+
+## Mobile Optimization (All Pages)
+- [x] Overview (Dashboard) — topbar condensed on xs screens (node key hidden, peer count abbreviated, wallet labels hidden), pb-safe on mobile layout
+- [x] Agent page — responsive px-4 sm:px-6 padding, pb-safe
+- [x] Swaps page — pb-safe on outer wrapper
+- [x] History (SwapHistory) page — pb-safe on outer wrapper (mobile card view already existed)
+- [x] Analytics (SwapAnalytics) page — pb-safe on content area
+- [x] Network page — pb-safe on outer wrapper (mobile peer list view already existed)
+- [x] Settings page — pb-safe via AgentSettings wrapper
+- [x] Admin page — pb-safe on content area
+- [x] Global — viewport-fit=cover in index.html, pb-safe CSS utility added to index.css, MobileSidebarDrawer footer pb-safe
+
+## StackStatusPill + Agent Live Badge Polish
+- [ ] Wire Overview header "Agent Live" badge to useStackHealth (AFOS Agent service state)
+- [ ] Add title attribute to each dot span in StackStatusPill (service name on hover)
+- [ ] Animate pill count text color on liveCount drop (flash transition like peerFlash)

@@ -2407,7 +2407,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled }: {
   }, [livePeers, handlePing]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto sm:overflow-hidden p-3 sm:p-6" style={{ background: "transparent" }}>
+    <div className="flex-1 flex flex-col overflow-y-auto sm:overflow-hidden p-3 sm:p-6 pb-safe" style={{ background: "transparent" }}>
       <div className="max-w-[1280px] mx-auto w-full">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">

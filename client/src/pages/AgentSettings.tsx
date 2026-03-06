@@ -87,7 +87,7 @@ const ROUTES = [
 // ─── Loading skeleton ──────────────────────────────────────────────────────────
 function SettingsSkeleton() {
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-4 animate-pulse">
+    <div className="px-4 sm:px-6 py-5 max-w-2xl mx-auto space-y-4 animate-pulse">
       <div className="h-7 w-32 rounded-lg bg-muted mb-6" />
       {[1, 2, 3, 4].map(i => (
         <div key={i} className="rounded-2xl p-5 space-y-3" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
@@ -420,7 +420,7 @@ export default function AgentSettings() {
   if (settingsLoading && isAuthenticated) return <SettingsSkeleton />;
 
   return (
-    <div className="p-6 pb-20 max-w-2xl mx-auto">
+    <div className="px-4 sm:px-6 py-5 pb-safe max-w-2xl mx-auto">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-foreground">Settings</h1>

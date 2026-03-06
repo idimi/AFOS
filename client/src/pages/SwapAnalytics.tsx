@@ -247,7 +247,7 @@ export default function SwapAnalytics() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 lg:p-6 pb-safe space-y-6">
 
         {/* ── KPI Strip ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

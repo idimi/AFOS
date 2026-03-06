@@ -2651,7 +2651,7 @@ export default function Swaps({ onNavigateToChat }: { onNavigateToChat?: (prefil
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-5" style={{ background: "transparent" }}>
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-safe" style={{ background: "transparent" }}>
       <div className="max-w-[1280px] mx-auto">
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">

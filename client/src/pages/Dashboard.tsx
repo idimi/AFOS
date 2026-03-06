@@ -228,7 +228,7 @@ function MobileSidebarDrawer({
             </nav>
 
             {/* Footer: wallet + agent status */}
-            <div className="p-3 border-t border-border space-y-2 shrink-0">
+            <div className="p-3 pb-safe border-t border-border space-y-2 shrink-0">
               <button
                 onClick={() => { onClose(); onOpenWallet(); }}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all"
@@ -3044,13 +3044,13 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </button>
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm text-muted-foreground font-mono hidden sm:block">AFOS Agent</span>
-            <span className="text-muted-foreground/40 hidden sm:block">·</span>
+            <span className="text-sm text-muted-foreground font-mono hidden md:block">AFOS Agent</span>
+            <span className="text-muted-foreground/40 hidden md:block">·</span>
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="text-xs text-cyan-400/70 font-mono hover:text-cyan-300 transition-colors cursor-pointer"
+                    className="text-xs text-cyan-400/70 font-mono hover:text-cyan-300 transition-colors cursor-pointer hidden sm:block"
                     onClick={() => {
                       const key = headerNodeKeyFull ?? headerNodeKey ?? "intercomswap@mainnet";
                       navigator.clipboard.writeText(key).then(() => {
@@ -3113,8 +3113,8 @@ export default function Dashboard() {
                   const remoteCount = Math.max(signalingCount, oracleCount);
                   const selfCount = lightPeerOnline ? 1 : 0;
                   const total = remoteCount + selfCount;
-                  if (headerPeers === null && !lightPeerOnline && signalingCount === 0) return '— peers';
-                  return `${total} peer${total === 1 ? '' : 's'}`;
+                  if (headerPeers === null && !lightPeerOnline && signalingCount === 0) return <><span className="sm:hidden">—</span><span className="hidden sm:inline">— peers</span></>;
+                  return <><span className="sm:hidden">{total}</span><span className="hidden sm:inline">{total} peer{total === 1 ? '' : 's'}</span></>;
                 })()}
               </span>
             </button>
@@ -3233,14 +3233,14 @@ export default function Dashboard() {
                   title={topbarBtc?.connected ? `Bitcoin: ${topbarBtc.shortAddress}` : "Bitcoin: not connected"}
                 />
               </span>
-              {/* Label */}
+              {/* Label — hidden on xs, visible on sm+ */}
               {(solConnected || topbarEth?.connected || topbarBtc?.connected) ? (
-                <span style={{ color: "#10b981" }}>
+                <span style={{ color: "#10b981" }} className="hidden sm:inline">
                   {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && "BTC"]
                     .filter(Boolean).join(" + ")}
                 </span>
               ) : (
-                <span style={{ color: "#60a5fa" }}>
+                <span style={{ color: "#60a5fa" }} className="hidden sm:inline">
                   <Wallet className="w-3 h-3 inline mr-0.5" />Connect
                 </span>
               )}
@@ -3352,7 +3352,7 @@ export default function Dashboard() {
               </div>
 
               {/* ── MOBILE: optimized single-column layout ── */}
-              <div className="lg:hidden flex flex-col gap-3 px-3 pb-6 pt-0">
+              <div className="lg:hidden flex flex-col gap-3 px-3 pb-safe pt-0">
                 {/* 1. Portfolio strip — live total across all chains */}
                 <MobilePortfolioStrip />
 
