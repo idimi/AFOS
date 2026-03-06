@@ -1,0 +1,9 @@
+{
+  "query": "DELETE FROM swap_analytics; DELETE FROM htlc_swaps;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute DELETE FROM swap_analytics; DELETE FROM htlc_swaps;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 421
+}

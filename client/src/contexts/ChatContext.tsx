@@ -31,12 +31,18 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq";
+  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
   limitWarning?: string;
   limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
+  /** Badge shown on quote_card: 'p2p' | 'dex' | undefined */
+  routeBadge?: "p2p" | "dex";
+  /** Matched peer alias for P2P quote cards */
+  matchedPeerAlias?: string;
+  /** DEX name used for fallback (e.g. 'Jupiter', '0x', '1inch') */
+  dexName?: string;
   incomingRfqData?: {
     rfqId: string;
     fromToken: string;

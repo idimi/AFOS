@@ -1,0 +1,49 @@
+{
+  "query": "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE();",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE();",
+  "rows": [
+    {
+      "table_name": "__drizzle_migrations"
+    },
+    {
+      "table_name": "peer_blocks"
+    },
+    {
+      "table_name": "peer_messages"
+    },
+    {
+      "table_name": "user_settings"
+    },
+    {
+      "table_name": "users"
+    },
+    {
+      "table_name": "admin_config"
+    },
+    {
+      "table_name": "swap_analytics"
+    },
+    {
+      "table_name": "peer_reputation"
+    },
+    {
+      "table_name": "admin_audit_log"
+    },
+    {
+      "table_name": "peer_reports"
+    },
+    {
+      "table_name": "peer_mutes"
+    },
+    {
+      "table_name": "htlc_swaps"
+    },
+    {
+      "table_name": "operator_config"
+    }
+  ],
+  "messages": [],
+  "stdout": "table_name\n__drizzle_migrations\npeer_blocks\npeer_messages\nuser_settings\nusers\nadmin_config\nswap_analytics\npeer_reputation\nadmin_audit_log\npeer_reports\npeer_mutes\nhtlc_swaps\noperator_config\n",
+  "stderr": "",
+  "execution_time_ms": 374
+}

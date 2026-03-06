@@ -1714,11 +1714,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ### Client Changes
 - [x] Add agent_rfq handler to signalingClient message switch
 - [x] Add agent_rfq listener in LightPeerContext — fires CustomEvent for ChatPage
-- [ ] ChatPage: show "Searching for peer..." skeleton while agent looks
+- [x] ChatPage: show "Searching for peer..." skeleton while agent looks
 - [x] ChatPage: show incoming RFQ card for counterparty (Accept/Reject buttons)
-- [ ] ChatPage: show "Peer found — @alias" badge on quote card when P2P matched
-- [ ] ChatPage: show "No peer available — using Jupiter/0x" when DEX fallback
-- [ ] sendMessage: pass senderPeerId from LightPeerContext so agent knows who is asking
+- [x] ChatPage: show "Peer found — @alias" badge on quote card when P2P matched
+- [x] ChatPage: show "No peer available — using Jupiter/0x" when DEX fallback
+- [x] sendMessage: pass senderPeerId from LightPeerContext so agent knows who is asking
 
 ## Unified Swap Page (Trading Interface)
 - [x] Fix TypeScript errors in chat.ts from signaling peer matching changes
@@ -1731,3 +1731,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Network panel: My Node status, Live Peers list from signaling server
 - [ ] Pair selector tabs: BTC/USDT, ETH/USDT, SOL/USDT, ETH/BTC, SOL/BTC
 - [ ] All data synced: order book, swap panel, chart, and agent all use the same selected pair
+
+## Chat UX Improvements — Peer Search & Route Badges
+
+- [x] Add animated "Searching for peer..." skeleton message in chat while agent scans signaling registry
+- [x] Pass senderPeerId from LightPeerContext to sendMessage so agent excludes requester from peer search
+- [x] Show matched peer alias on P2P quote card (e.g. "@lp-a709a6 matched")
+- [x] Add "No peer found — routing via Jupiter/0x" badge on DEX fallback quote cards

@@ -17,6 +17,7 @@ import { useWallet } from "@/contexts/WalletContext";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "@/contexts/ChatContext";
+import { useLightPeer } from "@/contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { Link } from "wouter";
@@ -449,9 +450,44 @@ function MessageBubble({
           {msg.content}
         </div>
 
+        {/* Peer searching skeleton */}
+        {msg.type === "peer_searching" && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs" style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)" }}>
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+              className="w-3.5 h-3.5 rounded-full border-2 border-transparent"
+              style={{ borderTopColor: "#06b6d4", borderRightColor: "rgba(6,182,212,0.3)" }}
+            />
+            <span style={{ color: "#67e8f9" }}>Scanning P2P network for a matching peer…</span>
+            <motion.span
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+              className="ml-auto text-[10px]"
+              style={{ color: "rgba(6,182,212,0.5)" }}
+            >
+              live
+            </motion.span>
+          </div>
+        )}
+
         {/* Quote card (inline) */}
         {msg.type === "quote_card" && msg.quoteData && executingId !== msg.id && (
           <div className="w-full mt-1">
+            {/* Route badge — shown above the quote card */}
+            {msg.routeBadge && (
+              <div className="flex items-center gap-1.5 mb-1.5">
+                {msg.routeBadge === "p2p" ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                    <span>🤝</span> P2P matched{msg.matchedPeerAlias ? ` — @${msg.matchedPeerAlias}` : ""}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(234,179,8,0.1)", color: "#eab308", border: "1px solid rgba(234,179,8,0.25)" }}>
+                    <span>⚡</span> No peer found — routing via {msg.dexName ?? "DEX"}
+                  </span>
+                )}
+              </div>
+            )}
             <QuoteCard
               data={msg.quoteData}
               onConfirm={() => onConfirmSwap(msg.id, msg.quoteData!)}
@@ -558,6 +594,7 @@ export default function ChatPage() {
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
+  const { peerId: myPeerId, peerAlias: myPeerAlias } = useLightPeer();
 
   const [input, setInput] = useState("");
   const [executingId, setExecutingId] = useState<string | null>(null);
@@ -635,9 +672,24 @@ export default function ChatPage() {
     addMessage({ role: "user", content: messageText, type: "text" });
     setIsTyping(true);
 
+    // Detect if this looks like a swap intent so we can show the peer-searching skeleton
+    const isSwapIntent = /\bswap\b|\bbridge\b|\bconvert\b|\bexchange\b/i.test(messageText);
+
+    // Insert a temporary "Searching for peer..." skeleton for swap intents
+    const searchingMsgId = `searching-${Date.now()}`;
+    if (isSwapIntent) {
+      addMessage({
+        id: searchingMsgId,
+        role: "assistant",
+        content: "Scanning P2P network for a matching peer…",
+        type: "peer_searching",
+        timestamp: Date.now(),
+      } as ChatMessage);
+    }
+
     try {
       const history = messages
-        .filter(m => m.type !== "quote_card" && m.type !== "tx_success")
+        .filter(m => m.type !== "quote_card" && m.type !== "tx_success" && m.type !== "peer_searching")
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
 
@@ -647,15 +699,34 @@ export default function ChatPage() {
         walletAddress: publicKey?.toString(),
         walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
         openId,
+        senderPeerId: myPeerId ?? undefined,
+        senderAlias: myPeerAlias ?? undefined,
       });
 
+      // Remove the searching skeleton before adding the real result
+      if (isSwapIntent) {
+        setMessages(prev => prev.filter(m => m.id !== searchingMsgId));
+      }
+
       if (result.type === "quote_card" && result.quoteData) {
+        // Determine route badge from the result
+        const p2pPeer = (result as { p2pPeer?: { peerId?: string; alias?: string } | null }).p2pPeer;
+        const routeBadge: "p2p" | "dex" = p2pPeer?.peerId ? "p2p" : "dex";
+        const matchedPeerAlias = p2pPeer?.alias ?? p2pPeer?.peerId?.slice(0, 8);
+        // Extract DEX name from route string (e.g. "Jupiter DEX" → "Jupiter")
+        const routeStr = result.quoteData.route ?? "";
+        const dexName = routeBadge === "dex"
+          ? (routeStr.match(/Jupiter|0x|1inch|Uniswap|Raydium/i)?.[0] ?? "DEX")
+          : undefined;
         addMessage({
           role: "assistant",
           content: result.content,
           type: "quote_card",
           quoteData: result.quoteData as QuoteData,
           limitWarning: (result as { limitWarning?: string }).limitWarning,
+          routeBadge,
+          matchedPeerAlias,
+          dexName,
         });
       } else {
         addMessage({
@@ -665,6 +736,10 @@ export default function ChatPage() {
         });
       }
     } catch (err) {
+      // Remove the searching skeleton on error too
+      if (isSwapIntent) {
+        setMessages(prev => prev.filter(m => m.id !== searchingMsgId));
+      }
       addMessage({
         role: "assistant",
         content: "Sorry, I encountered an error. Please try again.",
@@ -674,7 +749,7 @@ export default function ChatPage() {
     } finally {
       setIsTyping(false);
     }
-  }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
+  }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances, myPeerId, myPeerAlias, setMessages]);
 
   // Open wallet modal for a specific chain based on the quote's FROM token
   const openWalletForChain = useCallback((fromToken: string, fromChain?: SupportedChain) => {
