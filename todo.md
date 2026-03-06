@@ -1745,3 +1745,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add 8-second timeout fallback message in chat ("Still searching… this may take a moment")
 - [x] Add tRPC procedure: chat.getPeerList — returns signaling peer list with pairs and rates
 - [x] Wire Swaps page Order Book to signaling registry via tRPC — show all online peers as rows
+
+## Order Book Peer Rates, Network Online Badge, Auto-Accept Mode
+
+- [x] Order Book: request real quotes from peers via requestPeerQuote tRPC — populate Rate column with actual offered rates instead of 0.0000
+- [x] Order Book: show loading spinner in Rate column while quote is pending
+- [x] Network page: wire "Online Peers" stat card to live signaling peer count from trpc.chat.getPeerList
+- [x] AgentSettings: add autoAcceptRfq toggle and autoAcceptMaxUsd field to DB schema (user_settings)
+- [x] AgentSettings: add auto-accept P2P RFQs section card with toggle and max USD input
+- [x] AgentSettings: sync DB autoAcceptRfq into LightPeerPrefs.autoAccept so existing auto-accept logic works
+- [x] LightPeerContext: add auto-accept check to agent_rfq handler (not just SSE handler)

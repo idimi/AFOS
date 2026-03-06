@@ -357,6 +357,8 @@ export default function AgentSettings() {
   const [customSlippage, setCustomSlippage] = useState("");
   const [preferredRoute, setPreferredRoute] = useState<"intercomswap" | "jupiter" | "zerox" | "oneinch" | "best">("best");
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
+  const [autoAcceptRfq, setAutoAcceptRfq] = useState(false);
+  const [autoAcceptMaxUsd, setAutoAcceptMaxUsd] = useState("0");
 
   // Populate local draft when remote data arrives
   useEffect(() => {
@@ -373,6 +375,27 @@ export default function AgentSettings() {
     }
     setPreferredRoute(remoteSettings.preferredRoute as typeof preferredRoute);
     setTheme(remoteSettings.theme as typeof theme);
+    if ('autoAcceptRfq' in remoteSettings) {
+      const aar = remoteSettings.autoAcceptRfq as boolean;
+      setAutoAcceptRfq(aar);
+      // Sync into LightPeerPrefs (localStorage) so the peer context picks it up
+      try {
+        const stored = localStorage.getItem("afos_light_peer_prefs");
+        const parsed = stored ? JSON.parse(stored) : {};
+        parsed.autoAcceptRfq = aar;
+        localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
+      } catch { /* best-effort */ }
+    }
+    if ('autoAcceptMaxUsd' in remoteSettings) {
+      const aam = (remoteSettings as Record<string, unknown>).autoAcceptMaxUsd ?? 0;
+      setAutoAcceptMaxUsd(String(aam));
+      try {
+        const stored = localStorage.getItem("afos_light_peer_prefs");
+        const parsed = stored ? JSON.parse(stored) : {};
+        parsed.autoAcceptMaxUsd = Number(aam);
+        localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
+      } catch { /* best-effort */ }
+    }
   }, [remoteSettings]);
 
   const effectiveSlippage = customSlippage || slippage;
@@ -384,6 +407,8 @@ export default function AgentSettings() {
     setCustomSlippage("");
     setPreferredRoute("best");
     setTheme("dark");
+    setAutoAcceptRfq(false);
+    setAutoAcceptMaxUsd("0");
     // Also apply the theme to next-themes via ThemeSelector's onChange
     // ThemeSelector handles next-themes internally; we trigger it via the state change
     saveMutation.mutate({
@@ -392,6 +417,8 @@ export default function AgentSettings() {
       slippagePct: "0.5",
       preferredRoute: "best",
       theme: "dark",
+      autoAcceptRfq: false,
+      autoAcceptMaxUsd: 0,
     });
     toast.success("Settings reset to defaults");
   };
@@ -407,12 +434,15 @@ export default function AgentSettings() {
       toast.error("Slippage must be a positive number");
       return;
     }
+    const parsedAutoAcceptMax = parseInt(autoAcceptMaxUsd, 10);
     saveMutation.mutate({
       maxTxAmountUsd: parsedMax,
       autoConfirm,
       slippagePct: effectiveSlippage,
       preferredRoute,
       theme,
+      autoAcceptRfq,
+      autoAcceptMaxUsd: isNaN(parsedAutoAcceptMax) ? 0 : parsedAutoAcceptMax,
     });
   };
 
@@ -550,7 +580,48 @@ export default function AgentSettings() {
           />
         </SectionCard>
 
-        {/* ── Preferred Route ───────────────────────────────────────────────── */}
+        {/* ── Auto-accept P2P RFQs ────────────────────────────────────────────────── */}
+        <SectionCard
+          icon={Wifi}
+          title="Auto-accept P2P RFQs"
+          color="text-cyan-400"
+          border="rgba(6,182,212,0.2)"
+          bg="rgba(6,182,212,0.04)"
+          delay={0.11}
+        >
+          <ToggleRow
+            label="Auto-accept incoming RFQs"
+            description="Agent automatically accepts P2P quote requests from peers within your configured limits, without requiring manual confirmation."
+            value={autoAcceptRfq}
+            onChange={setAutoAcceptRfq}
+            warning="Auto-accept is ON. The agent will automatically respond to incoming P2P RFQs and commit to trades within your limits."
+          />
+          {autoAcceptRfq && (
+            <div className="space-y-2 pt-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Max auto-accept amount (USD)
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground font-mono">$</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1_000_000}
+                  value={autoAcceptMaxUsd}
+                  onChange={e => setAutoAcceptMaxUsd(e.target.value)}
+                  className="flex-1 rounded-xl px-3 py-2 text-sm font-mono bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
+                  placeholder="0 = use max tx amount"
+                />
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Set to 0 to use your Max Transaction Amount (${maxTxAmount}) as the cap.
+                The agent will reject any incoming RFQ whose USD value exceeds this limit.
+              </p>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* ── Preferred Route ────────────────────────────────────────────────────── */}
         <SectionCard
           icon={Route}
           title="Preferred Swap Route"

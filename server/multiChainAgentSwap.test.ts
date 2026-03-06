@@ -296,12 +296,12 @@ describe("Cross-chain swap routing", () => {
     expect(src).toContain("P2P_FEE_BPS");
   });
 
-  it("buildQuote should return IntercomSwap P2P route for cross-chain pairs", async () => {
+  it("buildQuote should return AFOS P2P route for cross-chain pairs", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
     // The cross-chain fallback section should exist
-    expect(src).toContain("IntercomSwap P2P (cross-chain)");
-    expect(src).toContain("IntercomSwap P2P (Bitcoin bridge)");
+    expect(src).toContain("AFOS P2P (cross-chain)");
+    expect(src).toContain("AFOS P2P (Bitcoin bridge)");
   });
 
   it("buildQuote cross-chain should use P2P_FEE_BPS (15 bps)", async () => {

@@ -1237,7 +1237,21 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
     staleTime: 8_000,
   });
 
-  // Merge signaling peers into the order book when they support the current pair
+  const trpcUtils = trpc.useUtils();
+  // Track which peers we've already requested quotes from (reset on pair change)
+  const quotedPeersRef = useRef<Set<string>>(new Set());
+
+  // Pair change: clear orders, reset flags, and clear the quoted-peers set
+  useEffect(() => {
+    setOrders([]);
+    hasRealQuotes.current = false;
+    setDataSource("live");
+    quotedPeersRef.current = new Set();
+  }, [fromToken.symbol, toToken.symbol]);
+
+  // Merge signaling peers into the order book when they support the current pair.
+  // For each new peer, proactively request a real quote via requestPeerQuote so the
+  // Rate column shows the actual offered rate instead of a placeholder.
   useEffect(() => {
     if (!signalingPeers || signalingPeers.length === 0) return;
     const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
@@ -1246,7 +1260,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
       p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
     );
     if (matchingPeers.length === 0) return;
-    // Convert signaling peers to OrderBookEntry rows
+    // Convert signaling peers to OrderBookEntry rows (rate=0 = pending quote)
     const peerEntries: OrderBookEntry[] = matchingPeers.map(p => ({
       id: `sig_${p.peerId}`,
       rfqId: undefined,
@@ -1255,7 +1269,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
       toSymbol: toToken.symbol,
       fromAmount: 0,
       toAmount: 0,
-      rate: baseRate,
+      rate: 0,   // 0 = pending quote; spinner shown until real rate arrives
       usdValue: 0,
       expiresIn: Math.max(0, 90 - Math.round((Date.now() - p.lastHeartbeat) / 1000)),
       latency: Math.max(1, Math.round((Date.now() - p.connectedAt) / 1000)),
@@ -1268,15 +1282,33 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
       const sseOrders = prev.filter(o => !o.id.startsWith("sig_"));
       return [...peerEntries, ...sseOrders].slice(0, 10).sort((a, b) => b.rate - a.rate);
     });
+    // Proactively request real quotes from peers we haven't quoted yet
+    const quoteAmount = Math.max(fromAmount ?? 1, 1);
+    matchingPeers.forEach(p => {
+      if (quotedPeersRef.current.has(p.peerId)) return;
+      quotedPeersRef.current.add(p.peerId);
+      trpcUtils.chat.requestPeerQuote.fetch({
+        peerId:    p.peerId,
+        fromToken: fromToken.symbol,
+        toToken:   toToken.symbol,
+        amount:    quoteAmount,
+      }).then(result => {
+        if (!result || result.rate <= 0) {
+          // Quote failed — remove placeholder so we don't show 0.0000
+          setOrders(prev => prev.filter(o => o.id !== `sig_${p.peerId}`));
+          return;
+        }
+        setOrders(prev => prev.map(o =>
+          o.id === `sig_${p.peerId}`
+            ? { ...o, rate: result.rate, toAmount: parseFloat(result.outAmount.toFixed(6)) }
+            : o
+        ));
+      }).catch(() => {
+        setOrders(prev => prev.filter(o => o.id !== `sig_${p.peerId}`));
+      });
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signalingPeers, fromToken.symbol, toToken.symbol, baseRate]);
-
-  // Pair change: clear orders and reset real-quote flag
-  useEffect(() => {
-    setOrders([]);
-    hasRealQuotes.current = false;
-    setDataSource("live");
-  }, [fromToken.symbol, toToken.symbol]);
+  }, [signalingPeers, fromToken.symbol, toToken.symbol]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1360,7 +1392,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
 
   // Include own quote in best rate calculation
   const allRates = [
-    ...orders.map(o => o.rate),
+    ...orders.map(o => o.rate).filter(r => r > 0),  // exclude pending (rate=0) entries
     ...(ownQuote ? [ownQuote.rate] : []),
   ];
   const bestRate = allRates.length > 0 ? Math.max(...allRates) : baseRate;
@@ -1579,10 +1611,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                     </div>
                     {/* Rate — large and prominent */}
                     <div className="text-right flex-shrink-0">
-                      <div className={`text-base font-mono font-bold ${isBest ? "text-amber-400" : "text-slate-300"}`}>
-                        {order.rate.toFixed(4)}
-                      </div>
-                      <div className="text-[10px] text-slate-500">{order.toAmount} {order.toSymbol}</div>
+                      {order.rate === 0 ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin text-cyan-500" />
+                          <span className="text-[11px] text-slate-500 font-mono">quoting…</span>
+                        </div>
+                      ) : (
+                        <div className={`text-base font-mono font-bold ${isBest ? "text-amber-400" : "text-slate-300"}`}>
+                          {order.rate.toFixed(4)}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-slate-500">{order.toAmount > 0 ? `${order.toAmount} ${order.toSymbol}` : ""}</div>
                     </div>
                   </div>
 
@@ -1668,10 +1707,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
                   </div>
                   {/* Rate */}
                   <div>
-                    <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
-                      {order.rate.toFixed(4)}
-                    </div>
-                    <div className="text-[9px] text-slate-600">{order.toAmount} {order.toSymbol}</div>
+                    {order.rate === 0 ? (
+                      <div className="flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-500" />
+                        <span className="text-[9px] text-slate-500 font-mono">quoting…</span>
+                      </div>
+                    ) : (
+                      <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
+                        {order.rate.toFixed(4)}
+                      </div>
+                    )}
+                    <div className="text-[9px] text-slate-600">{order.toAmount > 0 ? `${order.toAmount} ${order.toSymbol}` : ""}</div>
                   </div>
                   {/* Expiry */}
                   <div>

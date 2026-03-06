@@ -2058,6 +2058,55 @@ export const chatRouter = router({
     }),
 
   /**
+   * Request a quote from a specific signaling peer for the Order Book.
+   * Pushes an agent_rfq message to the peer via the signaling server and
+   * returns the computed rate based on live prices + the peer's spread.
+   * The peer's browser will also receive the RFQ and can accept/reject it.
+   */
+  requestPeerQuote: publicProcedure
+    .input(z.object({
+      peerId:     z.string(),
+      fromToken:  z.string(),
+      toToken:    z.string(),
+      fromChain:  z.string().optional(),
+      toChain:    z.string().optional(),
+      amount:     z.number().positive(),
+      spreadBps:  z.number().optional(),   // peer's declared spread, forwarded from getPeerList
+    }))
+    .query(async ({ input }) => {
+      const { prices } = await getTokenPricesWithSource();
+      const fromSymbol = input.fromToken.toUpperCase();
+      const toSymbol   = input.toToken.toUpperCase();
+      const fromPrice  = prices[fromSymbol] ?? (fromSymbol.includes("USD") ? 1 : 0);
+      const toPrice    = prices[toSymbol]   ?? (toSymbol.includes("USD")   ? 1 : 0);
+      if (!fromPrice || !toPrice) {
+        return { rate: 0, outAmount: 0, delivered: false };
+      }
+      const spreadBps      = input.spreadBps ?? 30;
+      const spreadMult     = 1 - spreadBps / 10_000;
+      const baseRate       = fromPrice / toPrice;
+      const quotedRate     = baseRate * spreadMult;
+      const outAmount      = input.amount * quotedRate;
+      const rfqId          = `rfq_${Date.now()}_${input.peerId.slice(0, 8)}`;
+      const fromChain      = (input.fromChain ?? defaultChain(input.fromToken)) as SupportedChain;
+      const toChain        = (input.toChain   ?? defaultChain(input.toToken))   as SupportedChain;
+      const delivered = sendAgentRfqToPeer({
+        rfqId,
+        targetPeerId:    input.peerId,
+        fromToken:       input.fromToken,
+        toToken:         input.toToken,
+        fromChain,
+        toChain,
+        amount:          input.amount,
+        outAmount,
+        rate:            quotedRate,
+        requesterAlias:  "Order Book",
+        expiresAt:       Date.now() + 60_000,
+      });
+      return { rate: quotedRate, outAmount, delivered };
+    }),
+
+  /**
    * Return the current live signaling peer list for the Order Book.
    * Each peer includes their peerId, alias, accepted pairs, wallet addresses,
    * connection time, and last heartbeat. No WebSocket refs are exposed.

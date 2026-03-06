@@ -102,6 +102,8 @@ export type UserSettingsResult = {
   slippagePct: string;
   preferredRoute: "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best";
   theme: "dark" | "light" | "system";
+  autoAcceptRfq: boolean;
+  autoAcceptMaxUsd: number;
 };
 
 export async function getUserSettings(openId: string): Promise<UserSettingsResult> {
@@ -112,6 +114,7 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
     const rows = await db.select().from(userSettings).where(eq(userSettings.openId, openId)).limit(1);
     if (rows.length === 0) return { ...DEFAULT_USER_SETTINGS };
     const row = rows[0];
+    const r = row as Record<string, unknown>;
     return {
       id: row.id,
       maxTxAmountUsd: row.maxTxAmountUsd,
@@ -119,6 +122,8 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
       slippagePct: row.slippagePct,
       preferredRoute: row.preferredRoute,
       theme: row.theme,
+      autoAcceptRfq: r.autoAcceptRfq === 1,
+      autoAcceptMaxUsd: (r.autoAcceptMaxUsd as number) ?? 0,
     };
   } catch (err) {
     console.warn("[DB] getUserSettings failed, returning defaults:", err);
@@ -137,6 +142,8 @@ export async function upsertUserSettings(
     slippagePct?: string;
     preferredRoute?: UserSettings["preferredRoute"];
     theme?: UserSettings["theme"];
+    autoAcceptRfq?: boolean;
+    autoAcceptMaxUsd?: number;
   },
 ): Promise<void> {
   const db = await getDb();
@@ -148,10 +155,13 @@ export async function upsertUserSettings(
   const insertValues = {
     openId,
     maxTxAmountUsd: patch.maxTxAmountUsd ?? DEFAULT_USER_SETTINGS.maxTxAmountUsd,
-    autoConfirm: (patch.autoConfirm ?? DEFAULT_USER_SETTINGS.autoConfirm) ? 1 : 0,
+    autoConfirm: ((patch.autoConfirm ?? DEFAULT_USER_SETTINGS.autoConfirm) ? 1 : 0) as number,
     slippagePct: patch.slippagePct ?? DEFAULT_USER_SETTINGS.slippagePct,
-    preferredRoute: patch.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute,
-    theme: patch.theme ?? DEFAULT_USER_SETTINGS.theme,
+    preferredRoute: (patch.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute) as UserSettings["preferredRoute"],
+    theme: (patch.theme ?? DEFAULT_USER_SETTINGS.theme) as UserSettings["theme"],
+    // Cast to number since Drizzle schema uses int for these boolean-like columns
+    autoAcceptRfq: ((patch.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq) ? 1 : 0) as number,
+    autoAcceptMaxUsd: (patch.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd) as number,
   };
 
   const updateSet: Record<string, unknown> = {};
@@ -160,6 +170,8 @@ export async function upsertUserSettings(
   if (patch.slippagePct !== undefined) updateSet.slippagePct = patch.slippagePct;
   if (patch.preferredRoute !== undefined) updateSet.preferredRoute = patch.preferredRoute;
   if (patch.theme !== undefined) updateSet.theme = patch.theme;
+  if (patch.autoAcceptRfq !== undefined) updateSet.autoAcceptRfq = patch.autoAcceptRfq ? 1 : 0;
+  if (patch.autoAcceptMaxUsd !== undefined) updateSet.autoAcceptMaxUsd = patch.autoAcceptMaxUsd;
 
   await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });
 }

@@ -26,6 +26,8 @@ export const settingsRouter = router({
       slippagePct: settings.slippagePct ?? DEFAULT_USER_SETTINGS.slippagePct,
       preferredRoute: settings.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute,
       theme: settings.theme ?? DEFAULT_USER_SETTINGS.theme,
+      autoAcceptRfq: settings.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq,
+      autoAcceptMaxUsd: settings.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
     };
   }),
 
@@ -104,6 +106,8 @@ export const settingsRouter = router({
         slippagePct: z.string().regex(/^\d+(\.\d+)?$/, "Must be a numeric string like '0.5'").optional(),
         preferredRoute: preferredRouteEnum.optional(),
         theme: themeEnum.optional(),
+        autoAcceptRfq: z.boolean().optional(),
+        autoAcceptMaxUsd: z.number().int().min(0).max(1_000_000).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

@@ -1152,18 +1152,24 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
 // ─── Stats Bar ────────────────────────────────────────────────────────────────
 
 function NetworkStats({ peers, channels }: { peers: Peer[]; channels: Channel[] }) {
-  const online = peers.filter(p => p.online).length;
   const activeChannels = channels.filter(c => c.active).length;
   const totalVolume = peers.reduce((s, p) => s + p.volume24h, 0);
   const onlineRemote = peers.filter(p => p.id !== "self" && p.online);
   const avgLatency = onlineRemote.length > 0
     ? Math.round(onlineRemote.reduce((s, p) => s + p.latency, 0) / onlineRemote.length)
     : 0;
+  // Live signaling peer count from the real signaling server registry
+  const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
+    refetchInterval: 10_000,
+    staleTime: 8_000,
+  });
+  const liveOnlineCount = signalingPeers?.length ?? 0;
+  const totalPeers = Math.max(peers.length, liveOnlineCount);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       {[
-        { label: "Online Peers", value: `${online}/${peers.length}`, icon: Users, color: "#10b981" },
+        { label: "Online Peers", value: `${liveOnlineCount}/${totalPeers}`, icon: Users, color: "#10b981" },
         { label: "Active Channels", value: `${activeChannels}`, icon: Zap, color: "#06b6d4" },
         { label: "24h Volume", value: totalVolume > 0 ? `$${(totalVolume / 1000).toFixed(0)}k` : "$0", icon: TrendingUp, color: "#a78bfa" },
         { label: "Avg Latency", value: avgLatency > 0 ? `${avgLatency}ms` : "—", icon: Clock, color: "#f59e0b" },

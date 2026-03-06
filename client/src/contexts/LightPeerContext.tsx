@@ -375,18 +375,38 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       });
       // Dispatch to chat page so the agent shows the incoming swap card
       window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: rfq }));
-      // Show toast notification
-      const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
-      toast(`Incoming swap from ${alias}`, {
-        description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} — Agent matched you`,
-        duration: 15000,
-        action: {
-          label: "View in Agent",
-          onClick: () => {
-            window.dispatchEvent(new CustomEvent("afos:open-agent-chat"));
+      // Auto-accept if enabled and within configured limits
+      const prefs_ = prefsRef.current as LightPeerPrefs & { autoAcceptRfq?: boolean; autoAcceptMaxUsd?: number };
+      const autoAcceptEnabled = prefs_.autoAcceptRfq ?? prefs_.autoAccept;
+      const autoAcceptCap = (prefs_.autoAcceptMaxUsd && prefs_.autoAcceptMaxUsd > 0)
+        ? prefs_.autoAcceptMaxUsd
+        : prefs_.maxTradeUsd;
+      // Estimate USD value: use outAmount * rate as a rough proxy
+      const tradeUsdEstimate = rfq.outAmount > 0 ? rfq.outAmount * rfq.rate : rfq.amount * rfq.rate;
+      if (autoAcceptEnabled && tradeUsdEstimate <= autoAcceptCap) {
+        submitQuote(incoming);
+        setIncomingRfqs(prev =>
+          prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
+        );
+        const autoAlias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
+        toast.success(`Auto-accepted swap from ${autoAlias}`, {
+          description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken}`,
+          duration: 8000,
+        });
+      } else {
+        // Show toast notification for manual review
+        const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
+        toast(`Incoming swap from ${alias}`, {
+          description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} — Agent matched you`,
+          duration: 15000,
+          action: {
+            label: "View in Agent",
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent("afos:open-agent-chat"));
+            },
           },
-        },
-      });
+        });
+      }
     }));
 
     // Connect and register

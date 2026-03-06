@@ -166,6 +166,10 @@ export const userSettings = mysqlTable("user_settings", {
   preferredRoute:   mysqlEnum("preferredRoute", ["intercomswap", "jupiter", "zerox", "oneinch", "best"]).default("best").notNull(),
   /** Appearance theme preference: dark | light | system */
   theme:            mysqlEnum("theme", ["dark", "light", "system"]).default("dark").notNull(),
+  /** When true the agent automatically accepts incoming P2P RFQs within the configured limits */
+  autoAcceptRfq:    int("autoAcceptRfq").default(0).notNull(), // 0 = false, 1 = true
+  /** Maximum USD value of a single RFQ the agent will auto-accept (0 = use maxTxAmountUsd) */
+  autoAcceptMaxUsd: int("autoAcceptMaxUsd").default(0).notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -215,6 +219,8 @@ export const DEFAULT_USER_SETTINGS = {
   slippagePct: "0.5",
   preferredRoute: "best" as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best",
   theme: "dark" as const,
+  autoAcceptRfq: false,
+  autoAcceptMaxUsd: 0,
 };
 
 // ─── Peer Reports ─────────────────────────────────────────────────────────────
