@@ -1609,3 +1609,7 @@ The Overview should be an **operator's command center** — a single glance tell
 
 ## Version Bump — UI Polish for Publish
 - [x] Improve landing page hero section: add subtle animated gradient background, refine CTA button hover states, and add a "Powered by Intercomswap" badge
+
+## Footer & Scroll Polish
+- [x] Add "View on GitHub" link to footer pointing to github.com/idimi/AFOS
+- [x] Add smooth scroll: `html { scroll-behavior: smooth; }` in index.css
