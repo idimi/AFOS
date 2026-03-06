@@ -355,7 +355,7 @@ export default function LandingPage() {
                 initial={{ opacity: 0, y: -12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5 }}
-                className="flex items-center gap-2 mb-6"
+                className="flex items-center gap-2 mb-6 flex-wrap"
               >
                 <div
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold"
@@ -364,6 +364,16 @@ export default function LandingPage() {
                   <div className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
                   LIVE ON MAINNET
                 </div>
+                <a
+                  href="https://intercomswap.io"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-80"
+                  style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
+                >
+                  <Network className="w-3 h-3" />
+                  Powered by Intercomswap
+                </a>
               </motion.div>
 
               <motion.h1
@@ -394,9 +404,13 @@ export default function LandingPage() {
               >
                 <a
                   href="/app"
-                  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-90 hover:scale-[1.02]"
+                  className="flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-bold transition-all hover:opacity-90 hover:scale-[1.02] relative overflow-hidden group"
                   style={{ background: "oklch(0.72 0.18 195)", color: "oklch(0.085 0.02 260)" }}
                 >
+                  <span
+                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                    style={{ background: "linear-gradient(105deg, transparent 40%, oklch(1 0 0 / 0.18) 50%, transparent 60%)" }}
+                  />
                   Launch App
                   <ArrowRight className="w-4 h-4" />
                 </a>
@@ -431,11 +445,30 @@ export default function LandingPage() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.45, duration: 0.6 }}
-                className="flex flex-wrap gap-2"
+                className="flex flex-wrap gap-2 mb-6"
               >
                 <ChainBadge name="Bitcoin" color="#F7931A" symbol="₿" />
                 <ChainBadge name="Ethereum" color="#627EEA" symbol="Ξ" />
                 <ChainBadge name="Solana" color="#9945FF" symbol="◎" />
+              </motion.div>
+
+              {/* Trust strip */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6, duration: 0.6 }}
+                className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground"
+              >
+                {[
+                  { icon: Shield, label: "Non-custodial" },
+                  { icon: Lock, label: "HTLC atomic settlement" },
+                  { icon: Activity, label: "No KYC required" },
+                ].map(({ icon: Icon, label }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <Icon className="w-3 h-3" style={{ color: "oklch(0.72 0.18 195)" }} />
+                    <span>{label}</span>
+                  </div>
+                ))}
               </motion.div>
             </div>
 
@@ -862,15 +895,48 @@ export default function LandingPage() {
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
       <footer
-        className="py-8 px-6 text-center"
-        style={{ borderTop: "1px solid oklch(0.32 0.04 255 / 0.2)" }}
+        className="py-10 px-6"
+        style={{ borderTop: "1px solid oklch(0.32 0.04 255 / 0.2)", background: "oklch(0.08 0.02 260)" }}
       >
-        <div className="flex items-center justify-center mb-3">
-          <AfosLogo size="xl" glow />
+        <div className="max-w-5xl mx-auto">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mb-6">
+            <div className="flex items-center gap-3">
+              <AfosLogo size="xl" glow />
+              <div
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-bold"
+                style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
+              >
+                <Network className="w-2.5 h-2.5" />
+                Powered by Intercomswap
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+              <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
+              <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+              <a href="#compare" className="hover:text-foreground transition-colors">Compare</a>
+              <a
+                href="https://intercomswap.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-foreground transition-colors flex items-center gap-1"
+              >
+                P2P Network <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            </div>
+          </div>
+          <div
+            className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3"
+            style={{ borderTop: "1px solid oklch(0.32 0.04 255 / 0.15)" }}
+          >
+            <p className="text-[10px] text-muted-foreground">
+              Non-custodial · Open protocol · Beta · No bridges · No slippage
+            </p>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] text-emerald-400 font-bold">Mainnet Live</span>
+            </div>
+          </div>
         </div>
-        <p className="text-[10px] text-muted-foreground">
-          Non-custodial · Open protocol · Beta
-        </p>
       </footer>
     </div>
   );

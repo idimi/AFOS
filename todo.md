@@ -1606,3 +1606,6 @@ The Overview should be an **operator's command center** — a single glance tell
 ## Peer Card Dark Mode Redesign
 
 - [x] Redesign expanded peer card in dark mode — replace flat purple background with deep dark card + violet accent border/glow, better text contrast, cleaner stat boxes
+
+## Version Bump — UI Polish for Publish
+- [x] Improve landing page hero section: add subtle animated gradient background, refine CTA button hover states, and add a "Powered by Intercomswap" badge
