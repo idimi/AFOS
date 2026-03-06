@@ -1807,3 +1807,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add accepted trading pairs selector under LP Mode toggle in Agent Settings
 - [x] Add minimum trade size (USD) field under LP Mode toggle in Agent Settings
 - [x] Add LP Mode off banner to the Swaps page Order Book
+
+## Bug Fix: Wallet Disconnects on Page Refresh
+
+- [x] Implement wallet session persistence in MultiChainWalletContext (saveWalletSession/loadWalletSession/clearWalletSession)
+- [x] Auto-reconnect on mount for Phantom (publicKey check), MetaMask/Coinbase ETH (eth_accounts), Xverse/Tap/MetaMask BTC
+- [x] Clear session on explicit disconnect for all wallet types
+
+- [x] Fix Phantom (Solana) wallet auto-reconnect on page refresh
+- [x] Fix MetaMask/Coinbase (Ethereum) wallet auto-reconnect on page refresh
+- [x] Fix Xverse/Tap (Bitcoin) wallet auto-reconnect on page refresh

@@ -266,6 +266,30 @@ async function fetchSolanaBalancesForAddress(
   }
 }
 
+// ─── Wallet session persistence keys ─────────────────────────────────────────
+const WALLET_SESSION_KEY = "afos_wallet_session";
+
+type WalletSession = {
+  eth?: EthProviderType;   // "metamask" | "coinbase" — Phantom is handled by phantom key
+  btc?: BtcProviderType;   // "metamask" | "tap" | "xverse" — Phantom is handled by phantom key
+  phantom?: true;          // Phantom multi-chain was connected
+};
+
+function saveWalletSession(session: WalletSession) {
+  try { localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session)); } catch (_) {}
+}
+
+function loadWalletSession(): WalletSession | null {
+  try {
+    const raw = localStorage.getItem(WALLET_SESSION_KEY);
+    return raw ? (JSON.parse(raw) as WalletSession) : null;
+  } catch (_) { return null; }
+}
+
+function clearWalletSession() {
+  try { localStorage.removeItem(WALLET_SESSION_KEY); } catch (_) {}
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
@@ -276,11 +300,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const [ethConnecting, setEthConnecting] = useState(false);
   const [btcConnecting, setBtcConnecting] = useState(false);
   const [phantomConnecting, setPhantomConnecting] = useState(false);
+  // Refs to connect functions — populated after useCallback definitions so the
+  // auto-reconnect effect can call them without being in their dependency arrays.
+  const connectEthereumRef = React.useRef<((p: EthProviderType) => Promise<void>) | null>(null);
+  const connectBitcoinRef = React.useRef<((p: BtcProviderType) => Promise<void>) | null>(null);
+  const connectPhantomRef = React.useRef<(() => Promise<void>) | null>(null);
 
-  // ── Phantom Multi-Chain Connect ───────────────────────────────────────────
+  // ── Phantom Multi-Chain Connect ─────────────────────────────────────────────
   // Phantom exposes window.phantom.solana, window.phantom.ethereum, window.phantom.bitcoin
   // We connect all three simultaneously and populate ethereum + bitcoin state
-
   const connectPhantomMultiChain = useCallback(async () => {
     const ph = window.phantom;
     if (!ph) {
@@ -418,6 +446,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
+      // Persist session so we can auto-reconnect on next page load
+      saveWalletSession({ phantom: true });
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -452,6 +482,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       return { usdc: 0, usdt: 0 };
     });
     setPhantomMultiChain(null);
+    clearWalletSession();
     const phantomChains = (phantomMultiChain?.chains ?? ["solana", "ethereum", "bitcoin"]) as ("solana" | "ethereum" | "bitcoin")[];
     showWalletDisconnectedToast("Phantom", phantomChains);
   }, []);
@@ -511,6 +542,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       });
 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
+      // Persist session for auto-reconnect on next page load
+      saveWalletSession({ eth: providerType });
 
       provider.on?.("accountsChanged", (accs: unknown) => {
         const newAccs = accs as string[];
@@ -534,6 +567,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const disconnectEthereum = useCallback(() => {
     setEthereum(null);
     setErc20Balances({ usdc: 0, usdt: 0 });
+    clearWalletSession();
     if (phantomMultiChain) {
       // If Phantom was connected, disconnect all Phantom chains
       disconnectPhantom();
@@ -613,6 +647,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         connecting: false,
         isPhantom: false,
       });
+      saveWalletSession({ btc: "metamask" });
       toast.success("MetaMask BTC connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -657,6 +692,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         connecting: false,
         isPhantom: false,
       });
+      saveWalletSession({ btc: "tap" });
       toast.success("Tap Wallet connected", {
         description: `${shortAddr(address)} · ${btcBalance} BTC · ${tnkBalance} TNK`,
       });
@@ -700,6 +736,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         connecting: false,
         isPhantom: false,
       });
+      saveWalletSession({ btc: "xverse" });
       showWalletConnectedToast("Xverse", [{ chain: "bitcoin", address: shortAddr(addr) }]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -788,11 +825,68 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       disconnectPhantom();
     } else {
       setBitcoin(null);
+      clearWalletSession();
       showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
     }
   }, [bitcoin, disconnectPhantom]);
 
-  // ── Auto-refresh ERC-20 balances every 60 seconds ───────────────────────────
+  // ── Assign connect refs (updated every render so they always point to latest callbacks) ──
+  connectEthereumRef.current = connectEthereum;
+  connectBitcoinRef.current = connectBitcoin;
+  connectPhantomRef.current = connectPhantomMultiChain;
+
+  // ── Auto-reconnect on mount ─────────────────────────────────────────────────────────
+  // Silently restores the last wallet session on page load without showing any popup.
+  // For Phantom: checks window.phantom.solana.isConnected (already approved, no prompt).
+  // For ETH: uses eth_accounts (read-only, no popup) to verify the session is still valid.
+  // For BTC (Xverse/Tap/MetaMask): calls connect functions which handle their own silent checks.
+  useEffect(() => {
+    const session = loadWalletSession();
+    if (!session) return;
+
+    // Wait 800ms for wallet extensions to inject into window
+    const timer = setTimeout(async () => {
+      try {
+        if (session.phantom) {
+          // Phantom: reconnect only if the extension reports it is already connected
+          if (window.phantom?.solana?.publicKey) {
+            await connectPhantomRef.current?.();
+          } else {
+            // Session is stale (user revoked in Phantom) — clear it
+            clearWalletSession();
+          }
+        } else {
+          if (session.eth) {
+            // eth_accounts is a read-only call — returns authorised accounts without a popup
+            const provider = window.ethereum as { request: (a: { method: string }) => Promise<string[]> } | undefined;
+            if (provider) {
+              const accounts = await provider.request({ method: "eth_accounts" });
+              if (accounts?.length) {
+                // Accounts still authorised — reconnect silently
+                await connectEthereumRef.current?.(session.eth);
+              } else {
+                // Authorisation was revoked — clear stale session
+                clearWalletSession();
+              }
+            }
+          }
+          if (session.btc && session.btc !== "phantom") {
+            // For Xverse/Tap/MetaMask BTC: attempt silent reconnect
+            // connectBitcoin handles its own "not installed" gracefully
+            await connectBitcoinRef.current?.(session.btc);
+          }
+        }
+      } catch (_) {
+        // Auto-reconnect failed — clear session to avoid retrying on every refresh
+        clearWalletSession();
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Auto-refresh ERC-20 balances every 60 seconds ───────────────────────────────────────────
   useEffect(() => {
     if (!ethereum?.connected || !ethereum.address) return;
 
