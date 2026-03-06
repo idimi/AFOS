@@ -1439,3 +1439,4 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Animate BETA badge with subtle pulse/shimmer effect (CSS keyframes, non-distracting)
 - [x] Add condensed mobile hero animation in AgentChatHero for small screens
 - [x] Update AgentChatHero header subtitle to include "Hyperswarm · Intercomswap Powered by Trac Network"
+- [x] Fix Overview/Dashboard page layout — apply centered max-width container matching Swaps page style

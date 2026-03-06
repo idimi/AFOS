@@ -3254,10 +3254,11 @@ export default function Dashboard() {
             <div className="flex-1 overflow-auto">
 
               {/* ── DESKTOP: 2-column layout ── */}
-              <div className="hidden lg:grid grid-cols-12 gap-5 p-5 h-full" style={{ minHeight: 0 }}>
+              <div className="hidden lg:block p-5">
+                <div className="max-w-[1280px] mx-auto grid grid-cols-12 gap-5">
 
                 {/* LEFT col — Mini Chat + Metrics + Quick Actions + Market (with charts) */}
-                <div className="col-span-7 flex flex-col gap-4 min-h-0">
+                <div className="col-span-7 flex flex-col gap-4">
                   <MiniChatWidget onOpenFullChat={() => setActivePage("chat")} onOpenWallet={() => setShowWalletModal(true)} />
                   <MetricsRow onNavigate={setActivePage} />
                   <QuickActions onNavigate={setActivePage} />
@@ -3265,11 +3266,12 @@ export default function Dashboard() {
                 </div>
 
                 {/* RIGHT col — Portfolio + Wallets + Recent Swaps + Agent Activity */}
-                <div className="col-span-5 flex flex-col gap-4 min-h-0">
+                <div className="col-span-5 flex flex-col gap-4">
                   <PortfolioCard />
                   <WalletsCard />
                   <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
                   <AgentInsights onNavigateToTerminal={() => setActivePage("terminal")} />
+                </div>
                 </div>
               </div>
 
