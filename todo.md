@@ -1633,3 +1633,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Generate og:image social preview card (1200x630)
 - [x] Add full Open Graph + Twitter Card meta tags to client/index.html
 - [x] Create robots.txt in client/public/ with SEO crawl policy
+
+## SEO — Sitemap & Canonical
+- [x] Create sitemap.xml in client/public/ referencing afos.trade
+- [x] Add canonical link tag to client/index.html
