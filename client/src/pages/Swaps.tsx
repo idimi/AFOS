@@ -979,34 +979,11 @@ interface OrderBookEntry {
   expiresIn: number; // seconds
   latency: number;
   reputation: number;
+  timedOut?: boolean; // true when peer was online but did not respond within 30s
+  rfqSentAt?: number; // timestamp (ms) when the RFQ was sent to this peer
 }
 
-/**
- * Build a simulated order book seeded from real live prices.
- * Used only as fallback when no real SSE p2p_quote events arrive.
- */
-function buildFallbackOrders(fromSym: string, toSym: string, baseRate: number): OrderBookEntry[] {
-  const peers = ["GammaNode", "AlphaNode", "BetaSwap", "DeltaNode", "EpsilonPeer", "ZetaHub", "EtaNode"];
-  return Array.from({ length: 7 }, (_, i) => {
-    const spread = (Math.random() - 0.5) * 0.012; // ±0.6% spread from live rate
-    const rate = baseRate * (1 + spread);
-    const fromAmount = parseFloat((Math.random() * 0.5 + 0.001).toFixed(5));
-    const usdValue = fromAmount * baseRate * (toSym === "USDT" || toSym === "USDC" ? 1 : 1);
-    return {
-      id: `fallback_${i}_${Date.now()}`,
-      peer: peers[i % peers.length],
-      fromSymbol: fromSym,
-      toSymbol: toSym,
-      fromAmount,
-      toAmount: parseFloat((fromAmount * rate).toFixed(toSym === "USDT" || toSym === "USDC" ? 2 : 6)),
-      rate,
-      usdValue,
-      expiresIn: Math.floor(Math.random() * 55 + 10),
-      latency: Math.floor(Math.random() * 60 + 5),
-      reputation: parseFloat((95 + Math.random() * 5).toFixed(1)),
-    };
-  }).sort((a, b) => b.rate - a.rate);
-}
+// buildFallbackOrders removed — Order Book uses real SSE p2p_quote events only
 
 // ─── DEX Reference Rate ──────────────────────────────────────────────────────
 // Token mint addresses for Jupiter (Solana)
@@ -1230,7 +1207,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   // Start with empty — real SSE p2p_quote events populate the order book
   const [orders, setOrders] = useState<OrderBookEntry[]>([]);
   const [flash, setFlash] = useState<string | null>(null);
-  const rfqSentRef = useRef(false);
+  // pendingPeers: peerId → timestamp when RFQ was sent (for 30s timeout tracking)
+  const pendingPeersRef = useRef<Map<string, number>>(new Map());
 
   // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
@@ -1238,16 +1216,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     staleTime: 8_000,
   });
 
-  // Pair change: clear orders and reset RFQ-sent flag
+  // ── Debounced fromAmount for RFQ re-broadcast (800ms) ─────────────────────
+  const [debouncedRfqAmount, setDebouncedRfqAmount] = useState<number | undefined>(fromAmount);
   useEffect(() => {
-    setOrders([]);
-    rfqSentRef.current = false;
-  }, [fromToken.symbol, toToken.symbol]);
+    const timer = setTimeout(() => setDebouncedRfqAmount(fromAmount), 800);
+    return () => clearTimeout(timer);
+  }, [fromAmount]);
 
-  // When wallet is connected and peers are online, broadcast a real RFQ so peers
-  // respond with genuine p2p_quote SSE events that populate the Rate column.
-  // Re-broadcast when the pair changes or new peers come online.
-  useEffect(() => {
+  // Helper: broadcast a real RFQ and seed pending rows for all matching peers
+  const broadcastRfqRef = useRef<(() => void) | null>(null);
+  broadcastRfqRef.current = () => {
     if (!walletConnected) return;
     const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
     const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
@@ -1255,18 +1233,68 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
     );
     if (matchingPeers.length === 0) return;
-    // Broadcast a real RFQ to all online peers via the Oracle VM
-    const quoteAmount = Math.max(fromAmount ?? 0.001, 0.001);
-    rfqSentRef.current = true;
+    const quoteAmount = Math.max(debouncedRfqAmount ?? 0.001, 0.001);
+    const now = Date.now();
+    // Seed a pending row for each peer that hasn't responded yet
+    setOrders(prev => {
+      const next = [...prev];
+      for (const sp of matchingPeers) {
+        const alreadyQuoted = prev.some(o => o.peer === sp.peerId && o.rate > 0);
+        if (alreadyQuoted) continue; // keep existing live quote
+        const existingIdx = next.findIndex(o => o.peer === sp.peerId);
+        const pendingEntry: OrderBookEntry = {
+          id: `pending_${sp.peerId}`,
+          peer: sp.peerId,
+          fromSymbol: fromToken.symbol,
+          toSymbol: toToken.symbol,
+          fromAmount: quoteAmount,
+          toAmount: 0,
+          rate: 0,
+          usdValue: 0,
+          expiresIn: 90,
+          latency: 0,
+          reputation: sp.score ?? 95,
+          rfqSentAt: now,
+        };
+        if (existingIdx >= 0) {
+          next[existingIdx] = { ...next[existingIdx], rfqSentAt: now, timedOut: false };
+        } else {
+          next.push(pendingEntry);
+        }
+        pendingPeersRef.current.set(sp.peerId, now);
+      }
+      return next;
+    });
+    // Broadcast the real RFQ via Oracle VM
     submitRfq(
       fromToken.symbol,
       toToken.symbol,
       quoteAmount,
       fromToken.chain as import("../lib/afosApi").SupportedChain,
       toToken.chain as import("../lib/afosApi").SupportedChain,
-    ).catch(() => { /* best-effort — p2p_quote SSE events will arrive if peers respond */ });
+    ).catch(() => { /* best-effort */ });
+  };
+
+  // Pair change: clear orders and pending state
+  useEffect(() => {
+    setOrders([]);
+    pendingPeersRef.current.clear();
+  }, [fromToken.symbol, toToken.symbol]);
+
+  // Re-broadcast when wallet connects, peers list changes, pair changes, or debounced amount changes
+  useEffect(() => {
+    broadcastRfqRef.current?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol]);
+  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol, debouncedRfqAmount]);
+
+  // Auto-refresh: re-broadcast every 30s so peer rate updates are reflected live
+  useEffect(() => {
+    if (!walletConnected) return;
+    const interval = setInterval(() => {
+      broadcastRfqRef.current?.();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [walletConnected]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1283,30 +1311,34 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       if (qFrom !== fromToken.symbol || qTo !== toToken.symbol) return;
 
       const rate = d.rate ?? (d.inAmount && d.outAmount ? d.outAmount / d.inAmount : baseRate);
-      const fromAmount = d.inAmount ?? 0.001;
-      const toAmount = d.outAmount ?? parseFloat((fromAmount * rate).toFixed(6));
-      const usdValue = fromAmount * (fromToken.usdPrice || baseRate);
+      const inAmt = d.inAmount ?? 0.001;
+      const toAmount = d.outAmount ?? parseFloat((inAmt * rate).toFixed(6));
+      const usdValue = inAmt * (fromToken.usdPrice || baseRate);
+      const peerName = d.peer ?? d.peerId ?? "P2P Peer";
+      // Remove from pending tracker — peer responded
+      pendingPeersRef.current.delete(peerName);
       const entry: OrderBookEntry = {
         id: d.rfqId ?? `sse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        rfqId: d.rfqId, // preserve real rfqId for direct peer targeting
-        peer: d.peer ?? d.peerId ?? "P2P Peer",
+        rfqId: d.rfqId,
+        peer: peerName,
         fromSymbol: qFrom,
         toSymbol: qTo,
-        fromAmount,
+        fromAmount: inAmt,
         toAmount,
         rate,
         usdValue,
         expiresIn: d.expiresIn ?? 45,
         latency: d.latency ?? 20,
         reputation: 97.5,
+        timedOut: false,
       };
       setFlash(entry.id);
       setTimeout(() => setFlash(null), 800);
-      // Record this quote for peer reputation tracking
       recordQuoteRef.current(entry.peer, entry.latency);
       setOrders(prev => {
-        // Deduplicate by id, keep newest 7
-        const next = [entry, ...prev.filter(o => o.id !== entry.id)].slice(0, 7);
+        // Replace pending row for this peer or prepend; keep newest 7
+        const filtered = prev.filter(o => o.peer !== peerName && o.id !== entry.id);
+        const next = [entry, ...filtered].slice(0, 7);
         return next.sort((a, b) => b.rate - a.rate);
       });
     });
@@ -1314,15 +1346,23 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 
-  // Tick down expiry every 4s; remove expired rows
+  // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
   useEffect(() => {
     const interval = setInterval(() => {
+      const now = Date.now();
       setOrders(prev => {
         if (prev.length === 0) return prev;
-        return prev.map(o => ({
-          ...o,
-          expiresIn: Math.max(0, o.expiresIn - 4),
-        })).filter(o => o.expiresIn > 0);
+        return prev.map(o => {
+          // Check 30s timeout for pending (rate=0) rows
+          if (o.rate === 0 && o.rfqSentAt && now - o.rfqSentAt >= 30_000) {
+            return { ...o, timedOut: true, expiresIn: 0 };
+          }
+          return { ...o, expiresIn: Math.max(0, o.expiresIn - 4) };
+        }).filter(o => {
+          // Remove expired live quotes; keep timed-out rows so user can see them
+          if (o.timedOut) return true;
+          return o.expiresIn > 0;
+        });
       });
     }, 4000);
     return () => clearInterval(interval);
@@ -1559,10 +1599,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                     {/* Rate — large and prominent */}
                     <div className="text-right flex-shrink-0">
                       {order.rate === 0 ? (
-                        <div className="flex items-center justify-end gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin text-cyan-500" />
-                          <span className="text-[11px] text-slate-500 font-mono">quoting…</span>
-                        </div>
+                        order.timedOut ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#f87171" }}>Timed out</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin text-cyan-500" />
+                            <span className="text-[11px] text-slate-500 font-mono">quoting…</span>
+                          </div>
+                        )
                       ) : (
                         <div className={`text-base font-mono font-bold ${isBest ? "text-amber-400" : "text-slate-300"}`}>
                           {order.rate.toFixed(4)}
@@ -1655,10 +1701,14 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                   {/* Rate */}
                   <div>
                     {order.rate === 0 ? (
-                      <div className="flex items-center gap-1">
-                        <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-500" />
-                        <span className="text-[9px] text-slate-500 font-mono">quoting…</span>
-                      </div>
+                      order.timedOut ? (
+                        <span className="text-[8px] px-1 py-0.5 rounded font-bold" style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.35)", color: "#f87171" }}>Timed out</span>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin text-cyan-500" />
+                          <span className="text-[9px] text-slate-500 font-mono">quoting…</span>
+                        </div>
+                      )
                     ) : (
                       <div className={`text-[10px] font-mono font-semibold ${isBest ? "text-amber-400" : "text-slate-400"}`}>
                         {order.rate.toFixed(4)}

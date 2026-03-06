@@ -1781,3 +1781,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show "Connect wallet to request quotes" prompt in Order Book when wallet not connected
 - [x] Remove "Fallback" indicator from Order Book footer
 - [x] Show "Waiting for P2P quotes..." status while RFQ is in flight
+
+## Order Book Live Quotes & Timeout Badge
+
+- [x] Re-broadcast RFQ when fromAmount changes (debounced 800ms) so peers re-quote for the new amount
+- [x] Auto-refresh quotes every 30s so peer rate updates are reflected without manual action
+- [x] Track pending peers (peerId → RFQ-sent timestamp) and show "Timed out" badge after 30s with no response
+- [x] Allow retry from timed-out row (click badge re-sends RFQ to that peer)
