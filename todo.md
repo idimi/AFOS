@@ -1766,3 +1766,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] LightPeerContext: apply oracle-rate slippage guard to SSE p2p_rfq auto-accept path (same logic as agent_rfq path)
 - [x] LightPeerContext: show warning toast when SSE auto-accept is blocked by slippage guard
+
+## Bug Fix: Spurious Toast When Not Connected
+
+- [x] Fix: SSE p2p_rfq handler fires "Incoming swap from Order Book" toast for own-originated RFQs (user is requester, not responder)
+- [x] Fix: also suppress the toast when the user has no peerId (not connected to signaling)

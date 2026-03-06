@@ -1195,6 +1195,9 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
+  // Get our own peerId so we can pass it as requesterPeerId in requestPeerQuote.
+  // The LP's agent_rfq handler will skip the echo if rfq.requesterPeerId === their own peerId.
+  const { peerId: ownPeerId } = useLightPeer();
 
   // Debounce the fromAmount so the DEX quote only re-fetches 500ms after the user stops typing
   const [debouncedFromAmount, setDebouncedFromAmount] = useState<number | undefined>(fromAmount);
@@ -1300,10 +1303,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount }: {
         ));
       }
       trpcUtils.chat.requestPeerQuote.fetch({
-        peerId:    p.peerId,
-        fromToken: fromToken.symbol,
-        toToken:   toToken.symbol,
-        amount:    quoteAmount,
+        peerId:          p.peerId,
+        fromToken:       fromToken.symbol,
+        toToken:         toToken.symbol,
+        amount:          quoteAmount,
+        // Pass our own peerId so the LP's agent_rfq handler can skip the echo
+        ...(ownPeerId ? { requesterPeerId: ownPeerId } : {}),
       }).then(result => {
         if (!result || result.rate <= 0) {
           // Quote failed — remove placeholder so we don't show 0.0000

@@ -2065,13 +2065,14 @@ export const chatRouter = router({
    */
   requestPeerQuote: publicProcedure
     .input(z.object({
-      peerId:     z.string(),
-      fromToken:  z.string(),
-      toToken:    z.string(),
-      fromChain:  z.string().optional(),
-      toChain:    z.string().optional(),
-      amount:     z.number().positive(),
-      spreadBps:  z.number().optional(),   // peer's declared spread, forwarded from getPeerList
+      peerId:          z.string(),
+      fromToken:       z.string(),
+      toToken:         z.string(),
+      fromChain:       z.string().optional(),
+      toChain:         z.string().optional(),
+      amount:          z.number().positive(),
+      spreadBps:       z.number().optional(),   // peer's declared spread, forwarded from getPeerList
+      requesterPeerId: z.string().optional(),   // caller's own peerId so the LP can filter echo events
     }))
     .query(async ({ input }) => {
       const { prices } = await getTokenPricesWithSource();
@@ -2101,6 +2102,7 @@ export const chatRouter = router({
         outAmount,
         rate:            quotedRate,
         requesterAlias:  "Order Book",
+        requesterPeerId: input.requesterPeerId,  // forwarded so LP can echo-filter
         expiresAt:       Date.now() + 60_000,
       });
       return { rate: quotedRate, outAmount, delivered };

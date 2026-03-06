@@ -354,6 +354,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         expiresAt: number;
       };
       if (!rfq.rfqId || !rfq.fromToken || !rfq.toToken) return;
+      // Echo-filter: if this RFQ was sent by us (Order Book quote request), ignore it.
+      // The requesterPeerId is set to our own peerId by requestPeerQuote in Swaps.tsx.
+      if (rfq.requesterPeerId && rfq.requesterPeerId === peerId) return;
+      // Also ignore if the alias is "Order Book" and we have no requesterPeerId (legacy path)
+      if (!rfq.requesterPeerId && rfq.requesterAlias === "Order Book") return;
       // Build IncomingRfq from agent_rfq data
       const incoming: IncomingRfq = {
         rfqId: rfq.rfqId,
