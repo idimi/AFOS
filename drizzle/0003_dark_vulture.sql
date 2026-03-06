@@ -1,0 +1,1 @@
+ALTER TABLE `admin_config` ADD `oracleSyncEnabled` int DEFAULT 0 NOT NULL;

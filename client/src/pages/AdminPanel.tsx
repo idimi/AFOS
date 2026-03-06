@@ -630,30 +630,56 @@ function TreasuryTab() {
 
 // ─── Oracle VM Sync Status Card ─────────────────────────────────────────────────
 function OracleVmSyncCard() {
+  const utils = trpc.useUtils();
   const { data: cfg, isLoading } = trpc.adminConfig.get.useQuery(undefined, { staleTime: 30_000, refetchInterval: 65_000 });
+  const setOracleSyncEnabled = trpc.adminConfig.setOracleSyncEnabled.useMutation({
+    onSuccess: () => utils.adminConfig.get.invalidate(),
+  });
+
+  const enabled = cfg?.oracleSyncEnabled ?? false;
   const lastSync = cfg?.lastOracleSyncAt ? new Date(cfg.lastOracleSyncAt) : null;
   const inserted = cfg?.lastSyncInserted ?? 0;
   const isStale = lastSync ? (Date.now() - lastSync.getTime()) > 120_000 : true;
-  const syncColor = isLoading ? "#94a3b8" : lastSync ? (isStale ? "#f59e0b" : "#10b981") : "#ef4444";
-  const syncBg   = isLoading ? "var(--muted)" : lastSync ? (isStale ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)") : "rgba(239,68,68,0.12)";
-  const syncLabel = isLoading ? "CHECKING" : lastSync ? (isStale ? "STALE" : "LIVE") : "NEVER RUN";
+
+  const dotColor  = isLoading ? "#94a3b8" : !enabled ? "#64748b" : lastSync ? (isStale ? "#f59e0b" : "#10b981") : "#ef4444";
+  const badgeBg   = isLoading ? "var(--muted)" : !enabled ? "rgba(100,116,139,0.15)" : lastSync ? (isStale ? "rgba(245,158,11,0.12)" : "rgba(16,185,129,0.12)") : "rgba(239,68,68,0.12)";
+  const badgeLabel = isLoading ? "CHECKING" : !enabled ? "DISABLED" : lastSync ? (isStale ? "STALE" : "LIVE") : "NEVER RUN";
+
+  const handleToggle = () => {
+    void setOracleSyncEnabled.mutateAsync({ enabled: !enabled });
+  };
+
   return (
     <div className="rounded-2xl p-4 mt-1" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-2 h-2 rounded-full" style={{ background: syncColor, boxShadow: !isStale && lastSync ? `0 0 6px ${syncColor}` : "none" }} />
+          <div className="w-2 h-2 rounded-full" style={{ background: dotColor, boxShadow: enabled && lastSync && !isStale ? `0 0 6px ${dotColor}` : "none" }} />
           <div>
             <p className="text-xs font-semibold text-foreground">Oracle VM Sync Job</p>
             <p className="text-[10px] text-muted-foreground">
-              {isLoading ? "Loading…" : lastSync
-                ? `Last run: ${lastSync.toLocaleTimeString()} · ${inserted} row${inserted === 1 ? "" : "s"} inserted`
-                : "No sync run recorded yet"}
+              {isLoading ? "Loading…" : !enabled ? "Sync disabled — enable to import completed swaps from Oracle VM" :
+                lastSync
+                  ? `Last run: ${lastSync.toLocaleTimeString()} · ${inserted} row${inserted === 1 ? "" : "s"} inserted`
+                  : "Enabled — waiting for first sync run (runs every 60s)"}
             </p>
           </div>
         </div>
-        <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: syncBg, color: syncColor }}>
-          {syncLabel}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: badgeBg, color: dotColor }}>
+            {badgeLabel}
+          </span>
+          <button
+            onClick={handleToggle}
+            disabled={isLoading || setOracleSyncEnabled.isPending}
+            className="text-[9px] font-bold px-2 py-0.5 rounded-full transition-all disabled:opacity-50"
+            style={{
+              background: enabled ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)",
+              border: `1px solid ${enabled ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.25)"}`,
+              color: enabled ? "#ef4444" : "#10b981",
+            }}>
+            {setOracleSyncEnabled.isPending ? "…" : enabled ? "DISABLE" : "ENABLE"}
+          </button>
+        </div>
       </div>
     </div>
   );

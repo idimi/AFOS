@@ -1,0 +1,12 @@
+{
+  "query": "\nSELECT 'swap_analytics' as tbl, COUNT(*) as rows FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'admin_audit_log', COUNT(*) FROM admin_audit_log\nUNION ALL SELECT 'operator_config', COUNT(*) FROM operator_config;\nSELECT id, oracleSyncEnabled, feeEnabled FROM admin_config WHERE id = 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT 'swap_analytics' as tbl, COUNT(*) as rows FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'admin_audit_log', COUNT(*) FROM admin_audit_log\nUNION ALL SELECT 'operator_config', COUNT(*) FROM operator_config;\nSELECT id, oracleSyncEnabled, feeEnabled FROM admin_config WHERE id = 1;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1064 (42000) at line 2: You have an error in your SQL syntax; check the manual that corresponds to your TiDB version for the right syntax to use line 1 column 48 near \"rows FROM swap_analytics",
+    "UNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation",
+    "UNION ALL SELECT 'users', COUNT(*) FROM users",
+    "UNION ALL SELECT 'admin_audit_log', COUNT(*) FROM admin_audit_log",
+    "UNION ALL SELECT 'operator_config', COUNT(*) FROM operator_config\""
+  ]
+}

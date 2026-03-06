@@ -1,0 +1,62 @@
+{
+  "query": "\nSELECT table_name, table_rows \nFROM information_schema.tables \nWHERE table_schema = DATABASE()\nORDER BY table_name;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT table_name, table_rows \nFROM information_schema.tables \nWHERE table_schema = DATABASE()\nORDER BY table_name;\n",
+  "rows": [
+    {
+      "table_name": "__drizzle_migrations",
+      "table_rows": "15"
+    },
+    {
+      "table_name": "admin_audit_log",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "admin_config",
+      "table_rows": "1"
+    },
+    {
+      "table_name": "htlc_swaps",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "operator_config",
+      "table_rows": "1"
+    },
+    {
+      "table_name": "peer_blocks",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "peer_messages",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "peer_mutes",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "peer_reports",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "peer_reputation",
+      "table_rows": "4"
+    },
+    {
+      "table_name": "swap_analytics",
+      "table_rows": "50"
+    },
+    {
+      "table_name": "user_settings",
+      "table_rows": "0"
+    },
+    {
+      "table_name": "users",
+      "table_rows": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "table_name\ttable_rows\n__drizzle_migrations\t15\nadmin_audit_log\t0\nadmin_config\t1\nhtlc_swaps\t0\noperator_config\t1\npeer_blocks\t0\npeer_messages\t0\npeer_mutes\t0\npeer_reports\t0\npeer_reputation\t4\nswap_analytics\t50\nuser_settings\t0\nusers\t1\n",
+  "stderr": "",
+  "execution_time_ms": 382
+}

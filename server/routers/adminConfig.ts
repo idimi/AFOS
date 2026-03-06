@@ -91,6 +91,7 @@ export const adminConfigRouter = router({
       feeAlertThresholdCents: 100,
       feeAlertLastNotifiedDate: null as string | null,
       treasuryWallets:  DEFAULT_ADMIN_CONFIG.treasuryWallets,
+      oracleSyncEnabled: false,
       lastOracleSyncAt:  null as Date | null,
       lastSyncInserted:  0,
     };
@@ -108,6 +109,7 @@ export const adminConfigRouter = router({
         try { return JSON.parse(row.treasuryWallets ?? "[]") as typeof DEFAULT_ADMIN_CONFIG.treasuryWallets; }
         catch { return DEFAULT_ADMIN_CONFIG.treasuryWallets; }
       })(),
+      oracleSyncEnabled: row.oracleSyncEnabled === 1,
       lastOracleSyncAt:  row.lastOracleSyncAt ?? null,
       lastSyncInserted:  row.lastSyncInserted ?? 0,
     };
@@ -167,6 +169,30 @@ export const adminConfigRouter = router({
         changes:  diffObjects(beforeSnap, afterSnap),
       });
 
+      return { success: true };
+    }),
+
+  /**
+   * Enable or disable the Oracle VM sync job — admin only.
+   * When disabled, runOracleVmSync() returns immediately without importing data.
+   */
+  setOracleSyncEnabled: adminProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) return { success: false };
+      await db.update(adminConfig)
+        .set({ oracleSyncEnabled: input.enabled ? 1 : 0 })
+        .where(eq(adminConfig.id, 1));
+      await writeAuditLog({
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
+        section:  "operator_config",
+        changes:  diffObjects(
+          { oracleSyncEnabled: !input.enabled },
+          { oracleSyncEnabled: input.enabled },
+        ),
+      });
       return { success: true };
     }),
 

@@ -105,6 +105,20 @@ export async function runOracleVmSync(): Promise<OracleVmSyncResult> {
   const db = await getDb();
   if (!db) return { checked: false, inserted: 0, skipped: 0, backfilled: 0, error: "no-db" };
 
+  // 0. Check if Oracle VM sync is enabled in admin_config (default: disabled)
+  try {
+    const [cfg] = await db
+      .select({ oracleSyncEnabled: adminConfig.oracleSyncEnabled })
+      .from(adminConfig)
+      .limit(1);
+    if (!cfg || !cfg.oracleSyncEnabled) {
+      return { checked: false, inserted: 0, skipped: 0, backfilled: 0, error: "sync-disabled" };
+    }
+  } catch (_) {
+    // If we can't read the config, default to disabled for safety
+    return { checked: false, inserted: 0, skipped: 0, backfilled: 0, error: "sync-disabled" };
+  }
+
   // 1. Fetch completed swaps from Oracle VM
   let completedSwaps: OracleSwap[] = [];
   try {

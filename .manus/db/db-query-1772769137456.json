@@ -1,0 +1,30 @@
+{
+  "query": "\nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'peer_messages', COUNT(*) FROM peer_messages;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'peer_reputation', COUNT(*) FROM peer_reputation\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'peer_messages', COUNT(*) FROM peer_messages;\n",
+  "rows": [
+    {
+      "tbl": "users",
+      "cnt": "1"
+    },
+    {
+      "tbl": "htlc_swaps",
+      "cnt": "0"
+    },
+    {
+      "tbl": "swap_analytics",
+      "cnt": "0"
+    },
+    {
+      "tbl": "peer_messages",
+      "cnt": "0"
+    },
+    {
+      "tbl": "peer_reputation",
+      "cnt": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "tbl\tcnt\nusers\t1\nhtlc_swaps\t0\nswap_analytics\t0\npeer_messages\t0\npeer_reputation\t1\n",
+  "stderr": "",
+  "execution_time_ms": 346
+}
