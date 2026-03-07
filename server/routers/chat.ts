@@ -34,7 +34,7 @@ import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap } from "../agentSwapBtc";
 import { getUserSettings } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
-import { getSignalingPeerList, sendToPeer, registerRfqPeer, getRequesterPeerIdForRfq } from "../signaling";
+import { getSignalingPeerList, sendToPeer } from "../signaling";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -448,10 +448,6 @@ function sendAgentRfqToPeer(params: {
   requesterWallet?: string;
   expiresAt: number;
 }): boolean {
-  // Register rfqId → requesterPeerId so the accept handler can notify A
-  if (params.requesterPeerId) {
-    registerRfqPeer(params.rfqId, params.requesterPeerId);
-  }
   return sendToPeer(params.targetPeerId, {
     type:            "agent_rfq",
     rfqId:           params.rfqId,
@@ -899,22 +895,9 @@ export const chatRouter = router({
       const declineMatch = message.match(/decline\s+swap.*rfq:([\w_]+)/i);
       if (acceptMatch) {
         const rfqId = acceptMatch[1];
-        // Notify the requester (A) that B has accepted — A will then lock their HTLC and send p2p_htlc_params to B
-        const requesterPeerId = getRequesterPeerIdForRfq(rfqId);
-        if (requesterPeerId) {
-          sendToPeer(requesterPeerId, {
-            type:      "p2p_quote_accepted",
-            rfqId,
-            fromAlias: senderAlias ?? "LP",
-            wallets:   {}, // B's wallet addresses not available server-side; B will send them via LightPeerContext
-            rate:      0,  // Will be filled in by LightPeerContext when B sends p2p_quote_accepted directly
-            outAmount: 0,
-          });
-          console.log(`[AFOS] Sent p2p_quote_accepted to requester ${requesterPeerId.slice(0, 12)} for rfq ${rfqId.slice(0, 12)}`);
-        }
         return {
           type: "text" as const,
-          content: `Great! I've notified the requester that you've accepted the swap for RFQ \`${rfqId.slice(0, 12)}…\`. They will now lock their side of the HTLC escrow. Please connect your wallet — I'll guide you through locking your side once their transaction is confirmed.`,
+          content: `Great! I'm coordinating the HTLC atomic swap for RFQ \`${rfqId}\`. The requester will be notified and both sides will be guided through signing. Please connect your wallet if you haven't already, and I'll walk you through locking your side of the swap.`,
         };
       }
       if (declineMatch) {

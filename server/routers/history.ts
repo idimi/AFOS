@@ -15,7 +15,6 @@ import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
 import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
-import { recordHtlcLock, recordSwapAnalytic, markHtlcCompleted } from "../htlcMonitor";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,94 +25,6 @@ function sinceDate(days: number): Date {
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const historyRouter = router({
-  /**
-   * Record a completed or failed P2P atomic swap from the client.
-   * Inserts into both htlcSwaps (for Open Trades / Refunds tabs) and swapAnalytics (for History tab).
-   * Called by useP2PSwap when a swap reaches "complete" or "failed" phase.
-   */
-  recordP2PSwap: publicProcedure
-    .input(z.object({
-      rfqId:          z.string(),
-      role:           z.enum(["requester", "maker"]),
-      status:         z.enum(["completed", "failed", "refunded"]),
-      fromChain:      z.enum(["bitcoin", "ethereum", "solana"]),
-      toChain:        z.enum(["bitcoin", "ethereum", "solana"]),
-      fromToken:      z.string(),
-      toToken:        z.string(),
-      fromAmount:     z.number(),
-      toAmount:       z.number(),
-      rate:           z.number(),
-      peerId:         z.string().optional(),
-      walletAddress:  z.string().optional(),
-      lockTxHashA:    z.string().optional(),
-      lockTxHashB:    z.string().optional(),
-      escrowAddressA: z.string().optional(),
-      escrowAddressB: z.string().optional(),
-      secretHash:     z.string().optional(),
-      timelockA:      z.number().optional(),
-      timelockB:      z.number().optional(),
-      settlementMs:   z.number().optional(),
-      errorReason:    z.string().optional(),
-    }))
-    .mutation(async ({ input }) => {
-      try {
-        // 1. Record the HTLC lock for the side this user initiated
-        const chain = input.role === "requester" ? input.fromChain : input.toChain;
-        const lockTxId = input.role === "requester" ? input.lockTxHashA : input.lockTxHashB;
-        const escrowAddress = input.role === "requester" ? input.escrowAddressA : input.escrowAddressB;
-        const locktime = input.role === "requester" ? (input.timelockA ?? 0) : (input.timelockB ?? 0);
-        const amountHuman = input.role === "requester"
-          ? String(input.fromAmount)
-          : String(input.toAmount);
-
-        if (escrowAddress && input.secretHash) {
-          await recordHtlcLock({
-            chain,
-            htlcAddress:   escrowAddress,
-            secretHash:    input.secretHash,
-            lockTxId:      lockTxId,
-            amountRaw:     String(Math.round(input.fromAmount * 1e9)),
-            amountHuman,
-            locktime,
-            peerId:        input.peerId,
-            rfqId:         input.rfqId,
-            toToken:       input.toToken,
-            toChain:       input.toChain,
-            senderAddress: input.walletAddress,
-          });
-        }
-
-        // 2. If completed, mark HTLC as done
-        if (input.status === "completed" && input.secretHash) {
-          await markHtlcCompleted(input.secretHash, lockTxId);
-        }
-
-        // 3. Record in swapAnalytics for the History tab
-        const settlementMs = input.settlementMs ?? (input.status === "completed" ? 30000 : undefined);
-        await recordSwapAnalytic({
-          fromChain:     input.fromChain,
-          toChain:       input.toChain,
-          fromToken:     input.fromToken,
-          toToken:       input.toToken,
-          amount:        String(input.fromAmount),
-          route:         "p2p",
-          status:        input.status,
-          settlementMs,
-          txId:          lockTxId,
-          peerId:        input.peerId,
-          feeBps:        15,
-          walletAddress: input.walletAddress,
-          rfqId:         input.rfqId,
-          outAmount:     String(input.toAmount),
-        });
-
-        return { ok: true };
-      } catch (err) {
-        console.error("[recordP2PSwap] Error:", err);
-        return { ok: false, error: String(err) };
-      }
-    }),
-
   /**
    * Paginated swap history from swapAnalytics.
    * Wallet-scoped when walletAddresses provided, global otherwise.
@@ -409,42 +320,5 @@ export const historyRouter = router({
         .limit(100);
 
       return { refunds, isWalletScoped };
-    }),
-
-  /**
-   * Fetch full detail for a single swap by its swapAnalytics row ID.
-   * Returns the swapAnalytics row plus any matching htlcSwaps rows
-   * (matched by rfqId or txId) so the detail drawer can show both legs.
-   */
-  detail: publicProcedure
-    .input(z.object({
-      id: z.number().int().positive(),
-    }))
-    .query(async ({ input }) => {
-      const db = await getDb();
-      if (!db) return { swap: null, htlcLegs: [] };
-
-      const [swap] = await db
-        .select()
-        .from(swapAnalytics)
-        .where(eq(swapAnalytics.id, input.id))
-        .limit(1);
-
-      if (!swap) return { swap: null, htlcLegs: [] };
-
-      // Find matching HTLC legs by rfqId (preferred) or txId
-      const htlcConditions = [];
-      if (swap.rfqId) htlcConditions.push(eq(htlcSwaps.rfqId, swap.rfqId));
-      if (swap.txId) htlcConditions.push(eq(htlcSwaps.lockTxId, swap.txId));
-
-      const htlcLegs = htlcConditions.length > 0
-        ? await db
-            .select()
-            .from(htlcSwaps)
-            .where(or(...htlcConditions))
-            .orderBy(htlcSwaps.createdAt)
-        : [];
-
-      return { swap, htlcLegs };
     }),
 });

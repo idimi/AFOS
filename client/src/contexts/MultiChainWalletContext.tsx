@@ -64,8 +64,6 @@ export interface PhantomMultiChainState {
   solanaBalances?: Array<{ symbol: string; amount: string; usdValue: number }>;
   /** Total USD value of Solana holdings */
   solanaTotalUsd?: number;
-  /** True while Solana balances are being fetched in the background */
-  solanaBalancesLoading?: boolean;
 }
 
 interface MultiChainWalletContextValue {
@@ -426,14 +424,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       // Set state immediately (without SOL balances) so the UI updates fast
-      // solanaBalancesLoading=true prevents the portfolio total from showing $0 during the fetch
       setPhantomMultiChain({
         connected: true,
         chains: connectedChains,
         solanaAddress,
         ethereumAddress,
         bitcoinAddress,
-        solanaBalancesLoading: !!solanaAddress,
       });
 
       // Fetch Solana balances in the background and update state when ready
@@ -444,13 +440,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
               ...prev,
               solanaBalances: balances,
               solanaTotalUsd: totalUsd,
-              solanaBalancesLoading: false,
             } : null);
           })
-          .catch(e => {
-            console.warn("[Phantom] SOL balance fetch failed:", e);
-            setPhantomMultiChain(prev => prev ? { ...prev, solanaBalancesLoading: false } : null);
-          });
+          .catch(e => console.warn("[Phantom] SOL balance fetch failed:", e));
       }
 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates

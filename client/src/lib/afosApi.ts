@@ -410,9 +410,23 @@ export async function getStats(): Promise<BackendStats> {
  * Normalises each swap to include chain context.
  */
 export async function getSwaps(): Promise<{ pending: RfqResult[]; completed: RfqResult[] }> {
-  // Oracle VM direct polling disabled — swap history is sourced from the local DB
-  // via the tRPC swapAnalytics procedures instead.
-  return { pending: [], completed: [] };
+  const res = await fetchWithTimeout(`${BACKEND_URL}/api/swaps`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const normalise = (swaps: RfqResult[]): RfqResult[] =>
+    swaps.map(s => ({
+      ...s,
+      // Defensively coerce numeric fields — Oracle VM may return null/string
+      inAmount:  typeof s.inAmount  === 'number' ? s.inAmount  : parseFloat(String(s.inAmount  ?? 0)) || 0,
+      outAmount: typeof s.outAmount === 'number' ? s.outAmount : parseFloat(String(s.outAmount ?? 0)) || 0,
+      rate:      typeof s.rate      === 'number' ? s.rate      : parseFloat(String(s.rate      ?? 0)) || 0,
+      fromChain: s.fromChain ?? inferChain(s.fromToken),
+      toChain:   s.toChain   ?? inferChain(s.toToken),
+    }));
+  return {
+    pending: normalise(data.pending || []),
+    completed: normalise(data.completed || []),
+  };
 }
 
 /**

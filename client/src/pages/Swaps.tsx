@@ -15,25 +15,19 @@ import {
   Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
   Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge,
-  Bot, X as XIcon, UserPlus
+  Bot, X as XIcon
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
-import { useP2PSwap } from "../hooks/useP2PSwap";
 import { useWallet } from "../contexts/WalletContext";
-import { useConnection } from "@solana/wallet-adapter-react";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { FindLPsDialog } from "../components/FindLPsDialog";
-import { P2PSwapProgressModal } from "../components/P2PSwapProgressModal";
 import { Wallet } from "lucide-react";
 import { getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
-import { getSignalingClient } from "../lib/signalingClient";
 import { usePeerReputation } from "../hooks/usePeerReputation";
-import { buildSolanaHtlcRefundTx } from "../lib/solanaHtlc";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
@@ -998,7 +992,6 @@ function TradingViewChart({ fromToken, toToken, theme }: {
 interface OrderBookEntry {
   id: string;
   rfqId?: string; // real P2P quote rfqId (from SSE p2p_quote event)
-  peerId?: string; // real P2P peer ID for signaling
   peer: string;
   fromSymbol: string;
   toSymbol: string;
@@ -1011,8 +1004,6 @@ interface OrderBookEntry {
   reputation: number;
   timedOut?: boolean; // true when peer was online but did not respond within 30s
   rfqSentAt?: number; // timestamp (ms) when the RFQ was sent to this peer
-  /** B's wallet addresses — populated from signalingPeers when a P2P quote arrives */
-  walletAddresses?: { solana?: string; ethereum?: string; bitcoin?: string };
 }
 
 // buildFallbackOrders removed — Order Book uses real SSE p2p_quote events only
@@ -1195,7 +1186,7 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings, triggerGetQuotesRef, onFindLPs }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
@@ -1203,10 +1194,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   fromAmount?: number; // current swap input amount for DEX depth comparison
   walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
   lpEnabled?: boolean; // whether the user has LP Mode enabled
-  ownPeerId?: string | null; // own peer ID — filtered out from the order book
   onNavigateToSettings?: () => void;
-  triggerGetQuotesRef?: React.MutableRefObject<(() => void) | null>; // parent can call this to imperatively trigger Get Quotes
-  onFindLPs?: () => void; // open Find LPs dialog
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1246,25 +1234,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   const [flash, setFlash] = useState<string | null>(null);
   // pendingPeers: peerId → timestamp when RFQ was sent (for 30s timeout tracking)
   const pendingPeersRef = useRef<Map<string, number>>(new Map());
-  // rfqActive: true once the first RFQ has been broadcast (used for UI state)
-  const [rfqActive, setRfqActive] = useState(false);
 
   // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
     refetchInterval: 10_000,
     staleTime: 8_000,
   });
-
-  // Compute matching peer count for the current pair (used for badge + empty state)
-  const matchingPeerCount = useMemo(() => {
-    const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
-    const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
-    return (signalingPeers ?? []).filter(p =>
-      p.pairs.length > 0 &&
-      p.pairs.some(pair => pair === pairKey || pair === reversePairKey) &&
-      p.peerId !== ownPeerId
-    ).length;
-  }, [signalingPeers, fromToken.symbol, toToken.symbol, ownPeerId]);
 
   // ── Debounced fromAmount for RFQ re-broadcast (800ms) ─────────────────────
   const [debouncedRfqAmount, setDebouncedRfqAmount] = useState<number | undefined>(fromAmount);
@@ -1280,10 +1255,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
     const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
     const matchingPeers = (signalingPeers ?? []).filter(p =>
-      // Only include peers that have LP pairs registered AND are not our own peer
-      p.pairs.length > 0 &&
-      p.pairs.some(pair => pair === pairKey || pair === reversePairKey) &&
-      p.peerId !== ownPeerId
+      p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
     );
     if (matchingPeers.length === 0) return;
     const quoteAmount = Math.max(debouncedRfqAmount ?? 0.001, 0.001);
@@ -1318,7 +1290,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       }
       return next;
     });
-    // Broadcast the real RFQ via Oracle VM (SSE path to LP peers)
+    // Broadcast the real RFQ via Oracle VM
     submitRfq(
       fromToken.symbol,
       toToken.symbol,
@@ -1326,71 +1298,28 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       fromToken.chain as import("../lib/afosApi").SupportedChain,
       toToken.chain as import("../lib/afosApi").SupportedChain,
     ).catch(() => { /* best-effort */ });
-    // Also broadcast via signaling server (WebSocket path — reaches LP peers directly)
-    // This is redundant with the Oracle VM SSE path but improves reliability
-    // when the Oracle VM is slow or unreachable.
-    const rfqPayload = {
-      rfqId: `rfq_${Date.now()}_${ownPeerId?.slice(0, 8) ?? 'anon'}`,
-      fromToken: fromToken.symbol,
-      toToken: toToken.symbol,
-      amount: quoteAmount,
-      fromChain: fromToken.chain,
-      toChain: toToken.chain,
-      requestorPeer: ownPeerId ?? undefined,
-      timestamp: Date.now(),
-    };
-    // signalingRef is not directly accessible here; dispatch via custom event
-    window.dispatchEvent(new CustomEvent('afos:broadcast-rfq', { detail: rfqPayload }));
   };
-
-  // Expose the trigger function to the parent via ref
-  useEffect(() => {
-    if (!triggerGetQuotesRef) return;
-    triggerGetQuotesRef.current = () => {
-      broadcastRfqRef.current?.();
-    };
-    return () => { if (triggerGetQuotesRef) triggerGetQuotesRef.current = null; };
-  }); // runs every render to keep the closure fresh
 
   // Pair change: clear orders and pending state
   useEffect(() => {
     setOrders([]);
     pendingPeersRef.current.clear();
-    setRfqActive(false);
   }, [fromToken.symbol, toToken.symbol]);
 
-  // ── AUTO-BROADCAST: fire RFQ as soon as wallet is connected and peers are online ──
-  // This replaces the manual "Get Quotes" button.
-  const prevMatchingPeerCountRef = useRef(0);
+  // Re-broadcast when wallet connects, peers list changes, pair changes, or debounced amount changes
+  useEffect(() => {
+    broadcastRfqRef.current?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol, debouncedRfqAmount]);
+
+  // Auto-refresh: re-broadcast every 30s so peer rate updates are reflected live
   useEffect(() => {
     if (!walletConnected) return;
-    const prev = prevMatchingPeerCountRef.current;
-    prevMatchingPeerCountRef.current = matchingPeerCount;
-    // Trigger when peers first appear (0 → N) or on first render with peers already online
-    if (matchingPeerCount > 0 && prev === 0) {
-      broadcastRfqRef.current?.();
-      setRfqActive(true);
-    }
-  }, [walletConnected, matchingPeerCount]);
-
-  // Auto-refresh: re-broadcast every 30s when wallet is connected and peers are online
-  useEffect(() => {
-    if (!walletConnected || matchingPeerCount === 0) return;
     const interval = setInterval(() => {
       broadcastRfqRef.current?.();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [walletConnected, matchingPeerCount]);
-
-  // Re-broadcast when debounced amount changes (only when already active)
-  const prevDebouncedRfqAmountRef = useRef<number | undefined>(undefined);
-  useEffect(() => {
-    if (!rfqActive || matchingPeerCount === 0) return;
-    if (prevDebouncedRfqAmountRef.current === debouncedRfqAmount) return;
-    prevDebouncedRfqAmountRef.current = debouncedRfqAmount;
-    broadcastRfqRef.current?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedRfqAmount, rfqActive, matchingPeerCount]);
+  }, [walletConnected]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1413,14 +1342,9 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       const peerName = d.peer ?? d.peerId ?? "P2P Peer";
       // Remove from pending tracker — peer responded
       pendingPeersRef.current.delete(peerName);
-      // Look up B's wallet addresses from the signaling peer registry
-      const bPeerInfo = d.peerId
-        ? (signalingPeers ?? []).find(p => p.peerId === d.peerId)
-        : undefined;
       const entry: OrderBookEntry = {
         id: d.rfqId ?? `sse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         rfqId: d.rfqId,
-        peerId: d.peerId,
         peer: peerName,
         fromSymbol: qFrom,
         toSymbol: qTo,
@@ -1432,7 +1356,6 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
         latency: d.latency ?? 20,
         reputation: 97.5,
         timedOut: false,
-        walletAddresses: bPeerInfo?.walletAddresses as { solana?: string; ethereum?: string; bitcoin?: string } | undefined,
       };
       setFlash(entry.id);
       setTimeout(() => setFlash(null), 800);
@@ -1449,13 +1372,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 
   // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
-  // When ALL live quotes expire, auto-rebroadcast RFQ so the order book stays fresh
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setOrders(prev => {
         if (prev.length === 0) return prev;
-        const next = prev.map(o => {
+        return prev.map(o => {
           // Check 30s timeout for pending (rate=0) rows
           if (o.rate === 0 && o.rfqSentAt && now - o.rfqSentAt >= 30_000) {
             return { ...o, timedOut: true, expiresIn: 0 };
@@ -1466,19 +1388,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           if (o.timedOut) return true;
           return o.expiresIn > 0;
         });
-        // If all live quotes just expired (no rows with rate > 0 remaining) and
-        // we have matching peers, auto-rebroadcast a fresh RFQ
-        const hasLiveQuotes = next.some(o => o.rate > 0 && !o.timedOut);
-        if (!hasLiveQuotes && prev.some(o => o.rate > 0) && walletConnected && matchingPeerCount > 0) {
-          // Defer broadcast to avoid calling setState inside setState
-          setTimeout(() => broadcastRfqRef.current?.(), 0);
-        }
-        return next;
       });
     }, 4000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletConnected, matchingPeerCount]);
+  }, []);
 
   // Include own quote in best rate calculation
   const allRates = [
@@ -1508,70 +1421,36 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-bold text-foreground">Live Order Book</span>
-            {rfqActive && matchingPeerCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
-            {walletConnected
-              ? rfqActive && matchingPeerCount > 0
-                ? "P2P SSE quotes \u00b7 live"
-                : matchingPeerCount === 0
-                  ? "No LP peers online for this pair"
-                  : "Connecting to LP peers\u2026"
-              : "Connect wallet to request live quotes"} \u00b7 {fromToken.symbol}/{toToken.symbol}
+            {walletConnected ? "P2P SSE quotes" : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          {/* Live peer count indicator — replaces the manual Get Quotes button */}
-          {walletConnected && (
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold"
-              style={{
-                background: matchingPeerCount > 0 ? "rgba(52,211,153,0.08)" : "rgba(100,116,139,0.08)",
-                border: `1px solid ${matchingPeerCount > 0 ? "rgba(52,211,153,0.25)" : "rgba(100,116,139,0.2)"}`,
-                color: matchingPeerCount > 0 ? "#34d399" : "#64748b",
-              }}
-            >
-              <Radio className="w-3 h-3" />
-              <span>{matchingPeerCount} peer{matchingPeerCount !== 1 ? "s" : ""}</span>
+        <div className="text-right">
+          <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
+          {/* DEX depth row: quoted output for the exact swap size (debounced) */}
+          {dexLoading ? (
+            <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"}…`}</span>
             </div>
+          ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
+            <div className="text-right">
+              <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : dexRef.source === "0x" ? "#6366f1" : "#1470ef" }}>
+                {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
+              </div>
+              {beatsDex && dexBeatsPct !== null && (
+                <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
+              )}
+            </div>
+          ) : dexRef.rate && dexRef.source !== "none" ? (
+            <div className="text-[9px] text-slate-500">
+              {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
+            </div>
+          ) : (
+            <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
           )}
-          {/* Find LPs button — always visible when wallet connected */}
-          {walletConnected && onFindLPs && (
-            <button
-              onClick={onFindLPs}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80"
-              style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#64748b" }}
-              title="Find LP peers for this pair"
-            >
-              <UserPlus className="w-3 h-3" />
-              <span className="hidden sm:inline">Find LPs</span>
-            </button>
-          )}
-          <div className="text-right">
-            <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
-            {/* DEX depth row: quoted output for the exact swap size (debounced) */}
-            {dexLoading ? (
-              <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
-                <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"}…`}</span>
-              </div>
-            ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
-              <div className="text-right">
-                <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : dexRef.source === "0x" ? "#6366f1" : "#1470ef" }}>
-                  {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
-                </div>
-                {beatsDex && dexBeatsPct !== null && (
-                  <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
-                )}
-              </div>
-            ) : dexRef.rate && dexRef.source !== "none" ? (
-              <div className="text-[9px] text-slate-500">
-                {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
-              </div>
-            ) : (
-              <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
-            )}
-          </div>
         </div>
       </div>
 
@@ -1619,38 +1498,15 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       {/* Empty state */}
       {orders.length === 0 && !ownQuote && (
         <div className="flex flex-col items-center justify-center py-8 gap-2">
-          {!walletConnected ? (
-            <>
-              <Wallet className="w-5 h-5 text-slate-500" />
-              <p className="text-[10px] text-slate-500">Connect wallet to receive live P2P quotes</p>
-            </>
-          ) : matchingPeerCount === 0 ? (
-            <>
-              <Radio className="w-5 h-5 text-slate-600" />
-              <p className="text-[10px] text-slate-500">No LP peers online for {fromToken.symbol}/{toToken.symbol}</p>
-              <p className="text-[9px] text-slate-600 text-center max-w-[180px] leading-relaxed">
-                Enable LP Mode in settings to be the first liquidity provider for this pair.
-              </p>
-              {onFindLPs && (
-                <button
-                  onClick={onFindLPs}
-                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80"
-                  style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.3)", color: "#06b6d4" }}
-                >
-                  <UserPlus className="w-3 h-3" />
-                  Find LPs for this pair
-                </button>
-              )}
-            </>
-          ) : rfqActive ? (
+          {walletConnected ? (
             <>
               <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-              <p className="text-[10px] text-slate-500">Waiting for quotes from {matchingPeerCount} peer{matchingPeerCount !== 1 ? 's' : ''}\u2026</p>
+              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
             </>
           ) : (
             <>
-              <Loader2 className="w-4 h-4 text-slate-600 animate-spin" />
-              <p className="text-[10px] text-slate-500">Connecting to LP peers\u2026</p>
+              <Wallet className="w-5 h-5 text-slate-500" />
+              <p className="text-[10px] text-slate-500">Connect wallet to request live quotes</p>
             </>
           )}
         </div>
@@ -2473,18 +2329,10 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
-  const { connected, shortAddress, balances: solBalances, refreshBalances, publicKey, signTransaction } = useWallet();
-  const { connection } = useConnection();
+  const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
   const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
    const { theme: currentTheme } = useTheme();
   const lightPeer = useLightPeer();
-  const walletId = lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress || "anon";
-  const { data: swapSettings } = trpc.settings.get.useQuery({ openId: walletId });
-  const p2pSwap = useP2PSwap({
-    timelockSolBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockSolBlocks as number | undefined,
-    timelockEthBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockEthBlocks as number | undefined,
-    timelockBtcBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockBtcBlocks as number | undefined,
-  });
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
   // Derived from connected wallets; falls back to TOKENS static values when disconnected.
   const liveBalances = useMemo<Record<string, number>>(() => {
@@ -2542,7 +2390,6 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
   const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [showFindLPs, setShowFindLPs] = useState(false);
   const [fromToken, setFromToken] = useState(TOKENS[0]); // BTC
   const [toToken, setToToken] = useState(TOKENS[3]);     // USDT
   const [fromAmount, setFromAmount] = useState("0.001");
@@ -2553,23 +2400,13 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
   const [selectedPeer, setSelectedPeer] = useState<LivePeer | null>(null);
-  // Per-pair Advanced Settings state — keyed by "FROM/TO" pair symbol
-  const advancedPairKey = `afos_advanced_${fromToken.symbol}_${toToken.symbol}`;
   const [showAdvanced, setShowAdvanced] = useState(() => {
-    try { return localStorage.getItem(`afos_advanced_${TOKENS[0].symbol}_${TOKENS[3].symbol}`) === 'true'; } catch { return false; }
+    try { return localStorage.getItem('afos_advanced_open') === 'true'; } catch { return false; }
   });
-  // Persist Advanced Settings panel state per trading pair
+  // Persist Advanced Settings panel state across navigations
   useEffect(() => {
-    try { localStorage.setItem(advancedPairKey, showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
-  }, [showAdvanced, advancedPairKey]);
-  // Restore per-pair state when the pair changes
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(advancedPairKey);
-      setShowAdvanced(saved === 'true');
-    } catch { setShowAdvanced(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromToken.symbol, toToken.symbol]);
+    try { localStorage.setItem('afos_advanced_open', showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
+  }, [showAdvanced]);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live quote from backend
   const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
@@ -2604,23 +2441,6 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
   // Collapsible chart on mobile (hidden by default)
   const [chartOpen, setChartOpen] = useState(false);
-  // Ref to imperatively trigger LiveOrderBook's Get Quotes broadcast from handleSwap
-  const triggerGetQuotesRef = useRef<(() => void) | null>(null);
-  // Scroll fade indicator — ref to the scrollable swap card inner div
-  const swapCardRef = useRef<HTMLDivElement>(null);
-  const [showScrollFade, setShowScrollFade] = useState(false);
-  useEffect(() => {
-    const el = swapCardRef.current;
-    if (!el) return;
-    const check = () => {
-      setShowScrollFade(el.scrollHeight > el.clientHeight + 4 && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-    };
-    check();
-    el.addEventListener('scroll', check);
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => { el.removeEventListener('scroll', check); ro.disconnect(); };
-  }, [showAdvanced]);
 
   // Fetch live peers from relay registry + getAgentStatus + SSE events
   useEffect(() => {
@@ -2808,11 +2628,6 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     haptic.tap();
     setSwapPhase("rfq");
     setLastTxHash(undefined);
-    // Auto-collapse Advanced Settings to reduce visual clutter during swap flow
-    setShowAdvanced(false);
-    // Trigger an immediate RFQ broadcast when the user initiates a swap
-    // (the order book auto-broadcasts when peers are online, but this forces an immediate refresh)
-    triggerGetQuotesRef.current?.();
 
     try {
       // Step 1: Submit RFQ to get best route + quote
@@ -2893,186 +2708,37 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     setSwapPhase("idle");
   };
 
-  // ── B receives p2p_htlc_params — B must now lock their side ─────────────────
-  // LightPeerContext dispatches this event when A's HTLC params arrive.
-  // B (LP/maker) calls initiateAsMaker to lock their side of the swap.
-  useEffect(() => {
-    const handleHtlcParams = async (e: Event) => {
-      const msg = (e as CustomEvent<{
-        rfqId: string;
-        fromPeerId?: string;
-        secretHash: string;
-        lockTxHash: string;
-        lockChain: string;
-        escrowAddress: string;
-        lockedAmount: number;
-        lockedToken: string;
-        timelockA: number;
-        timelockB: number;
-      }>).detail;
-      // Only proceed if B has a wallet connected
-      if (!connected || !publicKey || !signTransaction) {
-        toast.error("Connect your wallet to complete the P2P swap", {
-          description: "A connected wallet is required to lock funds in the HTLC escrow.",
-        });
-        return;
-      }
-      // Find the matching accepted RFQ from lightPeer
-      const rfq = lightPeer.incomingRfqs.find(r => r.rfqId === msg.rfqId);
-      if (!rfq) return; // not our RFQ
-      const requesterPeerId = rfq.requesterPeerId ?? msg.fromPeerId ?? "";
-      if (!requesterPeerId) return;
-      await p2pSwap.initiateAsMaker({
-        rfqId: msg.rfqId,
-        counterpartyPeerId: requesterPeerId,
-        fromToken: rfq.fromToken,
-        toToken: rfq.toToken,
-        fromChain: rfq.fromChain,
-        toChain: rfq.toChain,
-        fromAmount: rfq.amount,
-        toAmount: rfq.suggestedOutAmount,
-        rate: rfq.suggestedRate,
-        secretHash: msg.secretHash,
-        lockTxHashA: msg.lockTxHash,
-        escrowAddressA: msg.escrowAddress,
-        timelockB: msg.timelockB,
-        walletPublicKey: publicKey.toString(),
-        counterpartyWallets: { solana: publicKey.toString() },
-        signTransaction: signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>,
-        connection,
-      });
-    };
-    window.addEventListener("afos:p2p-htlc-params", handleHtlcParams);
-    return () => window.removeEventListener("afos:p2p-htlc-params", handleHtlcParams);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey, signTransaction, connection, lightPeer.incomingRfqs, p2pSwap.initiateAsMaker]);
-
-  // ── A's Solana HTLC refund ─────────────────────────────────────────────────────────────
-  // useP2PSwap dispatches this event when the Solana HTLC timelock expires and
-  // B never locked. We build the refund tx here because Swaps.tsx has direct
-  // access to the Phantom wallet adapter (signTransaction + connection).
-  useEffect(() => {
-    const handleSolRefund = async (e: Event) => {
-      const detail = (e as CustomEvent<{
-        rfqId: string;
-        chain: string;
-        escrowAddress: string;
-        secretHash: string;
-        walletAddress: string;
-      }>).detail;
-
-      if (detail.chain !== "solana") return;
-      if (!connected || !publicKey || !signTransaction) {
-        toast.error("Wallet not connected", {
-          description: "Connect your Solana wallet to submit the HTLC refund transaction.",
-        });
-        return;
-      }
-
-      const toastId = `sol-refund-${detail.rfqId}`;
-      toast.loading("Building Solana HTLC refund…", { id: toastId, description: "Waiting for wallet signature." });
-
-      try {
-        const { transaction } = await buildSolanaHtlcRefundTx({
-          senderPubkey: publicKey,
-          secretHash: detail.secretHash,
-          escrowAddress: detail.escrowAddress,
-          connection,
-        });
-
-        const signed = await signTransaction(transaction) as import("@solana/web3.js").Transaction;
-        const rawTx = signed.serialize();
-        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
-        await connection.confirmTransaction(txHash, "confirmed");
-
-        toast.success("Solana HTLC refunded", {
-          id: toastId,
-          description: (
-            <span>
-              Funds reclaimed —{" "}
-              <a
-                href={`https://solscan.io/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline text-cyan-400"
-              >
-                View on Solscan
-              </a>
-            </span>
-          ) as unknown as string,
-          duration: 10_000,
-        });
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast.error("Solana HTLC refund failed", {
-          id: toastId,
-          description: msg.includes("User rejected") ? "Transaction rejected in wallet." : msg.slice(0, 120),
-        });
-      }
-    };
-
-    window.addEventListener("afos:p2p-refund-needed", handleSolRefund);
-    return () => window.removeEventListener("afos:p2p-refund-needed", handleSolRefund);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected, publicKey, signTransaction, connection]);
-
-  const handleAcceptOrder = async (order: OrderBookEntry) => {
+  const handleAcceptOrder = (order: OrderBookEntry) => {
     haptic.tap();
-
-    // If this is a real P2P quote with a peer ID, initiate the HTLC flow directly
-    if (order.rfqId && order.peerId) {
-      // Require wallet connection for real HTLC
-      if (!connected || !publicKey || !signTransaction) {
-        setShowWalletModal(true);
-        toast.error("Connect your wallet to accept P2P quotes", {
-          description: "A connected wallet is required to lock funds in the HTLC escrow.",
-        });
-        return;
-      }
-
-      // Use B's wallet addresses stored in the order entry (populated from signalingPeers when the quote arrived)
-      const counterpartyWallets = order.walletAddresses;
-
-      // Step 1: Notify B that A is accepting (so B knows to expect p2p_htlc_params)
-      const sigClient = getSignalingClient();
-      sigClient.sendP2PQuoteAccepted(order.peerId, {
-        rfqId: order.rfqId,
-        fromAlias: publicKey.toString().slice(0, 8),
-        wallets: { solana: publicKey.toString() },
-        rate: order.rate,
-        outAmount: order.toAmount,
-      });
-
-      // Step 2: Lock A's HTLC and send p2p_htlc_params to B
-      await p2pSwap.initiateAsRequester({
-        rfqId: order.rfqId,
-        counterpartyPeerId: order.peerId,
-        fromToken: order.fromSymbol,
-        toToken: order.toSymbol,
-        fromChain: fromToken.chain ?? "solana",
-        toChain: toToken.chain ?? "solana",
-        fromAmount: order.fromAmount,
-        toAmount: order.toAmount,
-        rate: order.rate,
-        walletPublicKey: publicKey.toString(),
-        counterpartyWallets,
-        signTransaction: signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>,
-        connection,
-      });
-      return;
-    }
-
-    // Fallback: pre-fill the swap form for non-P2P quotes
+    // Pre-fill the swap form with the accepted quote
     setFromAmount(order.fromAmount.toString());
-    toast.success(`Quote selected from ${order.peer}`, {
-      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}`,
+    // If this is a real P2P quote (has rfqId), set it as the preferred peer
+    if (order.rfqId) {
+      // Build a synthetic LivePeer from the order so the Preferred Peer UI shows it
+      const syntheticPeer: LivePeer = {
+        id: order.rfqId,
+        alias: order.peer,
+        latency: order.latency,
+        pairs: [`${order.fromSymbol}/${order.toSymbol}`],
+        online: true,
+        reputation: order.reputation,
+      };
+      setSelectedPeer(syntheticPeer);
+      // Also add to livePeers if not already present
+      setLivePeers(prev => prev.some(p => p.id === order.rfqId) ? prev : [syntheticPeer, ...prev]);
+      setShowAdvanced(true); // open Advanced so user sees the selected peer
+    }
+    toast.success(`Quote accepted from ${order.peer}`, {
+      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}${
+        order.rfqId ? ` · Targeting peer directly` : ''
+      }`,
     });
   };
 
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
 
   return (
-    <div className="flex-1 p-3 sm:p-5 pb-safe" style={{ background: "transparent" }}>
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-safe" style={{ background: "transparent" }}>
       <div className="max-w-[1280px] mx-auto">
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -3148,11 +2814,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
         {/* ═ 1. SWAP CARD — mobile first, desktop col-2 row-1 (sticky) ═ */}
         {/* xl:row-span-6 so the right column spans all left-column rows */}
         <div className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
-          {/* Scroll fade wrapper — relative so the fade overlay can be positioned at the bottom */}
-          <div className="relative">
           <div
-            ref={swapCardRef}
-            className="rounded-2xl p-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto"
+            className="rounded-2xl p-4"
             style={{
               background: "var(--card)",
               border: "1px solid var(--border)",
@@ -3659,50 +3322,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               );
             })()}
 
-            {/* Wallet indicator — shows which wallet will sign */}
-            {(() => {
-              const chain = fromToken.chain;
-              let addr: string | null = null;
-              let chainLabel = "";
-              let dotColor = "";
-              if (chain === "solana" && connected && shortAddress) {
-                addr = shortAddress;
-                chainLabel = "SOL";
-                dotColor = "#9945FF";
-              } else if (chain === "ethereum" && ethWallet?.address) {
-                const raw = ethWallet.address;
-                addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`;
-                chainLabel = "ETH";
-                dotColor = "#627EEA";
-              } else if (chain === "bitcoin" && btcWallet?.address) {
-                const raw = btcWallet.address;
-                addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`;
-                chainLabel = "BTC";
-                dotColor = "#F7931A";
-              }
-              if (!addr) return null;
-              return (
-                <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground font-mono">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
-                  <span className="opacity-60">Signing with</span>
-                  <span className="font-semibold" style={{ color: dotColor }}>{chainLabel}</span>
-                  <span>{addr}</span>
-                </div>
-              );
-            })()}
-
 
           </div>{/* end swap card inner */}
-          {/* Scroll fade indicator — only visible on desktop when card is scrollable */}
-          {showScrollFade && (
-            <div
-              className="hidden xl:block absolute bottom-0 left-0 right-0 h-10 pointer-events-none rounded-b-2xl"
-              style={{
-                background: "linear-gradient(to bottom, transparent, var(--card))",
-              }}
-            />
-          )}
-          </div>{/* end scroll fade wrapper */}
 
           {/* Swap Progress — stays with swap card */}
           {swapPhase !== "idle" && (
@@ -3781,10 +3402,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             fromAmount={parseFloat(fromAmount) || undefined}
             walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
             lpEnabled={lightPeer.prefs?.enabled ?? false}
-            ownPeerId={lightPeer.peerId}
             onNavigateToSettings={onNavigateToSettings}
-            triggerGetQuotesRef={triggerGetQuotesRef}
-            onFindLPs={() => setShowFindLPs(true)}
           />
         </div>
 
@@ -3825,8 +3443,6 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       </div>{/* end grid */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
-      <FindLPsDialog open={showFindLPs} onClose={() => setShowFindLPs(false)} pair={`${fromToken.symbol}/${toToken.symbol}`} />
-      <P2PSwapProgressModal swap={p2pSwap.swap} onDismiss={p2pSwap.dismiss} />
       </div>{/* end max-w wrapper */}
     </div>
   );

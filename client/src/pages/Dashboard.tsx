@@ -399,17 +399,15 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     }
 
     // Solana swap via Jupiter + Phantom
-    // Accept both standard Solana adapter (publicKey) and Phantom multi-chain (phantomMultiChain.solanaAddress)
-    const solanaPublicKeyStr = publicKey?.toString() ?? phantomMultiChain?.solanaAddress ?? null;
-    if (!solanaPublicKeyStr) {
+    if (!publicKey) {
       addMessage({ role: "assistant", content: "Please connect your Solana wallet first to execute swaps.", type: "error" });
       return;
     }
-    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} \u2192 ${quoteData.toToken}\u2026`, type: "text" });
+    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}…`, type: "text" });
     try {
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
-        userPublicKey: solanaPublicKeyStr,
+        userPublicKey: publicKey.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
         fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
@@ -456,7 +454,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       const msg = err instanceof Error ? err.message : "Transaction failed";
       addMessage({ role: "assistant", content: `Swap failed: ${msg}`, type: "error" });
     }
-  }, [publicKey, phantomMultiChain, buildSwapTx, executeBtcSwap, bitcoin, addMessage]);
+  }, [publicKey, buildSwapTx, executeBtcSwap, bitcoin, addMessage]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text ?? input).trim();
@@ -600,34 +598,8 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
                     style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
                   >
                     {buildSwapTx.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    {buildSwapTx.isPending ? "Building tx\u2026" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via AFOS P2P`}
+                    {buildSwapTx.isPending ? "Building tx…" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via AFOS P2P`}
                   </button>
-                  {/* Wallet indicator — shows which wallet will sign */}
-                  {(() => {
-                    const chain = msg.quoteData.fromChain;
-                    let addr: string | null = null;
-                    let chainLabel = "";
-                    let dotColor = "";
-                    if (chain === "solana") {
-                      const raw = publicKey?.toString() ?? phantomMultiChain?.solanaAddress ?? null;
-                      if (raw) { addr = `${raw.slice(0, 4)}\u2026${raw.slice(-4)}`; chainLabel = "SOL"; dotColor = "#9945FF"; }
-                    } else if (chain === "ethereum") {
-                      const raw = ethereum?.address ?? null;
-                      if (raw) { addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`; chainLabel = "ETH"; dotColor = "#627EEA"; }
-                    } else if (chain === "bitcoin") {
-                      const raw = bitcoin?.address ?? null;
-                      if (raw) { addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`; chainLabel = "BTC"; dotColor = "#F7931A"; }
-                    }
-                    if (!addr) return null;
-                    return (
-                      <div className="mt-1.5 flex items-center justify-center gap-1 text-[9px] text-muted-foreground font-mono">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
-                        <span className="opacity-60">Signing with</span>
-                        <span className="font-semibold" style={{ color: dotColor }}>{chainLabel}</span>
-                        <span>{addr}</span>
-                      </div>
-                    );
-                  })()}
                 </div>
               </div>
             ) : (
@@ -1176,7 +1148,7 @@ function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
 // ── Portfolio Card ─────────────────────────────────────────────────────────
 function PortfolioCard() {
   // Solana balances (SOL + USDT/SOL + USDC/SOL)
-  const { totalUsd: solanaTotalUsd, connected: solAdapterConnected, balancesLoading, pricesLoaded } = useWallet();
+  const { totalUsd: solanaTotalUsd, connected: solAdapterConnected } = useWallet();
   // Ethereum native + ERC-20 (USDT/ETH + USDC/ETH)
   const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
   const solanaConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
@@ -1205,14 +1177,6 @@ function PortfolioCard() {
 
   const anyConnected = connectedChains.length > 0;
 
-  // Show skeleton while prices or balances are still loading for a connected Solana wallet
-  // This prevents the flickering $0 → real value race condition
-  // For standard adapter: wait for pricesLoaded + !balancesLoading
-  // For Phantom multi-chain: wait for !solanaBalancesLoading
-  const isLoading =
-    (solAdapterConnected && (!pricesLoaded || balancesLoading)) ||
-    (!solAdapterConnected && !!phantomMultiChain?.solanaAddress && !!phantomMultiChain?.solanaBalancesLoading);
-
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-1">
@@ -1220,23 +1184,17 @@ function PortfolioCard() {
         <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
       </div>
       <div className="flex items-end gap-3 mb-1">
-        {isLoading ? (
-          <div className="h-9 w-32 rounded-md bg-muted animate-pulse" />
-        ) : (
-          <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
-            {anyConnected
-              ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : <span className="text-muted-foreground text-xl">$0.00</span>
-            }
-          </p>
-        )}
+        <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
+          {anyConnected
+            ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            : <span className="text-muted-foreground text-xl">$0.00</span>
+          }
+        </p>
       </div>
       <p className="text-xs text-muted-foreground">
-        {isLoading
-          ? "Fetching balances..."
-          : anyConnected
-            ? `Live · ${connectedChains.join(" + ")} connected`
-            : "Connect a wallet to see your balance"}
+        {anyConnected
+          ? `Live · ${connectedChains.join(" + ")} connected`
+          : "Connect a wallet to see your balance"}
       </p>
     </div>
   );
@@ -1449,7 +1407,7 @@ function WalletRowItem({ row, onSend, onReceive }: {
     </div>
   );
 }
-function WalletsCard({ onNavigateToSettings }: { onNavigateToSettings?: () => void } = {}) {
+function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
   // Browser wallets
   const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
@@ -1561,19 +1519,6 @@ function WalletsCard({ onNavigateToSettings }: { onNavigateToSettings?: () => vo
             />
           ))}
         </div>
-
-        {/* Footer: Appearance shortcut */}
-        {onNavigateToSettings && (
-          <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-end">
-            <button
-              onClick={onNavigateToSettings}
-              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Settings className="w-3 h-3" />
-              Appearance &amp; Theme
-            </button>
-          </div>
-        )}
       </div>
     </>
   );
@@ -3055,33 +3000,6 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Deep-link from external pages (e.g. /admin) via sessionStorage
-  // Usage: sessionStorage.setItem('afos:navigate', JSON.stringify({ page: 'settings', tab: 'trading' }))
-  useEffect(() => {
-    const raw = sessionStorage.getItem('afos:navigate');
-    if (!raw) return;
-    sessionStorage.removeItem('afos:navigate');
-    try {
-      const { page, tab } = JSON.parse(raw) as { page: string; tab?: string };
-      if (page === 'settings') {
-        navigateToSettings(tab as "trading" | "network" | "privacy" | "appearance" | undefined);
-      } else if (page === 'network') {
-        setActivePage('network');
-      }
-    } catch { /* ignore malformed */ }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle lp_invite_pair URL param: auto-navigate to Settings > Network tab
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const invitePair = params.get('lp_invite_pair');
-    if (!invitePair) return;
-    // Navigate to Settings > Network tab (AgentSettings handles the rest)
-    navigateToSettings('network');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Handle invite link hash on mount: #network?peer=<peerId>
   useEffect(() => {
     const parseInviteHash = () => {
@@ -3590,7 +3508,7 @@ export default function Dashboard() {
                 {/* RIGHT col — Portfolio + Wallets + Recent Swaps + Agent Activity */}
                 <div className="col-span-5 flex flex-col gap-4">
                   <PortfolioCard />
-                  <WalletsCard onNavigateToSettings={() => navigateToSettings("appearance")} />
+                  <WalletsCard />
                   <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
                   <AgentInsights onNavigateToTerminal={() => setActivePage("terminal")} />
                 </div>

@@ -56,8 +56,6 @@ export interface IncomingRfq {
   fromChain: string;
   toChain: string;
   requestorPeer: string;
-  /** Actual peerId of the requester — used to send p2p_quote_accepted back */
-  requesterPeerId?: string;
   expiresAt: number;          // unix ms
   suggestedRate: number;
   suggestedOutAmount: number;
@@ -108,8 +106,6 @@ export interface LightPeerState {
   sendPeerMessage: (targetPeerId: string, payload: unknown) => void;
   /** Broadcast an RFQ to all connected peers */
   broadcastRfq: (rfq: unknown) => void;
-  /** Send an LP invite to a specific peer asking them to register for a pair */
-  sendLpInvite: (targetPeerId: string, pair: string, fromAlias: string) => void;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -207,20 +203,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [signalingConnected, setSignalingConnected] = useState(false);
   const [directPeerCount, setDirectPeerCount] = useState(0);
   const signalingRef = useRef<SignalingClient | null>(null);
-  // ── Live prices ref (updated from SSE) ─────────────────────────────────
+
+  // ── Live prices ref (updated from SSE) ────────────────────────────────────
   const pricesRef = useRef<Record<string, number>>({});
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
-  // ── Wallet refs (always up-to-date for use inside signaling callbacks) ──────
-  const solPubkeyRef = useRef(solPubkey);
-  solPubkeyRef.current = solPubkey;
-  const signTransactionRef = useRef(signTransaction);
-  signTransactionRef.current = signTransaction;
-  const solAdapterConnectedRef = useRef(solAdapterConnected);
-  solAdapterConnectedRef.current = solAdapterConnected;
-  const solConnectionRef = useRef(solConnection);
-  solConnectionRef.current = solConnection;
 
   // ── Update alias from stable peer ID (never changes) ──────────────────────
   // The alias is derived from the stable peer ID, not from wallet addresses.
@@ -241,7 +229,6 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
   // ── Announce / heartbeat (legacy HTTP — kept as fallback) ─────────────────
   const announce = useCallback(async (id: string, alias: string) => {
-    // Only announce with pairs when LP Mode is enabled
     if (!prefsRef.current.enabled) return;
     try {
       const controller = new AbortController();
@@ -346,23 +333,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Handle peer messages received via signaling relay or WebRTC
     unsubs.push(client.on("peer_message", (data) => {
       const { fromPeerId, payload } = data as { fromPeerId: string; payload: unknown };
-      const msg = payload as { type?: string; pair?: string; fromAlias?: string };
+      const msg = payload as { type?: string };
       if (msg?.type === "rfq") {
         // Process as RFQ (same as SSE p2p_rfq)
         window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...payload as object } }));
       } else if (msg?.type === "chat") {
         // Peer chat message
         window.dispatchEvent(new CustomEvent("afos:peer-chat", { detail: { fromPeerId, ...payload as object } }));
-      } else if (msg?.type === "lp_invite") {
-        // LP invite — dispatch event so the UI can show a notification
-        window.dispatchEvent(new CustomEvent("afos:lp-invite", { detail: { fromPeerId, pair: msg.pair, fromAlias: msg.fromAlias } }));
       }
-    }));
-
-    // Handle incoming lp_invite messages from signaling server
-    unsubs.push(client.on("lp_invite", (data) => {
-      const { fromPeerId, payload } = data as { fromPeerId: string; payload: { pair?: string; fromAlias?: string } };
-      window.dispatchEvent(new CustomEvent("afos:lp-invite", { detail: { fromPeerId, pair: payload?.pair, fromAlias: payload?.fromAlias } }));
     }));
 
     // Handle RFQ broadcasts
@@ -402,7 +380,6 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         fromChain: rfq.fromChain ?? "solana",
         toChain: rfq.toChain ?? "solana",
         requestorPeer: rfq.requesterPeerId ?? rfq.requesterAlias ?? "unknown",
-        requesterPeerId: rfq.requesterPeerId,
         expiresAt: rfq.expiresAt,
         suggestedRate: rfq.rate,
         suggestedOutAmount: rfq.outAmount,
@@ -500,103 +477,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
     }));
 
-    // ── Handle p2p_htlc_params from A — B must now lock their side ──────────
-    // When A (requester) has locked their HTLC, they send p2p_htlc_params to B.
-    // B checks if they have an accepted RFQ matching the rfqId, then locks their side.
-    unsubs.push(client.on("p2p_htlc_params", (data) => {
-      const msg = data as {
-        rfqId: string;
-        fromPeerId?: string;
-        secretHash: string;
-        lockTxHash: string;
-        lockChain: string;
-        escrowAddress: string;
-        lockedAmount: number;
-        lockedToken: string;
-        timelockA: number;
-        timelockB: number;
-      };
-      setHtlcSigning({ rfqId: msg.rfqId, step: "locking" });
-      // Also dispatch event so Swaps.tsx can update the P2PSwapProgressModal
-      window.dispatchEvent(new CustomEvent("afos:p2p-htlc-params", { detail: msg }));
-      // B locks their HTLC directly here using the wallet context already available
-      // This works regardless of which page B is on (ChatPage, Swaps, etc.)
-      void (async () => {
-        try {
-          const chain = msg.lockChain?.toLowerCase() ?? "solana";
-          // Use refs to get the latest wallet state (avoids stale closure)
-          const currentSolPubkey = solPubkeyRef.current;
-          const currentSignTx = signTransactionRef.current;
-          const currentSolConnected = solAdapterConnectedRef.current;
-          const currentSolConnection = solConnectionRef.current;
-          if (chain === "solana" && currentSolConnected && currentSignTx && currentSolPubkey) {
-            // B locks the "to" token (what A wants to receive)
-            // A's Solana wallet is the recipient so A can claim
-            const senderPubkey = currentSolPubkey;
-            // Requester's wallet is the recipient: use fromPeerId to look up, or fallback to sender
-            const recipientStr = currentSolPubkey.toBase58(); // fallback; ideally A's solana address
-            let recipientPubkey: PublicKey;
-            try { recipientPubkey = new PublicKey(recipientStr); } catch { recipientPubkey = senderPubkey; }
-            const { transaction, escrowAddress } = await buildSolanaHtlcLockTx({
-              senderPubkey,
-              recipientPubkey,
-              amountSol: msg.lockedAmount,
-              secretHash: msg.secretHash,
-              timelock: msg.timelockB,
-              connection: currentSolConnection,
-            });
-            const signedTx = await (currentSignTx as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
-            const rawTx = signedTx.serialize();
-            const lockTxHash = await currentSolConnection.sendRawTransaction(rawTx, {
-              skipPreflight: false,
-              preflightCommitment: "confirmed",
-            });
-            setHtlcSigning({ rfqId: msg.rfqId, step: "revealing", txHash: lockTxHash });
-            toast.success("Your side locked in HTLC", {
-              description: `Tx: ${lockTxHash.slice(0, 16)}… · Waiting for requester to reveal secret`,
-              action: { label: "Solscan", onClick: () => window.open(`https://solscan.io/tx/${lockTxHash}`, "_blank") },
-            });
-            // Notify A that B has locked
-            const requesterPeerId = msg.fromPeerId ?? "";
-            if (requesterPeerId) {
-              client.sendP2PHtlcLocked(requesterPeerId, {
-                rfqId: msg.rfqId,
-                lockTxHash,
-                lockChain: "solana",
-                escrowAddress,
-                lockedAmount: msg.lockedAmount,
-                lockedToken: msg.lockedToken,
-              });
-            }
-          } else {
-            // No wallet connected or unsupported chain — dispatch event for Swaps.tsx to handle
-            window.dispatchEvent(new CustomEvent("afos:p2p-htlc-params-needs-wallet", { detail: msg }));
-            toast.warning("Connect your Solana wallet to complete the swap", {
-              description: "Your counterparty has locked their funds. Connect your wallet to lock yours.",
-              duration: 15000,
-            });
-          }
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : String(err);
-          setHtlcSigning({ rfqId: msg.rfqId, step: "failed" });
-          toast.error("HTLC lock failed", { description: errMsg.slice(0, 120) });
-          const requesterPeerId = msg.fromPeerId ?? "";
-          if (requesterPeerId) {
-            client.sendP2PSwapFailed(requesterPeerId, {
-              rfqId: msg.rfqId,
-              reason: errMsg.slice(0, 120),
-            });
-          }
-        }
-      })();
-    }));
     // Connect and register
-    // Only broadcast pairs when LP Mode is explicitly enabled.
-    // Non-LP peers register with an empty pairs list so they are invisible
-    // to the Live Order Book's peer-matching filter.
-    const registrationPairs = prefs.enabled ? prefs.acceptedPairs : [];
     client.connect();
-    client.register(peerId, peerAlias, registrationPairs, walletAddresses);
+    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses);
 
     // Also do legacy HTTP announce (best-effort fallback)
     announce(peerId, peerAlias);
@@ -721,29 +604,32 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
       setQuotesGiven(q => q + 1);
 
-      // ── Always submit quote to Oracle VM (LP quoting is non-binding) ──────
-      // Submitting a quote just provides a price to the requester's order book.
-      // It is NOT a commitment to trade — that only happens when the LP signs
-      // the HTLC lock transaction. autoAccept controls the HTLC signing step.
+      // Auto-accept if enabled — with slippage guard
       const ssePrefs = prefsRef.current as LightPeerPrefs & { slippagePct?: string | number };
-      const oracleRateSse = fromPrice / toPrice;
-      const slippagePctSse = parseFloat(String(ssePrefs.slippagePct ?? "0.5"));
-      const slippageFracSse = isNaN(slippagePctSse) ? 0.005 : slippagePctSse / 100;
-      const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
-
-      if (sseRateOk) {
-        // Submit quote to Oracle VM so the requester's order book shows this LP's offer
-        submitQuote(incoming);
-        // Auto-accept: if enabled, mark as accepted immediately (LP will sign HTLC)
-        if (ssePrefs.autoAccept) {
+      if (ssePrefs.autoAccept) {
+        // Slippage guard: the rate we quoted (quotedRate) is already spread-adjusted below oracle.
+        // We guard against the *requester* sending us a manipulated amount that implies a worse rate.
+        // Compare our quoted rate against the oracle mid-price.
+        const oracleRateSse = fromPrice / toPrice;  // already validated above
+        const slippagePctSse = parseFloat(String(ssePrefs.slippagePct ?? "0.5"));
+        const slippageFracSse = isNaN(slippagePctSse) ? 0.005 : slippagePctSse / 100;
+        // Our quoted rate must not be worse than oracle*(1 - tolerance) — i.e. we don't give away
+        // more than slippage% below mid-price. spreadBps is our profit buffer; if spread > slippage
+        // the guard always passes. If spread < slippage the guard catches misconfigured spreads.
+        const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
+        if (sseRateOk) {
+          submitQuote(incoming);
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
           );
-          // No toast for auto-accept — the order book update is the feedback
         } else {
-          // Manual review: show notification so LP can decide to sign HTLC
+          // Slippage guard triggered — warn user and fall through to manual review
+          toast.warning("Auto-accept blocked: quoted rate outside slippage tolerance", {
+            description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
+            duration: 10000,
+          });
           toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
-            description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD · Quote submitted`,
+            description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
             duration: 10000,
             action: {
               label: "View",
@@ -754,10 +640,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
         }
       } else {
-        // Slippage guard triggered — do NOT submit quote, warn user
-        toast.warning("Quote blocked: rate outside slippage tolerance", {
-          description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Adjust spread or slippage in LP settings.`,
+        // Show notification
+        toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
+          description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
           duration: 10000,
+          action: {
+            label: "View",
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent("afos:open-peer-panel"));
+            },
+          },
         });
       }
     });
@@ -800,13 +692,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     } catch { /* best-effort — best-effort 2014 agent handles matching */ }
   }, [peerId, peerAlias]);
 
-  // ── Accept RFQ — B's side of the P2P atomic swap ────────────────────────
-  // Correct HTLC flow for Agent B (maker/LP):
-  //  1. B clicks Accept → send p2p_quote_accepted to A via signaling
-  //  2. A receives it → A locks A's HTLC → A sends p2p_htlc_params to B
-  //  3. B receives p2p_htlc_params → B locks B's HTLC → B sends p2p_htlc_locked to A
-  //  4. A receives p2p_htlc_locked → A reveals secret → A sends p2p_swap_complete to B
-  //  5. B receives p2p_swap_complete → B claims with secret
+  // ── Accept RFQ with in-browser HTLC signing ───────────────────────────────
   const acceptRfq = useCallback(async (rfqId: string) => {
     const rfq = incomingRfqs.find(r => r.rfqId === rfqId);
     if (!rfq || rfq.status !== "pending") return;
@@ -815,38 +701,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       prev.map(r => r.rfqId === rfqId ? { ...r, status: "accepted" } : r)
     );
 
-    // Step 1: Submit quote to AFOS Oracle VM (registers the quote in the system)
+    // Step 1: Submit quote to AFOS agent
     await submitQuote(rfq);
 
-    // Step 2: Notify A via signaling that B has accepted
-    // Include B's wallet addresses so A can use them as HTLC recipient
-    const sigClient = signalingRef.current;
-    const requesterPeerId = rfq.requesterPeerId;
-    if (sigClient && requesterPeerId) {
-      const bWallets: { solana?: string; ethereum?: string; bitcoin?: string } = {};
-      if (solAdapterConnected && solPubkey) bWallets.solana = solPubkey.toString();
-      else if (phantomSolAddress) bWallets.solana = phantomSolAddress;
-      if (ethereum?.address) bWallets.ethereum = ethereum.address;
-      if (bitcoin?.address) bWallets.bitcoin = bitcoin.address;
-      sigClient.sendP2PQuoteAccepted(requesterPeerId, {
-        rfqId,
-        fromAlias: peerAlias,
-        wallets: bWallets,
-        rate: rfq.suggestedRate,
-        outAmount: rfq.suggestedOutAmount,
-      });
-      setHtlcSigning({ rfqId, step: "signing" });
-      toast.success(`Quote accepted — waiting for requester to lock their side`, {
-        description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.suggestedOutAmount.toFixed(4)} ${rfq.toToken}`,
-        duration: 10000,
-      });
-      // B's HTLC lock will be triggered by the p2p_htlc_params listener below
-      // (added in the signaling setup useEffect)
-      return;
-    }
-
-    // ── Fallback: no signaling / no requesterPeerId — lock directly (legacy path) ──
-    // This handles the case where the RFQ came via SSE (not agent-matched P2P)
+    // Step 2: In-browser HTLC lock signing
     setHtlcSigning({ rfqId, step: "signing" });
 
     try {
@@ -1092,57 +950,6 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     signalingRef.current?.broadcastRfq(rfq);
   }, []);
 
-  const sendLpInvite = useCallback((targetPeerId: string, pair: string, fromAlias: string) => {
-    signalingRef.current?.sendLpInvite(targetPeerId, {
-      type: "lp_invite",
-      pair,
-      fromAlias,
-      fromPeerId: peerId,
-      timestamp: Date.now(),
-    });
-  }, [peerId]);
-
-  // ── Listen for afos:broadcast-rfq events from other components ────────────
-  // The LiveOrderBook dispatches this event when the user clicks "Get Quotes".
-  // We forward it via the signaling server so LP peers receive it over WebSocket
-  // (in addition to the Oracle VM SSE path).
-  useEffect(() => {
-    if (!prefs.enabled) return; // only forward if LP mode is enabled
-    const handler = (e: Event) => {
-      const rfq = (e as CustomEvent).detail;
-      signalingRef.current?.broadcastRfq(rfq);
-    };
-    window.addEventListener('afos:broadcast-rfq', handler);
-    return () => window.removeEventListener('afos:broadcast-rfq', handler);
-  }, [prefs.enabled]);
-
-  // ── Listen for afos:lp-invite events (incoming LP invites from other peers) ─
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { pair, fromAlias } = (e as CustomEvent<{ fromPeerId: string; pair?: string; fromAlias?: string }>).detail;
-      if (!pair) return;
-      const from = fromAlias ?? "A peer";
-      toast(`LP Invite: ${pair}`, {
-        description: `${from} wants you to provide liquidity for ${pair}.`,
-        duration: 15_000,
-        action: {
-          label: "Add pair",
-          onClick: () => {
-            setPrefs({
-              acceptedPairs: prefs.acceptedPairs.includes(pair)
-                ? prefs.acceptedPairs
-                : [...prefs.acceptedPairs, pair],
-              enabled: true,
-            });
-            toast.success(`Added ${pair} to your LP pairs`);
-          },
-        },
-      });
-    };
-    window.addEventListener('afos:lp-invite', handler);
-    return () => window.removeEventListener('afos:lp-invite', handler);
-  }, [prefs.acceptedPairs, setPrefs]);
-
   return (
     <LightPeerContext.Provider value={{
       peerId,
@@ -1167,7 +974,6 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       dismissHtlc,
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
-      sendLpInvite,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

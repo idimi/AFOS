@@ -1,87 +1,18 @@
 /**
  * AFOS — Open Trades and Refunds tabs for SwapHistory
  * Production: pulls live data from tRPC history procedures (wallet-scoped)
- * Features: Explorer links for tx hashes and HTLC addresses (Solscan, Etherscan, Mempool.space)
  */
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet, Search, ExternalLink, Copy } from "lucide-react";
+import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet, Search } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
 interface TabProps {
   walletAddresses: string[];
   search?: string;
-}
-
-// ─── Chain Explorer Config ────────────────────────────────────────────────────
-
-const CHAIN_EXPLORERS: Record<"bitcoin" | "ethereum" | "solana", { tx: string; addr: string }> = {
-  bitcoin:  { tx: "https://mempool.space/tx/",       addr: "https://mempool.space/address/" },
-  ethereum: { tx: "https://etherscan.io/tx/",        addr: "https://etherscan.io/address/" },
-  solana:   { tx: "https://solscan.io/tx/",          addr: "https://solscan.io/account/" },
-};
-
-function explorerTxUrl(chain: "bitcoin" | "ethereum" | "solana", txHash: string): string {
-  return CHAIN_EXPLORERS[chain].tx + txHash;
-}
-
-function explorerAddrUrl(chain: "bitcoin" | "ethereum" | "solana", addr: string): string {
-  return CHAIN_EXPLORERS[chain].addr + addr;
-}
-
-function truncateHash(hash: string, chars = 8): string {
-  if (!hash || hash.length <= chars * 2 + 3) return hash;
-  return `${hash.slice(0, chars)}…${hash.slice(-chars)}`;
-}
-
-function TxLink({ chain, txHash, label }: { chain: "bitcoin" | "ethereum" | "solana"; txHash: string; label?: string }) {
-  if (!txHash || txHash.length < 10) return <span className="text-[10px] font-mono text-muted-foreground/40">—</span>;
-  const url = explorerTxUrl(chain, txHash);
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-1 text-[10px] font-mono text-cyan-400/80 hover:text-cyan-300 transition-colors"
-      onClick={e => e.stopPropagation()}
-    >
-      {label ?? truncateHash(txHash)}
-      <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
-    </a>
-  );
-}
-
-function AddrLink({ chain, addr, label }: { chain: "bitcoin" | "ethereum" | "solana"; addr: string; label?: string }) {
-  if (!addr || addr.length < 10) return <span className="text-[10px] font-mono text-muted-foreground/40">—</span>;
-  const url = explorerAddrUrl(chain, addr);
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex items-center gap-1 text-[10px] font-mono text-purple-400/80 hover:text-purple-300 transition-colors"
-      onClick={e => e.stopPropagation()}
-    >
-      {label ?? truncateHash(addr)}
-      <ExternalLink className="w-2.5 h-2.5 flex-shrink-0" />
-    </a>
-  );
-}
-
-function CopyButton({ value }: { value: string }) {
-  return (
-    <button
-      onClick={e => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(value).then(() => toast.success("Copied!"));
-      }}
-      className="text-muted-foreground/40 hover:text-cyan-400 transition-colors"
-    >
-      <Copy className="w-2.5 h-2.5" />
-    </button>
-  );
 }
 
 // ─── Shared Search Bar ────────────────────────────────────────────────────────
@@ -145,7 +76,6 @@ interface HtlcSwapRow {
 
 interface OpenTrade {
   id: string;
-  chain: "bitcoin" | "ethereum" | "solana";
   direction: "buy_btc" | "sell_btc";
   fromSymbol: string;
   toSymbol: string;
@@ -159,8 +89,6 @@ interface OpenTrade {
   phase: "rfq_sent" | "quote_received" | "htlc_locked" | "awaiting_settle";
   receivedAt: Date;
   expiresIn: number;
-  lockTxId: string | null;
-  htlcAddress: string;
 }
 
 const PHASE_LABELS = {
@@ -193,7 +121,6 @@ function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
 
   return {
     id: String(row.id),
-    chain: row.chain,
     direction: isBuy ? "buy_btc" : "sell_btc",
     fromSymbol,
     toSymbol,
@@ -207,8 +134,6 @@ function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
     phase,
     receivedAt: row.createdAt,
     expiresIn,
-    lockTxId: row.lockTxId,
-    htlcAddress: row.htlcAddress,
   };
 }
 
@@ -301,49 +226,21 @@ export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mb-3">
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">You send</div>
-                    <div className="text-[10px] font-mono text-foreground/80">{trade.fromAmount.toLocaleString()} {trade.fromSymbol}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">You receive</div>
-                    <div className="text-[10px] font-mono text-foreground/80">{trade.toAmount > 0 ? `${trade.toAmount} ${trade.toSymbol}` : "Pending settlement"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">Rate</div>
-                    <div className="text-[10px] font-mono text-foreground/80">{trade.rate > 0 ? `1 BTC = $${trade.rate.toLocaleString()}` : "Awaiting quote"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">Fee</div>
-                    <div className="text-[10px] font-mono text-foreground/80">{trade.feeBps} bps</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">Peer</div>
-                    <div className="text-[10px] font-mono text-foreground/80 truncate">{trade.peer}</div>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">HTLC expiry</div>
-                    <div className="text-[10px] font-mono text-foreground/80">{trade.htlcExpiry}</div>
-                  </div>
-                  {/* Lock TX with explorer link */}
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">Lock Tx</div>
-                    <div className="flex items-center gap-1">
-                      {trade.lockTxId
-                        ? <TxLink chain={trade.chain} txHash={trade.lockTxId} />
-                        : <span className="text-[10px] font-mono text-muted-foreground/40">Pending</span>
-                      }
-                      {trade.lockTxId && <CopyButton value={trade.lockTxId} />}
+                  {[
+                    { label: "You send", value: `${trade.fromAmount.toLocaleString()} ${trade.fromSymbol}` },
+                    { label: "You receive", value: trade.toAmount > 0 ? `${trade.toAmount} ${trade.toSymbol}` : "Pending settlement" },
+                    { label: "Rate", value: trade.rate > 0 ? `1 BTC = $${trade.rate.toLocaleString()}` : "Awaiting quote" },
+                    { label: "Fee", value: `${trade.feeBps} bps` },
+                    { label: "Peer", value: trade.peer },
+                    { label: "HTLC expiry", value: trade.htlcExpiry },
+                    { label: "Refund window", value: trade.refundWindow },
+                    { label: "Received", value: `${Math.round((Date.now() - trade.receivedAt.getTime()) / 1000)}s ago` },
+                  ].map(item => (
+                    <div key={item.label}>
+                      <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
+                      <div className="text-[10px] font-mono text-foreground/80">{item.value}</div>
                     </div>
-                  </div>
-                  {/* HTLC Address with explorer link */}
-                  <div>
-                    <div className="text-[9px] text-muted-foreground/60">HTLC Address</div>
-                    <div className="flex items-center gap-1">
-                      <AddrLink chain={trade.chain} addr={trade.htlcAddress} />
-                      {trade.htlcAddress && <CopyButton value={trade.htlcAddress} />}
-                    </div>
-                  </div>
+                  ))}
                 </div>
 
                 <div>
@@ -393,7 +290,6 @@ export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
 
 interface RefundRecord {
   id: string;
-  chain: "bitcoin" | "ethereum" | "solana";
   fromSymbol: string;
   toSymbol: string;
   amount: number;
@@ -403,9 +299,7 @@ interface RefundRecord {
   htlcExpiry: Date;
   status: "claimable" | "claimed" | "expired";
   txHash: string;
-  rawTxHash: string;
   escrowPda: string;
-  rawEscrowPda: string;
 }
 
 // Rough USD price estimates for display purposes
@@ -420,12 +314,9 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
   const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
   const usdValue = amount * price;
   const status: RefundRecord["status"] = row.status === "refunded" ? "claimed" : "claimable";
-  const rawTxHash = row.refundTxId ?? row.lockTxId ?? "";
-  const rawEscrowPda = row.htlcAddress;
 
   return {
     id: String(row.id),
-    chain: row.chain,
     fromSymbol,
     toSymbol,
     amount,
@@ -434,10 +325,8 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
     htlcExpiry: row.refundedAt ?? row.updatedAt,
     status,
-    txHash: rawTxHash ? truncateHash(rawTxHash) : row.secretHash.slice(0, 16) + "...",
-    rawTxHash,
-    escrowPda: truncateHash(rawEscrowPda),
-    rawEscrowPda,
+    txHash: row.refundTxId ?? row.lockTxId ?? row.secretHash.slice(0, 16) + "...",
+    escrowPda: row.htlcAddress.length > 20 ? row.htlcAddress.slice(0, 12) + "..." : row.htlcAddress,
   };
 }
 
@@ -520,42 +409,20 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
                 <span className="text-[10px] font-mono text-muted-foreground">{refund.amount} {refund.fromSymbol} → {refund.toSymbol}</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2 mb-2">
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">Value</div>
-                  <div className="text-[10px] font-mono text-foreground/80">${refund.usdValue.toFixed(2)}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">Peer</div>
-                  <div className="text-[10px] font-mono text-foreground/80 truncate">{refund.peer}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">Reason</div>
-                  <div className="text-[10px] font-mono text-foreground/80 truncate">{refund.failReason}</div>
-                </div>
-                {/* Tx with explorer link */}
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">Tx</div>
-                  <div className="flex items-center gap-1">
-                    {refund.rawTxHash
-                      ? <TxLink chain={refund.chain} txHash={refund.rawTxHash} />
-                      : <span className="text-[10px] font-mono text-muted-foreground/40">{refund.txHash}</span>
-                    }
-                    {refund.rawTxHash && <CopyButton value={refund.rawTxHash} />}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
+                {[
+                  { label: "Value", value: `$${refund.usdValue.toFixed(2)}` },
+                  { label: "Peer", value: refund.peer },
+                  { label: "Reason", value: refund.failReason },
+                  { label: "Tx", value: refund.txHash },
+                  { label: "Escrow", value: refund.escrowPda },
+                  { label: "HTLC Expiry", value: refund.htlcExpiry.toLocaleString() },
+                ].map(item => (
+                  <div key={item.label}>
+                    <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
+                    <div className="text-[10px] font-mono text-foreground/80 truncate">{item.value}</div>
                   </div>
-                </div>
-                {/* HTLC Escrow with explorer link */}
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">Escrow</div>
-                  <div className="flex items-center gap-1">
-                    <AddrLink chain={refund.chain} addr={refund.rawEscrowPda} />
-                    {refund.rawEscrowPda && <CopyButton value={refund.rawEscrowPda} />}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[9px] text-muted-foreground/60">HTLC Expiry</div>
-                  <div className="text-[10px] font-mono text-foreground/80">{refund.htlcExpiry.toLocaleString()}</div>
-                </div>
+                ))}
               </div>
             </div>
 

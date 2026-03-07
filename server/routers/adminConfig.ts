@@ -12,17 +12,20 @@
  * All procedures require admin role — no public access to admin config.
  */
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { adminConfig, adminAuditLog, DEFAULT_ADMIN_CONFIG } from "../../drizzle/schema";
 import { eq, desc, and, like } from "drizzle-orm";
 import { writeAuditLog, diffObjects } from "../lib/auditLog";
 
 // ─── Admin guard middleware ───────────────────────────────────────────────────
-// Note: Admin panel uses wallet-based auth enforced on the frontend (VITE_ADMIN_WALLETS).
-// These procedures do not require Manus OAuth — using publicProcedure avoids
-// the UNAUTHORIZED redirect loop when visiting /admin without a Manus session.
-const adminProcedure = publicProcedure;
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+  return next({ ctx });
+});
 
 // ─── Treasury wallet schema ───────────────────────────────────────────────────
 const treasuryWalletSchema = z.object({
@@ -160,8 +163,8 @@ export const adminConfigRouter = router({
       if (input.feeAlertThresholdCents !== undefined) afterSnap.feeAlertThresholdCents = input.feeAlertThresholdCents;
 
       await writeAuditLog({
-        userId:   ctx.user?.id ?? null,
-        userName: ctx.user?.name ?? ctx.user?.email ?? "admin",
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
         section:  "fee_config",
         changes:  diffObjects(beforeSnap, afterSnap),
       });
@@ -182,8 +185,8 @@ export const adminConfigRouter = router({
         .set({ oracleSyncEnabled: input.enabled ? 1 : 0 })
         .where(eq(adminConfig.id, 1));
       await writeAuditLog({
-        userId:   ctx.user?.id ?? null,
-        userName: ctx.user?.name ?? ctx.user?.email ?? "admin",
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
         section:  "operator_config",
         changes:  diffObjects(
           { oracleSyncEnabled: !input.enabled },
@@ -218,8 +221,8 @@ export const adminConfigRouter = router({
         .where(eq(adminConfig.id, 1));
 
       await writeAuditLog({
-        userId:   ctx.user?.id ?? null,
-        userName: ctx.user?.name ?? ctx.user?.email ?? "admin",
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
         section:  "treasury",
         changes:  diffObjects(
           { treasuryWallets: oldWallets },

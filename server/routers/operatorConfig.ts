@@ -5,16 +5,20 @@
  */
 
 import { z } from "zod";
-import { publicProcedure, router } from "../_core/trpc";
+import { protectedProcedure, router } from "../_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { getDb } from "../db";
 import { operatorConfig, DEFAULT_OPERATOR_CONFIG } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { writeAuditLog, diffObjects } from "../lib/auditLog";
 
 // ─── Admin guard middleware ───────────────────────────────────────────────────
-// Admin panel uses wallet-based auth (VITE_ADMIN_WALLETS) enforced on the frontend.
-// publicProcedure avoids the Manus OAuth redirect loop on /admin.
-const adminProcedure = publicProcedure;
+const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Admin access required" });
+  }
+  return next({ ctx });
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 async function getOrCreate() {
@@ -166,8 +170,8 @@ export const operatorConfigRouter = router({
       }
 
       await writeAuditLog({
-        userId:   ctx.user?.id ?? null,
-        userName: ctx.user?.name ?? ctx.user?.email ?? "admin",
+        userId:   ctx.user.id,
+        userName: ctx.user.name ?? ctx.user.email ?? "admin",
         section:  "operator_config",
         changes:  diffObjects(beforeSnap, afterSnap),
       });

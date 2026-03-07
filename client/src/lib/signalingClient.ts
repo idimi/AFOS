@@ -44,13 +44,6 @@ export type SignalingEvent =
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
-  | "lp_invite"
-  // P2P swap coordination
-  | "p2p_quote_accepted"
-  | "p2p_htlc_params"
-  | "p2p_htlc_locked"
-  | "p2p_swap_complete"
-  | "p2p_swap_failed"
   | "error";
 
 type EventHandler = (data: unknown) => void;
@@ -347,98 +340,6 @@ export class SignalingClient {
     });
   }
 
-  /** Send an LP invite to a specific peer via signaling server */
-  sendLpInvite(targetPeerId: string, payload: unknown) {
-    this.sendMessage({
-      type: "lp_invite",
-      targetPeerId,
-      payload,
-    });
-  }
-
-  // ── P2P Swap Coordination Messages ───────────────────────────────────────
-
-  /** B → A: Quote accepted, B's wallet addresses included */
-  sendP2PQuoteAccepted(targetPeerId: string, params: {
-    rfqId: string;
-    fromAlias?: string;
-    wallets: { solana?: string; ethereum?: string; bitcoin?: string };
-    rate: number;
-    outAmount: number;
-  }) {
-    this.sendMessage({
-      type: "p2p_quote_accepted",
-      targetPeerId,
-      peerId: this.myPeerId ?? undefined,
-      ...params,
-    });
-  }
-
-  /** A → B: A's HTLC is locked, here are the params B needs to lock their side */
-  sendP2PHtlcParams(targetPeerId: string, params: {
-    rfqId: string;
-    secretHash: string;
-    lockTxHash: string;
-    lockChain: string;
-    escrowAddress: string;
-    lockedAmount: number;
-    lockedToken: string;
-    timelockA: number;
-    timelockB: number;
-  }) {
-    this.sendMessage({
-      type: "p2p_htlc_params",
-      targetPeerId,
-      peerId: this.myPeerId ?? undefined,
-      ...params,
-    });
-  }
-
-  /** B → A: B's HTLC is locked */
-  sendP2PHtlcLocked(targetPeerId: string, params: {
-    rfqId: string;
-    lockTxHash: string;
-    lockChain: string;
-    escrowAddress: string;
-    lockedAmount: number;
-    lockedToken: string;
-  }) {
-    this.sendMessage({
-      type: "p2p_htlc_locked",
-      targetPeerId,
-      peerId: this.myPeerId ?? undefined,
-      ...params,
-    });
-  }
-
-  /** A → B: Secret revealed — B can now claim */
-  sendP2PSwapComplete(targetPeerId: string, params: {
-    rfqId: string;
-    secret: string;
-    revealTxHash?: string;
-  }) {
-    this.sendMessage({
-      type: "p2p_swap_complete",
-      targetPeerId,
-      peerId: this.myPeerId ?? undefined,
-      ...params,
-    });
-  }
-
-  /** Either side → other: Swap failed / aborting */
-  sendP2PSwapFailed(targetPeerId: string, params: {
-    rfqId: string;
-    reason: string;
-    refunding?: boolean;
-  }) {
-    this.sendMessage({
-      type: "p2p_swap_failed",
-      targetPeerId,
-      peerId: this.myPeerId ?? undefined,
-      ...params,
-    });
-  }
-
   /** Broadcast an RFQ to all peers */
   broadcastRfq(rfq: unknown) {
     // Send via signaling server (reaches all peers)
@@ -558,35 +459,6 @@ export class SignalingClient {
       case "agent_rfq":
         // Agent-dispatched RFQ — server pushes this directly to the matched peer
         this.emit("agent_rfq", msg);
-        break;
-
-      case "lp_invite":
-        // LP invite — another peer is asking us to register for a pair
-        this.emit("lp_invite", {
-          fromPeerId: msg.fromPeerId,
-          payload: msg.payload,
-        });
-        break;
-
-      // ── P2P Swap Coordination ─────────────────────────────────────────────
-      case "p2p_quote_accepted":
-        this.emit("p2p_quote_accepted", msg);
-        break;
-
-      case "p2p_htlc_params":
-        this.emit("p2p_htlc_params", msg);
-        break;
-
-      case "p2p_htlc_locked":
-        this.emit("p2p_htlc_locked", msg);
-        break;
-
-      case "p2p_swap_complete":
-        this.emit("p2p_swap_complete", msg);
-        break;
-
-      case "p2p_swap_failed":
-        this.emit("p2p_swap_failed", msg);
         break;
 
       case "error":
