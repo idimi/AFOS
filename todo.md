@@ -1844,3 +1844,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Find all Oracle VM polling in RecentSwapsCard and related components
 - [x] Disable/stub Oracle VM data so no live swap data appears in the UI
+
+## Fresh Start: Wipe Oracle VM swap data from DB
+
+- [x] Identify all swap/analytics tables in the schema
+- [x] Truncate swap data tables (swapAnalytics, etc.) to start fresh
