@@ -402,7 +402,7 @@ export default function LandingPage() {
                   style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
                 >
                   <Network className="w-3 h-3" />
-                  Powered by AFOS P2P
+                  Powered by Intercomswap on Trac Network
                 </a>
               </motion.div>
 

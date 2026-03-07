@@ -2019,3 +2019,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Secrets: Add TNK_HTLC_WIF secret for live HTLC execution in executeTnkAgentSwap
 - [x] NetworkPage: Add TNK peer count indicator to peer settings panel
 - [x] SwapHistoryTabs: Add trac_network to BLOCK_TIMES (600s, same as Bitcoin)
+
+## TNK Enhancement Round 16
+
+- [ ] Secrets: Enter TNK_HTLC_WIF value to activate live HTLC signing for TNK→BTC swaps
+- [ ] AdminPanel: Add TNK volume sparkline to Analytics section alongside BTC/ETH/SOL sparklines
