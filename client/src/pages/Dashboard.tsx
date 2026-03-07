@@ -1207,7 +1207,11 @@ function PortfolioCard() {
 
   // Show skeleton while prices or balances are still loading for a connected Solana wallet
   // This prevents the flickering $0 → real value race condition
-  const isLoading = solanaConnected && (!pricesLoaded || balancesLoading);
+  // For standard adapter: wait for pricesLoaded + !balancesLoading
+  // For Phantom multi-chain: wait for !solanaBalancesLoading
+  const isLoading =
+    (solAdapterConnected && (!pricesLoaded || balancesLoading)) ||
+    (!solAdapterConnected && !!phantomMultiChain?.solanaAddress && !!phantomMultiChain?.solanaBalancesLoading);
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">

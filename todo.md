@@ -1921,3 +1921,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix 1: Added pricesLoaded flag to WalletContext (true once SOL price > 0 is fetched)
 - [x] Fix 2: PortfolioCard shows animated skeleton + "Fetching balances..." until both pricesLoaded && !balancesLoading
 - [x] Result: total only renders once it is stable and accurate
+
+## Phantom Multi-Chain pricesLoaded Guard
+
+- [x] Apply pricesLoaded guard to phantomMultiChain.solanaTotalUsd path in PortfolioCard
+- [x] Root cause: phantomMultiChain sets state immediately without balances, then fetches async — causing $0 window
+- [x] Fix: added solanaBalancesLoading flag to PhantomMultiChainState; set true on connect, false when balances arrive
+- [x] PortfolioCard now checks both paths: standard adapter (pricesLoaded + !balancesLoading) and Phantom multi-chain (!solanaBalancesLoading)
