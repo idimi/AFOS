@@ -1866,6 +1866,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Find source of fake Jupiter DEX route distribution data in Analytics
 - [ ] Remove/stub all phantom data so UI shows empty/fresh state
 
+## Advanced Settings Panel Overlay Fix
+
+- [x] Fix: Advanced Settings panel overlays Recent Swaps card when expanded on desktop
+- [x] Add xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto to swap card inner div so it scrolls internally
+
 ## Live Order Book — RFQ Broadcast Fix
 
 - [x] Fix: LiveOrderBook auto-broadcasts RFQ to all LP peers on wallet connect without user intent

@@ -2851,7 +2851,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
         {/* xl:row-span-6 so the right column spans all left-column rows */}
         <div className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
           <div
-            className="rounded-2xl p-4"
+            className="rounded-2xl p-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto"
             style={{
               background: "var(--card)",
               border: "1px solid var(--border)",
