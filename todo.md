@@ -1833,3 +1833,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add optional defaultTab prop to AgentSettings component
 - [x] Wire Network page "Open Agent Settings" button to pass defaultTab="network"
 - [x] Ensure Dashboard.tsx passes defaultTab through to AgentSettings when navigating
+
+## Settings Deep-link: Admin Panel + Wallets Panel
+
+- [x] Add onNavigateToSettings prop to AdminPanel — wire Stack Status section to link to Trading tab
+- [x] Add onNavigateToSettings prop to Wallets panel — wire theme/appearance link to Appearance tab
+- [x] Thread navigateToSettings through Dashboard.tsx to AdminPanel and Wallets panel render sites

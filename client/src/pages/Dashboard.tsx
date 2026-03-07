@@ -1407,7 +1407,7 @@ function WalletRowItem({ row, onSend, onReceive }: {
     </div>
   );
 }
-function WalletsCard() {
+function WalletsCard({ onNavigateToSettings }: { onNavigateToSettings?: () => void } = {}) {
   const [modal, setModal] = useState<WalletModalState | null>(null);
   // Browser wallets
   const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
@@ -1519,6 +1519,19 @@ function WalletsCard() {
             />
           ))}
         </div>
+
+        {/* Footer: Appearance shortcut */}
+        {onNavigateToSettings && (
+          <div className="mt-2.5 pt-2 border-t border-border/50 flex items-center justify-end">
+            <button
+              onClick={onNavigateToSettings}
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Settings className="w-3 h-3" />
+              Appearance &amp; Theme
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -3000,6 +3013,23 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Deep-link from external pages (e.g. /admin) via sessionStorage
+  // Usage: sessionStorage.setItem('afos:navigate', JSON.stringify({ page: 'settings', tab: 'trading' }))
+  useEffect(() => {
+    const raw = sessionStorage.getItem('afos:navigate');
+    if (!raw) return;
+    sessionStorage.removeItem('afos:navigate');
+    try {
+      const { page, tab } = JSON.parse(raw) as { page: string; tab?: string };
+      if (page === 'settings') {
+        navigateToSettings(tab as "trading" | "network" | "privacy" | "appearance" | undefined);
+      } else if (page === 'network') {
+        setActivePage('network');
+      }
+    } catch { /* ignore malformed */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle invite link hash on mount: #network?peer=<peerId>
   useEffect(() => {
     const parseInviteHash = () => {
@@ -3508,7 +3538,7 @@ export default function Dashboard() {
                 {/* RIGHT col — Portfolio + Wallets + Recent Swaps + Agent Activity */}
                 <div className="col-span-5 flex flex-col gap-4">
                   <PortfolioCard />
-                  <WalletsCard />
+                  <WalletsCard onNavigateToSettings={() => navigateToSettings("appearance")} />
                   <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
                   <AgentInsights onNavigateToTerminal={() => setActivePage("terminal")} />
                 </div>

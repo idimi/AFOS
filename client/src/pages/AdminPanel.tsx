@@ -834,11 +834,25 @@ function NodeHealthTab() {
       )}
       {/* Oracle VM Sync Status */}
       <OracleVmSyncCard />
+
+      {/* Footer: deep-link to Trade Settings in main app */}
+      <div className="pt-2 border-t border-border/50 flex items-center justify-end">
+        <button
+          onClick={() => {
+            sessionStorage.setItem('afos:navigate', JSON.stringify({ page: 'settings', tab: 'trading' }));
+            window.location.href = '/';
+          }}
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Settings className="w-3 h-3" />
+          Configure Trade Settings
+          <ArrowUpRight className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 }
-
-// ─── Users Tab (live analytics) ───────────────────────────────────────────────
+// ─── Users Tab (live analytics) ──────────────────────────────────────────────────────────────────────────────────────────
 function UsersTab() {
   const [days, setDays] = useState(30);
   const { data: summary, isLoading: sumLoading } = trpc.analytics.summary.useQuery({ days }, { staleTime: 30_000 });
