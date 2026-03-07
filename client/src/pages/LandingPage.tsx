@@ -611,6 +611,7 @@ export default function LandingPage() {
                   { chain: "Bitcoin", color: "#F7931A", action: "Alice locks 0.1 BTC with hash H", icon: "₿" },
                   { chain: "Solana", color: "#9945FF", action: "Bob locks 80.1 SOL with same hash H", icon: "◎" },
                   { chain: "Settlement", color: "#10b981", action: "Alice reveals secret → both chains settle atomically", icon: "✓" },
+                  { chain: "Trac Network", color: "#F59E0B", action: "TNK→SOL: Carol locks 1,000 TNK via Tap Wallet · Dave locks 6.5 SOL — same atomic guarantee", icon: "⬡" },
                 ].map((step, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <div

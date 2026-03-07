@@ -1854,3 +1854,56 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Replace static progress bar in Open Trades with live blocksRemaining/locktime ratio
 - [ ] Show percentage and color (green → amber → red as expiry approaches)
 - [ ] Update every 30s when block height is refreshed
+
+## Round 6 Features (Mar 7, 2026)
+
+### Feature A: Bitcoin PSBT Refund via Phantom signPSBT
+- [ ] Add buildBtcHtlcRefundPsbt to btcHtlc.ts (CLTV-timeout PSBT builder)
+- [ ] Wire Phantom signPSBT into Bitcoin Claim button in SwapHistoryTabs.tsx
+- [ ] Broadcast signed PSBT via mempool.space API
+- [ ] Show Mempool.space tx link on success toast
+- [ ] Call updateHtlcRefund to record refundTxId in DB
+
+### Feature B: TNK in Chat Agent Price Map
+- [ ] Add TNK to getTokenPricesFromCoinGecko() in server/routers/chat.ts
+- [ ] Add TNK to Binance fallback price map in chat.ts
+- [ ] Add TNK to approximate fallback prices in chat.ts
+- [ ] Verify chat agent can quote TNK swap pairs
+
+### Feature C: TNK→SOL Demo Step in AgentChatHero
+- [ ] Add TNK→SOL swap step to the animated demo sequence in AgentChatHero.tsx
+- [ ] Add Trac Network chain badge to the demo step
+- [ ] Verify animation timing and visual consistency
+
+## Round 6 Completion Status (Mar 7, 2026)
+
+### Feature A: Bitcoin PSBT Refund via Phantom signPSBT
+- [x] Add buildBtcHtlcRefundPsbt to btcHtlc.ts (CLTV-timeout PSBT builder)
+- [x] Wire Phantom signPSBT into Bitcoin Claim button in SwapHistoryTabs.tsx
+- [x] Broadcast signed PSBT via mempool.space API
+- [x] Show Mempool.space tx link on success toast
+- [x] Call updateHtlcRefund to record refundTxId in DB
+
+### Feature B: TNK in Chat Agent Price Map
+- [x] Add TNK to getTokenPricesFromCoinGecko() in server/routers/chat.ts (trac-network CoinGecko ID)
+- [x] Add TNK to Binance fallback price map in chat.ts
+- [x] Add TNK to approximate fallback prices in chat.ts
+- [x] Verify chat agent can quote TNK swap pairs
+
+### Feature C: TNK→SOL Demo Step in AgentChatHero
+- [x] Add TNK→SOL swap step sequence to CHAT_SEQUENCE in AgentChatHero.tsx
+- [x] Add Trac Network chain badge (TNK tag, #e87d3e color) to demo steps
+- [x] Update MOBILE_STEPS to include TNK→SOL demo steps
+- [x] Mobile user prompt dynamically shows "swap 500 TNK to SOL" for TNK steps
+
+### Schema & TypeScript Fixes
+- [x] Add trac_network to htlcSwaps.chain enum in drizzle/schema.ts
+- [x] Add trac_network to htlcSwaps.toChain enum in drizzle/schema.ts
+- [x] Add trac_network to swapAnalytics.fromChain enum in drizzle/schema.ts
+- [x] Add trac_network to swapAnalytics.toChain enum in drizzle/schema.ts
+- [x] Update ChainHeights interface in htlcMonitor.ts to include trac_network
+- [x] Update HtlcSwapRow interface in SwapHistoryTabs.tsx to include trac_network
+- [x] Update mapDbRowToSwapRecord in SwapHistory.tsx to accept trac_network
+- [x] Update ChainId type and CHAIN_CONFIG in SwapHistory.tsx to include trac_network
+- [x] Apply ALTER TABLE to DB via webdev_execute_sql to sync enum values
+- [x] All 241 tests passing, TypeScript 0 errors

@@ -31,8 +31,8 @@ export type InsertUser = typeof users.$inferInsert;
 // auto-triggers refund when the CLTV locktime is reached.
 export const htlcSwaps = mysqlTable("htlc_swaps", {
   id:             int("id").autoincrement().primaryKey(),
-  /** Chain where the HTLC was locked: bitcoin | ethereum | solana */
-  chain:          mysqlEnum("chain", ["bitcoin", "ethereum", "solana"]).notNull(),
+  /** Chain where the HTLC was locked: bitcoin | ethereum | solana | trac_network */
+  chain:          mysqlEnum("chain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
   /** HTLC address / contract address / PDA */
   htlcAddress:    varchar("htlcAddress", { length: 128 }).notNull(),
   /** SHA-256 hash of the preimage secret */
@@ -54,7 +54,7 @@ export const htlcSwaps = mysqlTable("htlc_swaps", {
   /** Destination token symbol */
   toToken:        varchar("toToken", { length: 16 }),
   /** Destination chain */
-  toChain:        mysqlEnum("toChain", ["bitcoin", "ethereum", "solana"]),
+  toChain:        mysqlEnum("toChain", ["bitcoin", "ethereum", "solana", "trac_network"]),
   /** Refund transaction ID (set when status = refunded) */
   refundTxId:     varchar("refundTxId", { length: 128 }),
   /** User's wallet address (sender) */
@@ -73,9 +73,9 @@ export type InsertHtlcSwap = typeof htlcSwaps.$inferInsert;
 export const swapAnalytics = mysqlTable("swap_analytics", {
   id:             int("id").autoincrement().primaryKey(),
   /** Source chain */
-  fromChain:      mysqlEnum("fromChain", ["bitcoin", "ethereum", "solana"]).notNull(),
+  fromChain:      mysqlEnum("fromChain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
   /** Destination chain */
-  toChain:        mysqlEnum("toChain", ["bitcoin", "ethereum", "solana"]).notNull(),
+  toChain:        mysqlEnum("toChain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
   /** Source token symbol */
   fromToken:      varchar("fromToken", { length: 16 }).notNull(),
   /** Destination token symbol */

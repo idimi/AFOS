@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE htlc_swaps MODIFY COLUMN chain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\nALTER TABLE htlc_swaps MODIFY COLUMN toChain ENUM('bitcoin','ethereum','solana','trac_network');\nALTER TABLE swap_analytics MODIFY COLUMN fromChain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\nALTER TABLE swap_analytics MODIFY COLUMN toChain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nALTER TABLE htlc_swaps MODIFY COLUMN chain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\nALTER TABLE htlc_swaps MODIFY COLUMN toChain ENUM('bitcoin','ethereum','solana','trac_network');\nALTER TABLE swap_analytics MODIFY COLUMN fromChain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\nALTER TABLE swap_analytics MODIFY COLUMN toChain ENUM('bitcoin','ethereum','solana','trac_network') NOT NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 392
+}

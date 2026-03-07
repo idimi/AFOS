@@ -77,9 +77,10 @@ async function getSolSlot(): Promise<number | null> {
 
 // ─── Chain height cache (refreshed each poll cycle) ──────────────────────────
 interface ChainHeights {
-  bitcoin:  number | null;
-  ethereum: number | null;
-  solana:   number | null;
+  bitcoin:     number | null;
+  ethereum:    number | null;
+  solana:      number | null;
+  trac_network: number | null;
 }
 
 async function fetchAllChainHeights(): Promise<ChainHeights> {
@@ -89,9 +90,10 @@ async function fetchAllChainHeights(): Promise<ChainHeights> {
     getSolSlot(),
   ]);
   return {
-    bitcoin:  btc.status  === "fulfilled" ? btc.value  : null,
-    ethereum: eth.status  === "fulfilled" ? eth.value  : null,
-    solana:   sol.status  === "fulfilled" ? sol.value  : null,
+    bitcoin:      btc.status  === "fulfilled" ? btc.value  : null,
+    ethereum:     eth.status  === "fulfilled" ? eth.value  : null,
+    solana:       sol.status  === "fulfilled" ? sol.value  : null,
+    trac_network: null, // Trac Network uses agent-escrow; no block-height polling needed
   };
 }
 
@@ -179,7 +181,7 @@ async function pollPendingHtlcs(): Promise<void> {
 
   // Fetch current block heights for all chains that have pending HTLCs
   const chainsNeeded = new Set(pending.map(h => h.chain));
-  const heights: ChainHeights = { bitcoin: null, ethereum: null, solana: null };
+  const heights: ChainHeights = { bitcoin: null, ethereum: null, solana: null, trac_network: null };
 
   if (chainsNeeded.has("bitcoin"))  heights.bitcoin  = await getBtcBlockHeight();
   if (chainsNeeded.has("ethereum")) heights.ethereum = await getEthBlockNumber();
@@ -292,7 +294,7 @@ export function stopHtlcMonitor(): void {
  */
 export async function recordHtlcLock(params: {
 
-  chain:         "bitcoin" | "ethereum" | "solana";
+  chain:         "bitcoin" | "ethereum" | "solana" | "trac_network";
   htlcAddress:   string;
   secretHash:    string;
   lockTxId?:     string;
@@ -302,7 +304,7 @@ export async function recordHtlcLock(params: {
   peerId?:       string;
   rfqId?:        string;
   toToken?:      string;
-  toChain?:      "bitcoin" | "ethereum" | "solana";
+  toChain?:      "bitcoin" | "ethereum" | "solana" | "trac_network";
   senderAddress?: string;
 }): Promise<number> {
   const db = await getDb();
@@ -355,8 +357,8 @@ export async function markHtlcCompleted(secretHash: string, txId?: string): Prom
  * Record a swap in the analytics table.
  */
 export async function recordSwapAnalytic(params: {
-  fromChain:      "bitcoin" | "ethereum" | "solana";
-  toChain:        "bitcoin" | "ethereum" | "solana";
+  fromChain:      "bitcoin" | "ethereum" | "solana" | "trac_network";
+  toChain:        "bitcoin" | "ethereum" | "solana" | "trac_network";
   fromToken:      string;
   toToken:        string;
   amount:         string;

@@ -64,7 +64,7 @@ export function HtlcSearchBar({
 
 interface HtlcSwapRow {
   id: number;
-  chain: "bitcoin" | "ethereum" | "solana";
+  chain: "bitcoin" | "ethereum" | "solana" | "trac_network";
   htlcAddress: string;
   secretHash: string;
   lockTxId: string | null;
@@ -75,7 +75,7 @@ interface HtlcSwapRow {
   peerId: string | null;
   rfqId: string | null;
   toToken: string | null;
-  toChain: "bitcoin" | "ethereum" | "solana" | null;
+  toChain: "bitcoin" | "ethereum" | "solana" | "trac_network" | null;
   refundTxId: string | null;
   senderAddress: string | null;
   createdAt: Date;
@@ -832,9 +832,77 @@ function RefundCard({
       return;
     }
 
-    // Bitcoin — no browser-side PSBT signing yet; show instructions
-    toast.info("Bitcoin refund", {
-      description: `After the CLTV timelock expires, broadcast the refund PSBT from your Bitcoin wallet to reclaim funds from ${refund.htlcAddress.slice(0, 20)}…`,
+    // Bitcoin — build CLTV-timeout refund PSBT and sign via Phantom / Tap / Xverse
+    if (refund.chain === "bitcoin") {
+      setClaiming(true);
+      try {
+        const btcLib = await import("@/lib/btcHtlc");
+        const provider = btcLib.detectBtcProvider();
+        if (provider === "unknown") {
+          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, Tap Wallet, or Xverse to claim BTC refunds." });
+          setClaiming(false);
+          return;
+        }
+        const refundAddress = await btcLib.getBtcAddress(provider);
+        if (!refundAddress) {
+          toast.error("Wallet not connected", { description: "Unlock your Bitcoin wallet and try again." });
+          setClaiming(false);
+          return;
+        }
+        // Fetch the HTLC UTXOs from mempool.space
+        const utxos = await btcLib.fetchUtxos(refund.htlcAddress);
+        if (!utxos.length) {
+          toast.error("No claimable UTXO found", { description: `The HTLC address ${refund.htlcAddress.slice(0, 20)}… has no confirmed UTXOs.` });
+          setClaiming(false);
+          return;
+        }
+        const htlcUtxo = utxos[0];
+        // Fetch the P2WSH witnessUtxo script for the input
+        const witnessUtxoScript = await btcLib.fetchWitnessUtxoScript(htlcUtxo.txid, htlcUtxo.vout);
+        if (!witnessUtxoScript) {
+          toast.error("Could not fetch UTXO script", { description: "Try again in a moment." });
+          setClaiming(false);
+          return;
+        }
+        // Build the CLTV-timeout refund PSBT
+        const { psbtBase64 } = btcLib.buildBtcHtlcRefundPsbt({
+          witnessScript: witnessUtxoScript,
+          htlcAddress: refund.htlcAddress,
+          lockTxid: htlcUtxo.txid,
+          lockVout: htlcUtxo.vout,
+          amountSats: htlcUtxo.value,
+          locktime: refund.locktime,
+          refundAddress,
+        });
+        toast.loading("Waiting for wallet signature…", { id: "btc-refund-sign" });
+        const signedPsbt = await btcLib.signPsbtWithWallet(psbtBase64, provider, [0]);
+        toast.dismiss("btc-refund-sign");
+        toast.loading("Broadcasting refund tx…", { id: "btc-refund-broadcast" });
+        const { txid, explorerUrl } = await btcLib.broadcastSignedPsbt(signedPsbt);
+        toast.dismiss("btc-refund-broadcast");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txid });
+        await utils.history.refunds.invalidate();
+        toast.success("BTC refund broadcast!", {
+          description: (
+            <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Mempool.space <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        toast.dismiss("btc-refund-sign");
+        toast.dismiss("btc-refund-broadcast");
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("BTC refund failed", { description: msg });
+      } finally {
+        setClaiming(false);
+      }
+      return;
+    }
+    // Fallback for unknown chains
+    toast.info("Refund not supported", {
+      description: `Chain "${refund.chain}" does not have a browser-side refund path yet.`,
     });
   }, [refund, publicKey, signTransaction, connection, updateHtlcRefund, utils]);
 

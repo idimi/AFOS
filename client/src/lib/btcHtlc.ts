@@ -379,6 +379,86 @@ export async function broadcastSignedPsbt(
   return { txid, explorerUrl };
 }
 
+// ─── CLTV Refund PSBT Builder ─────────────────────────────────────────────────
+
+export interface HtlcRefundParams {
+  /** The HTLC witness script (hex) — from the original lock */
+  witnessScript: string;
+  /** The HTLC P2WSH address that holds the locked funds */
+  htlcAddress: string;
+  /** The UTXO that holds the locked BTC (the lock tx output) */
+  lockTxid: string;
+  lockVout: number;
+  /** Amount locked in satoshis */
+  amountSats: number;
+  /** CLTV locktime value used when building the HTLC script */
+  locktime: number;
+  /** Refund destination address (the original sender) */
+  refundAddress: string;
+  /** Fee rate in sat/vbyte (default: 5) */
+  feeRateSatsPerVbyte?: number;
+  network?: "mainnet" | "testnet";
+}
+
+/**
+ * Build a CLTV-timeout refund PSBT for an HTLC lock output.
+ *
+ * The HTLC script has the structure:
+ *   OP_IF
+ *     OP_SHA256 <secretHash> OP_EQUALVERIFY OP_DUP OP_HASH160 <recipientPKH> OP_EQUALVERIFY OP_CHECKSIG
+ *   OP_ELSE
+ *     <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP OP_DUP OP_HASH160 <senderPKH> OP_EQUALVERIFY OP_CHECKSIG
+ *   OP_ENDIF
+ *
+ * The refund path uses the ELSE branch: set nSequence=0xFFFFFFFE, nLockTime=locktime,
+ * push OP_0 (false) as the branch selector, then the witness script.
+ */
+export function buildBtcHtlcRefundPsbt(params: HtlcRefundParams): { psbtBase64: string; psbtHex: string } {
+  const {
+    witnessScript: witnessScriptHex,
+    lockTxid,
+    lockVout,
+    amountSats,
+    locktime,
+    refundAddress,
+    feeRateSatsPerVbyte = 5,
+    network = "mainnet",
+  } = params;
+
+  const net = network === "testnet" ? bitcoin.networks.testnet : bitcoin.networks.bitcoin;
+  const witnessScript = hexToBytes(witnessScriptHex);
+
+  const psbt = new bitcoin.Psbt({ network: net });
+
+  // Set nLockTime to the CLTV value so OP_CHECKLOCKTIMEVERIFY passes
+  psbt.setLocktime(locktime);
+
+  // Add the HTLC UTXO as input with nSequence < 0xFFFFFFFF (required for CLTV)
+  psbt.addInput({
+    hash: lockTxid,
+    index: lockVout,
+    sequence: 0xfffffffe, // CLTV requires sequence < 0xFFFFFFFF
+    witnessUtxo: {
+      // P2WSH script: OP_0 <sha256(witnessScript)>
+      script: bitcoin.payments.p2wsh({ redeem: { output: witnessScript, network: net }, network: net }).output!,
+      value: BigInt(amountSats),
+    },
+    witnessScript,
+  });
+
+  // Estimate fee: ~200 vbytes for a P2WSH refund tx
+  const estimatedFee = feeRateSatsPerVbyte * 200;
+  const refundAmount = amountSats - estimatedFee;
+  if (refundAmount < 546) {
+    throw new Error(`Refund amount (${refundAmount} sats) is below dust threshold after fee`);
+  }
+
+  // Output: refund to sender address
+  psbt.addOutput({ address: refundAddress, value: BigInt(refundAmount) });
+
+  return { psbtBase64: psbt.toBase64(), psbtHex: psbt.toHex() };
+}
+
 // ─── HTLC Status ─────────────────────────────────────────────────────────────
 
 export interface HtlcStatus {

@@ -24,7 +24,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SwapStatus = "complete" | "failed" | "pending" | "refunded";
-type ChainId = "bitcoin" | "ethereum" | "solana";
+type ChainId = "bitcoin" | "ethereum" | "solana" | "trac_network";
 
 interface SwapRecord {
   id: string;
@@ -49,9 +49,10 @@ interface SwapRecord {
 // ─── Chain Config ─────────────────────────────────────────────────────────────
 
 const CHAIN_CONFIG: Record<ChainId, { name: string; color: string; explorer: string; icon: string }> = {
-  bitcoin: { name: "Bitcoin", color: "#f7931a", explorer: "https://mempool.space/tx/", icon: "₿" },
-  ethereum: { name: "Ethereum", color: "#627eea", explorer: "https://etherscan.io/tx/", icon: "Ξ" },
-  solana: { name: "Solana", color: "#9945ff", explorer: "https://solscan.io/tx/", icon: "◎" },
+  bitcoin:      { name: "Bitcoin",       color: "#f7931a", explorer: "https://mempool.space/tx/",         icon: "₿" },
+  ethereum:     { name: "Ethereum",      color: "#627eea", explorer: "https://etherscan.io/tx/",          icon: "Ξ" },
+  solana:       { name: "Solana",        color: "#9945ff", explorer: "https://solscan.io/tx/",            icon: "◎" },
+  trac_network: { name: "Trac Network",  color: "#e87d3e", explorer: "https://tracnetwork.io/tx/",        icon: "T" },
 };
 
 const TOKEN_COLORS: Record<string, string> = {
@@ -69,8 +70,8 @@ function guessChain(token: string): ChainId {
 
 function mapDbRowToSwapRecord(row: {
   id: number;
-  fromChain: "bitcoin" | "ethereum" | "solana";
-  toChain: "bitcoin" | "ethereum" | "solana";
+  fromChain: "bitcoin" | "ethereum" | "solana" | "trac_network";
+  toChain: "bitcoin" | "ethereum" | "solana" | "trac_network";
   fromToken: string;
   toToken: string;
   amount: string;

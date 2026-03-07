@@ -38,7 +38,7 @@ import { getSignalingPeerList, sendToPeer } from "../signaling";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
-type SupportedChain = "solana" | "ethereum" | "bitcoin";
+type SupportedChain = "solana" | "ethereum" | "bitcoin" | "trac_network";
 
 interface AssetDef {
   symbol: string;
@@ -57,6 +57,7 @@ const ASSETS: AssetDef[] = [
   { symbol: "USDT", chain: "ethereum", address: "0xdAC17F958D2ee523a2206206994597C13D831ec7",   decimals: 6,  isStable: true  },
   { symbol: "USDC", chain: "ethereum", address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",   decimals: 6,  isStable: true  },
   { symbol: "BTC",  chain: "bitcoin",  address: null,                                            decimals: 8,  isStable: false },
+  { symbol: "TNK",  chain: "trac_network", address: null,                                         decimals: 8,  isStable: false },
 ];
 
 function getAsset(symbol: string, chain: SupportedChain): AssetDef | undefined {
@@ -67,6 +68,7 @@ function getAsset(symbol: string, chain: SupportedChain): AssetDef | undefined {
 function defaultChain(symbol: string): SupportedChain {
   if (symbol === "ETH") return "ethereum";
   if (symbol === "BTC") return "bitcoin";
+  if (symbol === "TNK") return "trac_network";
   return "solana";
 }
 
@@ -480,17 +482,23 @@ const PRICE_CACHE_TTL_MS = 30_000;
 async function getTokenPricesFromCoinGecko(): Promise<Record<string, number> | null> {
   try {
     const res = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin&vs_currencies=usd",
+      "https://api.coingecko.com/api/v3/simple/price?ids=solana,ethereum,bitcoin,trac-network&vs_currencies=usd",
       { signal: AbortSignal.timeout(6000) }
     );
     if (!res.ok) return null;
-    const data = await res.json() as { solana?: { usd: number }; ethereum?: { usd: number }; bitcoin?: { usd: number } };
+    const data = await res.json() as {
+      solana?: { usd: number };
+      ethereum?: { usd: number };
+      bitcoin?: { usd: number };
+      "trac-network"?: { usd: number };
+    };
     const sol = data.solana?.usd;
     if (!sol || sol < 1) return null;
     return {
       SOL:  sol,
       ETH:  data.ethereum?.usd ?? 2000,
       BTC:  data.bitcoin?.usd  ?? 66000,
+      TNK:  data["trac-network"]?.usd ?? 0.28,
       USDT: 1,
       USDC: 1,
     };
@@ -515,6 +523,8 @@ async function getTokenPricesFromBinance(): Promise<Record<string, number> | nul
       if (item.symbol === "BTCUSDT") prices.BTC = parseFloat(item.price);
     }
     if (!prices.SOL || prices.SOL < 1) return null;
+    // TNK is not on Binance; add a fallback value so the map is complete
+    prices.TNK = 0.28;
     return prices;
   } catch {
     return null;
@@ -539,7 +549,7 @@ async function getTokenPricesWithSource(): Promise<{ prices: Record<string, numb
   }
 
   console.warn("[Chat] All price APIs failed, using approximate fallback prices");
-  const fallback = { SOL: 85, ETH: 1970, BTC: 66000, USDT: 1, USDC: 1 };
+  const fallback = { SOL: 85, ETH: 1970, BTC: 66000, TNK: 0.28, USDT: 1, USDC: 1 };
   return { prices: fallback, source: "approximate (APIs unavailable)" };
 }
 

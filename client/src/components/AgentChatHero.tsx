@@ -112,6 +112,97 @@ const CHAT_SEQUENCE: ChatStep[] = [
     tagColor: "#10b981",
     duration: 3500,
   },
+  // Pause before second demo
+  {
+    type: "pause",
+    duration: 1800,
+  },
+
+  // ── Second demo: TNK → SOL ──────────────────────────────────────────────────
+  // User types
+  {
+    type: "user_typing",
+    text: "swap 500 TNK to SOL",
+    duration: 2000,
+  },
+  // Agent thinks
+  {
+    type: "agent_thinking",
+    text: "Analyzing request...",
+    tag: "PROCESSING",
+    tagColor: "#f59e0b",
+    duration: 1000,
+  },
+  // Detect Trac Network wallet
+  {
+    type: "agent_action",
+    text: "Trac Network wallet detected",
+    subtext: "Tap Wallet connected · TNK balance: 2,400 · Agent-escrow model",
+    icon: <Shield className="w-3.5 h-3.5" />,
+    tag: "TNK",
+    tagColor: "#e87d3e",
+    duration: 1600,
+  },
+  // Scan P2P network
+  {
+    type: "agent_action",
+    text: "Broadcasting TNK→SOL RFQ to P2P relay",
+    subtext: "Searching 8 peers supporting Trac Network pairs",
+    icon: <Radio className="w-3.5 h-3.5" />,
+    tag: "SCANNING",
+    tagColor: "#06b6d4",
+    duration: 1600,
+  },
+  // Peer found
+  {
+    type: "agent_message",
+    text: "Peer lp-f3c8b2 offering 4.21 SOL for 500 TNK",
+    subtext: "Rate: 1 TNK = 0.00842 SOL · Spread: 0.18% · Score: 94/100",
+    icon: <CheckCircle2 className="w-3.5 h-3.5" />,
+    tag: "MATCHED",
+    tagColor: "#10b981",
+    duration: 1600,
+  },
+  // Lock TNK via agent-escrow
+  {
+    type: "agent_action",
+    text: "Locking 500 TNK via agent-escrow on Trac Network",
+    subtext: "Hash: 9a2f1c...b8e4 · Timelock: 200 blocks · Chain: Trac Network",
+    icon: <Lock className="w-3.5 h-3.5" />,
+    tag: "LOCKING",
+    tagColor: "#e87d3e",
+    duration: 2000,
+  },
+  // Peer locks SOL
+  {
+    type: "agent_action",
+    text: "Peer locked 4.21 SOL in HTLC escrow",
+    subtext: "Same hash · Timelock: 72 slots · Chain: Solana",
+    icon: <Lock className="w-3.5 h-3.5" />,
+    tag: "LOCKED",
+    tagColor: "#8b5cf6",
+    duration: 1600,
+  },
+  // Settle
+  {
+    type: "agent_action",
+    text: "Revealing secret → atomic settlement",
+    subtext: "TNK escrow released · SOL claimed · No counterparty risk",
+    icon: <Unlock className="w-3.5 h-3.5" />,
+    tag: "SETTLING",
+    tagColor: "#06b6d4",
+    duration: 1800,
+  },
+  // Success
+  {
+    type: "success",
+    text: "Swap complete! Received 4.21 SOL",
+    subtext: "500 TNK → 4.21 SOL · Fee: 0.15% · Time: 9.1s · Tx: 8mN2...pQ4k",
+    icon: <Zap className="w-3.5 h-3.5" />,
+    tag: "SETTLED",
+    tagColor: "#10b981",
+    duration: 3500,
+  },
   // Pause before loop
   {
     type: "pause",
@@ -455,12 +546,16 @@ export function AgentChatHero() {
 // Shows a single animated step at a time — compact enough for small screens.
 
 const MOBILE_STEPS = [
-  { tag: "SCANNING",  tagColor: "#06b6d4",  text: "Finding best peer for 0.1 BTC → SOL",   icon: <Radio className="w-4 h-4" /> },
-  { tag: "MATCHED",   tagColor: "#10b981",  text: "Peer matched · 79.74 SOL · Score 98/100", icon: <CheckCircle2 className="w-4 h-4" /> },
-  { tag: "LOCKING",   tagColor: "#f59e0b",  text: "Locking HTLC escrow on Bitcoin chain",    icon: <Lock className="w-4 h-4" /> },
-  { tag: "LOCKED",    tagColor: "#8b5cf6",  text: "Peer locked SOL escrow · Same hash",      icon: <Lock className="w-4 h-4" /> },
-  { tag: "SETTLING",  tagColor: "#06b6d4",  text: "Revealing secret → atomic settlement",   icon: <Unlock className="w-4 h-4" /> },
-  { tag: "SETTLED",   tagColor: "#10b981",  text: "Swap complete · 79.74 SOL received",     icon: <Zap className="w-4 h-4" /> },
+  // BTC → SOL
+  { tag: "SCANNING",  tagColor: "#06b6d4",  text: "Finding best peer for 0.1 BTC → SOL",       icon: <Radio className="w-4 h-4" />,        demo: "BTC→SOL" },
+  { tag: "MATCHED",   tagColor: "#10b981",  text: "Peer matched · 79.74 SOL · Score 98/100",   icon: <CheckCircle2 className="w-4 h-4" />, demo: "BTC→SOL" },
+  { tag: "LOCKING",   tagColor: "#f59e0b",  text: "Locking HTLC escrow on Bitcoin chain",        icon: <Lock className="w-4 h-4" />,         demo: "BTC→SOL" },
+  { tag: "SETTLED",   tagColor: "#10b981",  text: "Swap complete · 79.74 SOL received",         icon: <Zap className="w-4 h-4" />,          demo: "BTC→SOL" },
+  // TNK → SOL
+  { tag: "TNK",       tagColor: "#e87d3e",  text: "Tap Wallet detected · 500 TNK ready",        icon: <Shield className="w-4 h-4" />,       demo: "TNK→SOL" },
+  { tag: "SCANNING",  tagColor: "#06b6d4",  text: "Broadcasting TNK→SOL RFQ to P2P relay",     icon: <Radio className="w-4 h-4" />,        demo: "TNK→SOL" },
+  { tag: "LOCKING",   tagColor: "#e87d3e",  text: "Locking 500 TNK via agent-escrow",           icon: <Lock className="w-4 h-4" />,         demo: "TNK→SOL" },
+  { tag: "SETTLED",   tagColor: "#10b981",  text: "Swap complete · 4.21 SOL received",          icon: <Zap className="w-4 h-4" />,          demo: "TNK→SOL" },
 ];
 
 export function MobileAgentHero() {
@@ -562,7 +657,7 @@ export function MobileAgentHero() {
         style={{ borderTop: "1px solid oklch(0.28 0.04 255 / 0.3)" }}
       >
         <span className="text-xs flex-1 truncate" style={{ color: "oklch(0.45 0.03 255)" }}>
-          swap 0.1 BTC to SOL
+          {step.demo === "TNK→SOL" ? "swap 500 TNK to SOL" : "swap 0.1 BTC to SOL"}
         </span>
         <div
           className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
