@@ -1908,3 +1908,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Swaps Page Wallet Indicator
 
 - [x] Add signing-wallet indicator below the "Swap Now" button on the Swaps page (same as Dashboard chat)
+
+## Swap Now → Live Order Book Flow
+
+- [x] Investigate: clicking Swap Now doesn't auto-show quotes in the Live Order Book — LiveOrderBook manages hasRequestedQuotes internally with no parent access
+- [x] Fix: added triggerGetQuotesRef prop to LiveOrderBook; handleSwap now calls it before the Oracle VM RFQ so quotes appear in the order book automatically when Swap Now is clicked

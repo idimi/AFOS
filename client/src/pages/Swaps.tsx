@@ -1186,7 +1186,7 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings, triggerGetQuotesRef }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
@@ -1196,6 +1196,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   lpEnabled?: boolean; // whether the user has LP Mode enabled
   ownPeerId?: string | null; // own peer ID — filtered out from the order book
   onNavigateToSettings?: () => void;
+  triggerGetQuotesRef?: React.MutableRefObject<(() => void) | null>; // parent can call this to imperatively trigger Get Quotes
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1306,6 +1307,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       toToken.chain as import("../lib/afosApi").SupportedChain,
     ).catch(() => { /* best-effort */ });
   };
+
+  // Expose the trigger function to the parent via ref
+  useEffect(() => {
+    if (!triggerGetQuotesRef) return;
+    triggerGetQuotesRef.current = () => {
+      setHasRequestedQuotes(true);
+      broadcastRfqRef.current?.();
+    };
+    return () => { if (triggerGetQuotesRef) triggerGetQuotesRef.current = null; };
+  }); // runs every render to keep the closure fresh
 
   // Pair change: clear orders, pending state, and reset quote request flag
   useEffect(() => {
@@ -2491,6 +2502,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
   // Collapsible chart on mobile (hidden by default)
   const [chartOpen, setChartOpen] = useState(false);
+  // Ref to imperatively trigger LiveOrderBook's Get Quotes broadcast from handleSwap
+  const triggerGetQuotesRef = useRef<(() => void) | null>(null);
   // Scroll fade indicator — ref to the scrollable swap card inner div
   const swapCardRef = useRef<HTMLDivElement>(null);
   const [showScrollFade, setShowScrollFade] = useState(false);
@@ -2695,6 +2708,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     setLastTxHash(undefined);
     // Auto-collapse Advanced Settings to reduce visual clutter during swap flow
     setShowAdvanced(false);
+    // Auto-trigger the Live Order Book Get Quotes broadcast so quotes appear without a separate click
+    triggerGetQuotesRef.current?.();
 
     try {
       // Step 1: Submit RFQ to get best route + quote
@@ -3516,6 +3531,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             lpEnabled={lightPeer.prefs?.enabled ?? false}
             ownPeerId={lightPeer.peerId}
             onNavigateToSettings={onNavigateToSettings}
+            triggerGetQuotesRef={triggerGetQuotesRef}
           />
         </div>
 
