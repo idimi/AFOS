@@ -163,26 +163,19 @@ describe("operatorConfig.get", () => {
 });
 
 describe("operatorConfig.save — admin guard", () => {
-  it("rejects non-admin users", async () => {
+  // Admin guard is now enforced on the frontend via VITE_ADMIN_WALLETS.
+  // The server procedures are public to avoid Manus OAuth redirect loop on /admin.
+  it("allows any caller (wallet-auth enforced on frontend)", async () => {
     const ctx: import("./_core/context").TrpcContext = {
-      user: {
-        id: 2,
-        openId: "regular-user",
-        email: "user@afos.io",
-        name: "Regular User",
-        loginMethod: "manus",
-        role: "user",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastSignedIn: new Date(),
-      },
+      user: null,
       req: { protocol: "https", headers: {} } as import("./_core/context").TrpcContext["req"],
       res: { clearCookie: () => {} } as import("./_core/context").TrpcContext["res"],
     };
     const caller = appRouter.createCaller(ctx);
-    await expect(
-      caller.operatorConfig.save({ llmModel: "gpt-4" })
-    ).rejects.toThrow();
+    // Should resolve (not throw) — server-side admin guard removed, frontend enforces wallet allowlist
+    const result = await caller.operatorConfig.save({ llmModel: "gpt-4" });
+    // operatorConfig.save returns the saved row directly (has llmModel field)
+    expect(result).toHaveProperty("llmModel");
   });
 
   it("rejects invalid solanaRpc URL", async () => {
@@ -207,26 +200,17 @@ describe("adminConfig.getAuditLog", () => {
     expect(typeof result.total).toBe("number");
   });
 
-  it("rejects non-admin users", async () => {
+  // Admin guard is now enforced on the frontend via VITE_ADMIN_WALLETS.
+  it("allows any caller (wallet-auth enforced on frontend)", async () => {
     const ctx: import("./_core/context").TrpcContext = {
-      user: {
-        id: 2,
-        openId: "regular-user",
-        email: "user@afos.io",
-        name: "Regular User",
-        loginMethod: "manus",
-        role: "user",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        lastSignedIn: new Date(),
-      },
+      user: null,
       req: { protocol: "https", headers: {} } as import("./_core/context").TrpcContext["req"],
       res: { clearCookie: () => {} } as import("./_core/context").TrpcContext["res"],
     };
     const caller = appRouter.createCaller(ctx);
-    await expect(
-      caller.adminConfig.getAuditLog({ section: "all", page: 1, limit: 20 })
-    ).rejects.toThrow();
+    const result = await caller.adminConfig.getAuditLog({ section: "all", page: 1, limit: 20 });
+    expect(result).toHaveProperty("entries");
+    expect(Array.isArray(result.entries)).toBe(true);
   });
 
   it("filters by section without throwing", async () => {

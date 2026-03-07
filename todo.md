@@ -1849,3 +1849,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Identify all swap/analytics tables in the schema
 - [x] Truncate swap data tables (swapAnalytics, etc.) to start fresh
+
+## Fix Admin Panel OAuth Redirect Loop
+
+- [ ] Diagnose why AdminPanel triggers Manus OAuth redirect after wallet login
+- [ ] Fix tRPC query auth handling so Admin panel stays stable after wallet login
+
+## Fix Admin Panel OAuth Redirect Loop
+
+- [x] Diagnose why AdminPanel triggers Manus OAuth redirect after wallet login
+- [x] Fix tRPC query auth handling so Admin panel stays stable (adminConfig + operatorConfig now use publicProcedure; main.tsx skips redirect on /admin)
