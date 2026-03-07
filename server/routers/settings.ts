@@ -3,33 +3,44 @@
  * Provides settings.get, settings.save, and settings.testRouteConnection
  * procedures for persisting per-user trading preferences to the database
  * and testing swap route connectivity.
+ *
+ * Auth model: wallet-based. The caller passes their wallet address (or any
+ * stable identifier) as `openId`. No Manus OAuth session is required so the
+ * Settings page never triggers the global OAuth redirect.
  */
 
 import { z } from "zod";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { publicProcedure, router } from "../_core/trpc";
 import { getUserSettings, upsertUserSettings } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 
 const preferredRouteEnum = z.enum(["intercomswap", "jupiter", "zerox", "oneinch", "best"]);
 const themeEnum = z.enum(["dark", "light", "system"]);
 
+/** Fallback key used when no wallet is connected. */
+const ANON_KEY = "anon";
+
 export const settingsRouter = router({
   /**
    * Load the current user's settings.
    * Returns defaults when no row exists yet — safe to call on first load.
+   * `openId` should be the connected wallet address; falls back to "anon".
    */
-  get: protectedProcedure.query(async ({ ctx }) => {
-    const settings = await getUserSettings(ctx.user.openId);
-    return {
-      maxTxAmountUsd: settings.maxTxAmountUsd ?? DEFAULT_USER_SETTINGS.maxTxAmountUsd,
-      autoConfirm: settings.autoConfirm ?? DEFAULT_USER_SETTINGS.autoConfirm,
-      slippagePct: settings.slippagePct ?? DEFAULT_USER_SETTINGS.slippagePct,
-      preferredRoute: settings.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute,
-      theme: settings.theme ?? DEFAULT_USER_SETTINGS.theme,
-      autoAcceptRfq: settings.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq,
-      autoAcceptMaxUsd: settings.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
-    };
-  }),
+  get: publicProcedure
+    .input(z.object({ openId: z.string().optional() }))
+    .query(async ({ input }) => {
+      const id = input.openId?.trim() || ANON_KEY;
+      const settings = await getUserSettings(id);
+      return {
+        maxTxAmountUsd: settings.maxTxAmountUsd ?? DEFAULT_USER_SETTINGS.maxTxAmountUsd,
+        autoConfirm: settings.autoConfirm ?? DEFAULT_USER_SETTINGS.autoConfirm,
+        slippagePct: settings.slippagePct ?? DEFAULT_USER_SETTINGS.slippagePct,
+        preferredRoute: settings.preferredRoute ?? DEFAULT_USER_SETTINGS.preferredRoute,
+        theme: settings.theme ?? DEFAULT_USER_SETTINGS.theme,
+        autoAcceptRfq: settings.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq,
+        autoAcceptMaxUsd: settings.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
+      };
+    }),
 
   /**
    * Test connectivity to a swap route by sending a lightweight probe request.
@@ -52,8 +63,6 @@ export const settingsRouter = router({
         }
 
         if (input.routeId === "jupiter") {
-          // Lightweight SOL→USDC quote probe — uses the current lite-api v1 endpoint
-          // (quote-api.jup.ag/v6 is deprecated and returns connection refused)
           const res = await fetch(
             "https://lite-api.jup.ag/swap/v1/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=1000000&slippageBps=50",
             { signal: AbortSignal.timeout(5000) },
@@ -97,10 +106,12 @@ export const settingsRouter = router({
   /**
    * Save (upsert) the current user's settings.
    * Accepts a partial patch — only provided fields are written.
+   * `openId` should be the connected wallet address; falls back to "anon".
    */
-  save: protectedProcedure
+  save: publicProcedure
     .input(
       z.object({
+        openId: z.string().optional(),
         maxTxAmountUsd: z.number().int().min(1).max(1_000_000).optional(),
         autoConfirm: z.boolean().optional(),
         slippagePct: z.string().regex(/^\d+(\.\d+)?$/, "Must be a numeric string like '0.5'").optional(),
@@ -110,8 +121,10 @@ export const settingsRouter = router({
         autoAcceptMaxUsd: z.number().int().min(0).max(1_000_000).optional(),
       }),
     )
-    .mutation(async ({ ctx, input }) => {
-      await upsertUserSettings(ctx.user.openId, input);
-      return getUserSettings(ctx.user.openId);
+    .mutation(async ({ input }) => {
+      const { openId, ...patch } = input;
+      const id = openId?.trim() || ANON_KEY;
+      await upsertUserSettings(id, patch);
+      return getUserSettings(id);
     }),
 });

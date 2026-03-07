@@ -4,6 +4,8 @@
  * Uses an in-memory mock for the database helpers so the tests run without
  * a live MySQL connection. The mock is injected via vi.mock so the router
  * picks it up automatically.
+ *
+ * Auth model: wallet-based. openId is passed as input (no Manus OAuth required).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -12,7 +14,6 @@ import type { TrpcContext } from "../_core/context";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 
 // ─── DB mock ──────────────────────────────────────────────────────────────────
-// We mock the db module so no real database connection is required.
 const mockStore: Record<string, typeof DEFAULT_USER_SETTINGS & { id?: number }> = {};
 
 vi.mock("../db", async (importOriginal) => {
@@ -30,23 +31,7 @@ vi.mock("../db", async (importOriginal) => {
 });
 
 // ─── Context helpers ──────────────────────────────────────────────────────────
-type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
-
-function makeUser(openId = "test-user-001"): AuthenticatedUser {
-  return {
-    id: 1,
-    openId,
-    email: "test@example.com",
-    name: "Test User",
-    loginMethod: "manus",
-    role: "user",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSignedIn: new Date(),
-  };
-}
-
-function makeCtx(user: AuthenticatedUser | null = makeUser()): TrpcContext {
+function makeCtx(user: TrpcContext["user"] = null): TrpcContext {
   return {
     user,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
@@ -57,7 +42,6 @@ function makeCtx(user: AuthenticatedUser | null = makeUser()): TrpcContext {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 describe("settings router", () => {
   beforeEach(() => {
-    // Clear the in-memory store before each test
     for (const key of Object.keys(mockStore)) delete mockStore[key];
     vi.clearAllMocks();
   });
@@ -65,7 +49,7 @@ describe("settings router", () => {
   describe("settings.get", () => {
     it("returns default settings when no row exists yet", async () => {
       const caller = appRouter.createCaller(makeCtx());
-      const result = await caller.settings.get();
+      const result = await caller.settings.get({ openId: "wallet-001" });
 
       expect(result.maxTxAmountUsd).toBe(DEFAULT_USER_SETTINGS.maxTxAmountUsd);
       expect(result.autoConfirm).toBe(DEFAULT_USER_SETTINGS.autoConfirm);
@@ -75,7 +59,7 @@ describe("settings router", () => {
     });
 
     it("returns stored settings when a row exists", async () => {
-      const openId = "test-user-001";
+      const openId = "wallet-001";
       mockStore[openId] = {
         maxTxAmountUsd: 1000,
         autoConfirm: true,
@@ -84,8 +68,8 @@ describe("settings router", () => {
         theme: "light",
       };
 
-      const caller = appRouter.createCaller(makeCtx(makeUser(openId)));
-      const result = await caller.settings.get();
+      const caller = appRouter.createCaller(makeCtx());
+      const result = await caller.settings.get({ openId });
 
       expect(result.maxTxAmountUsd).toBe(1000);
       expect(result.autoConfirm).toBe(true);
@@ -94,9 +78,16 @@ describe("settings router", () => {
       expect(result.theme).toBe("light");
     });
 
-    it("throws UNAUTHORIZED when user is not authenticated", async () => {
+    it("returns defaults when no openId is provided (anon fallback)", async () => {
+      const caller = appRouter.createCaller(makeCtx());
+      const result = await caller.settings.get({});
+      expect(result.maxTxAmountUsd).toBe(DEFAULT_USER_SETTINGS.maxTxAmountUsd);
+    });
+
+    it("works without a Manus session (unauthenticated user)", async () => {
       const caller = appRouter.createCaller(makeCtx(null));
-      await expect(caller.settings.get()).rejects.toThrow();
+      // Should NOT throw — no Manus auth required
+      await expect(caller.settings.get({ openId: "wallet-001" })).resolves.toBeDefined();
     });
   });
 
@@ -104,6 +95,7 @@ describe("settings router", () => {
     it("saves a full settings patch and returns updated settings", async () => {
       const caller = appRouter.createCaller(makeCtx());
       const result = await caller.settings.save({
+        openId: "wallet-001",
         maxTxAmountUsd: 750,
         autoConfirm: true,
         slippagePct: "0.3",
@@ -119,7 +111,7 @@ describe("settings router", () => {
     });
 
     it("saves a partial patch — only provided fields change", async () => {
-      const openId = "test-user-partial";
+      const openId = "wallet-partial";
       mockStore[openId] = {
         maxTxAmountUsd: 200,
         autoConfirm: false,
@@ -128,10 +120,9 @@ describe("settings router", () => {
         theme: "dark",
       };
 
-      const caller = appRouter.createCaller(makeCtx(makeUser(openId)));
-      const result = await caller.settings.save({ maxTxAmountUsd: 999 });
+      const caller = appRouter.createCaller(makeCtx());
+      const result = await caller.settings.save({ openId, maxTxAmountUsd: 999 });
 
-      // Only maxTxAmountUsd should change; others remain as stored
       expect(result.maxTxAmountUsd).toBe(999);
       expect(result.slippagePct).toBe("0.5");
       expect(result.preferredRoute).toBe("intercomswap");
@@ -139,39 +130,39 @@ describe("settings router", () => {
 
     it("rejects maxTxAmountUsd below 1", async () => {
       const caller = appRouter.createCaller(makeCtx());
-      await expect(caller.settings.save({ maxTxAmountUsd: 0 })).rejects.toThrow();
+      await expect(caller.settings.save({ openId: "w", maxTxAmountUsd: 0 })).rejects.toThrow();
     });
 
     it("rejects maxTxAmountUsd above 1,000,000", async () => {
       const caller = appRouter.createCaller(makeCtx());
-      await expect(caller.settings.save({ maxTxAmountUsd: 2_000_000 })).rejects.toThrow();
+      await expect(caller.settings.save({ openId: "w", maxTxAmountUsd: 2_000_000 })).rejects.toThrow();
     });
 
     it("rejects a non-numeric slippagePct string", async () => {
       const caller = appRouter.createCaller(makeCtx());
-      await expect(caller.settings.save({ slippagePct: "abc" })).rejects.toThrow();
+      await expect(caller.settings.save({ openId: "w", slippagePct: "abc" })).rejects.toThrow();
     });
 
     it("rejects an invalid preferredRoute value", async () => {
       const caller = appRouter.createCaller(makeCtx());
       // @ts-expect-error — intentionally passing invalid value
-      await expect(caller.settings.save({ preferredRoute: "unknown_dex" })).rejects.toThrow();
+      await expect(caller.settings.save({ openId: "w", preferredRoute: "unknown_dex" })).rejects.toThrow();
     });
 
-    it("throws UNAUTHORIZED when user is not authenticated", async () => {
+    it("works without a Manus session (unauthenticated user)", async () => {
       const caller = appRouter.createCaller(makeCtx(null));
-      await expect(caller.settings.save({ maxTxAmountUsd: 100 })).rejects.toThrow();
+      // Should NOT throw — no Manus auth required
+      await expect(caller.settings.save({ openId: "wallet-001", maxTxAmountUsd: 100 })).resolves.toBeDefined();
     });
 
-    it("settings are isolated per user (different openIds)", async () => {
-      const callerA = appRouter.createCaller(makeCtx(makeUser("user-A")));
-      const callerB = appRouter.createCaller(makeCtx(makeUser("user-B")));
+    it("settings are isolated per wallet (different openIds)", async () => {
+      const caller = appRouter.createCaller(makeCtx());
 
-      await callerA.settings.save({ maxTxAmountUsd: 111 });
-      await callerB.settings.save({ maxTxAmountUsd: 222 });
+      await caller.settings.save({ openId: "wallet-A", maxTxAmountUsd: 111 });
+      await caller.settings.save({ openId: "wallet-B", maxTxAmountUsd: 222 });
 
-      const resultA = await callerA.settings.get();
-      const resultB = await callerB.settings.get();
+      const resultA = await caller.settings.get({ openId: "wallet-A" });
+      const resultB = await caller.settings.get({ openId: "wallet-B" });
 
       expect(resultA.maxTxAmountUsd).toBe(111);
       expect(resultB.maxTxAmountUsd).toBe(222);

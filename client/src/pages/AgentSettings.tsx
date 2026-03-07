@@ -251,6 +251,8 @@ function SectionCard({
 export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {}) {
   const { isAuthenticated } = useAuth();
   const lightPeer = useLightPeer();
+  // Use the connected wallet address as the settings key (no Manus OAuth needed)
+  const walletId = lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress || "anon";
 
   // A wallet is connected if any chain address is present
   const isWalletConnected = !!(lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress);
@@ -293,8 +295,8 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
 
   // ── Remote state ──────────────────────────────────────────────────────────────
   const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
-    undefined,
-    { enabled: isAuthenticated },
+    { openId: walletId },
+    { enabled: true },
   );
 
   const utils = trpc.useUtils();
@@ -302,14 +304,14 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     // Optimistic update: apply locally before the server responds
     onMutate: async (patch) => {
       await utils.settings.get.cancel();
-      const prev = utils.settings.get.getData();
-      utils.settings.get.setData(undefined, old =>
+      const prev = utils.settings.get.getData({ openId: walletId });
+      utils.settings.get.setData({ openId: walletId }, old =>
         old ? { ...old, ...patch } : old,
       );
       return { prev };
     },
     onError: (_err, _patch, ctx) => {
-      if (ctx?.prev) utils.settings.get.setData(undefined, ctx.prev);
+      if (ctx?.prev) utils.settings.get.setData({ openId: walletId }, ctx.prev);
       toast.error("Failed to save settings");
     },
     onSuccess: () => {
@@ -320,7 +322,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       setTimeout(() => setSavedFlash(false), 2000);
     },
     onSettled: () => {
-      utils.settings.get.invalidate();
+      utils.settings.get.invalidate({ openId: walletId });
     },
   });
 
@@ -449,6 +451,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     // Also apply the theme to next-themes via ThemeSelector's onChange
     // ThemeSelector handles next-themes internally; we trigger it via the state change
     saveMutation.mutate({
+      openId: walletId,
       maxTxAmountUsd: 500,
       autoConfirm: false,
       slippagePct: "0.5",
@@ -473,6 +476,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     }
     const parsedAutoAcceptMax = parseInt(autoAcceptMaxUsd, 10);
     saveMutation.mutate({
+      openId: walletId,
       maxTxAmountUsd: parsedMax,
       autoConfirm,
       slippagePct: effectiveSlippage,
@@ -483,8 +487,8 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     });
   };
 
-  // Show skeleton only while loading remote settings for authenticated users
-  if (settingsLoading && isAuthenticated) return <SettingsSkeleton />;
+  // Show skeleton while loading remote settings
+  if (settingsLoading) return <SettingsSkeleton />;
 
   return (
     <div className="px-4 sm:px-6 py-5 pb-safe max-w-2xl mx-auto">

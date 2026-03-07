@@ -1852,8 +1852,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Fix Admin Panel OAuth Redirect Loop
 
-- [ ] Diagnose why AdminPanel triggers Manus OAuth redirect after wallet login
-- [ ] Fix tRPC query auth handling so Admin panel stays stable after wallet login
+- [x] Diagnose why AdminPanel triggers Manus OAuth redirect after wallet login
+- [x] Fix tRPC query auth handling so Admin panel stays stable after wallet login
 
 ## Fix Admin Panel OAuth Redirect Loop
 
