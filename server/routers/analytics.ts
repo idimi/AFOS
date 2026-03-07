@@ -589,6 +589,61 @@ export const analyticsRouter = router({
     }),
 
   /**
+   * Daily volume time-series broken down by chain.
+   * Returns an array of { date, btc, eth, sol, tnk } objects for sparkline charts.
+   * Each value is the USD volume traded on that chain for that calendar day (UTC).
+   */
+  dailyVolumeByChain: publicProcedure
+    .input(z.object({ days: z.number().int().min(7).max(365).default(30) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return [];
+      const since = sinceMs(input.days);
+
+      const rows = await db
+        .select({
+          day:      sql<string>`DATE(${swapAnalytics.createdAt})`,
+          chain:    swapAnalytics.fromChain,
+          totalUsd: sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
+        })
+        .from(swapAnalytics)
+        .where(
+          and(
+            eq(swapAnalytics.status, "completed"),
+            gte(swapAnalytics.createdAt, since)
+          )
+        )
+        .groupBy(sql`DATE(${swapAnalytics.createdAt})`, swapAnalytics.fromChain)
+        .orderBy(sql`DATE(${swapAnalytics.createdAt})`);
+
+      // Build a map: date -> { btc, eth, sol, tnk }
+      const dayMap: Record<string, { btc: number; eth: number; sol: number; tnk: number }> = {};
+
+      for (const row of rows) {
+        const d = row.day;
+        if (!dayMap[d]) dayMap[d] = { btc: 0, eth: 0, sol: 0, tnk: 0 };
+        const usd = parseFloat(row.totalUsd ?? "0");
+        if (row.chain === "bitcoin")           dayMap[d].btc += usd;
+        else if (row.chain === "ethereum")     dayMap[d].eth += usd;
+        else if (row.chain === "solana")       dayMap[d].sol += usd;
+        else if (row.chain === "trac_network") dayMap[d].tnk += usd;
+      }
+
+      // Fill in any missing days with zeros so the sparkline is continuous
+      const result: { date: string; btc: number; eth: number; sol: number; tnk: number }[] = [];
+      for (let i = input.days - 1; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+        const key = d.toISOString().slice(0, 10);
+        result.push({
+          date: key,
+          ...(dayMap[key] ?? { btc: 0, eth: 0, sol: 0, tnk: 0 }),
+        });
+      }
+
+      return result;
+    }),
+
+  /**
    * Manually trigger the fee revenue alert check.
    * Returns whether an alert was fired and the current daily total.
    * Safe to call repeatedly — idempotent (max one notification per calendar day).

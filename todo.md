@@ -2023,4 +2023,4 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## TNK Enhancement Round 16
 
 - [ ] Secrets: Enter TNK_HTLC_WIF value to activate live HTLC signing for TNK→BTC swaps
-- [ ] AdminPanel: Add TNK volume sparkline to Analytics section alongside BTC/ETH/SOL sparklines
+- [x] AdminPanel: Add TNK volume sparkline to Analytics section alongside BTC/ETH/SOL sparklines

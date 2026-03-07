@@ -8,6 +8,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  AreaChart, Area, XAxis, YAxis, Tooltip as RechartTooltip, ResponsiveContainer,
+} from "recharts";
+import {
   Lock, Eye, EyeOff, Shield, DollarSign, Wallet, Settings,
   BarChart3, Activity, AlertTriangle, CheckCircle2, Copy,
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
@@ -42,6 +45,7 @@ function RevenueTab() {
   const [days, setDays] = useState(30);
   const { data: feeData, isLoading } = trpc.analytics.feeRevenue.useQuery({ days }, { staleTime: 30_000 });
   const { data: volumeData } = trpc.analytics.volumeByChain.useQuery({ days }, { staleTime: 30_000 });
+  const { data: dailyVolume } = trpc.analytics.dailyVolumeByChain.useQuery({ days }, { staleTime: 60_000 });
   const { data: alertCfg, refetch: refetchAlertCfg } = trpc.adminConfig.get.useQuery(undefined, { staleTime: 60_000 });
   const checkFeeAlert = trpc.analytics.checkFeeAlert.useMutation({
     onSuccess: (result) => {
@@ -149,6 +153,91 @@ function RevenueTab() {
                   <div className="h-1.5 rounded-full" style={{ background: "var(--muted)" }}>
                     <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: chainColor, opacity: 0.6 }} />
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* TNK Volume Sparkline */}
+      {dailyVolume && dailyVolume.length > 0 && (
+        <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" style={{ color: "#F97316" }} />
+              <p className="text-xs font-semibold text-foreground">Trac Network Trade Volume Trend ({days}D)</p>
+            </div>
+            <span className="text-[9px] font-mono text-muted-foreground px-1.5 py-0.5 rounded" style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}>TNK</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* TNK sparkline */}
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1.5">TNK Daily Volume (USD)</p>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={dailyVolume} margin={{ top: 2, right: 4, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="tnkGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#F97316" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="date" hide />
+                  <YAxis hide />
+                  <RechartTooltip
+                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 10 }}
+                    formatter={(v: number | undefined) => [`$${(v ?? 0).toFixed(2)}`, "TNK Vol"]}
+                    labelFormatter={(l: unknown) => String(l)}
+                  />
+                  <Area type="monotone" dataKey="tnk" stroke="#F97316" strokeWidth={1.5} fill="url(#tnkGrad)" dot={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            {/* BTC/ETH/SOL sparklines for comparison */}
+            <div className="space-y-2">
+              {([
+                { key: "btc" as const, label: "BTC", color: "#F7931A", gradId: "btcGrad" },
+                { key: "eth" as const, label: "ETH", color: "#627EEA", gradId: "ethGrad" },
+                { key: "sol" as const, label: "SOL", color: "#9945FF", gradId: "solGrad" },
+              ]).map(({ key, label, color, gradId }) => (
+                <div key={key}>
+                  <p className="text-[9px] font-semibold mb-0.5" style={{ color }}>{label} Daily Volume</p>
+                  <ResponsiveContainer width="100%" height={28}>
+                    <AreaChart data={dailyVolume} margin={{ top: 0, right: 4, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="date" hide />
+                      <YAxis hide />
+                      <RechartTooltip
+                        contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 10 }}
+                        formatter={(v: number | undefined) => [`$${(v ?? 0).toFixed(2)}`, `${label} Vol`]}
+                        labelFormatter={(l: unknown) => String(l)}
+                      />
+                      <Area type="monotone" dataKey={key} stroke={color} strokeWidth={1.5} fill={`url(#${gradId})`} dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Summary row */}
+          <div className="grid grid-cols-4 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+            {([
+              { key: "tnk" as const, label: "TNK", color: "#F97316" },
+              { key: "btc" as const, label: "BTC", color: "#F7931A" },
+              { key: "eth" as const, label: "ETH", color: "#627EEA" },
+              { key: "sol" as const, label: "SOL", color: "#9945FF" },
+            ]).map(({ key, label, color }) => {
+              const total = dailyVolume.reduce((s, d) => s + d[key], 0);
+              return (
+                <div key={key} className="text-center">
+                  <p className="text-[9px] font-bold" style={{ color }}>{label}</p>
+                  <p className="text-[10px] font-mono text-foreground">${total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toFixed(0)}</p>
+                  <p className="text-[8px] text-muted-foreground">{days}D total</p>
                 </div>
               );
             })}
