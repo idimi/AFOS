@@ -141,9 +141,9 @@ function PairToggle({ pair, active, onToggle }: { pair: string; active: boolean;
   );
 }
 
-// ─── My Node Tab ──────────────────────────────────────────────────────────────
+// ─── My Node Tab ────────────────────────────────────────────────────────────
 
-function MyNodeTab() {
+function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
   const peer = useLightPeer();
   const { connected: solAdapterConnected } = useWallet();
   const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
@@ -307,7 +307,18 @@ function MyNodeTab() {
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] text-slate-400 block mb-1.5">Accepted pairs</label>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <label className="text-[10px] text-slate-400">Accepted pairs</label>
+                      {tnkPeerCount > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                          {tnkPeerCount} TNK peer{tnkPeerCount !== 1 ? 's' : ''} online
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-500/10 text-slate-500 border border-slate-500/20">
+                          No TNK peers
+                        </span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {ALL_PAIRS.map(pair => (
                         <PairToggle
@@ -468,6 +479,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
 
   const pendingRfqs = peer.incomingRfqs.filter(r => r.status === "pending" && r.expiresAt > Date.now());
   const onlineCount = livePeers.filter(p => p.online).length;
+  const tnkPeerCount = livePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length;
 
   return (
     <>
@@ -538,7 +550,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
           <AnimatePresence mode="wait">
             {activeTab === "mynode" ? (
               <motion.div key="mynode" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
-                <MyNodeTab />
+                <MyNodeTab tnkPeerCount={tnkPeerCount} />
               </motion.div>
             ) : (
               <motion.div key="livepeers" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>

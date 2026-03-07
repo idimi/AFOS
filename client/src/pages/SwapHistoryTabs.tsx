@@ -123,7 +123,7 @@ const BLOCK_TIMES: Record<string, number> = {
   solana: 0.4,         // ~0.4s per slot
   ethereum: 12,        // ~12s per block
   bitcoin: 600,        // ~10min per block
-  trac_network: 5,     // ~5s per Trac Network block
+  trac_network: 600,   // ~10min per block (same as Bitcoin)
 };
 
 async function fetchCurrentBlock(chain: string): Promise<number | null> {

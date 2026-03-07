@@ -2013,3 +2013,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] agentSwapBtc.ts: Wire TNK_HTLC_WIF secret into executeTnkAgentSwap for live execution (mirrors BTC_HTLC_WIF pattern)
 - [ ] agentSwapEth.ts: Add trac_network cross-chain case so ETH→TNK swaps route through Oracle VM P2P path
 - [ ] ChatPage: Surface TNK peer count badge on swap confirmation card showing active TNK P2P peers
+
+## TNK Enhancement Round 15
+
+- [x] Secrets: Add TNK_HTLC_WIF secret for live HTLC execution in executeTnkAgentSwap
+- [x] NetworkPage: Add TNK peer count indicator to peer settings panel
+- [x] SwapHistoryTabs: Add trac_network to BLOCK_TIMES (600s, same as Bitcoin)
