@@ -329,6 +329,113 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
   }
 }
 
+// ─── TNK Escrow Wallet (agent-escrow model, no private key) ─────────────────────
+
+const TRAC_EXPLORER_API = "https://explorer.trac.network/api";
+
+/**
+ * Fetch the TNK escrow wallet balance from the Trac Network explorer API.
+ * The TNK escrow address is a shared agent-escrow address (no private key stored here).
+ * Balance is fetched from the public explorer API.
+ */
+async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
+  const address = process.env.TNK_ESCROW_ADDRESS ?? "";
+  if (!address || address.includes("placeholder")) {
+    return {
+      chain: "trac_network",
+      asset: "TNK",
+      address: address || null,
+      balance: "0.00",
+      usd: "$0",
+      live: false,
+      configured: !!address && !address.includes("placeholder"),
+      error: address ? undefined : "TNK_ESCROW_ADDRESS not set",
+    };
+  }
+
+  try {
+    // Fetch balance from Trac Network explorer
+    const res = await fetch(
+      `${TRAC_EXPLORER_API}/address/${address}/balance`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+
+    let balanceTnk = 0;
+    let live = false;
+
+    if (res.ok) {
+      const data = await res.json() as { balance?: number | string; confirmed?: number | string };
+      const raw = data.balance ?? data.confirmed ?? 0;
+      balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
+      live = true;
+    } else {
+      // Fallback: try the /txs endpoint and sum incoming - outgoing
+      const txRes = await fetch(
+        `${TRAC_EXPLORER_API}/address/${address}/txs?limit=100`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (txRes.ok) {
+        const txData = await txRes.json() as {
+          txs?: Array<{ to: string; from: string; amount: string }>;
+          transfers?: Array<{ to: string; from: string; amount: string }>;
+          balance?: number | string;
+        };
+        // If the API returns a balance field at the top level, use it
+        if (txData.balance !== undefined) {
+          const raw = txData.balance;
+          balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
+          live = true;
+        } else {
+          // Sum transfers: incoming minus outgoing
+          const txs = txData.txs ?? txData.transfers ?? [];
+          for (const tx of txs) {
+            const amt = parseFloat(tx.amount) || 0;
+            if (tx.to === address) balanceTnk += amt;
+            if (tx.from === address) balanceTnk -= amt;
+          }
+          live = txs.length > 0;
+        }
+      }
+    }
+
+    // Fetch TNK price from CoinGecko
+    let tnkUsdPrice = 0;
+    try {
+      const priceRes = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=trac-network&vs_currencies=usd",
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (priceRes.ok) {
+        const priceData = await priceRes.json() as { "trac-network"?: { usd?: number } };
+        tnkUsdPrice = priceData["trac-network"]?.usd ?? 0;
+      }
+    } catch { /* price optional */ }
+
+    const usdValue = balanceTnk * tnkUsdPrice;
+
+    return {
+      chain: "trac_network",
+      asset: "TNK",
+      address,
+      balance: balanceTnk.toFixed(2),
+      usd: usdValue > 0 ? `$${usdValue.toFixed(2)}` : "$0",
+      live,
+      configured: true,
+    };
+  } catch (err: unknown) {
+    return {
+      chain: "trac_network",
+      asset: "TNK",
+      address,
+      balance: "0.00",
+      usd: "$0",
+      live: false,
+      configured: true,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 // ─── Legacy single-asset helpers (used by getOracleVmAddresses) ───────────────
 
 async function getBtcHtlcWalletLegacy() {
@@ -487,17 +594,19 @@ export const htlcWalletRouter = router({
     }),
 
   getHtlcWallets: publicProcedure.query(async () => {
-    const [btc, ethWallets, solWallets] = await Promise.all([
+    const [btc, ethWallets, solWallets, tnk] = await Promise.all([
       getBtcHtlcWallet(),
       getEthHtlcWallets(),
       getSolHtlcWallets(),
+      getTnkEscrowWallet(),
     ]);
 
-    // Return as flat array of 7 assets in display order
+    // Return as flat array of 8 assets in display order
     const assets: HtlcChainWallet[] = [
       ...solWallets,   // SOL, USDT/SOL, USDC/SOL
       ...ethWallets,   // ETH, USDT/ETH, USDC/ETH
       btc,             // BTC
+      tnk,             // TNK (agent-escrow)
     ];
 
     // Also expose legacy btc/eth/sol keys for backward compat
@@ -510,6 +619,7 @@ export const htlcWalletRouter = router({
       btc: { chain: "bitcoin" as const, asset: "BTC", address: btc.address, balance: btc.balance, usd: btc.usd, live: btc.live, configured: btc.configured, error: btc.error },
       eth: { chain: "ethereum" as const, asset: "ETH", address: eth.address, balance: eth.balance, usd: eth.usd, live: eth.live, configured: eth.configured, error: eth.error },
       sol: { chain: "solana" as const, asset: "SOL", address: sol.address, balance: sol.balance, usd: sol.usd, live: sol.live, configured: sol.configured, error: sol.error },
+      tnk: { chain: "trac_network" as const, asset: "TNK", address: tnk.address, balance: tnk.balance, usd: tnk.usd, live: tnk.live, configured: tnk.configured, error: tnk.error },
     };
   }),
 });

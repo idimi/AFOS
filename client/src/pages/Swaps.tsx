@@ -738,7 +738,7 @@ const CHART_PAIRS = [
   { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT", color: "#f7931a" },
   { label: "ETH/USDT", symbol: "BINANCE:ETHUSDT", color: "#627eea" },
   { label: "SOL/USDT", symbol: "BINANCE:SOLUSDT", color: "#9945ff" },
-  { label: "TNK/USDT", symbol: "BINANCE:BTCUSDT",  color: "#f59e0b" },
+  { label: "TNK/USDT", symbol: "MEXC:TNKUSDT",    color: "#f97316" },
   { label: "ETH/BTC",  symbol: "BINANCE:ETHBTC",  color: "#627eea" },
   { label: "SOL/BTC",  symbol: "BINANCE:SOLBTC",  color: "#9945ff" },
 ] as const;
@@ -756,8 +756,8 @@ function deriveTvSymbol(fromSym: string, toSym: string): string {
   if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
   if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
   if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
-  // TNK uses BTC chart as proxy (no direct TNK/USDT pair on Binance yet)
-  if (from === "TNK" || to === "TNK") return "BINANCE:BTCUSDT";
+  // TNK trades on MEXC as TNKUSDT
+  if (from === "TNK" || to === "TNK") return "MEXC:TNKUSDT";
   return `BINANCE:${from}USDT`;
 }
 
@@ -1461,6 +1461,31 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     : null;
   const beatsDex = dexBeatsPct !== null && dexBeatsPct > 0;
 
+  // ── Chain depth: aggregate LP maxTradeUsd per chain from signaling peers ──
+  // Shows how much liquidity is available per chain for any pair involving that chain
+  const chainDepthMap = useMemo(() => {
+    if (!signalingPeers || signalingPeers.length === 0) return {} as Record<string, number>;
+    const map: Record<string, number> = { BTC: 0, ETH: 0, SOL: 0, TNK: 0 };
+    const now = Date.now();
+    const STALE_MS = 90_000;
+    for (const peer of signalingPeers) {
+      if (peer.lastHeartbeat && now - peer.lastHeartbeat > STALE_MS) continue;
+      const contribution = peer.maxTradeUsd ?? 0;
+      if (contribution <= 0) continue;
+      // Credit each chain that appears in any of the peer's pairs
+      const chains = new Set<string>();
+      for (const pair of peer.pairs) {
+        const [a, b] = pair.toUpperCase().split("/");
+        if (a) chains.add(a);
+        if (b) chains.add(b);
+      }
+      for (const chain of Array.from(chains)) {
+        if (chain in map) map[chain] = (map[chain] ?? 0) + contribution;
+      }
+    }
+    return map;
+  }, [signalingPeers]);
+
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -1854,6 +1879,40 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
             );
           })}
         </AnimatePresence>
+      </div>
+
+      {/* LP Chain Depth Strip */}
+      <div className="px-4 py-2 border-t" style={{ borderColor: "var(--border)", background: "rgba(255,255,255,0.02)" }}>
+        <div className="flex items-center gap-1 mb-1.5">
+          <span className="text-[8px] font-semibold text-slate-500 uppercase tracking-wider">LP Peer Depth</span>
+          <span className="text-[8px] text-slate-600">— advertised liquidity by chain</span>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          {([
+            { symbol: "BTC", color: "#f7931a" },
+            { symbol: "ETH", color: "#627eea" },
+            { symbol: "SOL", color: "#9945ff" },
+            { symbol: "TNK", color: "#f97316" },
+          ] as const).map(({ symbol, color }) => {
+            const depth = chainDepthMap[symbol] ?? 0;
+            const label = formatDepth(depth);
+            const col = depthColor(depth);
+            return (
+              <div
+                key={symbol}
+                className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg"
+                style={{ background: depth > 0 ? `${col}0d` : "var(--muted)", border: `1px solid ${depth > 0 ? `${col}30` : "var(--border)"}` }}
+              >
+                <span className="text-[8px] font-bold" style={{ color }}>{symbol}</span>
+                {label ? (
+                  <span className="text-[9px] font-mono font-semibold" style={{ color: col }}>{label}</span>
+                ) : (
+                  <span className="text-[8px] text-slate-600">—</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Footer */}

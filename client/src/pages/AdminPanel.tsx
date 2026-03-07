@@ -1301,7 +1301,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           </button>
         </div>
         <p className="text-[10px] text-muted-foreground mb-3">
-          Dedicated HTLC escrow wallets (SOL_HTLC_KEY / ETH_HTLC_KEY / BTC_HTLC_WIF). Used exclusively to lock, claim, and refund atomic swaps. Separate from the fee collection wallets.
+          Dedicated HTLC escrow wallets (SOL_HTLC_KEY / ETH_HTLC_KEY / BTC_HTLC_WIF / TNK_ESCROW_ADDRESS). Used exclusively to lock, claim, and refund atomic swaps. Separate from the fee collection wallets.
         </p>
         <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)" }}>
           <DollarSign className="w-3.5 h-3.5 text-amber-400" />
@@ -1310,7 +1310,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
           ) : (
             <>
               <span className="text-xs font-mono font-bold text-foreground">${totalUsd.toFixed(2)}</span>
-              <span className="text-[10px] text-muted-foreground">total across all 7 HTLC escrow assets</span>
+              <span className="text-[10px] text-muted-foreground">total across all 8 HTLC escrow assets</span>
             </>
           )}
         </div>

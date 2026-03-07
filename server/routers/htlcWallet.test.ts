@@ -74,23 +74,24 @@ describe("htlcWallet router", () => {
     });
   });
 
-  describe("response structure — new 7-asset flat array", () => {
-    it("should return assets array with exactly 7 items covering all chains and tokens", { timeout: 30_000 }, async () => {
+  describe("response structure — new 8-asset flat array", () => {
+    it("should return assets array with exactly 8 items covering all chains and tokens", { timeout: 30_000 }, async () => {
       const caller = appRouter.createCaller(createTestContext());
       const result = await caller.htlcWallet.getHtlcWallets();
 
       expect(result.assets).toBeDefined();
       expect(Array.isArray(result.assets)).toBe(true);
-      expect(result.assets).toHaveLength(7);
+      expect(result.assets).toHaveLength(8);
 
       const expectedAssets = [
-        { chain: "solana",   asset: "SOL"  },
-        { chain: "solana",   asset: "USDT" },
-        { chain: "solana",   asset: "USDC" },
-        { chain: "ethereum", asset: "ETH"  },
-        { chain: "ethereum", asset: "USDT" },
-        { chain: "ethereum", asset: "USDC" },
-        { chain: "bitcoin",  asset: "BTC"  },
+        { chain: "solana",       asset: "SOL"  },
+        { chain: "solana",       asset: "USDT" },
+        { chain: "solana",       asset: "USDC" },
+        { chain: "ethereum",     asset: "ETH"  },
+        { chain: "ethereum",     asset: "USDT" },
+        { chain: "ethereum",     asset: "USDC" },
+        { chain: "bitcoin",      asset: "BTC"  },
+        { chain: "trac_network", asset: "TNK"  },
       ];
 
       for (const expected of expectedAssets) {
