@@ -1899,3 +1899,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: "Please connect your Solana wallet first" shown even when Solana wallet is connected in Dashboard
 - [x] Root cause: executeConfirmedSwap checked `publicKey` (standard adapter only) but user connected via Phantom multi-chain which sets `phantomMultiChain.solanaAddress` instead
 - [x] Fix: derive `solanaPublicKeyStr = publicKey?.toString() ?? phantomMultiChain?.solanaAddress` and use that for both the guard check and the `userPublicKey` passed to buildSwapTx
+
+## Wallet Indicator on Confirm Swap Button
+
+- [x] Show truncated connected wallet address below the Confirm Swap button in Dashboard chat
+- [x] Detect which wallet is signing (Phantom multi-chain SOL, standard adapter, ETH, BTC) and show chain-colored dot + label + truncated address

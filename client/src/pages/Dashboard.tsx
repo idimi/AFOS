@@ -600,8 +600,34 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
                     style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)", color: "white" }}
                   >
                     {buildSwapTx.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />}
-                    {buildSwapTx.isPending ? "Building tx…" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via AFOS P2P`}
+                    {buildSwapTx.isPending ? "Building tx\u2026" : msg.quoteData.fromChain === "solana" ? "Confirm Swap" : `Confirm via AFOS P2P`}
                   </button>
+                  {/* Wallet indicator — shows which wallet will sign */}
+                  {(() => {
+                    const chain = msg.quoteData.fromChain;
+                    let addr: string | null = null;
+                    let chainLabel = "";
+                    let dotColor = "";
+                    if (chain === "solana") {
+                      const raw = publicKey?.toString() ?? phantomMultiChain?.solanaAddress ?? null;
+                      if (raw) { addr = `${raw.slice(0, 4)}\u2026${raw.slice(-4)}`; chainLabel = "SOL"; dotColor = "#9945FF"; }
+                    } else if (chain === "ethereum") {
+                      const raw = ethereum?.address ?? null;
+                      if (raw) { addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`; chainLabel = "ETH"; dotColor = "#627EEA"; }
+                    } else if (chain === "bitcoin") {
+                      const raw = bitcoin?.address ?? null;
+                      if (raw) { addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`; chainLabel = "BTC"; dotColor = "#F7931A"; }
+                    }
+                    if (!addr) return null;
+                    return (
+                      <div className="mt-1.5 flex items-center justify-center gap-1 text-[9px] text-muted-foreground font-mono">
+                        <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
+                        <span className="opacity-60">Signing with</span>
+                        <span className="font-semibold" style={{ color: dotColor }}>{chainLabel}</span>
+                        <span>{addr}</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
