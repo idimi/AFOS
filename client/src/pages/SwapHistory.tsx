@@ -246,6 +246,7 @@ interface Filters {
   search: string;
   status: string;
   dateRange: string;
+  chain: "all" | "bitcoin" | "ethereum" | "solana" | "trac_network";
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -277,7 +278,7 @@ export default function SwapHistory() {
 
   const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
   const [filters, setFilters] = useState<Filters>({
-    search: "", status: "All", dateRange: "All time",
+    search: "", status: "All", dateRange: "All time", chain: "all",
   });
   const [sortField, setSortField] = useState<"timestamp" | "fromUsd" | "fee">("timestamp");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
@@ -334,6 +335,7 @@ export default function SwapHistory() {
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
     adminGlobalView,
+    chain: filters.chain,
   }, { refetchInterval: 30000, placeholderData: (prev) => prev });
 
   const { data: statsData } = trpc.history.stats.useQuery({
@@ -577,6 +579,30 @@ export default function SwapHistory() {
               <RefreshCw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Refresh</span>
             </button>
+          </div>
+
+          {/* Chain filter chips */}
+          <div className="flex gap-1.5 mt-3 flex-wrap">
+            {([
+              { key: "all",          label: "All Chains", color: "#888888" },
+              { key: "bitcoin",      label: "BTC",        color: "#f7931a" },
+              { key: "ethereum",     label: "ETH",        color: "#627eea" },
+              { key: "solana",       label: "SOL",        color: "#9945ff" },
+              { key: "trac_network", label: "TNK",        color: "#e87d3e" },
+            ] as const).map(chip => (
+              <button
+                key={chip.key}
+                onClick={() => { setFilter("chain", chip.key); setPage(1); }}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all"
+                style={{
+                  background: filters.chain === chip.key ? `${chip.color}20` : "var(--muted)",
+                  border: `1px solid ${filters.chain === chip.key ? chip.color + "50" : "var(--border)"}`,
+                  color: filters.chain === chip.key ? chip.color : "var(--muted-foreground)",
+                }}
+              >
+                {chip.label}
+              </button>
+            ))}
           </div>
         </div>
 

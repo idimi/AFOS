@@ -97,7 +97,7 @@ const TOKENS = [
   { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
-  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f59e0b", tvSymbol: "BINANCE:BTCUSD" },
+  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f97316", tvSymbol: "MEXC:TNKUSDT" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────

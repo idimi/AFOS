@@ -1968,3 +1968,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] AdminPanel: Add TNK escrow wallet row to HTLC Wallet Balances section with live Trac Network balance fetch
 - [x] Swaps: Fix TNK/USDT chart tab to use real TNK/USDT symbol (MEXC or fallback) instead of BTC proxy
 - [x] Swaps: Add TNK depth column to Live Order Book table showing LP peer depth for TNK pairs
+
+## TNK Enhancement Round 10
+
+- [x] Swaps: Add TNK/ETH swap pair to SWAP_PAIRS and ensure TNK token is selectable in both from/to dropdowns
+- [x] AdminPanel: Surface TNK escrow address in Oracle VM Addresses table alongside SOL/ETH/BTC agent addresses
+- [x] SwapHistory: Add trac_network chain filter tab so operators can filter HTLC history to TNK trades

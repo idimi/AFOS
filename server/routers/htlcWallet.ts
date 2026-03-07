@@ -494,10 +494,11 @@ export const htlcWalletRouter = router({
     }),
 
   /**
-   * Returns all 7 Oracle VM wallet addresses derived from stored agent keys.
+   * Returns all 8 Oracle VM wallet addresses derived from stored agent keys.
    * SOL/USDT-SOL/USDC-SOL share the same Solana address (from SOL_AGENT_KEY).
    * ETH/USDT-ETH/USDC-ETH share the same Ethereum address (from ETH_AGENT_KEY).
    * BTC uses the P2WPKH address derived from BTC_AGENT_WIF.
+   * TNK uses the TNK_ESCROW_ADDRESS env variable (Trac Network escrow).
    * Never exposes private keys.
    */
   getOracleVmAddresses: publicProcedure.query(async () => {
@@ -507,17 +508,21 @@ export const htlcWalletRouter = router({
       getSolHtlcWalletLegacy(),
     ]);
 
+    const tnkEscrowAddress = process.env.TNK_ESCROW_ADDRESS || null;
+
     return [
       // Solana chain — all SPL tokens share the same wallet address
-      { asset: "SOL",  chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
-      { asset: "USDT", chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
-      { asset: "USDC", chain: "solana"   as const, chainLabel: "Solana",   address: sol.address, configured: !!process.env.SOL_AGENT_KEY },
+      { asset: "SOL",  chain: "solana"       as const, chainLabel: "Solana",       address: sol.address,        configured: !!process.env.SOL_AGENT_KEY },
+      { asset: "USDT", chain: "solana"       as const, chainLabel: "Solana",       address: sol.address,        configured: !!process.env.SOL_AGENT_KEY },
+      { asset: "USDC", chain: "solana"       as const, chainLabel: "Solana",       address: sol.address,        configured: !!process.env.SOL_AGENT_KEY },
       // Ethereum chain — all ERC-20 tokens share the same fee wallet address
-      { asset: "ETH",  chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
-      { asset: "USDT", chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
-      { asset: "USDC", chain: "ethereum" as const, chainLabel: "Ethereum", address: eth.address, configured: !!process.env.ETH_AGENT_KEY },
+      { asset: "ETH",  chain: "ethereum"     as const, chainLabel: "Ethereum",     address: eth.address,        configured: !!process.env.ETH_AGENT_KEY },
+      { asset: "USDT", chain: "ethereum"     as const, chainLabel: "Ethereum",     address: eth.address,        configured: !!process.env.ETH_AGENT_KEY },
+      { asset: "USDC", chain: "ethereum"     as const, chainLabel: "Ethereum",     address: eth.address,        configured: !!process.env.ETH_AGENT_KEY },
       // Bitcoin — native P2WPKH fee wallet address
-      { asset: "BTC",  chain: "bitcoin"  as const, chainLabel: "Bitcoin",  address: btc.address, configured: !!process.env.BTC_AGENT_WIF },
+      { asset: "BTC",  chain: "bitcoin"      as const, chainLabel: "Bitcoin",      address: btc.address,        configured: !!process.env.BTC_AGENT_WIF },
+      // Trac Network — TNK escrow address (read-only, not a signing key)
+      { asset: "TNK",  chain: "trac_network" as const, chainLabel: "Trac Network", address: tnkEscrowAddress,   configured: !!tnkEscrowAddress },
     ];
   }),
 

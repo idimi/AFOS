@@ -2010,7 +2010,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         return sum + (isNaN(usdNum) ? 0 : usdNum);
                       }, 0).toFixed(2)}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">total across all 7 node assets</span>
+                    <span className="text-[10px] text-muted-foreground">total across all 7 node assets (+ TNK escrow)</span>
                   </>
                 )}
               </div>
@@ -2048,7 +2048,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               ) : (
                 <div className="space-y-2">
                   {nodeWalletData.map((w, i) => {
-                    const chainColor = w.chain === "solana" ? "#9945FF" : w.chain === "ethereum" ? "#627EEA" : "#F7931A";
+                    const chainColor = w.chain === "solana" ? "#9945FF" : w.chain === "ethereum" ? "#627EEA" : (w.chain as string) === "trac_network" ? "#f97316" : "#F7931A";
                     const addrEntry = oracleVmAddresses?.find(
                       a => a.asset.toUpperCase() === w.asset.toUpperCase() && a.chain === w.chain
                     );
@@ -2127,6 +2127,59 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <ArrowUpRight className="w-3 h-3" /> Withdraw
               </button>
             </div>
+
+            {/* Oracle VM Addresses Table */}
+            {oracleVmAddresses && oracleVmAddresses.length > 0 && (
+              <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <p className="text-xs font-semibold text-foreground">Oracle VM Addresses</p>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-mono" style={{ background: "rgba(59,130,246,0.1)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.2)" }}>
+                    {oracleVmAddresses.length} wallets
+                  </span>
+                </div>
+                <p className="text-[10px] text-muted-foreground mb-3">Derived addresses for all chains. Never exposes private keys. TNK shows the escrow address from TNK_ESCROW_ADDRESS.</p>
+                <div className="space-y-1.5">
+                  {oracleVmAddresses.map((entry, i) => {
+                    const chainColor = entry.chain === "solana" ? "#9945FF" : entry.chain === "ethereum" ? "#627EEA" : entry.chain === "trac_network" ? "#f97316" : "#F7931A";
+                    return (
+                      <div key={`${entry.asset}-${entry.chain}-${i}`}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg"
+                        style={{ background: `${chainColor}08`, border: `1px solid ${chainColor}20` }}>
+                        <div className="w-7 h-7 rounded-md flex items-center justify-center text-[9px] font-bold font-mono shrink-0"
+                          style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
+                          {entry.asset}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[9px] font-semibold" style={{ color: chainColor }}>{entry.chainLabel}</span>
+                            {entry.configured ? (
+                              <span className="text-[8px] px-1 py-0.5 rounded font-mono" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981", border: "1px solid rgba(16,185,129,0.2)" }}>configured</span>
+                            ) : (
+                              <span className="text-[8px] px-1 py-0.5 rounded font-mono" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>not set</span>
+                            )}
+                          </div>
+                          {entry.address ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-mono text-muted-foreground truncate max-w-[200px]">{entry.address}</span>
+                              <button onClick={() => { navigator.clipboard.writeText(entry.address!); toast.success(`${entry.asset} address copied`); }}
+                                className="shrink-0 text-muted-foreground hover:text-foreground">
+                                <Copy className="w-2.5 h-2.5" />
+                              </button>
+                              <button onClick={() => setQrModal({ address: entry.address!, label: `${entry.asset} (${entry.chainLabel})`, chainColor })}
+                                className="shrink-0 hover:opacity-80" style={{ color: chainColor }}>
+                                <QrCode className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-amber-400">Address not available — check env key</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* HTLC Wallet Section */}
             <HtlcWalletSection onShowQr={(address, label, chainColor) => setQrModal({ address, label, chainColor })} />

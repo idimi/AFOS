@@ -40,6 +40,8 @@ export const historyRouter = router({
       // Admin-only flag: pass true to see all swaps regardless of wallet connection.
       // When false (default) and no walletAddresses provided, returns empty.
       adminGlobalView: z.boolean().default(false),
+      // Optional chain filter — "all" returns all chains.
+      chain:           z.enum(["all", "bitcoin", "ethereum", "solana", "trac_network"]).default("all"),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -60,6 +62,11 @@ export const historyRouter = router({
       if (input.status !== "all") {
         conditions.push(
           eq(swapAnalytics.status, input.status as "completed" | "failed" | "refunded")
+        );
+      }
+      if (input.chain !== "all") {
+        conditions.push(
+          eq(swapAnalytics.fromChain, input.chain as "bitcoin" | "ethereum" | "solana" | "trac_network")
         );
       }
       if (isWalletScoped) {
