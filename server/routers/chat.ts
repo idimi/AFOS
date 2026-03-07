@@ -31,7 +31,7 @@ import { buildHtlcLockTx } from "../ethHtlc";
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
-import { executeBtcAgentSwap } from "../agentSwapBtc";
+import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer } from "../signaling";
@@ -1755,6 +1755,31 @@ export const chatRouter = router({
           secretHash:   btcResult.secretHash,
           nextStep:     btcResult.nextStep,
           message:      btcResult.message,
+        };
+      }
+
+      // ── Trac Network (TNK) path ─────────────────────────────────────────────
+      if (chain === "trac_network") {
+        const tnkResult = await executeTnkAgentSwap({
+          fromToken,
+          toToken,
+          amount,
+          toChain,
+          expiryHours: btcExpiryHours,
+        });
+        return {
+          success:      tnkResult.success,
+          demo:         tnkResult.demo,
+          txHash:       tnkResult.txHash,
+          outAmount:    tnkResult.outAmount,
+          route:        tnkResult.route,
+          agentAddress: null,
+          solscanUrl:   tnkResult.txHash ? `https://explorer.trac.network/tx/${tnkResult.txHash}` : null,
+          feeBps:       tnkResult.feeBps,
+          feeAmountOut: tnkResult.feeAmountOut,
+          chain:        "trac_network" as const,
+          nextStep:     tnkResult.nextStep,
+          message:      tnkResult.message,
         };
       }
 

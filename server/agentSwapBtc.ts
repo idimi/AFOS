@@ -255,7 +255,7 @@ export async function executeBtcAgentSwap(params: {
 
           void recordSwapAnalytic({
             fromChain:    "bitcoin",
-            toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+            toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
             fromToken:    "BTC",
             toToken:      toToken.toUpperCase(),
             amount:       String(amount),
@@ -309,7 +309,7 @@ export async function executeBtcAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "bitcoin",
-      toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    "BTC",
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -488,7 +488,7 @@ export async function executeBtcAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "bitcoin",
-      toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    "BTC",
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -545,4 +545,176 @@ export async function executeBtcAgentSwap(params: {
       message: `BTC HTLC broadcast failed: ${errMsg.slice(0, 200)}`,
     };
   }
+}
+
+// ─── TNK → BTC cross-chain swap via Oracle VM P2P ────────────────────────────
+//
+// TNK (Trac Network) uses an agent-escrow HTLC model. For TNK→BTC swaps the
+// Oracle VM handles the P2P RFQ and HTLC coordination on both legs. This
+// function mirrors the BTC Oracle VM RFQ flow but sets fromChain = "trac_network"
+// so the Oracle VM can route to a peer advertising the TNK/BTC pair.
+
+export interface TnkAgentSwapResult {
+  success: boolean;
+  demo: boolean;
+  txHash: string | null;
+  outAmount: number | null;
+  route: string;
+  feeBps: number;
+  feeAmountOut: number;
+  message: string;
+  nextStep?: string;
+}
+
+export async function executeTnkAgentSwap(params: {
+  fromToken?: string;   // defaults to "TNK"
+  toToken?: string;     // defaults to "BTC"
+  amount: number;       // in TNK
+  toChain?: string;     // defaults to "bitcoin"
+  expiryHours?: number;
+}): Promise<TnkAgentSwapResult> {
+  const {
+    fromToken  = "TNK",
+    toToken    = "BTC",
+    amount,
+    toChain    = "bitcoin",
+    expiryHours = 24,
+  } = params;
+
+  const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
+
+  console.log(`[TNK Agent Swap] ${amount} ${fromToken} → ${toToken} (${toChain}) via Oracle VM`);
+
+  // ── Step 1: Oracle VM RFQ ─────────────────────────────────────────────────
+  let rfqId: string | null = null;
+  let oracleRoute: string | null = null;
+  let oracleOutAmount: number | null = null;
+  let p2pPeerId: string | null = null;
+
+  try {
+    const rfqRes = await fetch(`${ORACLE_API}/api/rfq`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fromToken: fromToken.toUpperCase(),
+        toToken:   toToken.toUpperCase(),
+        amount,
+        fromChain: "trac_network",
+        toChain,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (rfqRes.ok) {
+      const rfqData = await rfqRes.json() as {
+        success?: boolean;
+        result?: {
+          rfqId?: string;
+          route?: string;
+          outAmount?: number;
+          peerId?: string;
+          responderId?: string;
+        };
+      };
+      if (rfqData?.success && rfqData?.result?.rfqId) {
+        const r = rfqData.result;
+        rfqId           = r.rfqId!;
+        oracleRoute     = r.route ?? "p2p";
+        oracleOutAmount = r.outAmount ?? null;
+        p2pPeerId       = r.peerId ?? r.responderId ?? null;
+        console.log(`[TNK Agent Swap] RFQ ${rfqId} — route=${oracleRoute}, peer=${p2pPeerId}`);
+      }
+    }
+  } catch (err) {
+    console.warn("[TNK Agent Swap] Oracle VM RFQ failed:", err);
+  }
+
+  // ── Step 2: Execute via Oracle VM if rfqId obtained ──────────────────────
+  if (rfqId) {
+    try {
+      const execRes = await fetch(`${ORACLE_API}/api/swap/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rfqId, expiryHours }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (execRes.ok) {
+        const execData = await execRes.json() as {
+          success?: boolean;
+          swap?: { route?: string; outAmount?: number; txHash?: string; txid?: string; status?: string };
+          error?: string;
+        };
+        if (execData?.success && execData?.swap) {
+          const swap = execData.swap;
+          const finalRoute     = swap.route === "p2p" ? "AFOS P2P (TNK↔BTC)" : "Oracle VM DEX";
+          const finalOutAmount = swap.outAmount ?? oracleOutAmount ?? 0;
+          const txHash         = swap.txHash ?? swap.txid ?? null;
+          const feeAmountOut   = finalOutAmount * (P2P_FEE_BPS / 10000);
+
+          void recordSwapAnalytic({
+            fromChain:    "trac_network",
+            toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
+            fromToken:    fromToken.toUpperCase(),
+            toToken:      toToken.toUpperCase(),
+            amount:       String(amount),
+            route:        finalRoute,
+            status:       "completed",
+            txId:         txHash ?? undefined,
+            peerId:       p2pPeerId ?? undefined,
+            feeBps:       P2P_FEE_BPS,
+            feeAmountOut: String(feeAmountOut.toFixed(8)),
+          }).catch(() => {/* non-fatal */});
+
+          return {
+            success: true,
+            demo: false,
+            txHash,
+            outAmount: finalOutAmount,
+            route: finalRoute,
+            feeBps: P2P_FEE_BPS,
+            feeAmountOut,
+            message: `TNK swap via ${finalRoute}: ${amount} ${fromToken} → ${finalOutAmount.toFixed(6)} ${toToken}${txHash ? `. Tx: ${txHash}` : ""}.`,
+            nextStep: p2pPeerId
+              ? `P2P peer ${p2pPeerId} matched. Coordinating HTLC on both legs via Oracle VM.`
+              : `Oracle VM executing ${fromToken}→${toToken} swap. Status: ${swap.status ?? "processing"}.`,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("[TNK Agent Swap] Oracle VM execute failed:", err);
+    }
+  }
+
+  // ── Step 3: No Oracle VM match — return informative error ────────────────
+  // TNK swaps require Oracle VM P2P coordination; there is no on-chain DEX fallback.
+  const demoOutAmount = oracleOutAmount ?? (amount * 0.000015); // rough TNK→BTC estimate
+
+  void recordSwapAnalytic({
+    fromChain:    "trac_network",
+    toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
+    fromToken:    fromToken.toUpperCase(),
+    toToken:      toToken.toUpperCase(),
+    amount:       String(amount),
+    route:        rfqId ? "AFOS P2P (TNK↔BTC)" : "Oracle VM (no match)",
+    status:       "failed",
+    txId:         undefined,
+    peerId:       p2pPeerId ?? undefined,
+    feeBps:       P2P_FEE_BPS,
+    feeAmountOut: String((demoOutAmount * (P2P_FEE_BPS / 10000)).toFixed(8)),
+  }).catch(() => {/* non-fatal */});
+
+  return {
+    success: false,
+    demo: false,
+    txHash: null,
+    outAmount: demoOutAmount,
+    route: "Oracle VM P2P (no match)",
+    feeBps: P2P_FEE_BPS,
+    feeAmountOut: 0,
+    message:
+      rfqId
+        ? `TNK→${toToken} Oracle VM RFQ matched (${rfqId}) but execution failed. The P2P peer may have gone offline. Please retry in a moment.`
+        : `No P2P peer found for ${fromToken}→${toToken}. The Oracle VM P2P network needs a peer advertising the TNK/${toToken} pair. ` +
+          `Estimated rate: ${demoOutAmount.toFixed(8)} ${toToken} for ${amount} ${fromToken}.`,
+    nextStep: "Retry in 30–60 seconds — the Oracle VM continuously scans for new peers.",
+  };
 }

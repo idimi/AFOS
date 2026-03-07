@@ -2001,3 +2001,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] LightPeerContext.tsx: Add TNK pairs to default acceptedPairs
 - [ ] NetworkPage.tsx: Add TNK to channel form chain dropdown and chainColors
 - [ ] agentSwapEth.ts: Add trac_network to chain type casts
+
+## TNK Enhancement Round 13
+
+- [x] agentSwapBtc.ts: Add trac_network case so TNK→BTC cross-chain swaps fall through to Oracle VM P2P path
+- [x] AdminPanel: Add TNK (#f97316) colour entry to Analytics volume-by-chain bar chart colour map
+- [x] SwapHistory: Add TNK entry to PRICE_ESTIMATES fallback map for USD value column

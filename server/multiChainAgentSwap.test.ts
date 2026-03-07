@@ -8,11 +8,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── 1. Chain dispatcher in chat.ts ───────────────────────────────────────────
 describe("executeAgentSwap chain dispatcher", () => {
-  it("should import executeEthAgentSwap and executeBtcAgentSwap in chat.ts", async () => {
+  it("should import executeEthAgentSwap, executeBtcAgentSwap, and executeTnkAgentSwap in chat.ts", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
     expect(src).toContain('import { executeEthAgentSwap } from "../agentSwapEth"');
-    expect(src).toContain('import { executeBtcAgentSwap } from "../agentSwapBtc"');
+    // executeTnkAgentSwap is co-exported from agentSwapBtc alongside executeBtcAgentSwap
+    expect(src).toContain('executeBtcAgentSwap');
+    expect(src).toContain('executeTnkAgentSwap');
+    expect(src).toContain('from "../agentSwapBtc"');
   });
 
   it("should dispatch to ETH path when fromChain=ethereum", async () => {
