@@ -118,14 +118,14 @@ export const historyRouter = router({
     }))
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
+      if (!db) return { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false, tnkSwaps: 0, tnkVolumeUsd: 0, tnkFeesUsd: 0 };
 
       const since = sinceDate(input.days);
       const isWalletScoped = input.walletAddresses.length > 0;
 
       // Guard: return zero stats when no wallet connected and not admin global view
       if (!isWalletScoped && !input.adminGlobalView) {
-        return { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
+        return { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false, tnkSwaps: 0, tnkVolumeUsd: 0, tnkFeesUsd: 0 };
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,6 +140,10 @@ export const historyRouter = router({
           totalVolumeUsd: sql<string>`COALESCE(SUM(CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6))), 0)`,
           totalFeesUsd:   sql<string>`COALESCE(SUM(CAST(${swapAnalytics.platformFeeUsd} AS DECIMAL(20,6))), 0)`,
           completedCount: sql<string>`SUM(CASE WHEN ${swapAnalytics.status} = 'completed' THEN 1 ELSE 0 END)`,
+          // TNK-specific aggregates (fromChain = trac_network)
+          tnkSwaps:       sql<string>`SUM(CASE WHEN ${swapAnalytics.fromChain} = 'trac_network' THEN 1 ELSE 0 END)`,
+          tnkVolumeUsd:   sql<string>`COALESCE(SUM(CASE WHEN ${swapAnalytics.fromChain} = 'trac_network' THEN CAST(${swapAnalytics.amountUsd} AS DECIMAL(20,6)) ELSE 0 END), 0)`,
+          tnkFeesUsd:     sql<string>`COALESCE(SUM(CASE WHEN ${swapAnalytics.fromChain} = 'trac_network' THEN CAST(${swapAnalytics.platformFeeUsd} AS DECIMAL(20,6)) ELSE 0 END), 0)`,
         })
         .from(swapAnalytics)
         .where(and(...conditions));
@@ -154,6 +158,9 @@ export const historyRouter = router({
         totalFeesUsd:   parseFloat(row?.totalFeesUsd ?? "0"),
         successRate,
         isWalletScoped,
+        tnkSwaps:    Number(row?.tnkSwaps ?? 0),
+        tnkVolumeUsd: parseFloat(row?.tnkVolumeUsd ?? "0"),
+        tnkFeesUsd:   parseFloat(row?.tnkFeesUsd ?? "0"),
       };
     }),
 

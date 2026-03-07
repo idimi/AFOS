@@ -1974,3 +1974,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Swaps: Add TNK/ETH swap pair to SWAP_PAIRS and ensure TNK token is selectable in both from/to dropdowns
 - [x] AdminPanel: Surface TNK escrow address in Oracle VM Addresses table alongside SOL/ETH/BTC agent addresses
 - [x] SwapHistory: Add trac_network chain filter tab so operators can filter HTLC history to TNK trades
+
+## TNK Enhancement Round 11
+
+- [x] SwapHistory: Add trac_network entry to CHAIN_CONFIG explorer map so TNK trades show "View on Explorer" link to https://explorer.trac.network/tx/{hash}
+- [x] SwapHistory: Add TNK stats column to stats strip (24h TNK volume, TNK fees earned) via extended history.stats procedure
+- [x] NetworkPage: Surface TNK escrow address in HTLC escrow section alongside SOL/ETH/BTC escrow rows

@@ -1956,6 +1956,12 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
     }
   }, [invitePeerId, livePeers, onInvitePeerHandled]);
 
+  // ── HTLC Escrow Wallets — for the Escrow Wallets card in the sidebar ────────
+  const { data: htlcWalletsData } = trpc.htlcWallet.getHtlcWallets.useQuery(undefined, {
+    refetchInterval: 120_000, // refresh every 2 min
+    staleTime: 60_000,
+  });
+
   // ── Unread Messages by Sender ─────────────────────────────────────────────
   // Poll every 10s to know which peers have sent unread messages.
   // We use lightPeer.peerId as our own peer ID (wallet-derived).
@@ -3263,7 +3269,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
                 { label: "Protocol", value: "Hyperswarm + AFOS P2P DHT" },
                 { label: "Node Key", value: oracleNodeKey ? `${oracleNodeKey.slice(0, 12)}...` : "Loading..." },
                 { label: "Escrow", value: "HTLC Atomic Swap" },
-                { label: "Settlement", value: "SOL · ETH · BTC" },
+                { label: "Settlement", value: "SOL · ETH · BTC · TNK" },
               ].map(item => (
                 <div key={item.label} className="flex justify-between">
                   <span className="text-[10px] text-muted-foreground">{item.label}</span>
@@ -3271,6 +3277,58 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* HTLC Escrow Wallets */}
+          <div className="rounded-2xl p-4"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="text-xs font-bold text-foreground">HTLC Escrow Wallets</span>
+            </div>
+            {htlcWalletsData?.assets ? (
+              <div className="space-y-2">
+                {htlcWalletsData.assets
+                  .filter(a => ["SOL", "ETH", "BTC", "TNK"].includes(a.asset))
+                  .map(a => {
+                    const chainColor =
+                      a.chain === "solana"       ? "#9945ff"
+                      : a.chain === "ethereum"   ? "#627eea"
+                      : a.chain === "bitcoin"    ? "#f7931a"
+                      : a.chain === "trac_network" ? "#e87d3e"
+                      : "#888";
+                    const shortAddr = a.address && a.address.length > 16
+                      ? `${a.address.slice(0, 8)}...${a.address.slice(-6)}`
+                      : (a.address ?? "—");
+                    const configured = a.address && a.address !== "Not configured";
+                    return (
+                      <div key={`${a.chain}-${a.asset}`} className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                            style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}30` }}
+                          >
+                            {a.asset}
+                          </span>
+                          <span className="text-[10px] font-mono text-muted-foreground truncate">
+                            {configured ? shortAddr : "not set"}
+                          </span>
+                        </div>
+                        {configured && (
+                          <button
+                            onClick={() => { navigator.clipboard.writeText(a.address!); toast.success("Address copied"); }}
+                            className="text-[9px] text-muted-foreground hover:text-foreground flex-shrink-0"
+                          >
+                            copy
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            ) : (
+              <div className="text-[10px] text-muted-foreground">Loading escrow addresses...</div>
+            )}
           </div>
         </div>
       </div>

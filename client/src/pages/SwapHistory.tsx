@@ -52,7 +52,7 @@ const CHAIN_CONFIG: Record<ChainId, { name: string; color: string; explorer: str
   bitcoin:      { name: "Bitcoin",       color: "#f7931a", explorer: "https://mempool.space/tx/",         icon: "₿" },
   ethereum:     { name: "Ethereum",      color: "#627eea", explorer: "https://etherscan.io/tx/",          icon: "Ξ" },
   solana:       { name: "Solana",        color: "#9945ff", explorer: "https://solscan.io/tx/",            icon: "◎" },
-  trac_network: { name: "Trac Network",  color: "#e87d3e", explorer: "https://tracnetwork.io/tx/",        icon: "T" },
+  trac_network: { name: "Trac Network",  color: "#e87d3e", explorer: "https://explorer.trac.network/tx/", icon: "T" },
 };
 
 const TOKEN_COLORS: Record<string, string> = {
@@ -184,12 +184,14 @@ function ChainTag({ chain }: { chain: ChainId }) {
 
 // ─── Mobile Summary Stats (horizontal scroll strip) ─────────────────────────
 
-function MobileSummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string } }) {
+function MobileSummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string; tnkSwaps?: number; tnkVolumeUsd?: number; tnkFeesUsd?: number } }) {
   const items = [
     { label: "Volume", value: `$${stats.totalVolumeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: "text-amber-400" },
     { label: "Txns", value: String(stats.totalSwaps), color: "text-cyan-400" },
     { label: "Fees", value: `$${stats.totalFeesUsd.toFixed(2)}`, color: "text-violet-400" },
     { label: "Success", value: `${stats.successRate}%`, color: "text-emerald-400" },
+    { label: "TNK Vol", value: `$${(stats.tnkVolumeUsd ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, color: "text-orange-400" },
+    { label: "TNK Fees", value: `$${(stats.tnkFeesUsd ?? 0).toFixed(2)}`, color: "text-orange-300" },
   ];
   return (
     <div className="sm:hidden flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
@@ -209,15 +211,17 @@ function MobileSummaryStats({ stats }: { stats: { totalSwaps: number; totalVolum
 
 // ─── Summary Stats ────────────────────────────────────────────────────────────
 
-function SummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string } }) {
+function SummaryStats({ stats }: { stats: { totalSwaps: number; totalVolumeUsd: number; totalFeesUsd: number; successRate: string; tnkSwaps?: number; tnkVolumeUsd?: number; tnkFeesUsd?: number } }) {
   const items = [
     { label: "Total Volume", value: `$${stats.totalVolumeUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: <TrendingUp className="w-3.5 h-3.5" />, color: "text-amber-400" },
     { label: "Transactions", value: String(stats.totalSwaps), icon: <BarChart3 className="w-3.5 h-3.5" />, color: "text-cyan-400" },
     { label: "Fees Paid", value: `$${stats.totalFeesUsd.toFixed(2)}`, icon: <Shield className="w-3.5 h-3.5" />, color: "text-violet-400" },
     { label: "Success Rate", value: `${stats.successRate}%`, icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "text-emerald-400" },
+    { label: "TNK Volume", value: `$${(stats.tnkVolumeUsd ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, icon: <TrendingUp className="w-3.5 h-3.5" />, color: "text-orange-400" },
+    { label: "TNK Fees", value: `$${(stats.tnkFeesUsd ?? 0).toFixed(2)}`, icon: <Shield className="w-3.5 h-3.5" />, color: "text-orange-300" },
   ];
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
       {items.map((s, i) => (
         <motion.div
           key={s.label}
@@ -350,7 +354,7 @@ export default function SwapHistory() {
     return historyData.rows.map(mapDbRowToSwapRecord);
   }, [historyData]);
 
-  const stats = statsData ?? { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false };
+  const stats = statsData ?? { totalSwaps: 0, totalVolumeUsd: 0, totalFeesUsd: 0, successRate: "0.0", isWalletScoped: false, tnkSwaps: 0, tnkVolumeUsd: 0, tnkFeesUsd: 0 };
 
   // Client-side sort only (search is now server-side via debouncedSearch)
   const filtered = useMemo(() => {
