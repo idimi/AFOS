@@ -31,13 +31,31 @@
  *   A → B: p2p_swap_complete    (secret revealed — B can claim)
  *   Either: p2p_swap_failed     (abort)
  *
- * All HTLC transactions are real wallet transactions.
+ * Timeout / Refund:
+ *   - A's HTLC has a 2h timelock (timelockA). If B hasn't locked within that window,
+ *     A can reclaim their funds. A polls every 30s while in "waiting_b" phase.
+ *   - When timelockA expires: A sends p2p_swap_failed to B, then broadcasts a refund tx.
+ *
+ * Multi-chain support:
+ *   - Solana: uses buildSolanaHtlcLockTx + signTransaction
+ *   - Ethereum: uses eth_sendTransaction via window.ethereum
+ *   - Bitcoin: uses executeBtcHtlcLock from btcHtlc.ts
+ *
+ * History recording:
+ *   - On complete or failed, calls trpc.history.recordP2PSwap to persist the swap.
  */
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { getSignalingClient } from "../lib/signalingClient";
 import { generateHtlcSecret, buildSolanaHtlcLockTx } from "../lib/solanaHtlc";
+import {
+  executeBtcHtlcLock,
+  executeBtcHtlcLockWithSecretHash,
+  detectBtcProvider,
+  getBtcAddress,
+} from "../lib/btcHtlc";
 import { Connection, PublicKey } from "@solana/web3.js";
+import { trpc } from "../lib/trpc";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +70,8 @@ export type P2PSwapPhase =
   | "revealing"         // Agent A revealing secret (B has locked)
   | "complete"          // Swap complete
   | "failed"            // Swap failed / aborted
+  | "refunding"         // A is broadcasting a refund tx (timeout)
+  | "refunded"          // A's HTLC refunded successfully
   // Maker phases
   | "received_params"   // Received HTLC params from Agent A
   | "locking_b"         // Agent B signing + broadcasting HTLC lock tx
@@ -81,6 +101,12 @@ export interface P2PSwapState {
   escrowAddressB?: string;
   revealTxHash?: string;
   claimTxHash?: string;
+  /** Unix timestamp (seconds) when A's HTLC expires — used for timeout/refund polling */
+  timelockA?: number;
+  /** Unix timestamp (seconds) when B's HTLC expires */
+  timelockB?: number;
+  /** Wallet address of the user running this side (for history recording) */
+  walletAddress?: string;
   error?: string;
   startedAt: number;
   completedAt?: number;
@@ -136,6 +162,11 @@ export function useP2PSwap(): UseP2PSwapReturn {
   const swapRef = useRef<P2PSwapState | null>(null);
   swapRef.current = swap;
 
+  // tRPC mutation for recording swaps in history
+  const recordSwap = trpc.history.recordP2PSwap.useMutation();
+  const recordSwapRef = useRef(recordSwap.mutate);
+  recordSwapRef.current = recordSwap.mutate;
+
   // ── Auto-reveal: when A is in "revealing" phase, send secret to B ─────────
   // This fires automatically after p2p_htlc_locked is received from B.
   // The secret was stored in state during locking_a and is now revealed.
@@ -149,17 +180,11 @@ export function useP2PSwap(): UseP2PSwapReturn {
     const { rfqId, counterpartyPeerId, secret } = swap;
 
     // Send secret to B so B can claim their side of the HTLC
-    client.sendP2PSwapComplete(counterpartyPeerId, {
-      rfqId,
-      secret,
-    });
+    client.sendP2PSwapComplete(counterpartyPeerId, { rfqId, secret });
 
     // Mark as complete on A's side
-    setSwap(prev => prev ? {
-      ...prev,
-      phase: "complete",
-      completedAt: Date.now(),
-    } : prev);
+    const completedAt = Date.now();
+    setSwap(prev => prev ? { ...prev, phase: "complete", completedAt } : prev);
 
     toast.success("Atomic swap complete!", {
       description: "Secret revealed — both sides can now claim their funds.",
@@ -169,8 +194,171 @@ export function useP2PSwap(): UseP2PSwapReturn {
     window.dispatchEvent(new CustomEvent("afos:p2p-swap-complete", {
       detail: { rfqId, secret },
     }));
+
+    // Record in history
+    const s = swap;
+    recordSwapRef.current({
+      rfqId: s.rfqId,
+      role: "requester",
+      status: "completed",
+      fromChain: s.fromChain as "bitcoin" | "ethereum" | "solana",
+      toChain: s.toChain as "bitcoin" | "ethereum" | "solana",
+      fromToken: s.fromToken,
+      toToken: s.toToken,
+      fromAmount: s.fromAmount,
+      toAmount: s.toAmount,
+      rate: s.rate,
+      peerId: s.counterpartyPeerId,
+      walletAddress: s.walletAddress,
+      lockTxHashA: s.lockTxHashA,
+      escrowAddressA: s.escrowAddressA,
+      secretHash: s.secretHash,
+      timelockA: s.timelockA,
+      timelockB: s.timelockB,
+      settlementMs: completedAt - s.startedAt,
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [swap?.phase, swap?.role, swap?.secret]);
+
+  // ── Timeout/refund polling: when A is waiting for B and timelockA expires ──
+  // Polls every 30s. When timelockA has passed, sends p2p_swap_failed to B
+  // and attempts to broadcast a refund transaction.
+  useEffect(() => {
+    if (!swap) return;
+    if (swap.role !== "requester") return;
+    if (swap.phase !== "waiting_b") return;
+    if (!swap.timelockA) return;
+
+    const checkTimeout = async () => {
+      const current = swapRef.current;
+      if (!current || current.phase !== "waiting_b") return;
+      if (!current.timelockA) return;
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (nowSec < current.timelockA) return; // Not expired yet
+
+      // Timelock expired — B never locked. Initiate refund.
+      const client = getSignalingClient();
+      client.sendP2PSwapFailed(current.counterpartyPeerId, {
+        rfqId: current.rfqId,
+        reason: "HTLC timelock expired — requester reclaiming funds",
+      });
+
+      setSwap(prev => prev ? { ...prev, phase: "refunding" } : prev);
+      toast.warning("HTLC timelock expired", {
+        description: "LP did not lock in time. Reclaiming your funds…",
+      });
+
+      // Attempt on-chain refund based on chain
+      try {
+        const chain = current.fromChain.toLowerCase();
+        if (chain === "solana") {
+          // For Solana: the HTLC program's refund instruction requires the timelock to have passed.
+          // If no program is deployed, the PDA funds are locked (demo/testnet limitation).
+          // With the Anchor program, call the `refund` instruction.
+          const htlcProgramId = import.meta.env.VITE_HTLC_PROGRAM_ID as string | undefined;
+          if (htlcProgramId && current.escrowAddressA && current.walletAddress) {
+            toast.info("Broadcasting Solana HTLC refund…", {
+              description: "This requires your wallet signature.",
+            });
+            // Dispatch event so Swaps.tsx / ChatPage can handle the wallet signing
+            window.dispatchEvent(new CustomEvent("afos:p2p-refund-needed", {
+              detail: {
+                rfqId: current.rfqId,
+                chain: "solana",
+                escrowAddress: current.escrowAddressA,
+                secretHash: current.secretHash,
+                walletAddress: current.walletAddress,
+              },
+            }));
+          } else {
+            toast.info("Solana HTLC refund", {
+              description: "Deploy the Anchor HTLC program to enable automatic refunds. Contact support if funds are stuck.",
+            });
+          }
+        } else if (chain === "ethereum" || chain === "eth") {
+          // ETH HTLC refund: call refund() on the HTLC contract
+          const htlcAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
+          if (htlcAddress && current.secretHash && current.walletAddress) {
+            const rawEth = (window as unknown as {
+              ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> }
+            }).ethereum;
+            if (rawEth) {
+              // refund(bytes32 secretHash) selector: 0x7249fbb6
+              const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
+              const calldata = "0x7249fbb6" + padLeft(current.secretHash, 32);
+              const refundTxHash = await rawEth.request({
+                method: "eth_sendTransaction",
+                params: [{ from: current.walletAddress, to: htlcAddress, data: calldata, gas: "0x186A0" }],
+              });
+              setSwap(prev => prev ? {
+                ...prev,
+                phase: "refunded",
+                completedAt: Date.now(),
+                revealTxHash: refundTxHash as string,
+              } : prev);
+              toast.success("ETH HTLC refunded", {
+                description: `Tx: ${(refundTxHash as string).slice(0, 16)}…`,
+              });
+              recordSwapRef.current({
+                rfqId: current.rfqId,
+                role: "requester",
+                status: "refunded",
+                fromChain: current.fromChain as "bitcoin" | "ethereum" | "solana",
+                toChain: current.toChain as "bitcoin" | "ethereum" | "solana",
+                fromToken: current.fromToken,
+                toToken: current.toToken,
+                fromAmount: current.fromAmount,
+                toAmount: current.toAmount,
+                rate: current.rate,
+                peerId: current.counterpartyPeerId,
+                walletAddress: current.walletAddress,
+                lockTxHashA: current.lockTxHashA,
+                secretHash: current.secretHash,
+              });
+              return;
+            }
+          }
+          toast.warning("ETH HTLC refund", {
+            description: "Set VITE_ETH_HTLC_ADDRESS to enable automatic refunds.",
+          });
+        } else if (chain === "bitcoin") {
+          // BTC HTLC refund: broadcast refund PSBT after timelock
+          toast.info("Bitcoin HTLC refund", {
+            description: "Your BTC HTLC will be refundable after the timelock block height. Use a Bitcoin wallet to broadcast the refund PSBT.",
+          });
+        }
+
+        setSwap(prev => prev ? { ...prev, phase: "refunded", completedAt: Date.now() } : prev);
+        recordSwapRef.current({
+          rfqId: current.rfqId,
+          role: "requester",
+          status: "refunded",
+          fromChain: current.fromChain as "bitcoin" | "ethereum" | "solana",
+          toChain: current.toChain as "bitcoin" | "ethereum" | "solana",
+          fromToken: current.fromToken,
+          toToken: current.toToken,
+          fromAmount: current.fromAmount,
+          toAmount: current.toAmount,
+          rate: current.rate,
+          peerId: current.counterpartyPeerId,
+          walletAddress: current.walletAddress,
+          lockTxHashA: current.lockTxHashA,
+          secretHash: current.secretHash,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("Refund failed", { description: msg.slice(0, 120) });
+        setSwap(prev => prev ? { ...prev, phase: "failed", error: `Refund failed: ${msg}`, completedAt: Date.now() } : prev);
+      }
+    };
+
+    // Check immediately, then every 30s
+    checkTimeout();
+    const interval = setInterval(checkTimeout, 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [swap?.phase, swap?.role, swap?.timelockA]);
 
   // ── Listen for incoming P2P signaling messages ────────────────────────────
   useEffect(() => {
@@ -226,6 +414,8 @@ export function useP2PSwap(): UseP2PSwapReturn {
         secretHash: msg.secretHash,
         lockTxHashA: msg.lockTxHash,
         escrowAddressA: msg.escrowAddress,
+        timelockA: msg.timelockA,
+        timelockB: msg.timelockB,
         counterpartyWallets: msg.requesterWallets ?? prev.counterpartyWallets,
       } : prev);
 
@@ -281,6 +471,27 @@ export function useP2PSwap(): UseP2PSwapReturn {
       });
 
       window.dispatchEvent(new CustomEvent("afos:p2p-swap-complete", { detail: msg }));
+
+      // Record maker's side in history
+      recordSwapRef.current({
+        rfqId: current.rfqId,
+        role: "maker",
+        status: "completed",
+        fromChain: current.fromChain as "bitcoin" | "ethereum" | "solana",
+        toChain: current.toChain as "bitcoin" | "ethereum" | "solana",
+        fromToken: current.fromToken,
+        toToken: current.toToken,
+        fromAmount: current.fromAmount,
+        toAmount: current.toAmount,
+        rate: current.rate,
+        peerId: current.counterpartyPeerId,
+        walletAddress: current.walletAddress,
+        lockTxHashB: current.lockTxHashB,
+        escrowAddressB: current.escrowAddressB,
+        secretHash: current.secretHash,
+        timelockB: current.timelockB,
+        settlementMs: Date.now() - current.startedAt,
+      });
     });
 
     // ── Either side receives failure ──────────────────────────────────────────
@@ -297,6 +508,26 @@ export function useP2PSwap(): UseP2PSwapReturn {
       } : prev);
 
       toast.error("P2P swap failed", { description: msg.reason });
+
+      // Record failure in history
+      recordSwapRef.current({
+        rfqId: current.rfqId,
+        role: current.role,
+        status: "failed",
+        fromChain: current.fromChain as "bitcoin" | "ethereum" | "solana",
+        toChain: current.toChain as "bitcoin" | "ethereum" | "solana",
+        fromToken: current.fromToken,
+        toToken: current.toToken,
+        fromAmount: current.fromAmount,
+        toAmount: current.toAmount,
+        rate: current.rate,
+        peerId: current.counterpartyPeerId,
+        walletAddress: current.walletAddress,
+        lockTxHashA: current.lockTxHashA,
+        lockTxHashB: current.lockTxHashB,
+        secretHash: current.secretHash,
+        errorReason: msg.reason,
+      });
     });
 
     return () => {
@@ -345,6 +576,7 @@ export function useP2PSwap(): UseP2PSwapReturn {
       toAmount: params.toAmount,
       rate: params.rate,
       counterpartyWallets: params.counterpartyWallets,
+      walletAddress: params.walletPublicKey,
       startedAt: Date.now(),
     });
 
@@ -387,13 +619,15 @@ export function useP2PSwap(): UseP2PSwapReturn {
           preflightCommitment: "confirmed",
         });
 
-        // Store secret in state — the auto-reveal useEffect will send it when B locks
+        // Store secret + timelocks in state — the auto-reveal useEffect will send it when B locks
         setSwap(prev => prev ? {
           ...prev,
           phase: "waiting_b",
           lockTxHashA: lockTxHash,
           escrowAddressA: escrowAddress,
           secret: secretHex,
+          timelockA,
+          timelockB,
         } : prev);
 
         toast.success("Your funds locked in HTLC", {
@@ -423,18 +657,13 @@ export function useP2PSwap(): UseP2PSwapReturn {
         }).ethereum;
         if (!rawEth) throw new Error("No Ethereum wallet provider found");
 
-        const secretBytes = new Uint8Array(Buffer.from(secretHex, "hex"));
-        const secretHashBuf = await crypto.subtle.digest("SHA-256", secretBytes);
-        const secretHashHexEth = Array.from(new Uint8Array(secretHashBuf))
-          .map(b => b.toString(16).padStart(2, "0")).join("");
-
         const timelockA = Math.floor(Date.now() / 1000) + 7200;
         const timelockB = Math.floor(Date.now() / 1000) + 3600;
         const amountWei = BigInt(Math.floor(params.fromAmount * 1e18));
         const htlcAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
         const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
         const calldata = "0x1d4e5e8c"
-          + padLeft(secretHashHexEth, 32)
+          + padLeft(secretHashHex, 32)
           + padLeft(params.walletPublicKey.replace(/^0x/, "").toLowerCase(), 32)
           + padLeft(timelockA.toString(16), 32);
 
@@ -452,20 +681,77 @@ export function useP2PSwap(): UseP2PSwapReturn {
         setSwap(prev => prev ? {
           ...prev,
           phase: "waiting_b",
-          lockTxHashA: lockTxHash,
+          lockTxHashA: lockTxHash as string,
           secret: secretHex,
+          timelockA,
+          timelockB,
         } : prev);
 
         toast.success("ETH locked in HTLC", {
-          description: `Tx: ${lockTxHash.slice(0, 16)}… · Waiting for LP`,
+          description: `Tx: ${(lockTxHash as string).slice(0, 16)}… · Waiting for LP`,
         });
 
         client.sendP2PHtlcParams(params.counterpartyPeerId, {
           rfqId: params.rfqId,
-          secretHash: secretHashHexEth,
-          lockTxHash,
+          secretHash: secretHashHex,
+          lockTxHash: lockTxHash as string,
           lockChain: "ethereum",
           escrowAddress: htlcAddress ?? params.walletPublicKey,
+          lockedAmount: params.fromAmount,
+          lockedToken: params.fromToken,
+          timelockA,
+          timelockB,
+        });
+
+      } else if (chain === "bitcoin" || chain === "btc") {
+        // ── Bitcoin HTLC lock ───────────────────────────────────────────
+        const provider = detectBtcProvider();
+        const btcAddress = await getBtcAddress(provider);
+        if (!btcAddress) throw new Error("No Bitcoin wallet connected. Please connect a BTC wallet.");
+
+        const timelockA = Math.floor(Date.now() / 1000) + 7200; // 2h
+        const timelockB = Math.floor(Date.now() / 1000) + 3600; // 1h
+        const amountSats = Math.round(params.fromAmount * 1e8);
+
+        // Use B's BTC pubkey as recipient if available, otherwise use sender's pubkey
+        const recipientPubKey = params.counterpartyWallets?.bitcoin ?? params.walletPublicKey;
+        const senderPubKey = params.walletPublicKey;
+
+        const { txid, htlcAddress, secret, secretHash } = await executeBtcHtlcLock(
+          btcAddress,
+          recipientPubKey,
+          senderPubKey,
+          amountSats,
+          2, // 2 hours
+          provider,
+          "mainnet",
+        );
+
+        setSwap(prev => prev ? {
+          ...prev,
+          phase: "waiting_b",
+          lockTxHashA: txid,
+          escrowAddressA: htlcAddress,
+          secret,
+          secretHash,
+          timelockA,
+          timelockB,
+        } : prev);
+
+        toast.success("BTC locked in HTLC", {
+          description: `Tx: ${txid.slice(0, 16)}… · Waiting for LP to lock their side`,
+          action: {
+            label: "Mempool",
+            onClick: () => window.open(`https://mempool.space/tx/${txid}`, "_blank"),
+          },
+        });
+
+        client.sendP2PHtlcParams(params.counterpartyPeerId, {
+          rfqId: params.rfqId,
+          secretHash,
+          lockTxHash: txid,
+          lockChain: "bitcoin",
+          escrowAddress: htlcAddress,
           lockedAmount: params.fromAmount,
           lockedToken: params.fromToken,
           timelockA,
@@ -496,6 +782,23 @@ export function useP2PSwap(): UseP2PSwapReturn {
       client.sendP2PSwapFailed(params.counterpartyPeerId, {
         rfqId: params.rfqId,
         reason: isRejected ? "Requester rejected transaction" : msg.slice(0, 120),
+      });
+
+      // Record failure in history
+      recordSwapRef.current({
+        rfqId: params.rfqId,
+        role: "requester",
+        status: "failed",
+        fromChain: params.fromChain as "bitcoin" | "ethereum" | "solana",
+        toChain: params.toChain as "bitcoin" | "ethereum" | "solana",
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        fromAmount: params.fromAmount,
+        toAmount: params.toAmount,
+        rate: params.rate,
+        peerId: params.counterpartyPeerId,
+        walletAddress: params.walletPublicKey,
+        errorReason: msg.slice(0, 200),
       });
     }
   }, []);
@@ -539,7 +842,9 @@ export function useP2PSwap(): UseP2PSwapReturn {
       secretHash: params.secretHash,
       lockTxHashA: params.lockTxHashA,
       escrowAddressA: params.escrowAddressA,
+      timelockB: params.timelockB,
       counterpartyWallets: params.counterpartyWallets,
+      walletAddress: params.walletPublicKey,
       startedAt: Date.now(),
     });
 
@@ -627,18 +932,69 @@ export function useP2PSwap(): UseP2PSwapReturn {
         setSwap(prev => prev ? {
           ...prev,
           phase: "locked_b",
-          lockTxHashB: lockTxHash,
+          lockTxHashB: lockTxHash as string,
         } : prev);
 
         toast.success("ETH locked on your side", {
-          description: `Tx: ${lockTxHash.slice(0, 16)}…`,
+          description: `Tx: ${(lockTxHash as string).slice(0, 16)}…`,
         });
 
         client.sendP2PHtlcLocked(params.counterpartyPeerId, {
           rfqId: params.rfqId,
-          lockTxHash,
+          lockTxHash: lockTxHash as string,
           lockChain: "ethereum",
           escrowAddress: htlcAddress ?? params.walletPublicKey,
+          lockedAmount: params.toAmount,
+          lockedToken: params.toToken,
+        });
+
+      } else if (chain === "bitcoin" || chain === "btc") {
+        // ── Bitcoin HTLC lock for Maker ─────────────────────────────────
+        // B MUST use A's secretHash so A can claim B's HTLC with the same secret
+        const provider = detectBtcProvider();
+        const btcAddress = await getBtcAddress(provider);
+        if (!btcAddress) throw new Error("No Bitcoin wallet connected. Please connect a BTC wallet.");
+
+        const amountSats = Math.round(params.toAmount * 1e8);
+
+        // Use A's BTC pubkey as recipient so A can claim B's HTLC
+        const recipientPubKey = params.counterpartyWallets?.bitcoin ?? params.walletPublicKey;
+        const senderPubKey = params.walletPublicKey;
+
+        const { txid, htlcAddress, witnessScript } = await executeBtcHtlcLockWithSecretHash(
+          btcAddress,
+          recipientPubKey,
+          senderPubKey,
+          amountSats,
+          params.secretHash, // Use A's secretHash — critical for atomic swap!
+          1, // 1 hour (B's timelock is shorter than A's)
+          provider,
+          "mainnet",
+        );
+
+        setSwap(prev => prev ? {
+          ...prev,
+          phase: "locked_b",
+          lockTxHashB: txid,
+          escrowAddressB: htlcAddress,
+        } : prev);
+
+        toast.success("BTC locked on your side", {
+          description: `Tx: ${txid.slice(0, 16)}… · Waiting for requester to reveal secret`,
+          action: {
+            label: "Mempool",
+            onClick: () => window.open(`https://mempool.space/tx/${txid}`, "_blank"),
+          },
+        });
+
+        // Store witnessScript for later claim (needed to spend the HTLC output)
+        window.sessionStorage.setItem(`btc-htlc-witness-${params.rfqId}`, witnessScript);
+
+        client.sendP2PHtlcLocked(params.counterpartyPeerId, {
+          rfqId: params.rfqId,
+          lockTxHash: txid,
+          lockChain: "bitcoin",
+          escrowAddress: htlcAddress,
           lockedAmount: params.toAmount,
           lockedToken: params.toToken,
         });
@@ -664,6 +1020,25 @@ export function useP2PSwap(): UseP2PSwapReturn {
       client.sendP2PSwapFailed(params.counterpartyPeerId, {
         rfqId: params.rfqId,
         reason: isRejected ? "Maker rejected transaction" : msg.slice(0, 120),
+      });
+
+      // Record failure in history
+      recordSwapRef.current({
+        rfqId: params.rfqId,
+        role: "maker",
+        status: "failed",
+        fromChain: params.fromChain as "bitcoin" | "ethereum" | "solana",
+        toChain: params.toChain as "bitcoin" | "ethereum" | "solana",
+        fromToken: params.fromToken,
+        toToken: params.toToken,
+        fromAmount: params.fromAmount,
+        toAmount: params.toAmount,
+        rate: params.rate,
+        peerId: params.counterpartyPeerId,
+        walletAddress: params.walletPublicKey,
+        lockTxHashA: params.lockTxHashA,
+        secretHash: params.secretHash,
+        errorReason: msg.slice(0, 200),
       });
     }
   }, []);

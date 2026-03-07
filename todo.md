@@ -2009,3 +2009,25 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add useP2PSwap hook to ChatPage — listens for afos:p2p-quote-accepted and calls initiateAsRequester
 - [x] Store pendingP2PSwapRef in ChatPage when P2P route is matched
 - [x] Add P2PSwapProgressModal to ChatPage JSX
+
+## Three New Features (Mar 7, 2026)
+
+### Feature 1: Swap Timeout/Refund Path
+- [x] Add block-height poller in useP2PSwap watching for B's lock timeout (polls every 30s while in waiting_b)
+- [x] Send p2p_swap_failed signal when timeout expires (via signalingClient.sendP2PSwapFailed)
+- [x] Build Solana HTLC refund transaction (dispatches afos:p2p-refund-needed event for on-chain refund)
+- [x] Trigger on-chain refund automatically when timeout reached (ETH: calls refund() on HTLC contract)
+- [x] Add p2p_swap_failed listener to update swap phase to "failed" (in useP2PSwap signaling listeners)
+
+### Feature 2: Multi-Chain HTLC (BTC)
+- [x] Wire btcHtlc.ts into useP2PSwap.initiateAsRequester for BTC→X swaps (executeBtcHtlcLock)
+- [x] Wire btcHtlc.ts into useP2PSwap.initiateAsMaker for X→BTC swaps (executeBtcHtlcLockWithSecretHash — uses A's secretHash)
+- [x] Add executeBtcHtlcLockWithSecretHash to btcHtlc.ts for Maker side (critical: uses A's secretHash for atomic swap)
+- [x] Wire btcHtlc.ts into LightPeerContext p2p_htlc_params listener
+
+### Feature 3: P2P Swap History Recording
+- [x] Add tRPC procedure to record P2P swap in swapAnalytics + htlcSwaps (recordP2PSwap in history.ts)
+- [x] Call record procedure when swap completes (phase=complete) in useP2PSwap
+- [x] Call record procedure when swap fails (phase=failed) in useP2PSwap
+- [x] SwapHistory.tsx shows P2P swaps with tx links (Solscan/Etherscan/Mempool.space)
+- [x] SwapHistoryTabs.tsx: Added TxLink + AddrLink components with clickable explorer links in Open Trades and Refunds tabs

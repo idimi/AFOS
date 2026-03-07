@@ -588,3 +588,62 @@ export async function executeBtcHtlcLock(
     amountSats,
   };
 }
+
+/**
+ * HTLC lock flow for the Maker (Agent B) side.
+ * Uses an existing secretHash provided by the Requester (Agent A).
+ * B locks their side with the SAME secretHash so A can claim it with the same secret.
+ *
+ * @param senderAddress Maker's BTC address (from connected wallet)
+ * @param recipientPubKey Requester's compressed public key (hex) — so A can claim
+ * @param senderPubKey Maker's compressed public key (hex)
+ * @param amountSats Amount to lock in satoshis
+ * @param existingSecretHash The secretHash from Requester's HTLC (hex string)
+ * @param locktimeHours Hours until HTLC expires (should be shorter than Requester's)
+ * @param provider Wallet provider to use for signing
+ * @param network Bitcoin network
+ */
+export async function executeBtcHtlcLockWithSecretHash(
+  senderAddress: string,
+  recipientPubKey: string,
+  senderPubKey: string,
+  amountSats: number,
+  existingSecretHash: string,
+  locktimeHours = 1,
+  provider: BtcWalletProvider = "unknown",
+  network: "mainnet" | "testnet" = "mainnet",
+): Promise<Omit<HtlcLockFlowResult, "secret"> & { secretHash: string }> {
+  const detectedProvider = provider === "unknown" ? detectBtcProvider() : provider;
+  const utxos = await fetchUtxos(senderAddress, network);
+  if (!utxos.length) throw new Error("No confirmed UTXOs found for this address");
+  const enrichedUtxos = await Promise.all(
+    utxos.map(async (utxo) => {
+      const script = await fetchWitnessUtxoScript(utxo.txid, utxo.vout, network);
+      return { ...utxo, witnessUtxoScript: script ?? undefined };
+    })
+  );
+  const locktime = Math.floor(Date.now() / 1000) + locktimeHours * 3600;
+  const htlcParams: HtlcParams = {
+    secretHash: existingSecretHash,
+    recipientPubKey,
+    senderPubKey,
+    locktime,
+    amountSats,
+    network,
+  };
+  const { htlcAddress, witnessScript, psbtBase64 } = buildHtlcLockPsbt(
+    htlcParams,
+    enrichedUtxos,
+    senderAddress,
+  );
+  const signedPsbt = await signPsbtWithWallet(psbtBase64, detectedProvider);
+  const { txid, explorerUrl } = await broadcastSignedPsbt(signedPsbt, network);
+  return {
+    txid,
+    htlcAddress,
+    witnessScript,
+    secretHash: existingSecretHash,
+    explorerUrl,
+    amountSats,
+  };
+}
