@@ -1942,3 +1942,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Early-exit Cancel & Refund button in Open Trades tab — confirmation dialog + chain-specific refund logic for all 4 chains (SOL, ETH, BTC, TNK) in OpenTradeCard
 - [x] Swap pair liquidity depth indicators — maxTradeUsd added to signaling protocol, usePairDepth hook aggregates per-pair depth, color-coded depth badges in both Sell and Buy token selector dropdowns
 - [x] tnkHtlcMonitor.test.ts — 10 unit tests for memo parsing, lifecycle idempotency, and DB-unavailable graceful fallback
+
+## Round 7 Bug Fixes
+
+- [x] Fix Swaps token selector crash — CHAINS lookup throws when token.chain is "trac_network" (key missing from CHAINS map)
+- [x] Set TNK_ESCROW_ADDRESS env var so the TNK HTLC monitor starts live polling

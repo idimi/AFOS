@@ -73,6 +73,18 @@ const CHAINS = {
     settlement: "~400ms (Solana)",
     rpc: "Helius RPC",
   },
+  trac_network: {
+    id: "trac_network",
+    name: "Trac Network",
+    shortName: "TRAC",
+    network: "Trac Network Mainnet",
+    color: "#f59e0b",
+    bgColor: "rgba(245,158,11,0.12)",
+    borderColor: "rgba(245,158,11,0.3)",
+    icon: "⬡",
+    settlement: "~30s (Trac agent)",
+    rpc: "Trac Network API",
+  },
 };
 
 const TOKENS = [
