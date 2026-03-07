@@ -1913,3 +1913,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Investigate: clicking Swap Now doesn't auto-show quotes in the Live Order Book — LiveOrderBook manages hasRequestedQuotes internally with no parent access
 - [x] Fix: added triggerGetQuotesRef prop to LiveOrderBook; handleSwap now calls it before the Oracle VM RFQ so quotes appear in the order book automatically when Swap Now is clicked
+
+## Total Portfolio Race Condition Fix
+
+- [x] Fix: Total Portfolio shows different values each time wallet connects (race between balance loading and price loading)
+- [x] Root cause: fetchBalances() fires before prices.SOL arrives from API, so SOL usdValue = 0 on first render
+- [x] Fix 1: Added pricesLoaded flag to WalletContext (true once SOL price > 0 is fetched)
+- [x] Fix 2: PortfolioCard shows animated skeleton + "Fetching balances..." until both pricesLoaded && !balancesLoading
+- [x] Result: total only renders once it is stable and accurate

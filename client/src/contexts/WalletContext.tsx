@@ -48,6 +48,8 @@ interface WalletContextValue {
   balances: WalletBalance[];
   totalUsd: number;
   balancesLoading: boolean;
+  /** True once the SOL price has been fetched at least once (prices.SOL > 0) */
+  pricesLoaded: boolean;
   // Actions
   connect: () => void;
   disconnect: () => void;
@@ -87,6 +89,8 @@ function WalletInner({ children }: { children: ReactNode }) {
   const [balances, setBalances] = useState<WalletBalance[]>([]);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [prices, setPrices] = useState<{ SOL: number; USDT: number; USDC: number }>({ SOL: 0, USDT: 1, USDC: 1 });
+  // True once the SOL price has been fetched at least once
+  const [pricesLoaded, setPricesLoaded] = useState(false);
 
   // Fetch prices from AFOS backend
   useEffect(() => {
@@ -96,11 +100,13 @@ function WalletInner({ children }: { children: ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           const p = data.prices || {};
+          const solPrice = p.SOL?.usd || p.sol?.usd || 0;
           setPrices({
-            SOL: p.SOL?.usd || p.sol?.usd || 0,
+            SOL: solPrice,
             USDT: 1, // stablecoin — always $1.00
             USDC: 1, // stablecoin — always $1.00
           });
+          if (solPrice > 0) setPricesLoaded(true);
         }
       } catch (_) {}
     };
@@ -207,6 +213,7 @@ function WalletInner({ children }: { children: ReactNode }) {
         balances,
         totalUsd,
         balancesLoading,
+        pricesLoaded,
         connect,
         disconnect,
         refreshBalances: fetchBalances,

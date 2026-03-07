@@ -1176,7 +1176,7 @@ function QuickActions({ onNavigate }: { onNavigate: (page: NavPage) => void }) {
 // ── Portfolio Card ─────────────────────────────────────────────────────────
 function PortfolioCard() {
   // Solana balances (SOL + USDT/SOL + USDC/SOL)
-  const { totalUsd: solanaTotalUsd, connected: solAdapterConnected } = useWallet();
+  const { totalUsd: solanaTotalUsd, connected: solAdapterConnected, balancesLoading, pricesLoaded } = useWallet();
   // Ethereum native + ERC-20 (USDT/ETH + USDC/ETH)
   const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
   const solanaConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
@@ -1205,6 +1205,10 @@ function PortfolioCard() {
 
   const anyConnected = connectedChains.length > 0;
 
+  // Show skeleton while prices or balances are still loading for a connected Solana wallet
+  // This prevents the flickering $0 → real value race condition
+  const isLoading = solanaConnected && (!pricesLoaded || balancesLoading);
+
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
       <div className="flex items-center justify-between mb-1">
@@ -1212,17 +1216,23 @@ function PortfolioCard() {
         <span className="text-xs text-muted-foreground font-mono">non-custodial</span>
       </div>
       <div className="flex items-end gap-3 mb-1">
-        <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
-          {anyConnected
-            ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-            : <span className="text-muted-foreground text-xl">$0.00</span>
-          }
-        </p>
+        {isLoading ? (
+          <div className="h-9 w-32 rounded-md bg-muted animate-pulse" />
+        ) : (
+          <p className="text-3xl font-bold font-mono text-foreground tracking-tight">
+            {anyConnected
+              ? `$${totalUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : <span className="text-muted-foreground text-xl">$0.00</span>
+            }
+          </p>
+        )}
       </div>
       <p className="text-xs text-muted-foreground">
-        {anyConnected
-          ? `Live · ${connectedChains.join(" + ")} connected`
-          : "Connect a wallet to see your balance"}
+        {isLoading
+          ? "Fetching balances..."
+          : anyConnected
+            ? `Live · ${connectedChains.join(" + ")} connected`
+            : "Connect a wallet to see your balance"}
       </p>
     </div>
   );
