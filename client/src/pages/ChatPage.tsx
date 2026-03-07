@@ -19,7 +19,9 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "@/contexts/ChatContext";
 import { useLightPeer } from "@/contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
-import { Connection, VersionedTransaction } from "@solana/web3.js";
+import { useP2PSwap } from "@/hooks/useP2PSwap";
+import { P2PSwapProgressModal } from "../components/P2PSwapProgressModal";
+import { Connection, VersionedTransaction, Transaction } from "@solana/web3.js";
 import { Link } from "wouter";
 import { SUPPORTED_WALLETS_TEXT } from "@shared/const";
 
@@ -578,7 +580,8 @@ function MessageBubble({
 
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
-  const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
+  const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction, signTransaction: signTx } = useWallet();
+  const signTransaction = signTx as ((tx: Transaction) => Promise<Transaction>) | null;
   const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
   const { user } = useAuth();
   const openId = user?.openId;
@@ -591,6 +594,22 @@ export default function ChatPage() {
 
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
+
+  // ── P2P HTLC swap state ─────────────────────────────────────────────────────
+  const { swap: p2pSwap, initiateAsRequester, dismiss: dismissP2PSwap } = useP2PSwap();
+  // Stores pending P2P swap data while waiting for B's p2p_quote_accepted
+  const pendingP2PSwapRef = useRef<{
+    rfqId: string;
+    counterpartyPeerId: string;
+    fromToken: string;
+    toToken: string;
+    fromChain: string;
+    toChain: string;
+    fromAmount: number;
+    toAmount: number;
+    rate: number;
+    counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string };
+  } | null>(null);
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
@@ -663,6 +682,48 @@ export default function ChatPage() {
     window.addEventListener("afos:agent-rfq", handler);
     return () => window.removeEventListener("afos:agent-rfq", handler);
   }, [addMessage]);
+
+  // Listen for p2p_quote_accepted — B accepted, now A initiates HTLC lock
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        rfqId: string;
+        fromPeerId: string;
+        walletAddresses?: { solana?: string; ethereum?: string; bitcoin?: string };
+      };
+      const pending = pendingP2PSwapRef.current;
+      if (!pending || pending.rfqId !== detail.rfqId) return;
+      if (!publicKey || !signTransaction) {
+        toast.error("Wallet not connected", { description: "Connect your Solana wallet to initiate the HTLC lock." });
+        return;
+      }
+      const solRpc = import.meta.env.VITE_SOL_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+      const connection = new Connection(solRpc, "confirmed");
+      try {
+        await initiateAsRequester({
+          rfqId: pending.rfqId,
+          counterpartyPeerId: pending.counterpartyPeerId,
+          fromToken: pending.fromToken,
+          toToken: pending.toToken,
+          fromChain: pending.fromChain,
+          toChain: pending.toChain,
+          fromAmount: pending.fromAmount,
+          toAmount: pending.toAmount,
+          rate: pending.rate,
+          walletPublicKey: publicKey.toString(),
+          counterpartyWallets: detail.walletAddresses ?? pending.counterpartyWallets,
+          signTransaction,
+          connection,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("P2P swap failed", { description: msg.slice(0, 100) });
+      }
+    };
+    window.addEventListener("afos:p2p-quote-accepted", handler);
+    return () => window.removeEventListener("afos:p2p-quote-accepted", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, signTransaction, initiateAsRequester]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
@@ -949,16 +1010,32 @@ export default function ChatPage() {
         openId,
       });
 
-      // P2P route matched: HTLC coordinated by agent via signaling server
+      // P2P route matched: store pending data and wait for B's p2p_quote_accepted
       if (solResult.route === "AFOS P2P") {
-        const peerLabel = solResult.p2pQuote?.peerAlias ?? solResult.p2pQuote?.peerId?.slice(0, 8) ?? "peer";
-        toast.success("P2P peer matched!", { description: `Peer: @${peerLabel}` });
+        const p2pQ = solResult.p2pQuote;
+        const peerLabel = p2pQ?.peerAlias ?? p2pQ?.peerId?.slice(0, 8) ?? "peer";
+        // Store pending swap data — will be used when B sends p2p_quote_accepted
+        if (p2pQ?.rfqId && p2pQ?.peerId) {
+          pendingP2PSwapRef.current = {
+            rfqId: p2pQ.rfqId,
+            counterpartyPeerId: p2pQ.peerId,
+            fromToken: quoteData.fromToken,
+            toToken: quoteData.toToken,
+            fromChain: quoteData.fromChain ?? "solana",
+            toChain: quoteData.toChain ?? "solana",
+            fromAmount: quoteData.fromAmount,
+            toAmount: quoteData.toAmount,
+            rate: quoteData.rate,
+            counterpartyWallets: (p2pQ as { counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string } }).counterpartyWallets,
+          };
+        }
+        toast.success("P2P peer matched!", { description: `Waiting for @${peerLabel} to accept…` });
         setMessages(prev => prev.map(m =>
-          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: solResult.p2pQuote?.rfqId ?? "p2p" } : m
+          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2pQ?.rfqId ?? "p2p" } : m
         ));
         addMessage({
           role: "assistant",
-          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Agent coordinating HTLC — please sign the transaction in your wallet.`,
+          content: `P2P peer matched: **@${peerLabel}**. Waiting for them to accept the swap. Once accepted, you\'ll be prompted to sign the HTLC lock transaction.`,
           type: "text",
         });
         setExecutingId(null);
@@ -1240,6 +1317,8 @@ export default function ChatPage() {
         onClose={() => setShowWalletModal(false)}
         defaultChain={walletModalChain}
       />
+      {/* P2P HTLC swap progress modal */}
+      <P2PSwapProgressModal swap={p2pSwap} onDismiss={dismissP2PSwap} />
     </div>
   );
 }

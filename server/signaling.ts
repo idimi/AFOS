@@ -69,12 +69,46 @@ interface ClientMessage {
   candidate?: unknown;
   payload?: unknown;
   rfq?: unknown;
+  // P2P swap coordination fields
+  rfqId?: string;
+  wallets?: { solana?: string; ethereum?: string; bitcoin?: string };
+  rate?: number;
+  outAmount?: number;
+  secretHash?: string;
+  lockTxHash?: string;
+  lockChain?: string;
+  escrowAddress?: string;
+  lockedAmount?: number;
+  lockedToken?: string;
+  timelockA?: number;
+  timelockB?: number;
+  secret?: string;
+  revealTxHash?: string;
+  reason?: string;
+  refunding?: boolean;
+  fromAlias?: string;
 }
 
 // ─── Peer Registry ───────────────────────────────────────────────────────────
 
 const peers = new Map<string, SignalingPeer>();
 const STALE_TIMEOUT_MS = 90_000; // Remove peers after 90s without heartbeat
+
+// ─── RFQ → Requester Peer Registry ──────────────────────────────────────────
+// Maps rfqId → requesterPeerId so server-side accept handlers can notify A
+const rfqPeerRegistry = new Map<string, string>(); // rfqId → requesterPeerId
+
+/** Register an rfqId → requesterPeerId mapping (called when agent_rfq is sent to B) */
+export function registerRfqPeer(rfqId: string, requesterPeerId: string): void {
+  rfqPeerRegistry.set(rfqId, requesterPeerId);
+  // Auto-expire after 30 minutes to avoid memory leaks
+  setTimeout(() => rfqPeerRegistry.delete(rfqId), 30 * 60 * 1000);
+}
+
+/** Look up the requester's peerId for a given rfqId */
+export function getRequesterPeerIdForRfq(rfqId: string): string | undefined {
+  return rfqPeerRegistry.get(rfqId);
+}
 
 /** Get a sanitised peer list (no WebSocket refs) for broadcasting */
 function getPeerList() {
@@ -383,6 +417,107 @@ export function attachSignalingServer(httpServer: HttpServer) {
             payload: msg.payload,
           });
           ws.send(JSON.stringify({ type: "message_ack", targetPeerId: msg.targetPeerId, delivered: inviteDelivered }));
+          break;
+        }
+
+        // ── P2P Swap: Quote Accepted (B → A) ─────────────────────────────
+        case "p2p_quote_accepted": {
+          const fromId7 = msg.peerId || registeredPeerId;
+          if (!fromId7 || !msg.targetPeerId) {
+            ws.send(JSON.stringify({ type: "error", message: "peerId and targetPeerId required" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "p2p_quote_accepted",
+            rfqId: msg.rfqId,
+            fromPeerId: fromId7,
+            fromAlias: msg.fromAlias,
+            wallets: msg.wallets,
+            rate: msg.rate,
+            outAmount: msg.outAmount,
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
+        // ── P2P Swap: HTLC Params (A → B, after A locks) ──────────────────
+        case "p2p_htlc_params": {
+          const fromId8 = msg.peerId || registeredPeerId;
+          if (!fromId8 || !msg.targetPeerId) {
+            ws.send(JSON.stringify({ type: "error", message: "peerId and targetPeerId required" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "p2p_htlc_params",
+            rfqId: msg.rfqId,
+            fromPeerId: fromId8,
+            secretHash: msg.secretHash,
+            lockTxHash: msg.lockTxHash,
+            lockChain: msg.lockChain,
+            escrowAddress: msg.escrowAddress,
+            lockedAmount: msg.lockedAmount,
+            lockedToken: msg.lockedToken,
+            timelockA: msg.timelockA,
+            timelockB: msg.timelockB,
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
+        // ── P2P Swap: HTLC Locked by B (B → A) ───────────────────────────
+        case "p2p_htlc_locked": {
+          const fromId9 = msg.peerId || registeredPeerId;
+          if (!fromId9 || !msg.targetPeerId) {
+            ws.send(JSON.stringify({ type: "error", message: "peerId and targetPeerId required" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "p2p_htlc_locked",
+            rfqId: msg.rfqId,
+            fromPeerId: fromId9,
+            lockTxHash: msg.lockTxHash,
+            lockChain: msg.lockChain,
+            escrowAddress: msg.escrowAddress,
+            lockedAmount: msg.lockedAmount,
+            lockedToken: msg.lockedToken,
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
+        // ── P2P Swap: Complete / Secret Reveal (A → B) ────────────────────
+        case "p2p_swap_complete": {
+          const fromId10 = msg.peerId || registeredPeerId;
+          if (!fromId10 || !msg.targetPeerId) {
+            ws.send(JSON.stringify({ type: "error", message: "peerId and targetPeerId required" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "p2p_swap_complete",
+            rfqId: msg.rfqId,
+            fromPeerId: fromId10,
+            secret: msg.secret,
+            revealTxHash: msg.revealTxHash,
+            timestamp: Date.now(),
+          });
+          break;
+        }
+
+        // ── P2P Swap: Failed / Abort ───────────────────────────────────────
+        case "p2p_swap_failed": {
+          const fromId11 = msg.peerId || registeredPeerId;
+          if (!fromId11 || !msg.targetPeerId) {
+            ws.send(JSON.stringify({ type: "error", message: "peerId and targetPeerId required" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "p2p_swap_failed",
+            rfqId: msg.rfqId,
+            fromPeerId: fromId11,
+            reason: msg.reason,
+            refunding: msg.refunding,
+            timestamp: Date.now(),
+          });
           break;
         }
 

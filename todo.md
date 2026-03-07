@@ -1952,3 +1952,60 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] LP invite link — shareable URL that pre-fills LP registration form with the requested pair
 - [x] LP invite notification — toast when receiving an lp_invite with quick-add button
 - [x] LP auto-quote fix — LP peers now always submit quotes (not just when autoAccept is enabled)
+
+## P2P Swap Flow Audit & Fix (Mar 7)
+
+- [ ] Audit: trace what happens after Agent B clicks "Accept" on a quote
+- [ ] Fix: Agent A must receive quote acceptance via SSE/signaling and update its UI
+- [ ] Fix: After acceptance, Agent A must initiate HTLC lock (not just show a static card)
+- [ ] Fix: HTLC signing must use real wallet transactions (not mock checkmarks)
+- [ ] Fix: Agent B must receive HTLC lock event and counter-lock
+- [ ] Fix: After both locks, reveal secret and complete swap
+- [ ] Fix: Record completed swap in Recent Swaps on both sides
+- [ ] Fix: Agent A "Confirm Swap" button in chat must trigger the real HTLC flow
+
+## P2P HTLC Flow Rewrite (Mar 7, 2026)
+- [x] Fix P2P atomic swap flow: correct HTLC coordination between Agent A (requester) and Agent B (LP/maker)
+- [x] useP2PSwap.ts: Add auto-reveal useEffect — when A is in "revealing" phase, automatically sends p2p_swap_complete with secret to B
+- [x] useP2PSwap.ts: Add p2p_quote_accepted listener — A stores B's wallet addresses when B accepts
+- [x] useP2PSwap.ts: p2p_htlc_locked listener — A moves to "revealing" phase when B confirms lock
+- [x] LightPeerContext.tsx: Add wallet refs (solPubkeyRef, signTransactionRef, etc.) to avoid stale closures in signaling callbacks
+- [x] LightPeerContext.tsx: Add p2p_htlc_params listener in signaling setup — B locks their HTLC directly using wallet context, sends p2p_htlc_locked to A
+- [x] LightPeerContext.tsx: acceptRfq now correctly sends p2p_quote_accepted via signaling (with B's wallets) and waits for p2p_htlc_params — does NOT lock immediately
+- [x] LightPeerContext.tsx: Add requesterPeerId to IncomingRfq type and populate from agent_rfq event
+- [x] Swaps.tsx: handleAcceptOrder sends p2p_quote_accepted to B before calling initiateAsRequester
+- [x] Swaps.tsx: Add afos:p2p-htlc-params listener — B calls initiateAsMaker when A's HTLC params arrive (secondary path for LP on Swaps page)
+- [x] Swaps.tsx: Add walletAddresses to OrderBookEntry type — populated from signalingPeers when P2P quote arrives
+- [x] TypeScript: 0 errors across all modified files
+
+## P2P HTLC Flow Rewrite (Mar 7, 2026)
+- [x] Fix P2P atomic swap flow: correct HTLC coordination between Agent A (requester) and Agent B (LP/maker)
+- [x] useP2PSwap.ts: Add auto-reveal useEffect — when A is in revealing phase, automatically sends p2p_swap_complete with secret to B
+- [x] useP2PSwap.ts: Add p2p_quote_accepted listener — A stores B wallet addresses when B accepts
+- [x] useP2PSwap.ts: p2p_htlc_locked listener — A moves to revealing phase when B confirms lock
+- [x] LightPeerContext.tsx: Add wallet refs to avoid stale closures in signaling callbacks
+- [x] LightPeerContext.tsx: Add p2p_htlc_params listener — B locks their HTLC directly, sends p2p_htlc_locked to A
+- [x] LightPeerContext.tsx: acceptRfq now sends p2p_quote_accepted via signaling and waits for p2p_htlc_params
+- [x] LightPeerContext.tsx: Add requesterPeerId to IncomingRfq type and populate from agent_rfq event
+- [x] Swaps.tsx: handleAcceptOrder sends p2p_quote_accepted to B before calling initiateAsRequester
+- [x] Swaps.tsx: Add afos:p2p-htlc-params listener for LP on Swaps page
+- [x] Swaps.tsx: Add walletAddresses to OrderBookEntry type
+- [x] TypeScript: 0 errors across all modified files
+
+## P2P HTLC Flow Rewrite (Mar 7, 2026)
+
+- [x] Fix acceptRfq in LightPeerContext — send p2p_quote_accepted via signaling instead of locking immediately
+- [x] Add p2p_htlc_params listener in LightPeerContext — locks B's HTLC when A's params arrive (using wallet refs for fresh state)
+- [x] Add requesterPeerId to IncomingRfq type and populate it from agent_rfq event
+- [x] Add wallet refs (solPubkeyRef, signTransactionRef, solAdapterConnectedRef) to LightPeerContext for stale closure safety
+- [x] Add auto-reveal useEffect in useP2PSwap — when A is in "revealing" phase, sends p2p_swap_complete to B
+- [x] Add afos:p2p-quote-accepted CustomEvent dispatch in useP2PSwap so ChatPage can react
+- [x] Fix handleAcceptOrder in Swaps.tsx — sends p2p_quote_accepted to B first, then calls initiateAsRequester
+- [x] Add walletAddresses to OrderBookEntry type so B's wallets are available when A accepts
+- [x] Add afos:p2p-htlc-params listener in Swaps.tsx for Maker path via useP2PSwap
+- [x] Add rfqPeerRegistry to signaling.ts — maps rfqId → requesterPeerId
+- [x] Add registerRfqPeer call in sendAgentRfqToPeer in chat.ts
+- [x] Update accept handler in chat.ts to send p2p_quote_accepted via signaling
+- [x] Add useP2PSwap hook to ChatPage — listens for afos:p2p-quote-accepted and calls initiateAsRequester
+- [x] Store pendingP2PSwapRef in ChatPage when P2P route is matched
+- [x] Add P2PSwapProgressModal to ChatPage JSX

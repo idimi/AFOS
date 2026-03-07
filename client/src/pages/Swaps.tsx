@@ -19,15 +19,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
+import { useP2PSwap } from "../hooks/useP2PSwap";
 import { useWallet } from "../contexts/WalletContext";
+import { useConnection } from "@solana/wallet-adapter-react";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { FindLPsDialog } from "../components/FindLPsDialog";
+import { P2PSwapProgressModal } from "../components/P2PSwapProgressModal";
 import { Wallet } from "lucide-react";
 import { getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
+import { getSignalingClient } from "../lib/signalingClient";
 import { usePeerReputation } from "../hooks/usePeerReputation";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
@@ -993,6 +997,7 @@ function TradingViewChart({ fromToken, toToken, theme }: {
 interface OrderBookEntry {
   id: string;
   rfqId?: string; // real P2P quote rfqId (from SSE p2p_quote event)
+  peerId?: string; // real P2P peer ID for signaling
   peer: string;
   fromSymbol: string;
   toSymbol: string;
@@ -1005,6 +1010,8 @@ interface OrderBookEntry {
   reputation: number;
   timedOut?: boolean; // true when peer was online but did not respond within 30s
   rfqSentAt?: number; // timestamp (ms) when the RFQ was sent to this peer
+  /** B's wallet addresses — populated from signalingPeers when a P2P quote arrives */
+  walletAddresses?: { solana?: string; ethereum?: string; bitcoin?: string };
 }
 
 // buildFallbackOrders removed — Order Book uses real SSE p2p_quote events only
@@ -1405,9 +1412,14 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       const peerName = d.peer ?? d.peerId ?? "P2P Peer";
       // Remove from pending tracker — peer responded
       pendingPeersRef.current.delete(peerName);
+      // Look up B's wallet addresses from the signaling peer registry
+      const bPeerInfo = d.peerId
+        ? (signalingPeers ?? []).find(p => p.peerId === d.peerId)
+        : undefined;
       const entry: OrderBookEntry = {
         id: d.rfqId ?? `sse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         rfqId: d.rfqId,
+        peerId: d.peerId,
         peer: peerName,
         fromSymbol: qFrom,
         toSymbol: qTo,
@@ -1419,6 +1431,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
         latency: d.latency ?? 20,
         reputation: 97.5,
         timedOut: false,
+        walletAddresses: bPeerInfo?.walletAddresses as { solana?: string; ethereum?: string; bitcoin?: string } | undefined,
       };
       setFlash(entry.id);
       setTimeout(() => setFlash(null), 800);
@@ -2459,10 +2472,12 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [activeTab, setActiveTab] = useState<"swap" | "feed" | "autopost">("swap");
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
-  const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
+  const { connected, shortAddress, balances: solBalances, refreshBalances, publicKey, signTransaction } = useWallet();
+  const { connection } = useConnection();
   const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
    const { theme: currentTheme } = useTheme();
   const lightPeer = useLightPeer();
+  const p2pSwap = useP2PSwap();
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
   // Derived from connected wallets; falls back to TOKENS static values when disconnected.
   const liveBalances = useMemo<Record<string, number>>(() => {
@@ -2871,30 +2886,110 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     setSwapPhase("idle");
   };
 
-  const handleAcceptOrder = (order: OrderBookEntry) => {
+  // ── B receives p2p_htlc_params — B must now lock their side ─────────────────
+  // LightPeerContext dispatches this event when A's HTLC params arrive.
+  // B (LP/maker) calls initiateAsMaker to lock their side of the swap.
+  useEffect(() => {
+    const handleHtlcParams = async (e: Event) => {
+      const msg = (e as CustomEvent<{
+        rfqId: string;
+        fromPeerId?: string;
+        secretHash: string;
+        lockTxHash: string;
+        lockChain: string;
+        escrowAddress: string;
+        lockedAmount: number;
+        lockedToken: string;
+        timelockA: number;
+        timelockB: number;
+      }>).detail;
+      // Only proceed if B has a wallet connected
+      if (!connected || !publicKey || !signTransaction) {
+        toast.error("Connect your wallet to complete the P2P swap", {
+          description: "A connected wallet is required to lock funds in the HTLC escrow.",
+        });
+        return;
+      }
+      // Find the matching accepted RFQ from lightPeer
+      const rfq = lightPeer.incomingRfqs.find(r => r.rfqId === msg.rfqId);
+      if (!rfq) return; // not our RFQ
+      const requesterPeerId = rfq.requesterPeerId ?? msg.fromPeerId ?? "";
+      if (!requesterPeerId) return;
+      await p2pSwap.initiateAsMaker({
+        rfqId: msg.rfqId,
+        counterpartyPeerId: requesterPeerId,
+        fromToken: rfq.fromToken,
+        toToken: rfq.toToken,
+        fromChain: rfq.fromChain,
+        toChain: rfq.toChain,
+        fromAmount: rfq.amount,
+        toAmount: rfq.suggestedOutAmount,
+        rate: rfq.suggestedRate,
+        secretHash: msg.secretHash,
+        lockTxHashA: msg.lockTxHash,
+        escrowAddressA: msg.escrowAddress,
+        timelockB: msg.timelockB,
+        walletPublicKey: publicKey.toString(),
+        counterpartyWallets: { solana: publicKey.toString() },
+        signTransaction: signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>,
+        connection,
+      });
+    };
+    window.addEventListener("afos:p2p-htlc-params", handleHtlcParams);
+    return () => window.removeEventListener("afos:p2p-htlc-params", handleHtlcParams);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, signTransaction, connection, lightPeer.incomingRfqs, p2pSwap.initiateAsMaker]);
+
+  const handleAcceptOrder = async (order: OrderBookEntry) => {
     haptic.tap();
-    // Pre-fill the swap form with the accepted quote
-    setFromAmount(order.fromAmount.toString());
-    // If this is a real P2P quote (has rfqId), set it as the preferred peer
-    if (order.rfqId) {
-      // Build a synthetic LivePeer from the order so the Preferred Peer UI shows it
-      const syntheticPeer: LivePeer = {
-        id: order.rfqId,
-        alias: order.peer,
-        latency: order.latency,
-        pairs: [`${order.fromSymbol}/${order.toSymbol}`],
-        online: true,
-        reputation: order.reputation,
-      };
-      setSelectedPeer(syntheticPeer);
-      // Also add to livePeers if not already present
-      setLivePeers(prev => prev.some(p => p.id === order.rfqId) ? prev : [syntheticPeer, ...prev]);
-      setShowAdvanced(true); // open Advanced so user sees the selected peer
+
+    // If this is a real P2P quote with a peer ID, initiate the HTLC flow directly
+    if (order.rfqId && order.peerId) {
+      // Require wallet connection for real HTLC
+      if (!connected || !publicKey || !signTransaction) {
+        setShowWalletModal(true);
+        toast.error("Connect your wallet to accept P2P quotes", {
+          description: "A connected wallet is required to lock funds in the HTLC escrow.",
+        });
+        return;
+      }
+
+      // Use B's wallet addresses stored in the order entry (populated from signalingPeers when the quote arrived)
+      const counterpartyWallets = order.walletAddresses;
+
+      // Step 1: Notify B that A is accepting (so B knows to expect p2p_htlc_params)
+      const sigClient = getSignalingClient();
+      sigClient.sendP2PQuoteAccepted(order.peerId, {
+        rfqId: order.rfqId,
+        fromAlias: publicKey.toString().slice(0, 8),
+        wallets: { solana: publicKey.toString() },
+        rate: order.rate,
+        outAmount: order.toAmount,
+      });
+
+      // Step 2: Lock A's HTLC and send p2p_htlc_params to B
+      await p2pSwap.initiateAsRequester({
+        rfqId: order.rfqId,
+        counterpartyPeerId: order.peerId,
+        fromToken: order.fromSymbol,
+        toToken: order.toSymbol,
+        fromChain: fromToken.chain ?? "solana",
+        toChain: toToken.chain ?? "solana",
+        fromAmount: order.fromAmount,
+        toAmount: order.toAmount,
+        rate: order.rate,
+        walletPublicKey: publicKey.toString(),
+        counterpartyWallets,
+        signTransaction: signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>,
+        connection,
+      });
+      return;
     }
-    toast.success(`Quote accepted from ${order.peer}`, {
-      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}${
-        order.rfqId ? ` · Targeting peer directly` : ''
-      }`,
+
+    // Fallback: pre-fill the swap form for non-P2P quotes
+    setFromAmount(order.fromAmount.toString());
+    toast.success(`Quote selected from ${order.peer}`, {
+      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}`,
     });
   };
 
@@ -3655,6 +3750,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
       <FindLPsDialog open={showFindLPs} onClose={() => setShowFindLPs(false)} pair={`${fromToken.symbol}/${toToken.symbol}`} />
+      <P2PSwapProgressModal swap={p2pSwap.swap} onDismiss={p2pSwap.dismiss} />
       </div>{/* end max-w wrapper */}
     </div>
   );
