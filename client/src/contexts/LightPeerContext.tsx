@@ -609,32 +609,29 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
       setQuotesGiven(q => q + 1);
 
-      // Auto-accept if enabled — with slippage guard
+      // ── Always submit quote to Oracle VM (LP quoting is non-binding) ──────
+      // Submitting a quote just provides a price to the requester's order book.
+      // It is NOT a commitment to trade — that only happens when the LP signs
+      // the HTLC lock transaction. autoAccept controls the HTLC signing step.
       const ssePrefs = prefsRef.current as LightPeerPrefs & { slippagePct?: string | number };
-      if (ssePrefs.autoAccept) {
-        // Slippage guard: the rate we quoted (quotedRate) is already spread-adjusted below oracle.
-        // We guard against the *requester* sending us a manipulated amount that implies a worse rate.
-        // Compare our quoted rate against the oracle mid-price.
-        const oracleRateSse = fromPrice / toPrice;  // already validated above
-        const slippagePctSse = parseFloat(String(ssePrefs.slippagePct ?? "0.5"));
-        const slippageFracSse = isNaN(slippagePctSse) ? 0.005 : slippagePctSse / 100;
-        // Our quoted rate must not be worse than oracle*(1 - tolerance) — i.e. we don't give away
-        // more than slippage% below mid-price. spreadBps is our profit buffer; if spread > slippage
-        // the guard always passes. If spread < slippage the guard catches misconfigured spreads.
-        const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
-        if (sseRateOk) {
-          submitQuote(incoming);
+      const oracleRateSse = fromPrice / toPrice;
+      const slippagePctSse = parseFloat(String(ssePrefs.slippagePct ?? "0.5"));
+      const slippageFracSse = isNaN(slippagePctSse) ? 0.005 : slippagePctSse / 100;
+      const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
+
+      if (sseRateOk) {
+        // Submit quote to Oracle VM so the requester's order book shows this LP's offer
+        submitQuote(incoming);
+        // Auto-accept: if enabled, mark as accepted immediately (LP will sign HTLC)
+        if (ssePrefs.autoAccept) {
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
           );
+          // No toast for auto-accept — the order book update is the feedback
         } else {
-          // Slippage guard triggered — warn user and fall through to manual review
-          toast.warning("Auto-accept blocked: quoted rate outside slippage tolerance", {
-            description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
-            duration: 10000,
-          });
+          // Manual review: show notification so LP can decide to sign HTLC
           toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
-            description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
+            description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD · Quote submitted`,
             duration: 10000,
             action: {
               label: "View",
@@ -645,16 +642,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
         }
       } else {
-        // Show notification
-        toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
-          description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
+        // Slippage guard triggered — do NOT submit quote, warn user
+        toast.warning("Quote blocked: rate outside slippage tolerance", {
+          description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Adjust spread or slippage in LP settings.`,
           duration: 10000,
-          action: {
-            label: "View",
-            onClick: () => {
-              window.dispatchEvent(new CustomEvent("afos:open-peer-panel"));
-            },
-          },
         });
       }
     });
@@ -954,6 +945,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const broadcastRfqFn = useCallback((rfq: unknown) => {
     signalingRef.current?.broadcastRfq(rfq);
   }, []);
+
+  // ── Listen for afos:broadcast-rfq events from other components ────────────
+  // The LiveOrderBook dispatches this event when the user clicks "Get Quotes".
+  // We forward it via the signaling server so LP peers receive it over WebSocket
+  // (in addition to the Oracle VM SSE path).
+  useEffect(() => {
+    if (!prefs.enabled) return; // only forward if LP mode is enabled
+    const handler = (e: Event) => {
+      const rfq = (e as CustomEvent).detail;
+      signalingRef.current?.broadcastRfq(rfq);
+    };
+    window.addEventListener('afos:broadcast-rfq', handler);
+    return () => window.removeEventListener('afos:broadcast-rfq', handler);
+  }, [prefs.enabled]);
 
   return (
     <LightPeerContext.Provider value={{

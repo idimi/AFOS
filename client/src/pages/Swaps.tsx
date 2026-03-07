@@ -1236,15 +1236,25 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   const [flash, setFlash] = useState<string | null>(null);
   // pendingPeers: peerId → timestamp when RFQ was sent (for 30s timeout tracking)
   const pendingPeersRef = useRef<Map<string, number>>(new Map());
-  // hasRequestedQuotes: true only after the user explicitly clicks "Get Quotes"
-  // RFQs are NEVER auto-broadcast on wallet connect or peer list change
-  const [hasRequestedQuotes, setHasRequestedQuotes] = useState(false);
+  // rfqActive: true once the first RFQ has been broadcast (used for UI state)
+  const [rfqActive, setRfqActive] = useState(false);
 
   // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
     refetchInterval: 10_000,
     staleTime: 8_000,
   });
+
+  // Compute matching peer count for the current pair (used for badge + empty state)
+  const matchingPeerCount = useMemo(() => {
+    const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
+    const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
+    return (signalingPeers ?? []).filter(p =>
+      p.pairs.length > 0 &&
+      p.pairs.some(pair => pair === pairKey || pair === reversePairKey) &&
+      p.peerId !== ownPeerId
+    ).length;
+  }, [signalingPeers, fromToken.symbol, toToken.symbol, ownPeerId]);
 
   // ── Debounced fromAmount for RFQ re-broadcast (800ms) ─────────────────────
   const [debouncedRfqAmount, setDebouncedRfqAmount] = useState<number | undefined>(fromAmount);
@@ -1298,7 +1308,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       }
       return next;
     });
-    // Broadcast the real RFQ via Oracle VM
+    // Broadcast the real RFQ via Oracle VM (SSE path to LP peers)
     submitRfq(
       fromToken.symbol,
       toToken.symbol,
@@ -1306,43 +1316,71 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       fromToken.chain as import("../lib/afosApi").SupportedChain,
       toToken.chain as import("../lib/afosApi").SupportedChain,
     ).catch(() => { /* best-effort */ });
+    // Also broadcast via signaling server (WebSocket path — reaches LP peers directly)
+    // This is redundant with the Oracle VM SSE path but improves reliability
+    // when the Oracle VM is slow or unreachable.
+    const rfqPayload = {
+      rfqId: `rfq_${Date.now()}_${ownPeerId?.slice(0, 8) ?? 'anon'}`,
+      fromToken: fromToken.symbol,
+      toToken: toToken.symbol,
+      amount: quoteAmount,
+      fromChain: fromToken.chain,
+      toChain: toToken.chain,
+      requestorPeer: ownPeerId ?? undefined,
+      timestamp: Date.now(),
+    };
+    // signalingRef is not directly accessible here; dispatch via custom event
+    window.dispatchEvent(new CustomEvent('afos:broadcast-rfq', { detail: rfqPayload }));
   };
 
   // Expose the trigger function to the parent via ref
   useEffect(() => {
     if (!triggerGetQuotesRef) return;
     triggerGetQuotesRef.current = () => {
-      setHasRequestedQuotes(true);
       broadcastRfqRef.current?.();
     };
     return () => { if (triggerGetQuotesRef) triggerGetQuotesRef.current = null; };
   }); // runs every render to keep the closure fresh
 
-  // Pair change: clear orders, pending state, and reset quote request flag
+  // Pair change: clear orders and pending state
   useEffect(() => {
     setOrders([]);
     pendingPeersRef.current.clear();
-    setHasRequestedQuotes(false);
+    setRfqActive(false);
   }, [fromToken.symbol, toToken.symbol]);
 
-  // Auto-refresh: re-broadcast every 30s ONLY after user has explicitly requested quotes
+  // ── AUTO-BROADCAST: fire RFQ as soon as wallet is connected and peers are online ──
+  // This replaces the manual "Get Quotes" button.
+  const prevMatchingPeerCountRef = useRef(0);
   useEffect(() => {
-    if (!walletConnected || !hasRequestedQuotes) return;
+    if (!walletConnected) return;
+    const prev = prevMatchingPeerCountRef.current;
+    prevMatchingPeerCountRef.current = matchingPeerCount;
+    // Trigger when peers first appear (0 → N) or on first render with peers already online
+    if (matchingPeerCount > 0 && prev === 0) {
+      broadcastRfqRef.current?.();
+      setRfqActive(true);
+    }
+  }, [walletConnected, matchingPeerCount]);
+
+  // Auto-refresh: re-broadcast every 30s when wallet is connected and peers are online
+  useEffect(() => {
+    if (!walletConnected || matchingPeerCount === 0) return;
     const interval = setInterval(() => {
       broadcastRfqRef.current?.();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [walletConnected, hasRequestedQuotes]);
+  }, [walletConnected, matchingPeerCount]);
 
-  // Re-broadcast when debounced amount changes — but only after user has already requested quotes
+  // Re-broadcast when debounced amount changes (only when already active)
   const prevDebouncedRfqAmountRef = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!hasRequestedQuotes) return;
+    if (!rfqActive || matchingPeerCount === 0) return;
     if (prevDebouncedRfqAmountRef.current === debouncedRfqAmount) return;
     prevDebouncedRfqAmountRef.current = debouncedRfqAmount;
     broadcastRfqRef.current?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedRfqAmount, hasRequestedQuotes]);
+  }, [debouncedRfqAmount, rfqActive, matchingPeerCount]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1444,33 +1482,32 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-bold text-foreground">Live Order Book</span>
-            {hasRequestedQuotes && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+            {rfqActive && matchingPeerCount > 0 && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
             {walletConnected
-              ? hasRequestedQuotes
-                ? "P2P SSE quotes · live"
-                : "Enter amount above and click Get Quotes"
-              : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
+              ? rfqActive && matchingPeerCount > 0
+                ? "P2P SSE quotes \u00b7 live"
+                : matchingPeerCount === 0
+                  ? "No LP peers online for this pair"
+                  : "Connecting to LP peers\u2026"
+              : "Connect wallet to request live quotes"} \u00b7 {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Live peer count indicator — replaces the manual Get Quotes button */}
           {walletConnected && (
-            <button
-              onClick={() => {
-                setHasRequestedQuotes(true);
-                broadcastRfqRef.current?.();
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold"
               style={{
-                background: hasRequestedQuotes ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.15)",
-                border: "1px solid rgba(6,182,212,0.35)",
-                color: "#22d3ee",
+                background: matchingPeerCount > 0 ? "rgba(52,211,153,0.08)" : "rgba(100,116,139,0.08)",
+                border: `1px solid ${matchingPeerCount > 0 ? "rgba(52,211,153,0.25)" : "rgba(100,116,139,0.2)"}`,
+                color: matchingPeerCount > 0 ? "#34d399" : "#64748b",
               }}
             >
               <Radio className="w-3 h-3" />
-              {hasRequestedQuotes ? "Refresh" : "Get Quotes"}
-            </button>
+              <span>{matchingPeerCount} peer{matchingPeerCount !== 1 ? "s" : ""}</span>
+            </div>
           )}
           <div className="text-right">
             <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
@@ -1547,17 +1584,25 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           {!walletConnected ? (
             <>
               <Wallet className="w-5 h-5 text-slate-500" />
-              <p className="text-[10px] text-slate-500">Connect wallet to request live quotes</p>
+              <p className="text-[10px] text-slate-500">Connect wallet to receive live P2P quotes</p>
             </>
-          ) : !hasRequestedQuotes ? (
+          ) : matchingPeerCount === 0 ? (
             <>
-              <Radio className="w-5 h-5 text-slate-500" />
-              <p className="text-[10px] text-slate-500">Click “Get Quotes” to request P2P offers</p>
+              <Radio className="w-5 h-5 text-slate-600" />
+              <p className="text-[10px] text-slate-500">No LP peers online for {fromToken.symbol}/{toToken.symbol}</p>
+              <p className="text-[9px] text-slate-600 text-center max-w-[180px] leading-relaxed">
+                Enable LP Mode in settings to be the first liquidity provider for this pair.
+              </p>
+            </>
+          ) : rfqActive ? (
+            <>
+              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              <p className="text-[10px] text-slate-500">Waiting for quotes from {matchingPeerCount} peer{matchingPeerCount !== 1 ? 's' : ''}\u2026</p>
             </>
           ) : (
             <>
-              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
+              <Loader2 className="w-4 h-4 text-slate-600 animate-spin" />
+              <p className="text-[10px] text-slate-500">Connecting to LP peers\u2026</p>
             </>
           )}
         </div>
@@ -2708,7 +2753,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     setLastTxHash(undefined);
     // Auto-collapse Advanced Settings to reduce visual clutter during swap flow
     setShowAdvanced(false);
-    // Auto-trigger the Live Order Book Get Quotes broadcast so quotes appear without a separate click
+    // Trigger an immediate RFQ broadcast when the user initiates a swap
+    // (the order book auto-broadcasts when peers are online, but this forces an immediate refresh)
     triggerGetQuotesRef.current?.();
 
     try {

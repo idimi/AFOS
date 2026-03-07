@@ -1928,3 +1928,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Root cause: phantomMultiChain sets state immediately without balances, then fetches async — causing $0 window
 - [x] Fix: added solanaBalancesLoading flag to PhantomMultiChainState; set true on connect, false when balances arrive
 - [x] PortfolioCard now checks both paths: standard adapter (pricesLoaded + !balancesLoading) and Phantom multi-chain (!solanaBalancesLoading)
+
+## Live Order Book — Bridge Chat and Swaps Page Paths
+
+- [ ] Investigate: LP accepted quote from Dashboard chat path does not appear in Swaps page Live Order Book
+- [ ] Trace how LP quote response flows from LightPeerContext back to the requester
+- [ ] Implement bridge: when LP accepts RFQ via signaling, emit a p2p_quote SSE event that the Swaps page order book can display
+
+## Auto-Quote Flow — Remove Get Quotes Button
+
+- [x] Remove "Get Quotes" button from Live Order Book header
+- [x] Auto-broadcast RFQ immediately when wallet is connected and LP peers are online for the current pair
+- [x] Auto-rebroadcast when pair changes, amount changes, or new LP peers come online
+- [x] Show live LP peer count indicator in order book header (replaces button)
+- [x] Show "No LP peers online" empty state when no matching peers exist
+- [x] Show "Waiting for quotes..." spinner while RFQ is in-flight
