@@ -33,6 +33,7 @@ import NetworkPanel from "../components/NetworkPanel";
 import { useLightPeer } from "../contexts/LightPeerContext";
 import { getSignalingClient } from "../lib/signalingClient";
 import { usePeerReputation } from "../hooks/usePeerReputation";
+import { buildSolanaHtlcRefundTx } from "../lib/solanaHtlc";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
@@ -2477,7 +2478,13 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
    const { theme: currentTheme } = useTheme();
   const lightPeer = useLightPeer();
-  const p2pSwap = useP2PSwap();
+  const walletId = lightPeer.solanaAddress || lightPeer.ethereumAddress || lightPeer.bitcoinAddress || "anon";
+  const { data: swapSettings } = trpc.settings.get.useQuery({ openId: walletId });
+  const p2pSwap = useP2PSwap({
+    timelockSolBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockSolBlocks as number | undefined,
+    timelockEthBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockEthBlocks as number | undefined,
+    timelockBtcBlocks: (swapSettings as Record<string, unknown> | undefined)?.timelockBtcBlocks as number | undefined,
+  });
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
   // Derived from connected wallets; falls back to TOKENS static values when disconnected.
   const liveBalances = useMemo<Record<string, number>>(() => {
@@ -2939,6 +2946,75 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     return () => window.removeEventListener("afos:p2p-htlc-params", handleHtlcParams);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, publicKey, signTransaction, connection, lightPeer.incomingRfqs, p2pSwap.initiateAsMaker]);
+
+  // ── A's Solana HTLC refund ─────────────────────────────────────────────────────────────
+  // useP2PSwap dispatches this event when the Solana HTLC timelock expires and
+  // B never locked. We build the refund tx here because Swaps.tsx has direct
+  // access to the Phantom wallet adapter (signTransaction + connection).
+  useEffect(() => {
+    const handleSolRefund = async (e: Event) => {
+      const detail = (e as CustomEvent<{
+        rfqId: string;
+        chain: string;
+        escrowAddress: string;
+        secretHash: string;
+        walletAddress: string;
+      }>).detail;
+
+      if (detail.chain !== "solana") return;
+      if (!connected || !publicKey || !signTransaction) {
+        toast.error("Wallet not connected", {
+          description: "Connect your Solana wallet to submit the HTLC refund transaction.",
+        });
+        return;
+      }
+
+      const toastId = `sol-refund-${detail.rfqId}`;
+      toast.loading("Building Solana HTLC refund…", { id: toastId, description: "Waiting for wallet signature." });
+
+      try {
+        const { transaction } = await buildSolanaHtlcRefundTx({
+          senderPubkey: publicKey,
+          secretHash: detail.secretHash,
+          escrowAddress: detail.escrowAddress,
+          connection,
+        });
+
+        const signed = await signTransaction(transaction) as import("@solana/web3.js").Transaction;
+        const rawTx = signed.serialize();
+        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        await connection.confirmTransaction(txHash, "confirmed");
+
+        toast.success("Solana HTLC refunded", {
+          id: toastId,
+          description: (
+            <span>
+              Funds reclaimed —{" "}
+              <a
+                href={`https://solscan.io/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-cyan-400"
+              >
+                View on Solscan
+              </a>
+            </span>
+          ) as unknown as string,
+          duration: 10_000,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("Solana HTLC refund failed", {
+          id: toastId,
+          description: msg.includes("User rejected") ? "Transaction rejected in wallet." : msg.slice(0, 120),
+        });
+      }
+    };
+
+    window.addEventListener("afos:p2p-refund-needed", handleSolRefund);
+    return () => window.removeEventListener("afos:p2p-refund-needed", handleSolRefund);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected, publicKey, signTransaction, connection]);
 
   const handleAcceptOrder = async (order: OrderBookEntry) => {
     haptic.tap();

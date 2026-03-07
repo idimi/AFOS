@@ -410,4 +410,41 @@ export const historyRouter = router({
 
       return { refunds, isWalletScoped };
     }),
+
+  /**
+   * Fetch full detail for a single swap by its swapAnalytics row ID.
+   * Returns the swapAnalytics row plus any matching htlcSwaps rows
+   * (matched by rfqId or txId) so the detail drawer can show both legs.
+   */
+  detail: publicProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { swap: null, htlcLegs: [] };
+
+      const [swap] = await db
+        .select()
+        .from(swapAnalytics)
+        .where(eq(swapAnalytics.id, input.id))
+        .limit(1);
+
+      if (!swap) return { swap: null, htlcLegs: [] };
+
+      // Find matching HTLC legs by rfqId (preferred) or txId
+      const htlcConditions = [];
+      if (swap.rfqId) htlcConditions.push(eq(htlcSwaps.rfqId, swap.rfqId));
+      if (swap.txId) htlcConditions.push(eq(htlcSwaps.lockTxId, swap.txId));
+
+      const htlcLegs = htlcConditions.length > 0
+        ? await db
+            .select()
+            .from(htlcSwaps)
+            .where(or(...htlcConditions))
+            .orderBy(htlcSwaps.createdAt)
+        : [];
+
+      return { swap, htlcLegs };
+    }),
 });

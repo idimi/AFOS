@@ -39,6 +39,9 @@ export const settingsRouter = router({
         theme: settings.theme ?? DEFAULT_USER_SETTINGS.theme,
         autoAcceptRfq: settings.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq,
         autoAcceptMaxUsd: settings.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
+        timelockSolBlocks: settings.timelockSolBlocks ?? DEFAULT_USER_SETTINGS.timelockSolBlocks,
+        timelockEthBlocks: settings.timelockEthBlocks ?? DEFAULT_USER_SETTINGS.timelockEthBlocks,
+        timelockBtcBlocks: settings.timelockBtcBlocks ?? DEFAULT_USER_SETTINGS.timelockBtcBlocks,
       };
     }),
 
@@ -119,6 +122,9 @@ export const settingsRouter = router({
         theme: themeEnum.optional(),
         autoAcceptRfq: z.boolean().optional(),
         autoAcceptMaxUsd: z.number().int().min(0).max(1_000_000).optional(),
+        timelockSolBlocks: z.number().int().min(1).max(10_000).optional(),
+        timelockEthBlocks: z.number().int().min(1).max(10_000).optional(),
+        timelockBtcBlocks: z.number().int().min(1).max(1_000).optional(),
       }),
     )
     .mutation(async ({ input }) => {

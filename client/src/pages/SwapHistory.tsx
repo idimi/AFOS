@@ -13,6 +13,7 @@ import {
   ArrowDownUp, TrendingUp, TrendingDown, BarChart3,
   RefreshCw, Download, ChevronLeft, ChevronRight,
   Shield, AlertTriangle, RotateCcw, History, Wallet,
+  Info, Lock, Unlock, Key, RotateCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -20,6 +21,9 @@ import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { OpenTradesTab, RefundsTab, HtlcSearchBar } from "./SwapHistoryTabs";
 import { useAuth } from "@/_core/hooks/useAuth";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -282,6 +286,7 @@ export default function SwapHistory() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedSwapId, setSelectedSwapId] = useState<number | null>(null);
   const PAGE_SIZE = 8;
 
   // Debounced search for Swaps tab — 350ms delay so we don't fire a server request on every keystroke
@@ -425,6 +430,12 @@ export default function SwapHistory() {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-safe">
+      {/* P2P Swap Detail Drawer */}
+      <SwapDetailDrawer
+        swapId={selectedSwapId}
+        onClose={() => setSelectedSwapId(null)}
+        chainConfig={CHAIN_CONFIG}
+      />
       <div className="max-w-[1280px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -634,7 +645,7 @@ export default function SwapHistory() {
                     <div
                       className="hidden sm:grid items-center px-5 py-3.5 cursor-pointer hover:bg-muted transition-colors border-b"
                       style={{
-                        gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr",
+                        gridTemplateColumns: "1fr 1.6fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.6fr 0.4fr",
                         borderColor: "var(--border)",
                       }}
                       onClick={() => setExpandedId(expandedId === swap.id ? null : swap.id)}
@@ -681,6 +692,14 @@ export default function SwapHistory() {
                           <button onClick={e => { e.stopPropagation(); openExplorer(swap); }} className="text-slate-600 hover:text-cyan-400 transition-colors"><ExternalLink className="w-3 h-3" /></button>
                         </>}
                       </div>
+                      {/* Detail drawer button */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setSelectedSwapId(Number(swap.id)); }}
+                        className="flex items-center justify-center w-6 h-6 rounded-md text-slate-600 hover:text-cyan-400 hover:bg-cyan-400/10 transition-colors"
+                        title="View full swap detail"
+                      >
+                        <Info className="w-3.5 h-3.5" />
+                      </button>
                     </div>
 
                     {/* Mobile card */}
@@ -885,5 +904,392 @@ function SortHeader({ label, field, current, dir, onClick }: {
       {label}
       <ArrowDownUp className="w-2.5 h-2.5" />
     </button>
+  );
+}
+
+// ─── Swap Detail Drawer ───────────────────────────────────────────────────────
+// Shows both HTLC legs (A's lock + B's lock), secret reveal tx, refund tx,
+// and all explorer links in a slide-over Sheet.
+
+type ChainConfig = typeof CHAIN_CONFIG;
+
+function explorerTxUrl(txHash: string | null | undefined, chain: string, chainConfig: ChainConfig): string | null {
+  if (!txHash) return null;
+  const cfg = chainConfig[chain as keyof ChainConfig];
+  if (!cfg) return null;
+  return cfg.explorer + txHash;
+}
+
+function explorerAddrUrl(addr: string | null | undefined, chain: string): string | null {
+  if (!addr) return null;
+  if (chain === "solana") return `https://solscan.io/account/${addr}`;
+  if (chain === "ethereum") return `https://etherscan.io/address/${addr}`;
+  if (chain === "bitcoin") return `https://mempool.space/address/${addr}`;
+  return null;
+}
+
+function TxRow({
+  label,
+  hash,
+  chain,
+  chainConfig,
+  icon,
+}: {
+  label: string;
+  hash: string | null | undefined;
+  chain: string;
+  chainConfig: ChainConfig;
+  icon?: React.ReactNode;
+}) {
+  const url = explorerTxUrl(hash, chain, chainConfig);
+  if (!hash) return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5">
+      <span className="text-[10px] font-mono text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+        {icon}{label}
+      </span>
+      <span className="text-[10px] text-slate-700">—</span>
+    </div>
+  );
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5">
+      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+        {icon}{label}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-mono text-slate-400">
+          {hash.startsWith("0x") ? `${hash.slice(0, 8)}…${hash.slice(-6)}` : `${hash.slice(0, 8)}…${hash.slice(-6)}`}
+        </span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(hash).catch(() => {}); toast.success("Copied"); }}
+          className="text-slate-600 hover:text-cyan-400 transition-colors"
+        >
+          <Copy className="w-3 h-3" />
+        </button>
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-cyan-400 transition-colors">
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddrRow({
+  label,
+  addr,
+  chain,
+  icon,
+}: {
+  label: string;
+  addr: string | null | undefined;
+  chain: string;
+  icon?: React.ReactNode;
+}) {
+  const url = explorerAddrUrl(addr, chain);
+  if (!addr) return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5">
+      <span className="text-[10px] font-mono text-slate-600 uppercase tracking-widest flex items-center gap-1.5">
+        {icon}{label}
+      </span>
+      <span className="text-[10px] text-slate-700">—</span>
+    </div>
+  );
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-white/5">
+      <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+        {icon}{label}
+      </span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[10px] font-mono text-slate-400">
+          {addr.slice(0, 8)}…{addr.slice(-6)}
+        </span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(addr).catch(() => {}); toast.success("Copied"); }}
+          className="text-slate-600 hover:text-cyan-400 transition-colors"
+        >
+          <Copy className="w-3 h-3" />
+        </button>
+        {url && (
+          <a href={url} target="_blank" rel="noopener noreferrer" className="text-slate-600 hover:text-cyan-400 transition-colors">
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HtlcLegCard({
+  leg,
+  index,
+  chainConfig,
+}: {
+  leg: {
+    id: number;
+    chain: "bitcoin" | "ethereum" | "solana";
+    htlcAddress: string;
+    secretHash: string;
+    lockTxId: string | null;
+    amountHuman: string;
+    locktime: number;
+    status: "pending" | "completed" | "refunded" | "expired";
+    toToken: string | null;
+    toChain: "bitcoin" | "ethereum" | "solana" | null;
+    refundTxId: string | null;
+    senderAddress: string | null;
+    createdAt: Date;
+  };
+  index: number;
+  chainConfig: ChainConfig;
+}) {
+  const cfg = chainConfig[leg.chain];
+  const statusColor = leg.status === "completed" ? "#10b981"
+    : leg.status === "refunded" ? "#f59e0b"
+    : leg.status === "expired" ? "#ef4444"
+    : "#06b6d4";
+
+  const statusLabel = leg.status === "completed" ? "Claimed"
+    : leg.status === "refunded" ? "Refunded"
+    : leg.status === "expired" ? "Expired"
+    : "Pending";
+
+  return (
+    <div
+      className="rounded-xl p-3 mb-3"
+      style={{
+        background: `${cfg.color}0d`,
+        border: `1px solid ${cfg.color}30`,
+      }}
+    >
+      {/* Leg header */}
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-base" style={{ color: cfg.color }}>{cfg.icon}</span>
+          <span className="text-xs font-bold" style={{ color: cfg.color }}>
+            Leg {index + 1} — {cfg.name}
+          </span>
+          <span className="text-[10px] font-mono text-slate-500">
+            {leg.amountHuman} {leg.chain === "bitcoin" ? "BTC" : leg.chain === "ethereum" ? "ETH" : "SOL"}
+            {leg.toToken ? ` → ${leg.toToken}` : ""}
+          </span>
+        </div>
+        <span
+          className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
+          style={{ background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40` }}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      {/* Leg details */}
+      <div className="space-y-0">
+        <TxRow label="Lock Tx" hash={leg.lockTxId} chain={leg.chain} chainConfig={chainConfig} icon={<Lock className="w-2.5 h-2.5" />} />
+        <AddrRow label="HTLC Address" addr={leg.htlcAddress} chain={leg.chain} icon={<Shield className="w-2.5 h-2.5" />} />
+        <AddrRow label="Sender" addr={leg.senderAddress} chain={leg.chain} icon={<Wallet className="w-2.5 h-2.5" />} />
+        {leg.refundTxId && (
+          <TxRow label="Refund Tx" hash={leg.refundTxId} chain={leg.chain} chainConfig={chainConfig} icon={<RotateCw className="w-2.5 h-2.5" />} />
+        )}
+        <div className="flex items-center justify-between py-2 border-b border-white/5">
+          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+            <Key className="w-2.5 h-2.5" />Secret Hash
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-mono text-slate-400">{leg.secretHash.slice(0, 8)}…{leg.secretHash.slice(-6)}</span>
+            <button
+              onClick={() => { navigator.clipboard.writeText(leg.secretHash).catch(() => {}); toast.success("Copied"); }}
+              className="text-slate-600 hover:text-cyan-400 transition-colors"
+            >
+              <Copy className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center justify-between py-2">
+          <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+            <Clock className="w-2.5 h-2.5" />Locktime
+          </span>
+          <span className="text-[10px] font-mono text-slate-400">
+            {new Date(leg.locktime * 1000).toLocaleString()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SwapDetailDrawer({
+  swapId,
+  onClose,
+  chainConfig,
+}: {
+  swapId: number | null;
+  onClose: () => void;
+  chainConfig: ChainConfig;
+}) {
+  const { data, isLoading } = trpc.history.detail.useQuery(
+    { id: swapId! },
+    { enabled: swapId !== null }
+  );
+
+  const swap = data?.swap ?? null;
+  const htlcLegs = data?.htlcLegs ?? [];
+
+  // Determine if this is a P2P swap (has HTLC legs)
+  const isP2P = htlcLegs.length > 0;
+
+  return (
+    <Sheet open={swapId !== null} onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="w-full sm:max-w-[480px] overflow-y-auto"
+        style={{ background: "var(--card)", borderLeft: "1px solid var(--border)" }}
+      >
+        <SheetHeader className="mb-4">
+          <SheetTitle className="text-sm font-bold text-foreground flex items-center gap-2">
+            <Info className="w-4 h-4 text-cyan-400" />
+            Swap Detail
+          </SheetTitle>
+          <SheetDescription className="text-[10px] text-muted-foreground">
+            {isP2P ? "P2P Atomic Swap — HTLC legs, secret reveal, and settlement" : "Swap transaction details and explorer links"}
+          </SheetDescription>
+        </SheetHeader>
+
+        {isLoading && (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-5 h-5 text-muted-foreground animate-spin mr-2" />
+            <span className="text-xs text-muted-foreground">Loading…</span>
+          </div>
+        )}
+
+        {!isLoading && !swap && (
+          <div className="py-16 text-center">
+            <AlertTriangle className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">Swap not found</p>
+          </div>
+        )}
+
+        {!isLoading && swap && (
+          <div className="space-y-4">
+            {/* Summary card */}
+            <div
+              className="rounded-xl p-4"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-lg font-bold font-mono" style={{ color: TOKEN_COLORS[swap.fromToken] ?? "#94a3b8" }}>
+                  {parseFloat(swap.amount).toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.fromToken}
+                </span>
+                <ArrowDownUp className="w-4 h-4 text-muted-foreground" />
+                <span className="text-lg font-bold font-mono" style={{ color: TOKEN_COLORS[swap.toToken] ?? "#94a3b8" }}>
+                  {parseFloat(swap.outAmount ?? "0").toLocaleString(undefined, { maximumFractionDigits: 5 })} {swap.toToken}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Status</span>
+                  <div className="mt-0.5">
+                    <StatusBadge status={swap.status === "completed" ? "complete" : swap.status as SwapStatus} />
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Protocol</span>
+                  <div className="mt-0.5 text-xs font-semibold text-foreground">
+                    {swap.route === "p2p" ? "IntercomSwap P2P" : swap.route === "dex" ? "DEX Aggregator" : swap.route}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Value</span>
+                  <div className="mt-0.5 text-xs font-mono text-amber-400 font-semibold">
+                    ${parseFloat(swap.amountUsd ?? "0").toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Fee</span>
+                  <div className="mt-0.5 text-xs font-mono text-foreground">
+                    {swap.platformFeeUsd ? `$${parseFloat(swap.platformFeeUsd).toFixed(2)}` : "—"}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Settlement</span>
+                  <div className="mt-0.5 text-xs font-mono text-foreground">
+                    {swap.settlementMs ? formatSettlement(swap.settlementMs) : "—"}
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-600 uppercase tracking-widest">Time</span>
+                  <div className="mt-0.5 text-xs font-mono text-foreground">
+                    {new Date(swap.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Settlement Tx (from swapAnalytics.txId) */}
+            {!isP2P && (
+              <div
+                className="rounded-xl p-3"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              >
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3 h-3" />Settlement Transaction
+                </div>
+                <TxRow label="Tx Hash" hash={swap.txId} chain={swap.fromChain} chainConfig={chainConfig} icon={<Unlock className="w-2.5 h-2.5" />} />
+              </div>
+            )}
+
+            {/* P2P HTLC Legs */}
+            {isP2P && (
+              <div>
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <Lock className="w-3 h-3 text-cyan-400" />
+                  <span className="text-cyan-400">HTLC Legs ({htlcLegs.length})</span>
+                </div>
+                {htlcLegs.map((leg, i) => (
+                  <HtlcLegCard key={leg.id} leg={leg} index={i} chainConfig={chainConfig} />
+                ))}
+              </div>
+            )}
+
+            {/* Peer info */}
+            {swap.peerId && (
+              <div
+                className="rounded-xl p-3"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              >
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">Counterparty</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-slate-400">{swap.peerId.slice(0, 20)}…</span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(swap.peerId!).catch(() => {}); toast.success("Copied"); }}
+                    className="text-slate-600 hover:text-cyan-400 transition-colors"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* RFQ ID */}
+            {swap.rfqId && (
+              <div
+                className="rounded-xl p-3"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+              >
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest mb-2">RFQ ID</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-slate-400">{swap.rfqId.slice(0, 20)}…</span>
+                  <button
+                    onClick={() => { navigator.clipboard.writeText(swap.rfqId!).catch(() => {}); toast.success("Copied"); }}
+                    className="text-slate-600 hover:text-cyan-400 transition-colors"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }

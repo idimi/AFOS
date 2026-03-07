@@ -2031,3 +2031,31 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Call record procedure when swap fails (phase=failed) in useP2PSwap
 - [x] SwapHistory.tsx shows P2P swaps with tx links (Solscan/Etherscan/Mempool.space)
 - [x] SwapHistoryTabs.tsx: Added TxLink + AddrLink components with clickable explorer links in Open Trades and Refunds tabs
+
+## Three Follow-Up Features (Mar 7, 2026 — Round 2)
+
+### Feature A: On-chain Solana HTLC Refund
+- [x] Added buildSolanaHtlcRefundTx to solanaHtlc.ts (builds reclaim tx using CLTV expiry path)
+- [x] Wire buildSolanaHtlcRefundTx into afos:p2p-refund-needed listener in Swaps.tsx
+- [x] Wire buildSolanaHtlcRefundTx into afos:p2p-refund-needed listener in ChatPage.tsx
+- [x] Show refund progress toast with Solscan link after tx submission
+- [x] Handle wallet not connected / tx rejected gracefully (toast error)
+
+### Feature B: Timelock Config in Agent Settings
+- [x] Add timelockSolBlocks, timelockEthBlocks, timelockBtcBlocks columns to user_settings table (via SQL)
+- [x] Add DEFAULT_USER_SETTINGS defaults (timelockSolBlocks: 200, timelockEthBlocks: 50, timelockBtcBlocks: 6)
+- [x] Update getUserSettings / upsertUserSettings in server/db.ts to include timelock fields
+- [x] Add timelockSolBlocks, timelockEthBlocks, timelockBtcBlocks to settings.ts get + save procedures
+- [x] Add HTLC Timelock Config section to AgentSettings.tsx Network tab with per-chain number inputs
+- [x] Wire timelockBlocks from settings query into useP2PSwap in Swaps.tsx and ChatPage.tsx
+- [x] useP2PSwap.getTimelocks() uses settings-provided block counts for timelockA/timelockB calculation
+
+### Feature C: P2P Swap Detail Drawer in History
+- [x] Added history.detail tRPC procedure returning swapAnalytics row + matching htlcSwaps legs
+- [x] Added SwapDetailDrawer component in SwapHistory.tsx (Sheet slide-over)
+- [x] Show both HTLC legs with chain, amount, status, lockTxId, htlcAddress, senderAddress, refundTxId
+- [x] TxRow + AddrRow helper components with copy + explorer link buttons (Solscan/Etherscan/Mempool)
+- [x] Show settlement tx for non-P2P swaps; show HTLC legs section for P2P swaps
+- [x] Show peer ID and RFQ ID for P2P swaps
+- [x] Wire ⓘ info button on each desktop history row to open the drawer
+- [x] Drawer fetches detail lazily (enabled only when swapId !== null)

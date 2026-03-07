@@ -424,6 +424,9 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [autoAcceptRfq, setAutoAcceptRfq] = useState(false);
   const [autoAcceptMaxUsd, setAutoAcceptMaxUsd] = useState("0");
+  const [timelockSolBlocks, setTimelockSolBlocks] = useState("144");
+  const [timelockEthBlocks, setTimelockEthBlocks] = useState("50");
+  const [timelockBtcBlocks, setTimelockBtcBlocks] = useState("6");
 
   // Populate local draft when remote data arrives
   useEffect(() => {
@@ -461,6 +464,10 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
       } catch { /* best-effort */ }
     }
+    const rs = remoteSettings as Record<string, unknown>;
+    if ('timelockSolBlocks' in remoteSettings) setTimelockSolBlocks(String(rs.timelockSolBlocks ?? 144));
+    if ('timelockEthBlocks' in remoteSettings) setTimelockEthBlocks(String(rs.timelockEthBlocks ?? 50));
+    if ('timelockBtcBlocks' in remoteSettings) setTimelockBtcBlocks(String(rs.timelockBtcBlocks ?? 6));
     // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
     // uses the user's configured tolerance when auto-accepting RFQs
     if ('slippagePct' in remoteSettings) {
@@ -484,6 +491,9 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     setTheme("dark");
     setAutoAcceptRfq(false);
     setAutoAcceptMaxUsd("0");
+    setTimelockSolBlocks("144");
+    setTimelockEthBlocks("50");
+    setTimelockBtcBlocks("6");
     // Also apply the theme to next-themes via ThemeSelector's onChange
     // ThemeSelector handles next-themes internally; we trigger it via the state change
     saveMutation.mutate({
@@ -495,6 +505,9 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       theme: "dark",
       autoAcceptRfq: false,
       autoAcceptMaxUsd: 0,
+      timelockSolBlocks: 144,
+      timelockEthBlocks: 50,
+      timelockBtcBlocks: 6,
     });
     toast.success("Settings reset to defaults");
   };
@@ -511,6 +524,21 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       return;
     }
     const parsedAutoAcceptMax = parseInt(autoAcceptMaxUsd, 10);
+    const parsedTimelockSol = parseInt(timelockSolBlocks, 10);
+    const parsedTimelockEth = parseInt(timelockEthBlocks, 10);
+    const parsedTimelockBtc = parseInt(timelockBtcBlocks, 10);
+    if (isNaN(parsedTimelockSol) || parsedTimelockSol < 1) {
+      toast.error("Solana timelock must be at least 1 slot");
+      return;
+    }
+    if (isNaN(parsedTimelockEth) || parsedTimelockEth < 1) {
+      toast.error("Ethereum timelock must be at least 1 block");
+      return;
+    }
+    if (isNaN(parsedTimelockBtc) || parsedTimelockBtc < 1) {
+      toast.error("Bitcoin timelock must be at least 1 block");
+      return;
+    }
     saveMutation.mutate({
       openId: walletId,
       maxTxAmountUsd: parsedMax,
@@ -520,6 +548,9 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       theme,
       autoAcceptRfq,
       autoAcceptMaxUsd: isNaN(parsedAutoAcceptMax) ? 0 : parsedAutoAcceptMax,
+      timelockSolBlocks: parsedTimelockSol,
+      timelockEthBlocks: parsedTimelockEth,
+      timelockBtcBlocks: parsedTimelockBtc,
     });
   };
 
@@ -936,6 +967,74 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                   </p>
                 </div>
               )}
+            </SectionCard>
+
+            {/* ─── HTLC Timelock Config ─────────────────────────────────────────── */}
+            <SectionCard
+              icon={Lock}
+              title="HTLC Timelock Config"
+              color="text-amber-400"
+              border="rgba(245,158,11,0.25)"
+              bg="rgba(245,158,11,0.04)"
+              delay={0.12}
+            >
+              <p className="text-xs text-muted-foreground">
+                Number of blocks/slots A waits for B to lock before auto-refunding the HTLC.
+                Increase for slower chains; decrease to reclaim funds faster.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {/* Solana */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                    <span style={{ color: "#9945FF" }}>◎</span> Solana
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={timelockSolBlocks}
+                    onChange={e => setTimelockSolBlocks(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm font-mono bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    slots · default 144 ≈ 2.4 h
+                  </p>
+                </div>
+                {/* Ethereum */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                    <span style={{ color: "#627EEA" }}>Ξ</span> Ethereum
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10000}
+                    value={timelockEthBlocks}
+                    onChange={e => setTimelockEthBlocks(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm font-mono bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    blocks · default 50 ≈ 10 min
+                  </p>
+                </div>
+                {/* Bitcoin */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                    <span style={{ color: "#F7931A" }}>₿</span> Bitcoin
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={timelockBtcBlocks}
+                    onChange={e => setTimelockBtcBlocks(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm font-mono bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    blocks · default 6 ≈ 60 min
+                  </p>
+                </div>
+              </div>
             </SectionCard>
 
             {/* Save button (for auto-accept settings that persist to DB) */}

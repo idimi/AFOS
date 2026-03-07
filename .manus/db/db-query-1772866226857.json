@@ -1,0 +1,98 @@
+{
+  "query": "SHOW COLUMNS FROM user_settings;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SHOW COLUMNS FROM user_settings;",
+  "rows": [
+    {
+      "Field": "id",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "PRI",
+      "Default": "NULL",
+      "Extra": "auto_increment"
+    },
+    {
+      "Field": "openId",
+      "Type": "varchar(64)",
+      "Null": "NO",
+      "Key": "UNI",
+      "Default": "NULL",
+      "Extra": ""
+    },
+    {
+      "Field": "maxTxAmountUsd",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "500",
+      "Extra": ""
+    },
+    {
+      "Field": "autoConfirm",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "slippagePct",
+      "Type": "varchar(8)",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0.5",
+      "Extra": ""
+    },
+    {
+      "Field": "preferredRoute",
+      "Type": "enum('intercomswap','jupiter','zerox','oneinch','best')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "best",
+      "Extra": ""
+    },
+    {
+      "Field": "theme",
+      "Type": "enum('dark','light','system')",
+      "Null": "NO",
+      "Key": "",
+      "Default": "dark",
+      "Extra": ""
+    },
+    {
+      "Field": "createdAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": ""
+    },
+    {
+      "Field": "updatedAt",
+      "Type": "timestamp",
+      "Null": "NO",
+      "Key": "",
+      "Default": "CURRENT_TIMESTAMP",
+      "Extra": "DEFAULT_GENERATED on update CURRENT_TIMESTAMP"
+    },
+    {
+      "Field": "autoAcceptRfq",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    },
+    {
+      "Field": "autoAcceptMaxUsd",
+      "Type": "int",
+      "Null": "NO",
+      "Key": "",
+      "Default": "0",
+      "Extra": ""
+    }
+  ],
+  "messages": [],
+  "stdout": "Field\tType\tNull\tKey\tDefault\tExtra\nid\tint\tNO\tPRI\tNULL\tauto_increment\nopenId\tvarchar(64)\tNO\tUNI\tNULL\t\nmaxTxAmountUsd\tint\tNO\t\t500\t\nautoConfirm\tint\tNO\t\t0\t\nslippagePct\tvarchar(8)\tNO\t\t0.5\t\npreferredRoute\tenum('intercomswap','jupiter','zerox','oneinch','best')\tNO\t\tbest\t\ntheme\tenum('dark','light','system')\tNO\t\tdark\t\ncreatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\t\nupdatedAt\ttimestamp\tNO\t\tCURRENT_TIMESTAMP\tDEFAULT_GENERATED on update CURRENT_TIMESTAMP\nautoAcceptRfq\tint\tNO\t\t0\t\nautoAcceptMaxUsd\tint\tNO\t\t0\t\n",
+  "stderr": "",
+  "execution_time_ms": 106
+}

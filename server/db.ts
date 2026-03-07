@@ -104,6 +104,9 @@ export type UserSettingsResult = {
   theme: "dark" | "light" | "system";
   autoAcceptRfq: boolean;
   autoAcceptMaxUsd: number;
+  timelockSolBlocks: number;
+  timelockEthBlocks: number;
+  timelockBtcBlocks: number;
 };
 
 export async function getUserSettings(openId: string): Promise<UserSettingsResult> {
@@ -124,6 +127,9 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
       theme: row.theme,
       autoAcceptRfq: r.autoAcceptRfq === 1,
       autoAcceptMaxUsd: (r.autoAcceptMaxUsd as number) ?? 0,
+      timelockSolBlocks: (r.timelockSolBlocks as number) ?? DEFAULT_USER_SETTINGS.timelockSolBlocks,
+      timelockEthBlocks: (r.timelockEthBlocks as number) ?? DEFAULT_USER_SETTINGS.timelockEthBlocks,
+      timelockBtcBlocks: (r.timelockBtcBlocks as number) ?? DEFAULT_USER_SETTINGS.timelockBtcBlocks,
     };
   } catch (err) {
     console.warn("[DB] getUserSettings failed, returning defaults:", err);
@@ -144,6 +150,9 @@ export async function upsertUserSettings(
     theme?: UserSettings["theme"];
     autoAcceptRfq?: boolean;
     autoAcceptMaxUsd?: number;
+    timelockSolBlocks?: number;
+    timelockEthBlocks?: number;
+    timelockBtcBlocks?: number;
   },
 ): Promise<void> {
   const db = await getDb();
@@ -162,6 +171,9 @@ export async function upsertUserSettings(
     // Cast to number since Drizzle schema uses int for these boolean-like columns
     autoAcceptRfq: ((patch.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq) ? 1 : 0) as number,
     autoAcceptMaxUsd: (patch.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd) as number,
+    timelockSolBlocks: patch.timelockSolBlocks ?? DEFAULT_USER_SETTINGS.timelockSolBlocks,
+    timelockEthBlocks: patch.timelockEthBlocks ?? DEFAULT_USER_SETTINGS.timelockEthBlocks,
+    timelockBtcBlocks: patch.timelockBtcBlocks ?? DEFAULT_USER_SETTINGS.timelockBtcBlocks,
   };
 
   const updateSet: Record<string, unknown> = {};
@@ -172,6 +184,9 @@ export async function upsertUserSettings(
   if (patch.theme !== undefined) updateSet.theme = patch.theme;
   if (patch.autoAcceptRfq !== undefined) updateSet.autoAcceptRfq = patch.autoAcceptRfq ? 1 : 0;
   if (patch.autoAcceptMaxUsd !== undefined) updateSet.autoAcceptMaxUsd = patch.autoAcceptMaxUsd;
+  if (patch.timelockSolBlocks !== undefined) updateSet.timelockSolBlocks = patch.timelockSolBlocks;
+  if (patch.timelockEthBlocks !== undefined) updateSet.timelockEthBlocks = patch.timelockEthBlocks;
+  if (patch.timelockBtcBlocks !== undefined) updateSet.timelockBtcBlocks = patch.timelockBtcBlocks;
 
   await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });
 }

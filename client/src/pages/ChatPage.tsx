@@ -21,9 +21,10 @@ import { useLightPeer } from "@/contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
 import { useP2PSwap } from "@/hooks/useP2PSwap";
 import { P2PSwapProgressModal } from "../components/P2PSwapProgressModal";
-import { Connection, VersionedTransaction, Transaction } from "@solana/web3.js";
+import { Connection, VersionedTransaction, Transaction, PublicKey } from "@solana/web3.js";
 import { Link } from "wouter";
 import { SUPPORTED_WALLETS_TEXT } from "@shared/const";
+import { buildSolanaHtlcRefundTx } from "@/lib/solanaHtlc";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 // SupportedChain, QuoteData, and ChatMessage are imported from ChatContext
@@ -594,9 +595,16 @@ export default function ChatPage() {
 
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
-
-  // ── P2P HTLC swap state ─────────────────────────────────────────────────────
-  const { swap: p2pSwap, initiateAsRequester, dismiss: dismissP2PSwap } = useP2PSwap();
+  // ── P2P HTLC swap state ────────────────────────────────────────────────────────────────────────────
+  // Load timelock settings so the swap hook uses user-configured block counts
+  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers, solanaAddress: _chatSolAddr, ethereumAddress: _chatEthAddr, bitcoinAddress: _chatBtcAddr } = useLightPeer();
+  const chatWalletId = _chatSolAddr || _chatEthAddr || _chatBtcAddr || "anon";
+  const { data: chatSwapSettings } = trpc.settings.get.useQuery({ openId: chatWalletId });
+  const { swap: p2pSwap, initiateAsRequester, dismiss: dismissP2PSwap } = useP2PSwap({
+    timelockSolBlocks: (chatSwapSettings as Record<string, unknown> | undefined)?.timelockSolBlocks as number | undefined,
+    timelockEthBlocks: (chatSwapSettings as Record<string, unknown> | undefined)?.timelockEthBlocks as number | undefined,
+    timelockBtcBlocks: (chatSwapSettings as Record<string, unknown> | undefined)?.timelockBtcBlocks as number | undefined,
+  });
   // Stores pending P2P swap data while waiting for B's p2p_quote_accepted
   const pendingP2PSwapRef = useRef<{
     rfqId: string;
@@ -613,8 +621,6 @@ export default function ChatPage() {
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
-  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers } = useLightPeer();
-
   const [input, setInput] = useState("");
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
@@ -721,9 +727,86 @@ export default function ChatPage() {
       }
     };
     window.addEventListener("afos:p2p-quote-accepted", handler);
-    return () => window.removeEventListener("afos:p2p-quote-accepted", handler);
+     return () => window.removeEventListener("afos:p2p-quote-accepted", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [publicKey, signTransaction, initiateAsRequester]);
+
+  // ── A's Solana HTLC refund (ChatPage mirror of Swaps.tsx listener) ──────────────────────
+  // Handles the case where the user initiated the swap from the Chat page.
+  useEffect(() => {
+    const handleSolRefund = async (e: Event) => {
+      const detail = (e as CustomEvent<{
+        rfqId: string;
+        chain: string;
+        escrowAddress: string;
+        secretHash: string;
+        walletAddress: string;
+      }>).detail;
+
+      if (detail.chain !== "solana") return;
+      if (!publicKey || !signTransaction) {
+        toast.error("Wallet not connected", {
+          description: "Connect your Solana wallet to submit the HTLC refund transaction.",
+        });
+        return;
+      }
+
+      const toastId = `sol-refund-${detail.rfqId}`;
+      toast.loading("Building Solana HTLC refund…", { id: toastId, description: "Waiting for wallet signature." });
+
+      try {
+        const solRpc = import.meta.env.VITE_SOL_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+        const connection = new Connection(solRpc, "confirmed");
+        const senderPubkey = new PublicKey(publicKey.toString());
+
+        const { transaction } = await buildSolanaHtlcRefundTx({
+          senderPubkey,
+          secretHash: detail.secretHash,
+          escrowAddress: detail.escrowAddress,
+          connection,
+        });
+
+        const signed = await (signTransaction as (tx: Transaction) => Promise<Transaction>)(transaction);
+        const rawTx = signed.serialize();
+        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        await connection.confirmTransaction(txHash, "confirmed");
+
+        toast.success("Solana HTLC refunded", {
+          id: toastId,
+          description: (
+            <span>
+              Funds reclaimed —{" "}
+              <a
+                href={`https://solscan.io/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-cyan-400"
+              >
+                View on Solscan
+              </a>
+            </span>
+          ) as unknown as string,
+          duration: 10_000,
+        });
+
+        addMessage({
+          role: "assistant",
+          type: "text",
+          content: `✅ **Solana HTLC refunded.** Your funds have been reclaimed on-chain.\n\n[View on Solscan](https://solscan.io/tx/${txHash})`,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error("Solana HTLC refund failed", {
+          id: toastId,
+          description: msg.includes("User rejected") ? "Transaction rejected in wallet." : msg.slice(0, 120),
+        });
+      }
+    };
+
+    window.addEventListener("afos:p2p-refund-needed", handleSolRefund);
+    return () => window.removeEventListener("afos:p2p-refund-needed", handleSolRefund);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicKey, signTransaction, addMessage]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();

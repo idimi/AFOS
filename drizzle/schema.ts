@@ -170,6 +170,15 @@ export const userSettings = mysqlTable("user_settings", {
   autoAcceptRfq:    int("autoAcceptRfq").default(0).notNull(), // 0 = false, 1 = true
   /** Maximum USD value of a single RFQ the agent will auto-accept (0 = use maxTxAmountUsd) */
   autoAcceptMaxUsd: int("autoAcceptMaxUsd").default(0).notNull(),
+  /**
+   * HTLC timelock in blocks for each chain.
+   * timelockSolBlocks: Solana slots (default 144 ≈ ~60s per slot ≈ ~2.4 hours)
+   * timelockEthBlocks: Ethereum blocks (default 50 ≈ ~10 min at 12s/block)
+   * timelockBtcBlocks: Bitcoin blocks (default 6 ≈ ~60 min at 10 min/block)
+   */
+  timelockSolBlocks: int("timelockSolBlocks").default(144).notNull(),
+  timelockEthBlocks: int("timelockEthBlocks").default(50).notNull(),
+  timelockBtcBlocks: int("timelockBtcBlocks").default(6).notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -221,6 +230,9 @@ export const DEFAULT_USER_SETTINGS = {
   theme: "dark" as const,
   autoAcceptRfq: false,
   autoAcceptMaxUsd: 0,
+  timelockSolBlocks: 144,
+  timelockEthBlocks: 50,
+  timelockBtcBlocks: 6,
 };
 
 // ─── Peer Reports ─────────────────────────────────────────────────────────────

@@ -157,7 +157,38 @@ export interface UseP2PSwapReturn {
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export function useP2PSwap(): UseP2PSwapReturn {
+export function useP2PSwap(options?: {
+  /** Number of Solana slots before A can reclaim (default 144 ≈ 2.4h) */
+  timelockSolBlocks?: number;
+  /** Number of Ethereum blocks before A can reclaim (default 50 ≈ 10min) */
+  timelockEthBlocks?: number;
+  /** Number of Bitcoin blocks before A can reclaim (default 6 ≈ 60min) */
+  timelockBtcBlocks?: number;
+}): UseP2PSwapReturn {
+  // ── Derive timelock durations in seconds from block counts ─────────────────
+  // Solana: ~0.6s/slot → 144 slots ≈ 86s ≈ 1.4 min (demo) but use 2h default for safety
+  // Ethereum: ~12s/block → 50 blocks ≈ 600s ≈ 10 min
+  // Bitcoin: ~600s/block → 6 blocks ≈ 3600s ≈ 60 min
+  const SOL_SLOT_MS = 600;   // ~0.6s per slot
+  const ETH_BLOCK_MS = 12_000; // ~12s per block
+  const BTC_BLOCK_MS = 600_000; // ~10min per block
+  const timelockSolSec = Math.round(((options?.timelockSolBlocks ?? 144) * SOL_SLOT_MS) / 1000);
+  const timelockEthSec = Math.round(((options?.timelockEthBlocks ?? 50) * ETH_BLOCK_MS) / 1000);
+  const timelockBtcSec = Math.round(((options?.timelockBtcBlocks ?? 6) * BTC_BLOCK_MS) / 1000);
+  // B always gets half of A's window so B must claim before A can refund
+  const getTimelocks = (chain: string): { timelockA: number; timelockB: number } => {
+    const now = Math.floor(Date.now() / 1000);
+    const c = chain.toLowerCase();
+    if (c === "ethereum" || c === "eth") {
+      return { timelockA: now + timelockEthSec, timelockB: now + Math.round(timelockEthSec / 2) };
+    }
+    if (c === "bitcoin" || c === "btc") {
+      return { timelockA: now + timelockBtcSec, timelockB: now + Math.round(timelockBtcSec / 2) };
+    }
+    // Default: Solana
+    return { timelockA: now + timelockSolSec, timelockB: now + Math.round(timelockSolSec / 2) };
+  };
+
   const [swap, setSwap] = useState<P2PSwapState | null>(null);
   const swapRef = useRef<P2PSwapState | null>(null);
   swapRef.current = swap;
@@ -590,9 +621,8 @@ export function useP2PSwap(): UseP2PSwapReturn {
 
       if (chain === "solana") {
         const senderPubkey = new PublicKey(params.walletPublicKey);
-        // A gets 2h timelock, B gets 1h (B must claim before A can refund)
-        const timelockA = Math.floor(Date.now() / 1000) + 7200;
-        const timelockB = Math.floor(Date.now() / 1000) + 3600;
+        // A gets configurable timelock, B gets half (B must claim before A can refund)
+        const { timelockA, timelockB } = getTimelocks("solana");
 
         // Use B's Solana wallet as recipient if available
         const recipientStr = params.counterpartyWallets?.solana ?? params.walletPublicKey;
@@ -657,8 +687,7 @@ export function useP2PSwap(): UseP2PSwapReturn {
         }).ethereum;
         if (!rawEth) throw new Error("No Ethereum wallet provider found");
 
-        const timelockA = Math.floor(Date.now() / 1000) + 7200;
-        const timelockB = Math.floor(Date.now() / 1000) + 3600;
+        const { timelockA, timelockB } = getTimelocks("ethereum");
         const amountWei = BigInt(Math.floor(params.fromAmount * 1e18));
         const htlcAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
         const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
@@ -709,8 +738,7 @@ export function useP2PSwap(): UseP2PSwapReturn {
         const btcAddress = await getBtcAddress(provider);
         if (!btcAddress) throw new Error("No Bitcoin wallet connected. Please connect a BTC wallet.");
 
-        const timelockA = Math.floor(Date.now() / 1000) + 7200; // 2h
-        const timelockB = Math.floor(Date.now() / 1000) + 3600; // 1h
+        const { timelockA, timelockB } = getTimelocks("bitcoin");
         const amountSats = Math.round(params.fromAmount * 1e8);
 
         // Use B's BTC pubkey as recipient if available, otherwise use sender's pubkey
