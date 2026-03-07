@@ -1839,3 +1839,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add onNavigateToSettings prop to AdminPanel — wire Stack Status section to link to Trading tab
 - [x] Add onNavigateToSettings prop to Wallets panel — wire theme/appearance link to Appearance tab
 - [x] Thread navigateToSettings through Dashboard.tsx to AdminPanel and Wallets panel render sites
+
+## Stop Oracle VM Data in Recent Swaps / UI
+
+- [x] Find all Oracle VM polling in RecentSwapsCard and related components
+- [x] Disable/stub Oracle VM data so no live swap data appears in the UI
