@@ -411,8 +411,8 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         userPublicKey: publicKey.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
-        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
-        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin") ?? "solana",
+        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
+        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
         amount:        quoteData.fromAmount,
       });
 

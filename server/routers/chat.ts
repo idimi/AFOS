@@ -1119,9 +1119,9 @@ export const chatRouter = router({
         /** Destination token symbol — used for P2P RFQ */
         toToken:        z.string().optional(),
         /** Source chain (default: solana) */
-        fromChain:      z.enum(["solana", "ethereum", "bitcoin"]).optional(),
+        fromChain:      z.enum(["solana", "ethereum", "bitcoin", "trac_network"]).optional(),
         /** Destination chain — if cross-chain, P2P is attempted first */
-        toChain:        z.enum(["solana", "ethereum", "bitcoin"]).optional(),
+        toChain:        z.enum(["solana", "ethereum", "bitcoin", "trac_network"]).optional(),
         /** Human-readable swap amount (e.g. 1.5) — used for P2P RFQ */
         amount:         z.number().positive().optional(),
         /** Skip AFOS P2P and go straight to Jupiter */
@@ -1182,8 +1182,8 @@ export const chatRouter = router({
       if (p2pQuote) {
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  (fromChain ?? "solana") as "solana" | "ethereum" | "bitcoin",
-          toChain:    (toChain   ?? "solana") as "solana" | "ethereum" | "bitcoin",
+          fromChain:  (fromChain ?? "solana") as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          toChain:    (toChain   ?? "solana") as "solana" | "ethereum" | "bitcoin" | "trac_network",
           fromToken:  fromToken ?? "SOL",
           toToken:    toToken   ?? "USDT",
           amount:     String(amount ?? 0),
@@ -1260,9 +1260,9 @@ export const chatRouter = router({
         /** Destination token symbol */
         toToken:      z.string(),
         /** Source chain (default: ethereum) */
-        fromChain:    z.enum(["solana", "ethereum", "bitcoin"]).optional().default("ethereum"),
+        fromChain:    z.enum(["solana", "ethereum", "bitcoin", "trac_network"]).optional().default("ethereum"),
         /** Destination chain */
-        toChain:      z.enum(["solana", "ethereum", "bitcoin"]).optional().default("ethereum"),
+        toChain:      z.enum(["solana", "ethereum", "bitcoin", "trac_network"]).optional().default("ethereum"),
         /** Human-readable amount to swap (e.g. 0.1 for 0.1 ETH) */
         amount:       z.number().positive(),
         /** Allowed slippage in percent (default: 1%) — overridden by user settings when openId is provided */
@@ -1333,8 +1333,8 @@ export const chatRouter = router({
       if (p2pQuote) {
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin",
-          toChain:    toChain   as "solana" | "ethereum" | "bitcoin",
+          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          toChain:    toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
           fromToken:  fromSymbol,
           toToken:    toSymbol,
           amount:     String(amount),
@@ -1423,8 +1423,8 @@ export const chatRouter = router({
       if (swapTx) {
         // Record 1inch fallback swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin",
-          toChain:    toChain   as "solana" | "ethereum" | "bitcoin",
+          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          toChain:    toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
           fromToken:  fromSymbol,
           toToken:    toSymbol,
           amount:     String(amount),
@@ -1497,7 +1497,7 @@ export const chatRouter = router({
         /** Destination token for cross-chain swaps (e.g. "USDT", "SOL") */
         toToken: z.string().optional(),
         /** Destination chain for cross-chain swaps */
-        toChain: z.enum(["bitcoin", "ethereum", "solana"]).optional(),
+        toChain: z.enum(["bitcoin", "ethereum", "solana", "trac_network"]).optional(),
         /** Skip IntercomSwap P2P discovery and go straight to direct HTLC */
         skipP2P: z.boolean().optional().default(false),
       })
@@ -1925,8 +1925,8 @@ export const chatRouter = router({
               const feeBps = isP2PRoute ? 15 : 20;
               const feeAmountOut = finalOutAmount * (feeBps / 10000);
               void recordSwapAnalytic({
-                fromChain:      fromChain as "solana" | "ethereum" | "bitcoin",
-                toChain:        toChain   as "solana" | "ethereum" | "bitcoin",
+                fromChain:      fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
+                toChain:        toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
                 fromToken:      fromToken.toUpperCase(),
                 toToken:        toToken.toUpperCase(),
                 amount:         String(amount),

@@ -25,7 +25,7 @@ import { showWalletConnectedToast, showWalletDisconnectedToast } from "../compon
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Chain = "solana" | "ethereum" | "bitcoin";
+export type Chain = "solana" | "ethereum" | "bitcoin" | "trac_network";
 export type EthProviderType = "metamask" | "coinbase" | "phantom";
 export type BtcProviderType = "metamask" | "tap" | "phantom" | "xverse";
 
