@@ -480,6 +480,7 @@ export default function LandingPage() {
                 <ChainBadge name="Bitcoin" color="#F7931A" symbol="₿" />
                 <ChainBadge name="Ethereum" color="#627EEA" symbol="Ξ" />
                 <ChainBadge name="Solana" color="#9945FF" symbol="◎" />
+                <ChainBadge name="Trac Network" color="#F59E0B" symbol="⬡" />
               </motion.div>
 
               {/* Trust strip */}

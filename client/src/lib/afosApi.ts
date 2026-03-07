@@ -263,20 +263,60 @@ export function isSSEConnected(): boolean {
 
 /**
  * GET /api/prices
- * Returns prices for all 7 supported assets.
- * USDC and USDT are always $1.00 (stablecoins) — injected if Oracle VM omits them.
+ * Returns prices for all 7 supported assets + TNK (Trac Network) from CoinGecko.
+ * USDC and USDT are always injected at $1.00 if the Oracle VM omits them.
  */
 export async function getPrices(): Promise<Record<string, TokenPrice>> {
-  const res = await fetchWithTimeout(`${BACKEND_URL}/api/prices`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const prices: Record<string, TokenPrice> = data.prices ?? {};
-  // Stablecoins are always $1.00 — inject them if the Oracle VM omits them
+  // Fetch Oracle VM prices and TNK from CoinGecko in parallel
+  const [oracleRes, tnkRes] = await Promise.allSettled([
+    fetchWithTimeout(`${BACKEND_URL}/api/prices`),
+    fetchWithTimeout(
+      "https://api.coingecko.com/api/v3/simple/price?ids=trac-network&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true",
+      {},
+      5000
+    ),
+  ]);
+
+  const prices: Record<string, TokenPrice> = {};
+
+  // Merge Oracle VM prices
+  if (oracleRes.status === "fulfilled" && oracleRes.value.ok) {
+    const data = await oracleRes.value.json();
+    Object.assign(prices, data.prices ?? {});
+  } else {
+    throw new Error("Oracle VM price feed unavailable");
+  }
+
+  // Stablecoins are always $1.00
   if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
   if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
+
+  // Inject TNK price from CoinGecko
+  if (tnkRes.status === "fulfilled" && tnkRes.value.ok) {
+    try {
+      const tnkData = await tnkRes.value.json() as {
+        "trac-network"?: { usd: number; usd_24h_change?: number; usd_24h_vol?: number };
+      };
+      const tnk = tnkData["trac-network"];
+      if (tnk?.usd) {
+        prices.TNK = {
+          usd: tnk.usd,
+          change24h: tnk.usd_24h_change ?? 0,
+          volume24h: tnk.usd_24h_vol ?? 0,
+        };
+      }
+    } catch {
+      // TNK price unavailable — leave out rather than crashing
+    }
+  }
+
+  // Fallback TNK price if CoinGecko is unavailable
+  if (!prices.TNK) {
+    prices.TNK = { usd: 0, change24h: 0, volume24h: 0 };
+  }
+
   return prices;
 }
-
 /**
  * GET /api/quote
  * Fetch a swap quote from the Oracle VM.

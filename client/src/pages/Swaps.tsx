@@ -2445,11 +2445,13 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const btcPrice = useTokenPrice("BTC");
   const ethPrice = useTokenPrice("ETH");
   const solPrice = useTokenPrice("SOL");
+  const tnkPrice = useTokenPrice("TNK");
   // Build a lookup map so existing code that references livePrices[symbol] still works
   const livePrices: Record<string, number> = {
     BTC:      btcPrice  ?? 0,
     ETH:      ethPrice  ?? 0,
     SOL:      solPrice  ?? 0,
+    TNK:      tnkPrice  ?? 0,
     USDT:     1,
     USDC:     1,
     "USDT-ETH": 1,

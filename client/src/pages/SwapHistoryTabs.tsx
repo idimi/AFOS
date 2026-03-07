@@ -776,9 +776,65 @@ function RefundCard({
       return;
     }
 
-    // Ethereum / Bitcoin — show instructions (no browser-side signing yet)
-    toast.info("Manual refund required", {
-      description: `For ${refund.chain} HTLCs, use your wallet's contract interaction tool to call refund() on ${refund.htlcAddress}`,
+    // Ethereum — call refund(bytes32 secretHash) on the HTLC contract via MetaMask
+    if (refund.chain === "ethereum") {
+      const rawEth = (window as unknown as {
+        ethereum?: {
+          request: (args: { method: string; params?: unknown[] }) => Promise<string>;
+          selectedAddress?: string;
+        };
+      }).ethereum;
+      if (!rawEth) {
+        toast.error("No Ethereum provider", { description: "Install MetaMask or Phantom to claim ETH refunds." });
+        return;
+      }
+      const fromAddress = rawEth.selectedAddress;
+      if (!fromAddress) {
+        toast.error("MetaMask not connected", { description: "Connect your Ethereum wallet first." });
+        return;
+      }
+      setClaiming(true);
+      try {
+        // ABI-encode refund(bytes32 secretHash)
+        // Function selector: keccak256("refund(bytes32)") = 0x7249fbb6
+        const secretHashHex = refund.secretHash.startsWith("0x")
+          ? refund.secretHash.slice(2)
+          : refund.secretHash;
+        const calldata = "0x7249fbb6" + secretHashHex.padStart(64, "0");
+        toast.loading("Waiting for MetaMask signature…", { id: "eth-refund-sign" });
+        const txHash = await rawEth.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: fromAddress,
+            to:   refund.htlcAddress,
+            data: calldata,
+            gas:  "0x30D40", // 200 000 gas
+          }],
+        });
+        toast.dismiss("eth-refund-sign");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
+        await utils.history.refunds.invalidate();
+        toast.success("ETH refund submitted!", {
+          description: (
+            <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Etherscan <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        toast.dismiss("eth-refund-sign");
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("ETH refund failed", { description: msg });
+      } finally {
+        setClaiming(false);
+      }
+      return;
+    }
+
+    // Bitcoin — no browser-side PSBT signing yet; show instructions
+    toast.info("Bitcoin refund", {
+      description: `After the CLTV timelock expires, broadcast the refund PSBT from your Bitcoin wallet to reclaim funds from ${refund.htlcAddress.slice(0, 20)}…`,
     });
   }, [refund, publicKey, signTransaction, connection, updateHtlcRefund, utils]);
 
