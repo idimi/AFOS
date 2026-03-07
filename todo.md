@@ -1907,3 +1907,38 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update ChainId type and CHAIN_CONFIG in SwapHistory.tsx to include trac_network
 - [x] Apply ALTER TABLE to DB via webdev_execute_sql to sync enum values
 - [x] All 241 tests passing, TypeScript 0 errors
+
+## Round 7 Features (Mar 7, 2026)
+
+### Feature A: TNK HTLC Server-Side Polling Monitor
+- [ ] Create server/tnkHtlcMonitor.ts — polls Trac Network agent-escrow API for incoming TNK locks
+- [ ] Detect new incoming TNK HTLC locks by secretHash and emit afos:tnk-htlc-detected SSE event
+- [ ] Wire tnkHtlcMonitor into server startup (server/_core/index.ts or htlcMonitor.ts)
+- [ ] Store detected TNK HTLCs in htlc_swaps table with chain=trac_network
+- [ ] Add tRPC procedure history.pendingTnkHtlcs to query unmatched TNK locks
+- [ ] Write vitest for tnkHtlcMonitor polling logic
+
+### Feature B: Early-Exit Cancel & Refund Button in Open Trades Tab
+- [ ] Add "Cancel & Refund" button to each row in Open Trades tab (SwapHistoryTabs.tsx)
+- [ ] Button visible for all chains (SOL, ETH, BTC, TNK) regardless of timelock expiry
+- [ ] For SOL: call buildSolanaHtlcRefundTx and sign with Phantom (same as Refunds tab)
+- [ ] For ETH: call eth_sendTransaction with refund(bytes32) selector via MetaMask
+- [ ] For BTC: call buildBtcHtlcRefundPsbt and sign with Phantom signPSBT
+- [ ] For TNK: call tnkHtlc refund via window.tracnetwork
+- [ ] Show confirmation dialog before executing early refund
+- [ ] Call updateHtlcRefund after success and move row to Refunds tab
+
+### Feature C: Swap Pair Liquidity Depth Indicators
+- [ ] Add liquidityDepthUsd field to LP peer registration in signaling server
+- [ ] LP peers broadcast their per-pair liquidity depth when registering pairs
+- [ ] Add useLiquidityDepth hook that aggregates depth across all online LP peers per pair
+- [ ] Show depth badge (e.g. "~$12k") next to each pair in Swaps page token selector
+- [ ] Color-code: green ≥$10k, amber $1k–$10k, red <$1k, grey = no data
+- [ ] Update LiveOrderBook to show total available depth in header
+
+## Round 7 Features (Mar 7, 2026)
+
+- [x] TNK HTLC server-side polling monitor (server/jobs/tnkHtlcMonitor.ts) — polls Trac Network explorer every 60s for incoming escrow locks, matches by secretHash memo, updates DB lockTxId, broadcasts tnk_htlc_detected event, auto-refunds expired timelocks
+- [x] Early-exit Cancel & Refund button in Open Trades tab — confirmation dialog + chain-specific refund logic for all 4 chains (SOL, ETH, BTC, TNK) in OpenTradeCard
+- [x] Swap pair liquidity depth indicators — maxTradeUsd added to signaling protocol, usePairDepth hook aggregates per-pair depth, color-coded depth badges in both Sell and Buy token selector dropdowns
+- [x] tnkHtlcMonitor.test.ts — 10 unit tests for memo parsing, lifecycle idempotency, and DB-unavailable graceful fallback

@@ -478,9 +478,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
     }));
 
-    // Connect and register
+    // Connect and register (include maxTradeUsd for liquidity depth aggregation)
     client.connect();
-    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses);
+    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses, prefs.maxTradeUsd);
 
     // Also do legacy HTTP announce (best-effort fallback)
     announce(peerId, peerAlias);

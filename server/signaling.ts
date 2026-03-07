@@ -52,6 +52,8 @@ export interface SignalingPeer {
   connectedAt: number;
   lastHeartbeat: number;
   ws: WebSocket;
+  /** Maximum trade size in USD this peer is willing to quote (advertised liquidity) */
+  maxTradeUsd?: number;
 }
 
 interface ClientMessage {
@@ -69,6 +71,8 @@ interface ClientMessage {
   candidate?: unknown;
   payload?: unknown;
   rfq?: unknown;
+  /** Advertised max trade size in USD for liquidity depth aggregation */
+  maxTradeUsd?: number;
 }
 
 // ─── Peer Registry ───────────────────────────────────────────────────────────
@@ -85,6 +89,7 @@ function getPeerList() {
     walletAddresses: p.walletAddresses,
     connectedAt: p.connectedAt,
     lastHeartbeat: p.lastHeartbeat,
+    maxTradeUsd: p.maxTradeUsd,
   }));
 }
 
@@ -206,6 +211,7 @@ export function attachSignalingServer(httpServer: HttpServer) {
             connectedAt: Date.now(),
             lastHeartbeat: Date.now(),
             ws,
+            maxTradeUsd: typeof msg.maxTradeUsd === "number" ? msg.maxTradeUsd : undefined,
           };
 
           peers.set(msg.peerId, peer);

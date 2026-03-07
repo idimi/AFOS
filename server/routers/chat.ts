@@ -2178,6 +2178,7 @@ export const chatRouter = router({
       walletAddresses: p.walletAddresses,
       connectedAt:     p.connectedAt,
       lastHeartbeat:   p.lastHeartbeat,
+      maxTradeUsd:     p.maxTradeUsd,
       // Compute a simple "online" score: 100 if heartbeat < 30s ago, else decays
       score: Math.max(0, Math.round(100 - (Date.now() - p.lastHeartbeat) / 1000)),
     }));

@@ -7,10 +7,10 @@
  *   - HTLC detail drawer (slide-over with full HTLC details + explorer links)
  */
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
-  Wallet, Search, ExternalLink, Copy, Info, X,
+  Wallet, Search, ExternalLink, Copy, Info, X, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -438,6 +438,188 @@ function OpenTradeCard({
 }) {
   const { blocksRemaining, secondsRemaining, loading: countdownLoading } =
     useBlockCountdown(trade.chain, trade.locktime);
+  const { publicKey, signTransaction } = useSolanaWallet();
+  const { connection } = useConnection();
+  const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
+  const utils = trpc.useUtils();
+  const [earlyRefunding, setEarlyRefunding] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  const executeEarlyRefund = useCallback(async () => {
+    setShowConfirm(false);
+    setEarlyRefunding(true);
+
+    // ── Solana early refund ────────────────────────────────────────────────────
+    if (trade.chain === "solana") {
+      if (!publicKey || !signTransaction) {
+        toast.error("Wallet not connected", { description: "Connect your Phantom wallet to cancel this trade." });
+        setEarlyRefunding(false);
+        return;
+      }
+      try {
+        const { transaction } = await buildSolanaHtlcRefundTx({
+          senderPubkey: publicKey,
+          secretHash: trade.secretHash,
+          amountSol: trade.fromAmount,
+          connection,
+        });
+        const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+        const rawTx = signed.serialize();
+        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        await connection.confirmTransaction(txHash, "confirmed");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: trade.htlcAddress, refundTxId: txHash });
+        await utils.history.openTrades.invalidate();
+        toast.success("Trade cancelled & refunded!", {
+          description: (
+            <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Solscan <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("Cancel & Refund failed", { description: msg });
+      } finally {
+        setEarlyRefunding(false);
+      }
+      return;
+    }
+
+    // ── TNK early refund ───────────────────────────────────────────────────────
+    if (trade.chain === "trac_network") {
+      try {
+        const result = await requestTnkHtlcRefund({
+          secretHash: trade.secretHash,
+          amount: String(trade.fromAmount),
+          escrowAddress: trade.htlcAddress,
+        });
+        await updateHtlcRefund.mutateAsync({
+          htlcAddress: trade.htlcAddress,
+          refundTxId: result.refundRequestSignature.slice(0, 64),
+        });
+        await utils.history.openTrades.invalidate();
+        toast.success("TNK cancel request submitted!", {
+          description: "Agent will process the on-chain refund to your Tap Wallet.",
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("TNK cancel failed", { description: msg });
+      } finally {
+        setEarlyRefunding(false);
+      }
+      return;
+    }
+
+    // ── Ethereum early refund ──────────────────────────────────────────────────
+    if (trade.chain === "ethereum") {
+      const rawEth = (window as unknown as {
+        ethereum?: { request: (a: { method: string; params?: unknown[] }) => Promise<string>; selectedAddress?: string; };
+      }).ethereum;
+      if (!rawEth || !rawEth.selectedAddress) {
+        toast.error("MetaMask not connected", { description: "Connect your Ethereum wallet first." });
+        setEarlyRefunding(false);
+        return;
+      }
+      try {
+        const secretHashHex = trade.secretHash.startsWith("0x")
+          ? trade.secretHash.slice(2)
+          : trade.secretHash;
+        const calldata = "0x7249fbb6" + secretHashHex.padStart(64, "0");
+        toast.loading("Waiting for MetaMask…", { id: "eth-early-refund" });
+        const txHash = await rawEth.request({
+          method: "eth_sendTransaction",
+          params: [{ from: rawEth.selectedAddress, to: trade.htlcAddress, data: calldata, gas: "0x30D40" }],
+        });
+        toast.dismiss("eth-early-refund");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: trade.htlcAddress, refundTxId: txHash });
+        await utils.history.openTrades.invalidate();
+        toast.success("ETH trade cancelled!", {
+          description: (
+            <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Etherscan <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        toast.dismiss("eth-early-refund");
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("ETH cancel failed", { description: msg });
+      } finally {
+        setEarlyRefunding(false);
+      }
+      return;
+    }
+
+    // ── Bitcoin early refund ───────────────────────────────────────────────────
+    if (trade.chain === "bitcoin") {
+      try {
+        const btcLib = await import("@/lib/btcHtlc");
+        const provider = btcLib.detectBtcProvider();
+        if (provider === "unknown") {
+          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, Tap Wallet, or Xverse." });
+          setEarlyRefunding(false);
+          return;
+        }
+        const refundAddress = await btcLib.getBtcAddress(provider);
+        if (!refundAddress) {
+          toast.error("Wallet not connected", { description: "Unlock your Bitcoin wallet and try again." });
+          setEarlyRefunding(false);
+          return;
+        }
+        const utxos = await btcLib.fetchUtxos(trade.htlcAddress);
+        if (!utxos.length) {
+          toast.error("No UTXO found", { description: "The HTLC address has no confirmed UTXOs yet." });
+          setEarlyRefunding(false);
+          return;
+        }
+        const htlcUtxo = utxos[0];
+        const witnessScript = await btcLib.fetchWitnessUtxoScript(htlcUtxo.txid, htlcUtxo.vout);
+        if (!witnessScript) {
+          toast.error("Could not fetch UTXO script", { description: "Try again in a moment." });
+          setEarlyRefunding(false);
+          return;
+        }
+        const { psbtBase64 } = btcLib.buildBtcHtlcRefundPsbt({
+          witnessScript,
+          htlcAddress: trade.htlcAddress,
+          lockTxid: htlcUtxo.txid,
+          lockVout: htlcUtxo.vout,
+          amountSats: htlcUtxo.value,
+          locktime: trade.locktime,
+          refundAddress,
+        });
+        toast.loading("Waiting for wallet signature…", { id: "btc-early-refund-sign" });
+        const signedPsbt = await btcLib.signPsbtWithWallet(psbtBase64, provider, [0]);
+        toast.dismiss("btc-early-refund-sign");
+        toast.loading("Broadcasting refund tx…", { id: "btc-early-refund-broadcast" });
+        const { txid, explorerUrl } = await btcLib.broadcastSignedPsbt(signedPsbt);
+        toast.dismiss("btc-early-refund-broadcast");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: trade.htlcAddress, refundTxId: txid });
+        await utils.history.openTrades.invalidate();
+        toast.success("BTC trade cancelled!", {
+          description: (
+            <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Mempool.space <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        toast.dismiss("btc-early-refund-sign");
+        toast.dismiss("btc-early-refund-broadcast");
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("BTC cancel failed", { description: msg });
+      } finally {
+        setEarlyRefunding(false);
+      }
+      return;
+    }
+
+    toast.info("Cancel not supported", { description: `Chain "${trade.chain}" does not have a browser-side cancel path yet.` });
+    setEarlyRefunding(false);
+  }, [trade, publicKey, signTransaction, connection, updateHtlcRefund, utils]);
 
   const isUrgent = blocksRemaining !== null && blocksRemaining < 10;
   const isExpired = blocksRemaining !== null && blocksRemaining === 0;
@@ -562,6 +744,22 @@ function OpenTradeCard({
               <span className="text-[10px] font-mono text-emerald-400">Locked</span>
             </div>
           )}
+          {/* Cancel & Refund button — available when peer has gone offline or trade is stuck */}
+          {(phase === "htlc_locked" || phase === "awaiting_settle" || phase === "rfq_sent") && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={earlyRefunding}
+              className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-mono transition-all disabled:opacity-50"
+              style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", color: "#ef4444" }}
+              title="Cancel trade and recover your funds"
+            >
+              {earlyRefunding
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <XCircle className="w-3 h-3" />
+              }
+              <span>{earlyRefunding ? "Cancelling…" : "Cancel"}</span>
+            </button>
+          )}
           {/* Detail drawer button */}
           <button
             onClick={() => onOpenDetail(trade.htlcId)}
@@ -574,6 +772,72 @@ function OpenTradeCard({
           </button>
         </div>
       </div>
+
+      {/* Cancel & Refund confirmation dialog */}
+      <AnimatePresence>
+        {showConfirm && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.96 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.7)" }}
+            onClick={() => setShowConfirm(false)}
+          >
+            <div
+              className="rounded-2xl p-5 max-w-sm w-full"
+              style={{ background: "var(--card)", border: "1px solid rgba(239,68,68,0.35)" }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                <h3 className="text-sm font-bold text-foreground">Cancel Trade & Refund</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-1">
+                This will attempt an early exit from the HTLC escrow and return your funds.
+              </p>
+              <p className="text-[10px] font-mono text-amber-400/80 mb-4">
+                ⚠ Only cancel if the counterparty is offline or unresponsive. Cancelling an active swap may result in loss of funds if the peer has already locked their side.
+              </p>
+              <div className="grid grid-cols-2 gap-2 mb-4 text-[10px] font-mono">
+                <div>
+                  <div className="text-muted-foreground/60">You send</div>
+                  <div className="text-foreground/80">{trade.fromAmount.toLocaleString()} {trade.fromSymbol}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60">Chain</div>
+                  <div className="text-foreground/80">{trade.chain}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60">Peer</div>
+                  <div className="text-foreground/80 truncate">{trade.peer}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground/60">Phase</div>
+                  <div className="text-foreground/80">{PHASE_LABELS[phase]}</div>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="flex-1 py-2 rounded-lg text-[11px] font-mono transition-all"
+                  style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+                >
+                  Keep Trade
+                </button>
+                <button
+                  onClick={executeEarlyRefund}
+                  className="flex-1 py-2 rounded-lg text-[11px] font-bold transition-all"
+                  style={{ background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.4)", color: "#ef4444" }}
+                >
+                  Cancel & Refund
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

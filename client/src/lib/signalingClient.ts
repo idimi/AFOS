@@ -25,6 +25,8 @@ export interface RemotePeer {
   };
   connectedAt: number;
   lastHeartbeat?: number;
+  /** Advertised maximum trade size in USD (liquidity depth) */
+  maxTradeUsd?: number;
   /** WebRTC data channel (null until established) */
   dataChannel: RTCDataChannel | null;
   /** RTCPeerConnection (null until WebRTC handshake starts) */
@@ -106,6 +108,7 @@ export class SignalingClient {
   private myAlias: string = "";
   private myPairs: string[] = [];
   private myWalletAddresses: Record<string, string> = {};
+  private myMaxTradeUsd: number | undefined = undefined;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_DELAY;
@@ -179,6 +182,7 @@ export class SignalingClient {
           alias: this.myAlias,
           pairs: this.myPairs,
           walletAddresses: this.myWalletAddresses,
+          maxTradeUsd: this.myMaxTradeUsd,
         });
       }
     };
@@ -256,12 +260,14 @@ export class SignalingClient {
     peerId: string,
     alias: string,
     pairs: string[],
-    walletAddresses: Record<string, string>
+    walletAddresses: Record<string, string>,
+    maxTradeUsd?: number
   ) {
     this.myPeerId = peerId;
     this.myAlias = alias;
     this.myPairs = pairs;
     this.myWalletAddresses = walletAddresses;
+    this.myMaxTradeUsd = maxTradeUsd;
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.connect();
@@ -274,6 +280,7 @@ export class SignalingClient {
       alias,
       pairs,
       walletAddresses,
+      maxTradeUsd,
     });
   }
 

@@ -10,6 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 import { sdk } from "./sdk";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
+import { startTnkHtlcMonitor } from "../jobs/tnkHtlcMonitor";
 import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
@@ -201,6 +202,8 @@ async function startServer() {
     console.log(`Server running on http://localhost:${port}/`);
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
+    // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks
+    startTnkHtlcMonitor();
     // ── Hourly fee revenue alert ───────────────────────────────────────────────
     // Run once on startup (after a 10s warm-up delay), then every hour.
     // The job is idempotent — it only fires one notification per calendar day.

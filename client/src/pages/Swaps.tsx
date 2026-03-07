@@ -32,6 +32,7 @@ import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
 import { getTnkBalance } from "../lib/tnkHtlc";
+import { usePairDepth, formatDepth, depthColor } from "../hooks/usePairDepth";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -146,11 +147,14 @@ function TokenSelector({
   onSelect,
   label,
   exclude,
+  depthMap,
 }: {
   selected: typeof TOKENS[0];
   onSelect: (t: typeof TOKENS[0]) => void;
   label: string;
   exclude?: string;
+  /** Pair depth map from usePairDepth — keys are "FROM/TO" */
+  depthMap?: Record<string, number>;
 }) {
   const [open, setOpen] = useState(false);
   const chain = CHAINS[selected.chain as keyof typeof CHAINS];
@@ -210,7 +214,30 @@ function TokenSelector({
                     {token.icon}
                   </div>
                   <div className="flex-1 text-left">
-                    <div className="text-sm font-semibold text-foreground">{token.symbol}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-semibold text-foreground">{token.symbol}</span>
+                      {(() => {
+                        if (!depthMap || !exclude) return null;
+                        const pairKey = `${token.symbol.toUpperCase()}/${exclude.toUpperCase()}`;
+                        const revKey  = `${exclude.toUpperCase()}/${token.symbol.toUpperCase()}`;
+                        const depth = depthMap[pairKey] ?? depthMap[revKey];
+                        const label = formatDepth(depth);
+                        if (!label) return null;
+                        return (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold"
+                            style={{
+                              background: `${depthColor(depth)}18`,
+                              border: `1px solid ${depthColor(depth)}40`,
+                              color: depthColor(depth),
+                            }}
+                            title={`~$${depth?.toLocaleString()} available LP depth`}
+                          >
+                            {label}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <div className="text-[10px] text-slate-500">{tc.network}</div>
                   </div>
                   <div className="text-right">
@@ -2615,6 +2642,13 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     (p.from === toToken.symbol && p.to === fromToken.symbol)
   );
 
+  // ── Liquidity depth map: aggregate LP maxTradeUsd per pair from signaling peers ──
+  const { data: swapPeers } = trpc.chat.getPeerList.useQuery(undefined, {
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+  });
+  const pairDepthMap = usePairDepth(swapPeers);
+
   const handleFlip = () => {
     const temp = fromToken;
     setFromToken(toToken);
@@ -2899,21 +2933,42 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                   {fromDropOpen && (
                     <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[200px]"
                       style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
-                      {TOKENS.filter(t => t.symbol !== toToken.symbol).map(token => (
-                        <button key={token.symbol}
-                          onClick={() => { setFromToken(token); setFromDropOpen(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
-                          <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-foreground">{token.symbol}</div>
-                            <div className="text-[10px] text-muted-foreground">{token.name}</div>
-                          </div>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
-                            style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
-                            {CHAINS[token.chain as keyof typeof CHAINS].shortName}
-                          </span>
-                        </button>
-                      ))}
+                      {TOKENS.filter(t => t.symbol !== toToken.symbol).map(token => {
+                        const pairKey = `${token.symbol.toUpperCase()}/${toToken.symbol.toUpperCase()}`;
+                        const revKey  = `${toToken.symbol.toUpperCase()}/${token.symbol.toUpperCase()}`;
+                        const depth = pairDepthMap[pairKey] ?? pairDepthMap[revKey];
+                        const depthLabel = formatDepth(depth);
+                        return (
+                          <button key={token.symbol}
+                            onClick={() => { setFromToken(token); setFromDropOpen(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
+                            <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-foreground">{token.symbol}</span>
+                                {depthLabel && (
+                                  <span
+                                    className="px-1 py-0.5 rounded text-[9px] font-mono font-bold"
+                                    style={{
+                                      background: `${depthColor(depth)}18`,
+                                      border: `1px solid ${depthColor(depth)}40`,
+                                      color: depthColor(depth),
+                                    }}
+                                    title={`~$${depth?.toLocaleString()} available LP depth for this pair`}
+                                  >
+                                    {depthLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">{token.name}</div>
+                            </div>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                              style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
+                              {CHAINS[token.chain as keyof typeof CHAINS].shortName}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2992,21 +3047,42 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                   {toDropOpen && (
                     <div className="absolute top-full mt-1 right-0 z-50 rounded-xl overflow-hidden min-w-[200px]"
                       style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}>
-                      {TOKENS.filter(t => t.symbol !== fromToken.symbol).map(token => (
-                        <button key={token.symbol}
-                          onClick={() => { setToToken(token); setToDropOpen(false); }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
-                          <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-foreground">{token.symbol}</div>
-                            <div className="text-[10px] text-muted-foreground">{token.name}</div>
-                          </div>
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
-                            style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
-                            {CHAINS[token.chain as keyof typeof CHAINS].shortName}
-                          </span>
-                        </button>
-                      ))}
+                      {TOKENS.filter(t => t.symbol !== fromToken.symbol).map(token => {
+                        const pairKey = `${fromToken.symbol.toUpperCase()}/${token.symbol.toUpperCase()}`;
+                        const revKey  = `${token.symbol.toUpperCase()}/${fromToken.symbol.toUpperCase()}`;
+                        const depth = pairDepthMap[pairKey] ?? pairDepthMap[revKey];
+                        const depthLabel = formatDepth(depth);
+                        return (
+                          <button key={token.symbol}
+                            onClick={() => { setToToken(token); setToDropOpen(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 hover:bg-muted/60 transition-colors text-left">
+                            <span className="text-base" style={{ color: token.color }}>{token.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-bold text-foreground">{token.symbol}</span>
+                                {depthLabel && (
+                                  <span
+                                    className="px-1 py-0.5 rounded text-[9px] font-mono font-bold"
+                                    style={{
+                                      background: `${depthColor(depth)}18`,
+                                      border: `1px solid ${depthColor(depth)}40`,
+                                      color: depthColor(depth),
+                                    }}
+                                    title={`~$${depth?.toLocaleString()} available LP depth for this pair`}
+                                  >
+                                    {depthLabel}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">{token.name}</div>
+                            </div>
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                              style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
+                              {CHAINS[token.chain as keyof typeof CHAINS].shortName}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
