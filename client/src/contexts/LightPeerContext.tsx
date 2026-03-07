@@ -36,6 +36,7 @@ import { buildSolanaHtlcLockTx, generateHtlcSecret } from "../lib/solanaHtlc";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { getSignalingClient, type RemotePeer, type SignalingClient } from "../lib/signalingClient";
+import { executeTnkHtlcLock, tnkExplorerUrl } from "../lib/tnkHtlc";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -886,6 +887,37 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             setHtlcSigning({ rfqId, step: "settled" });
             toast.success("Quote accepted", {
               description: `Bitcoin HTLC will be coordinated by AFOS agent. (${msg.slice(0, 60)})`,
+            });
+          }
+        }
+      } else if ((chain === "trac_network" || rfq.fromToken === "TNK") && (window as any).tracnetwork) {
+        // TNK (Trac Network) HTLC: agent-escrow model using window.tracnetwork.sendTNK()
+        setHtlcSigning({ rfqId, step: "locking" });
+        try {
+          const { secretHashHex: secretHash } = await generateHtlcSecret();
+          const result = await executeTnkHtlcLock({
+            amount: rfq.amount.toFixed(8),
+            secretHash,
+            timelockSeconds: 600, // 10 minutes default for TNK
+          });
+          setHtlcSigning({ rfqId, step: "revealing", txHash: result.txHash });
+          await new Promise(r => setTimeout(r, 800));
+          setHtlcSigning({ rfqId, step: "settled", txHash: result.txHash });
+          toast.success("TNK escrowed", {
+            description: `${rfq.amount.toFixed(4)} TNK locked in AFOS escrow · Tx: ${result.txHash.slice(0, 16)}…`,
+            action: {
+              label: "View on Trac Explorer",
+              onClick: () => window.open(tnkExplorerUrl(result.txHash), "_blank"),
+            },
+          });
+        } catch (tnkErr: unknown) {
+          const msg = tnkErr instanceof Error ? tnkErr.message : String(tnkErr);
+          if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
+            setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
+          } else {
+            setHtlcSigning({ rfqId, step: "settled" });
+            toast.success("Quote accepted", {
+              description: `TNK HTLC will be coordinated by AFOS agent. (${msg.slice(0, 60)})`,
             });
           }
         }

@@ -1,12 +1,23 @@
 /**
  * AFOS — Open Trades and Refunds tabs for SwapHistory
- * Production: pulls live data from tRPC history procedures (wallet-scoped)
+ *
+ * Features:
+ *   - Live block-height countdown (polls chain RPC every 30s)
+ *   - On-chain claim refund button (Solana: buildSolanaHtlcRefundTx + Phantom sign/send)
+ *   - HTLC detail drawer (slide-over with full HTLC details + explorer links)
  */
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2, Wallet, Search } from "lucide-react";
+import {
+  Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
+  Wallet, Search, ExternalLink, Copy, Info, X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-
+import { buildSolanaHtlcRefundTx } from "@/lib/solanaHtlc";
+import { requestTnkHtlcRefund } from "@/lib/tnkHtlc";
+import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
@@ -72,10 +83,289 @@ interface HtlcSwapRow {
   refundedAt: Date | null;
 }
 
+// ─── Explorer URL helpers ─────────────────────────────────────────────────────
+
+function explorerTxUrl(chain: string, txHash: string): string {
+  if (!txHash) return "#";
+  if (chain === "solana")   return `https://solscan.io/tx/${txHash}`;
+  if (chain === "ethereum") return `https://etherscan.io/tx/${txHash}`;
+  if (chain === "bitcoin")  return `https://mempool.space/tx/${txHash}`;
+  return "#";
+}
+
+function explorerAddrUrl(chain: string, addr: string): string {
+  if (!addr) return "#";
+  if (chain === "solana")   return `https://solscan.io/account/${addr}`;
+  if (chain === "ethereum") return `https://etherscan.io/address/${addr}`;
+  if (chain === "bitcoin")  return `https://mempool.space/address/${addr}`;
+  return "#";
+}
+
+function copyToClipboard(text: string, label: string) {
+  navigator.clipboard.writeText(text).then(() =>
+    toast.success(`${label} copied`)
+  );
+}
+
+// ─── Block-height countdown hook ─────────────────────────────────────────────
+
+interface BlockCountdown {
+  currentBlock: number | null;
+  blocksRemaining: number | null;
+  /** estimated seconds remaining (based on chain block time) */
+  secondsRemaining: number | null;
+  loading: boolean;
+}
+
+const BLOCK_TIMES: Record<string, number> = {
+  solana: 0.4,    // ~0.4s per slot
+  ethereum: 12,   // ~12s per block
+  bitcoin: 600,   // ~10min per block
+};
+
+async function fetchCurrentBlock(chain: string): Promise<number | null> {
+  try {
+    if (chain === "solana") {
+      const rpc = import.meta.env.VITE_SOL_RPC_URL || "https://api.mainnet-beta.solana.com";
+      const res = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getSlot", params: [] }),
+      });
+      const data = await res.json();
+      return typeof data.result === "number" ? data.result : null;
+    }
+    if (chain === "ethereum") {
+      const rpc = import.meta.env.VITE_ETH_RPC_URL || "https://eth.llamarpc.com";
+      const res = await fetch(rpc, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
+      });
+      const data = await res.json();
+      return data.result ? parseInt(data.result, 16) : null;
+    }
+    if (chain === "bitcoin") {
+      const res = await fetch("https://mempool.space/api/blocks/tip/height");
+      const text = await res.text();
+      return parseInt(text.trim(), 10) || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function useBlockCountdown(chain: string, locktime: number): BlockCountdown {
+  const [currentBlock, setCurrentBlock] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      const block = await fetchCurrentBlock(chain);
+      if (!cancelled) {
+        setCurrentBlock(block);
+        setLoading(false);
+      }
+    };
+    poll();
+    const iv = setInterval(poll, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [chain]);
+
+  const blocksRemaining = currentBlock !== null
+    ? Math.max(0, locktime - currentBlock)
+    : null;
+
+  const blockTime = BLOCK_TIMES[chain] ?? 12;
+  const secondsRemaining = blocksRemaining !== null
+    ? Math.round(blocksRemaining * blockTime)
+    : null;
+
+  return { currentBlock, blocksRemaining, secondsRemaining, loading };
+}
+
+// ─── HTLC Detail Drawer ───────────────────────────────────────────────────────
+
+interface HtlcDetailDrawerProps {
+  htlcId: number | null;
+  onClose: () => void;
+}
+
+function HtlcDetailDrawer({ htlcId, onClose }: HtlcDetailDrawerProps) {
+  const { data, isLoading } = trpc.history.htlcDetail.useQuery(
+    { id: htlcId! },
+    { enabled: htlcId !== null }
+  );
+
+  if (htlcId === null) return null;
+
+  const chain = data?.chain ?? "solana";
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      {/* Slide-over panel */}
+      <div
+        className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md flex flex-col"
+        style={{ background: "var(--card)", borderLeft: "1px solid var(--border)" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-cyan-400" />
+            <span className="text-sm font-semibold text-foreground">HTLC Details</span>
+            {data && (
+              <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono uppercase"
+                style={{
+                  background: data.status === "pending" ? "rgba(245,158,11,0.12)" :
+                    data.status === "completed" ? "rgba(16,185,129,0.12)" :
+                    data.status === "refunded" ? "rgba(6,182,212,0.12)" : "rgba(100,116,139,0.12)",
+                  border: `1px solid ${data.status === "pending" ? "rgba(245,158,11,0.3)" :
+                    data.status === "completed" ? "rgba(16,185,129,0.3)" :
+                    data.status === "refunded" ? "rgba(6,182,212,0.3)" : "rgba(100,116,139,0.3)"}`,
+                  color: data.status === "pending" ? "#f59e0b" :
+                    data.status === "completed" ? "#10b981" :
+                    data.status === "refunded" ? "#06b6d4" : "#64748b",
+                }}>
+                {data.status}
+              </span>
+            )}
+          </div>
+          <button onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {isLoading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+            </div>
+          )}
+
+          {!isLoading && !data && (
+            <div className="py-16 text-center">
+              <p className="text-sm text-muted-foreground">HTLC record not found</p>
+            </div>
+          )}
+
+          {data && (
+            <>
+              {/* Amount & Chain */}
+              <div className="rounded-xl p-4 space-y-3"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Amount</span>
+                  <span className="text-sm font-bold font-mono text-foreground">
+                    {data.amountHuman} {chain === "bitcoin" ? "BTC" : chain === "ethereum" ? "ETH" : "SOL"}
+                    {data.toToken && ` → ${data.toToken}`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Chain</span>
+                  <span className="text-xs font-mono text-foreground capitalize">{chain}</span>
+                </div>
+                {data.peerId && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Peer ID</span>
+                    <span className="text-xs font-mono text-foreground/80 truncate max-w-[200px]">{data.peerId}</span>
+                  </div>
+                )}
+                {data.rfqId && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">RFQ ID</span>
+                    <span className="text-xs font-mono text-foreground/80 truncate max-w-[200px]">{data.rfqId}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Locktime (block)</span>
+                  <span className="text-xs font-mono text-foreground/80">{data.locktime.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">Created</span>
+                  <span className="text-xs font-mono text-foreground/80">
+                    {new Date(data.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Addresses */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Addresses</p>
+                {[
+                  { label: "HTLC Address", value: data.htlcAddress, isAddr: true },
+                  { label: "Sender", value: data.senderAddress, isAddr: true },
+                  { label: "Secret Hash", value: data.secretHash, isAddr: false },
+                ].filter(r => r.value).map(row => (
+                  <div key={row.label} className="rounded-lg p-3"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                    <div className="text-[9px] text-muted-foreground/60 mb-1">{row.label}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-foreground/80 truncate flex-1">{row.value}</span>
+                      <button onClick={() => copyToClipboard(row.value!, row.label)}
+                        className="p-1 rounded hover:bg-background transition-colors shrink-0">
+                        <Copy className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                      {row.isAddr && (
+                        <a href={explorerAddrUrl(chain, row.value!)} target="_blank" rel="noopener noreferrer"
+                          className="p-1 rounded hover:bg-background transition-colors shrink-0">
+                          <ExternalLink className="w-3 h-3 text-cyan-400" />
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Transactions */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">Transactions</p>
+                {[
+                  { label: "Lock Tx", value: data.lockTxId },
+                  { label: "Refund Tx", value: data.refundTxId },
+                ].filter(r => r.value).map(row => (
+                  <div key={row.label} className="rounded-lg p-3"
+                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                    <div className="text-[9px] text-muted-foreground/60 mb-1">{row.label}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-foreground/80 truncate flex-1">{row.value}</span>
+                      <button onClick={() => copyToClipboard(row.value!, row.label)}
+                        className="p-1 rounded hover:bg-background transition-colors shrink-0">
+                        <Copy className="w-3 h-3 text-muted-foreground" />
+                      </button>
+                      <a href={explorerTxUrl(chain, row.value!)} target="_blank" rel="noopener noreferrer"
+                        className="p-1 rounded hover:bg-background transition-colors shrink-0">
+                        <ExternalLink className="w-3 h-3 text-cyan-400" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+                {!data.lockTxId && !data.refundTxId && (
+                  <p className="text-xs text-muted-foreground/60 text-center py-2">No transactions recorded yet</p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Open Trades ──────────────────────────────────────────────────────────────
 
 interface OpenTrade {
   id: string;
+  htlcId: number;
   direction: "buy_btc" | "sell_btc";
   fromSymbol: string;
   toSymbol: string;
@@ -84,11 +374,13 @@ interface OpenTrade {
   rate: number;
   feeBps: number;
   peer: string;
-  htlcExpiry: string;
-  refundWindow: string;
   phase: "rfq_sent" | "quote_received" | "htlc_locked" | "awaiting_settle";
   receivedAt: Date;
-  expiresIn: number;
+  chain: string;
+  locktime: number;
+  htlcAddress: string;
+  secretHash: string;
+  senderAddress: string | null;
 }
 
 const PHASE_LABELS = {
@@ -106,35 +398,184 @@ const PHASE_COLORS = {
 } as const;
 
 function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
-  const ageMs = Date.now() - row.createdAt.getTime();
+  const ageMs = Date.now() - new Date(row.createdAt).getTime();
   const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL";
   const toSymbol = row.toToken ?? "USDT";
   const fromAmount = parseFloat(row.amountHuman);
-  const toAmount = 0; // not stored in HTLC row — shown as 0 until settled
   const isBuy = toSymbol === "BTC";
 
   let phase: OpenTrade["phase"] = "rfq_sent";
   if (row.lockTxId) phase = "htlc_locked";
   if (ageMs > 60_000) phase = "awaiting_settle";
 
-  const expiresIn = Math.max(0, Math.round((600_000 - ageMs) / 1000));
-
   return {
     id: String(row.id),
+    htlcId: row.id,
     direction: isBuy ? "buy_btc" : "sell_btc",
     fromSymbol,
     toSymbol,
     fromAmount,
-    toAmount,
+    toAmount: 0,
     rate: 0,
     feeBps: 20,
     peer: row.peerId ?? "P2P Network",
-    htlcExpiry: expiresIn > 0 ? `${expiresIn}s` : "Expired",
-    refundWindow: "20-40h",
     phase,
-    receivedAt: row.createdAt,
-    expiresIn,
+    receivedAt: new Date(row.createdAt),
+    chain: row.chain,
+    locktime: row.locktime,
+    htlcAddress: row.htlcAddress,
+    secretHash: row.secretHash,
+    senderAddress: row.senderAddress,
   };
+}
+
+function OpenTradeCard({
+  trade,
+  onOpenDetail,
+}: {
+  trade: OpenTrade;
+  onOpenDetail: (id: number) => void;
+}) {
+  const { blocksRemaining, secondsRemaining, loading: countdownLoading } =
+    useBlockCountdown(trade.chain, trade.locktime);
+
+  const isUrgent = blocksRemaining !== null && blocksRemaining < 10;
+  const isExpired = blocksRemaining !== null && blocksRemaining === 0;
+  const phase = trade.phase;
+  const phaseColor = PHASE_COLORS[phase];
+
+  // Progress bar: 0% = just locked, 100% = expired
+  // We don't know the original locktime block, so we estimate from locktime
+  // (locktime is the absolute block number when it expires)
+  const progressPct = blocksRemaining !== null
+    ? Math.max(0, Math.min(100, 100 - (blocksRemaining / Math.max(1, trade.locktime * 0.1)) * 100))
+    : 50;
+
+  const formatTimeRemaining = () => {
+    if (countdownLoading) return "Loading…";
+    if (blocksRemaining === null) return "Unknown";
+    if (isExpired) return "Expired";
+    if (secondsRemaining === null) return `${blocksRemaining} blocks`;
+    const h = Math.floor(secondsRemaining / 3600);
+    const m = Math.floor((secondsRemaining % 3600) / 60);
+    const s = secondsRemaining % 60;
+    if (h > 0) return `${blocksRemaining} blocks ≈ ${h}h ${m}m`;
+    if (m > 0) return `${blocksRemaining} blocks ≈ ${m}m ${s}s`;
+    return `${blocksRemaining} blocks ≈ ${s}s`;
+  };
+
+  return (
+    <motion.div layout
+      className="rounded-2xl p-4"
+      style={{
+        background: "var(--card)",
+        border: `1px solid ${isUrgent ? "rgba(239,68,68,0.35)" : "var(--border)"}`,
+      }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
+              style={{ background: `${phaseColor}18`, border: `1px solid ${phaseColor}40`, color: phaseColor }}>
+              {PHASE_LABELS[phase]}
+            </span>
+            <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
+              style={{
+                background: trade.direction === "buy_btc" ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.1)",
+                border: `1px solid ${trade.direction === "buy_btc" ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.25)"}`,
+                color: trade.direction === "buy_btc" ? "#10b981" : "#ef4444",
+              }}>
+              {trade.direction === "buy_btc" ? "BUY BTC" : "SELL BTC"}
+            </span>
+            {isUrgent && !isExpired && (
+              <div className="flex items-center gap-1 ml-auto">
+                <AlertTriangle className="w-3 h-3 text-red-400" />
+                <span className="text-[9px] font-mono text-red-400">Expires soon</span>
+              </div>
+            )}
+            {isExpired && (
+              <div className="flex items-center gap-1 ml-auto">
+                <AlertTriangle className="w-3 h-3 text-red-500" />
+                <span className="text-[9px] font-mono text-red-500">Expired</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mb-3">
+            {[
+              { label: "You send", value: `${trade.fromAmount.toLocaleString()} ${trade.fromSymbol}` },
+              { label: "You receive", value: trade.toAmount > 0 ? `${trade.toAmount} ${trade.toSymbol}` : "Pending" },
+              { label: "Rate", value: trade.rate > 0 ? `1 BTC = $${trade.rate.toLocaleString()}` : "Awaiting" },
+              { label: "Fee", value: `${trade.feeBps} bps` },
+              { label: "Peer", value: trade.peer },
+              { label: "Chain", value: trade.chain },
+              { label: "Received", value: `${Math.round((Date.now() - trade.receivedAt.getTime()) / 1000)}s ago` },
+              { label: "Locktime block", value: trade.locktime.toLocaleString() },
+            ].map(item => (
+              <div key={item.label}>
+                <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
+                <div className="text-[10px] font-mono text-foreground/80">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Live block countdown + progress bar */}
+          <div>
+            <div className="flex justify-between text-[9px] text-muted-foreground mb-1">
+              <span>HTLC timeout</span>
+              <span className={isUrgent ? "text-red-400" : isExpired ? "text-red-500" : "text-muted-foreground"}>
+                {formatTimeRemaining()}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
+              <div
+                className="h-full rounded-full transition-all duration-1000"
+                style={{
+                  width: `${progressPct}%`,
+                  background: isExpired ? "#ef4444" : isUrgent ? "#f97316" : "#10b981",
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 shrink-0">
+          {phase === "quote_received" && (
+            <>
+              <button
+                onClick={() => toast.success("Quote accepted — HTLC locking...", { description: "Atomic escrow initiated" })}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
+                style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.35)", color: "#10b981" }}>
+                Accept
+              </button>
+              <button
+                onClick={() => toast.info("Trade rejected", { description: "RFQ cancelled, no funds moved" })}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all"
+                style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                Reject
+              </button>
+            </>
+          )}
+          {phase === "htlc_locked" && (
+            <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[10px] font-mono text-emerald-400">Locked</span>
+            </div>
+          )}
+          {/* Detail drawer button */}
+          <button
+            onClick={() => onOpenDetail(trade.htlcId)}
+            className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-mono transition-all"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            title="View HTLC details"
+          >
+            <Info className="w-3 h-3" />
+            <span>Details</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
@@ -142,17 +583,10 @@ export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
     { walletAddresses, search },
     { refetchInterval: 15000 }
   );
+  const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
 
   const trades: OpenTrade[] = (data?.trades ?? []).map(mapHtlcToOpenTrade);
   const hasWallet = walletAddresses.length > 0;
-
-  const acceptTrade = (_id: string) => {
-    toast.success("Quote accepted — HTLC locking...", { description: "Atomic escrow initiated on Solana" });
-  };
-
-  const rejectTrade = (_id: string) => {
-    toast.info("Trade rejected", { description: "RFQ cancelled, no funds moved" });
-  };
 
   if (isLoading) {
     return (
@@ -163,126 +597,47 @@ export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Wallet scope banner */}
-      {!hasWallet && (
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-          style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
-        >
-          <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-          <span className="text-cyan-300/80">
-            Connect a wallet to see your open trades. Showing all network trades (operator view).
-          </span>
-        </div>
-      )}
+    <>
+      <div className="space-y-3">
+        {!hasWallet && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+          >
+            <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+            <span className="text-cyan-300/80">
+              Connect a wallet to see your open trades. Showing all network trades (operator view).
+            </span>
+          </div>
+        )}
 
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">{trades.length} active trade{trades.length !== 1 ? "s" : ""} in progress</p>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[10px] font-mono text-emerald-400">Live</span>
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {trades.length} active trade{trades.length !== 1 ? "s" : ""} in progress
+          </p>
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[10px] font-mono text-emerald-400">Live</span>
+          </div>
         </div>
+
+        {trades.length === 0 && (
+          <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No open trades</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {hasWallet ? "Your active swaps will appear here" : "Active swaps will appear here for approval"}
+            </p>
+          </div>
+        )}
+
+        {trades.map(trade => (
+          <OpenTradeCard key={trade.id} trade={trade} onOpenDetail={setSelectedHtlcId} />
+        ))}
       </div>
 
-      {trades.length === 0 && (
-        <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-          <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No open trades</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">
-            {hasWallet ? "Your active swaps will appear here" : "Active swaps will appear here for approval"}
-          </p>
-        </div>
-      )}
-
-      {trades.map(trade => {
-        const phase = trade.phase;
-        const phaseColor = PHASE_COLORS[phase];
-        const isUrgent = trade.expiresIn < 120;
-        return (
-          <motion.div key={trade.id} layout
-            className="rounded-2xl p-4" style={{ background: "var(--card)", border: `1px solid ${isUrgent ? "rgba(239,68,68,0.35)" : "var(--border)"}` }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
-                    style={{ background: `${phaseColor}18`, border: `1px solid ${phaseColor}40`, color: phaseColor }}>
-                    {PHASE_LABELS[phase]}
-                  </span>
-                  <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
-                    style={{
-                      background: trade.direction === "buy_btc" ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.1)",
-                      border: `1px solid ${trade.direction === "buy_btc" ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.25)"}`,
-                      color: trade.direction === "buy_btc" ? "#10b981" : "#ef4444"
-                    }}>
-                    {trade.direction === "buy_btc" ? "BUY BTC" : "SELL BTC"}
-                  </span>
-                  {isUrgent && (
-                    <div className="flex items-center gap-1 ml-auto">
-                      <AlertTriangle className="w-3 h-3 text-red-400" />
-                      <span className="text-[9px] font-mono text-red-400">Expires soon</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5 mb-3">
-                  {[
-                    { label: "You send", value: `${trade.fromAmount.toLocaleString()} ${trade.fromSymbol}` },
-                    { label: "You receive", value: trade.toAmount > 0 ? `${trade.toAmount} ${trade.toSymbol}` : "Pending settlement" },
-                    { label: "Rate", value: trade.rate > 0 ? `1 BTC = $${trade.rate.toLocaleString()}` : "Awaiting quote" },
-                    { label: "Fee", value: `${trade.feeBps} bps` },
-                    { label: "Peer", value: trade.peer },
-                    { label: "HTLC expiry", value: trade.htlcExpiry },
-                    { label: "Refund window", value: trade.refundWindow },
-                    { label: "Received", value: `${Math.round((Date.now() - trade.receivedAt.getTime()) / 1000)}s ago` },
-                  ].map(item => (
-                    <div key={item.label}>
-                      <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
-                      <div className="text-[10px] font-mono text-foreground/80">{item.value}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-[9px] text-muted-foreground mb-1">
-                    <span>HTLC timeout</span>
-                    <span className={isUrgent ? "text-red-400" : "text-muted-foreground"}>{trade.expiresIn}s remaining</span>
-                  </div>
-                  <div className="h-1 rounded-full overflow-hidden" style={{ background: "var(--muted)" }}>
-                    <div className="h-full rounded-full transition-all duration-1000"
-                      style={{ width: `${Math.min(100, (trade.expiresIn / 900) * 100)}%`, background: isUrgent ? "#ef4444" : "#10b981" }} />
-                  </div>
-                </div>
-              </div>
-
-              {phase === "quote_received" && (
-                <div className="flex flex-col gap-2 shrink-0">
-                  <button onClick={() => acceptTrade(trade.id)}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all"
-                    style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.35)", color: "#10b981" }}>
-                    Accept
-                  </button>
-                  <button onClick={() => rejectTrade(trade.id)}
-                    className="px-3 py-1.5 rounded-lg text-[10px] font-mono text-muted-foreground transition-all"
-                    style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
-                    Reject
-                  </button>
-                </div>
-              )}
-              {phase === "htlc_locked" && (
-                <div className="shrink-0">
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-                    style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-[10px] font-mono text-emerald-400">Locked</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        );
-      })}
-    </div>
+      <HtlcDetailDrawer htlcId={selectedHtlcId} onClose={() => setSelectedHtlcId(null)} />
+    </>
   );
 }
 
@@ -290,6 +645,7 @@ export function OpenTradesTab({ walletAddresses, search = "" }: TabProps) {
 
 interface RefundRecord {
   id: string;
+  htlcId: number;
   fromSymbol: string;
   toSymbol: string;
   amount: number;
@@ -300,11 +656,16 @@ interface RefundRecord {
   status: "claimable" | "claimed" | "expired";
   txHash: string;
   escrowPda: string;
+  chain: string;
+  htlcAddress: string;
+  secretHash: string;
+  senderAddress: string | null;
+  amountHuman: string;
+  locktime: number;
 }
 
-// Rough USD price estimates for display purposes
 const PRICE_ESTIMATES: Record<string, number> = {
-  BTC: 95000, ETH: 3000, SOL: 150, USDT: 1, USDC: 1,
+  BTC: 95000, ETH: 3000, SOL: 150, USDT: 1, USDC: 1, TNK: 0.01,
 };
 
 function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
@@ -317,17 +678,192 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
 
   return {
     id: String(row.id),
+    htlcId: row.id,
     fromSymbol,
     toSymbol,
     amount,
     usdValue,
     peer: row.peerId ?? "P2P Network",
     failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
-    htlcExpiry: row.refundedAt ?? row.updatedAt,
+    htlcExpiry: row.refundedAt ? new Date(row.refundedAt) : new Date(row.updatedAt),
     status,
     txHash: row.refundTxId ?? row.lockTxId ?? row.secretHash.slice(0, 16) + "...",
     escrowPda: row.htlcAddress.length > 20 ? row.htlcAddress.slice(0, 12) + "..." : row.htlcAddress,
+    chain: row.chain,
+    htlcAddress: row.htlcAddress,
+    secretHash: row.secretHash,
+    senderAddress: row.senderAddress,
+    amountHuman: row.amountHuman,
+    locktime: row.locktime,
   };
+}
+
+function RefundCard({
+  refund,
+  onOpenDetail,
+}: {
+  refund: RefundRecord;
+  onOpenDetail: (id: number) => void;
+}) {
+  const { publicKey, signTransaction } = useSolanaWallet();
+  const { connection } = useConnection();
+  const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
+  const utils = trpc.useUtils();
+  const [claiming, setClaiming] = useState(false);
+
+  const claimRefund = useCallback(async () => {
+    // Solana claim
+    if (refund.chain === "solana") {
+      if (!publicKey || !signTransaction) {
+        toast.error("Wallet not connected", { description: "Connect your Phantom wallet to claim the refund" });
+        return;
+      }
+      setClaiming(true);
+      try {
+        const { transaction } = await buildSolanaHtlcRefundTx({
+          senderPubkey: publicKey,
+          secretHash: refund.secretHash,
+          amountSol: parseFloat(refund.amountHuman),
+          connection,
+        });
+        const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+        const rawTx = signed.serialize();
+        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        await connection.confirmTransaction(txHash, "confirmed");
+        await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
+        await utils.history.refunds.invalidate();
+        toast.success("Refund claimed!", {
+          description: (
+            <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="text-cyan-400 underline flex items-center gap-1">
+              View on Solscan <ExternalLink className="w-3 h-3" />
+            </a>
+          ),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("Refund failed", { description: msg });
+      } finally {
+        setClaiming(false);
+      }
+      return;
+    }
+
+    // TNK claim (Trac Network) — sends a signed refund request to the agent
+    if (refund.chain === "trac_network") {
+      setClaiming(true);
+      try {
+        const result = await requestTnkHtlcRefund({
+          secretHash: refund.secretHash,
+          amount: refund.amountHuman,
+          escrowAddress: refund.htlcAddress,
+        });
+        // Record the refund request signature as the refundTxId (on-chain tx is executed by agent)
+        await updateHtlcRefund.mutateAsync({
+          htlcAddress: refund.htlcAddress,
+          refundTxId: result.refundRequestSignature.slice(0, 64),
+        });
+        await utils.history.refunds.invalidate();
+        toast.success("TNK refund request submitted!", {
+          description: `Signed at ${new Date(result.requestedAt).toLocaleTimeString()} — agent will process the on-chain refund`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error("TNK refund request failed", { description: msg });
+      } finally {
+        setClaiming(false);
+      }
+      return;
+    }
+
+    // Ethereum / Bitcoin — show instructions (no browser-side signing yet)
+    toast.info("Manual refund required", {
+      description: `For ${refund.chain} HTLCs, use your wallet's contract interaction tool to call refund() on ${refund.htlcAddress}`,
+    });
+  }, [refund, publicKey, signTransaction, connection, updateHtlcRefund, utils]);
+
+  return (
+    <motion.div layout
+      className="rounded-2xl p-4"
+      style={{
+        background: "var(--card)",
+        border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : "var(--border)"}`,
+      }}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
+              style={{
+                background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" : refund.status === "claimed" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)",
+                border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : refund.status === "claimed" ? "rgba(16,185,129,0.3)" : "rgba(100,116,139,0.3)"}`,
+                color: refund.status === "claimable" ? "#f59e0b" : refund.status === "claimed" ? "#10b981" : "#64748b",
+              }}>
+              {refund.status === "claimable" ? "CLAIMABLE" : refund.status === "claimed" ? "CLAIMED" : "EXPIRED"}
+            </span>
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {refund.amount} {refund.fromSymbol} → {refund.toSymbol}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
+            {[
+              { label: "Value", value: `$${refund.usdValue.toFixed(2)}` },
+              { label: "Peer", value: refund.peer },
+              { label: "Chain", value: refund.chain },
+              { label: "Reason", value: refund.failReason },
+              { label: "Tx", value: refund.txHash },
+              { label: "Escrow", value: refund.escrowPda },
+              { label: "HTLC Expiry", value: refund.htlcExpiry.toLocaleString() },
+            ].map(item => (
+              <div key={item.label}>
+                <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
+                <div className="text-[10px] font-mono text-foreground/80 truncate">{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Explorer links */}
+          {refund.txHash && !refund.txHash.endsWith("...") && (
+            <a href={explorerTxUrl(refund.chain, refund.txHash)} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 hover:text-cyan-300 transition-colors">
+              <ExternalLink className="w-2.5 h-2.5" />
+              View on explorer
+            </a>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 shrink-0">
+          {refund.status === "claimable" && (
+            <button
+              onClick={claimRefund}
+              disabled={claiming}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold transition-all disabled:opacity-60"
+              style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
+              {claiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+              {claiming ? "Claiming…" : "Claim"}
+            </button>
+          )}
+          {refund.status === "claimed" && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
+            </div>
+          )}
+          {/* Detail drawer button */}
+          <button
+            onClick={() => onOpenDetail(refund.htlcId)}
+            className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-mono transition-all"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+            title="View HTLC details"
+          >
+            <Info className="w-3 h-3" />
+            <span>Details</span>
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
@@ -335,14 +871,10 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
     { walletAddresses, search },
     { refetchInterval: 30000 }
   );
+  const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
 
   const refunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
   const hasWallet = walletAddresses.length > 0;
-
-  const claimRefund = (_id: string) => {
-    toast.success("Refund claimed", { description: "HTLC escrow unlocked — funds returned to wallet" });
-  };
-
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
 
@@ -355,95 +887,48 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Wallet scope banner */}
-      {!hasWallet && (
-        <div
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-          style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
-        >
-          <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-          <span className="text-cyan-300/80">
-            Connect a wallet to see your refunds. Showing all network refunds (operator view).
-          </span>
-        </div>
-      )}
-
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
-          { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
-          { label: "Total Value", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
-        ].map(stat => (
-          <div key={stat.label} className="rounded-xl p-3 text-center"
-            style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>
-            <div className={`text-lg font-bold font-mono ${stat.color}`}>{stat.value}</div>
-            <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+    <>
+      <div className="space-y-4">
+        {!hasWallet && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+          >
+            <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+            <span className="text-cyan-300/80">
+              Connect a wallet to see your refunds. Showing all network refunds (operator view).
+            </span>
           </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
+            { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
+            { label: "Total Value", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
+          ].map(stat => (
+            <div key={stat.label} className="rounded-xl p-3 text-center"
+              style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>
+              <div className={`text-lg font-bold font-mono ${stat.color}`}>{stat.value}</div>
+              <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {refunds.length === 0 && (
+          <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+            <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">No refunds needed</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
+          </div>
+        )}
+
+        {refunds.map(refund => (
+          <RefundCard key={refund.id} refund={refund} onOpenDetail={setSelectedHtlcId} />
         ))}
       </div>
 
-      {refunds.length === 0 && (
-        <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-          <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No refunds needed</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
-        </div>
-      )}
-
-      {refunds.map(refund => (
-        <motion.div key={refund.id} layout
-          className="rounded-2xl p-4"
-          style={{ background: "var(--card)", border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : "var(--border)"}` }}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
-                  style={{
-                    background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" : refund.status === "claimed" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)",
-                    border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : refund.status === "claimed" ? "rgba(16,185,129,0.3)" : "rgba(100,116,139,0.3)"}`,
-                    color: refund.status === "claimable" ? "#f59e0b" : refund.status === "claimed" ? "#10b981" : "#64748b",
-                  }}>
-                  {refund.status === "claimable" ? "CLAIMABLE" : refund.status === "claimed" ? "CLAIMED" : "EXPIRED"}
-                </span>
-                <span className="text-[10px] font-mono text-muted-foreground">{refund.amount} {refund.fromSymbol} → {refund.toSymbol}</span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 mb-2">
-                {[
-                  { label: "Value", value: `$${refund.usdValue.toFixed(2)}` },
-                  { label: "Peer", value: refund.peer },
-                  { label: "Reason", value: refund.failReason },
-                  { label: "Tx", value: refund.txHash },
-                  { label: "Escrow", value: refund.escrowPda },
-                  { label: "HTLC Expiry", value: refund.htlcExpiry.toLocaleString() },
-                ].map(item => (
-                  <div key={item.label}>
-                    <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
-                    <div className="text-[10px] font-mono text-foreground/80 truncate">{item.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {refund.status === "claimable" && (
-              <button onClick={() => claimRefund(refund.id)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold shrink-0 transition-all"
-                style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
-                <RotateCcw className="w-3 h-3" />
-                Claim
-              </button>
-            )}
-            {refund.status === "claimed" && (
-              <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
-                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
-              </div>
-            )}
-          </div>
-        </motion.div>
-      ))}
-    </div>
+      <HtlcDetailDrawer htlcId={selectedHtlcId} onClose={() => setSelectedHtlcId(null)} />
+    </>
   );
 }

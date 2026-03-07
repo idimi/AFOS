@@ -321,4 +321,39 @@ export const historyRouter = router({
 
       return { refunds, isWalletScoped };
     }),
+
+  /** Get a single HTLC swap row by its DB id for the detail drawer */
+  htlcDetail: publicProcedure
+    .input(z.object({ id: z.number() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const rows = await db
+        .select()
+        .from(htlcSwaps)
+        .where(eq(htlcSwaps.id, input.id))
+        .limit(1);
+      return rows[0] ?? null;
+    }),
+
+  /** Write the refundTxId back to an htlcSwaps row after a successful on-chain refund */
+  updateHtlcRefund: publicProcedure
+    .input(z.object({
+      htlcAddress: z.string(),
+      refundTxId:  z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { success: false };
+      await db
+        .update(htlcSwaps)
+        .set({
+          refundTxId:  input.refundTxId,
+          status:      "refunded",
+          refundedAt:  new Date(),
+          updatedAt:   new Date(),
+        })
+        .where(eq(htlcSwaps.htlcAddress, input.htlcAddress));
+      return { success: true };
+    }),
 });

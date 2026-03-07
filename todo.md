@@ -1833,3 +1833,24 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add optional defaultTab prop to AgentSettings component
 - [x] Wire Network page "Open Agent Settings" button to pass defaultTab="network"
 - [x] Ensure Dashboard.tsx passes defaultTab through to AgentSettings when navigating
+
+## Round 4 Features (Mar 7, 2026)
+
+### Feature A: TNK Token Integration
+- [ ] Add TNK to shared/tokens.ts token list with trac_network chain type
+- [ ] Add TNK HTLC builder using window.tracnetwork.transfer() for lock
+- [ ] Add TNK to ConnectWalletModal token list and wallet panel
+- [ ] Wire TNK into P2P swap flow (initiateAsRequester + initiateAsMaker)
+- [ ] Add TNK to token selector in Swaps.tsx and ChatPage.tsx
+- [ ] Add TNK price feed / display support in portfolio/wallet panel
+
+### Feature B: On-chain Claim Refund Button
+- [ ] Wire Refunds tab "Claim" button to buildSolanaHtlcRefundTx + Phantom sign/send
+- [ ] Show toast with Solscan link after successful on-chain refund
+- [ ] Handle wallet not connected / tx rejected gracefully
+- [ ] Call updateHtlcRefund after successful claim to record refundTxId
+
+### Feature C: Live Countdown Progress Bar
+- [ ] Replace static progress bar in Open Trades with live blocksRemaining/locktime ratio
+- [ ] Show percentage and color (green → amber → red as expiry approaches)
+- [ ] Update every 30s when block height is refreshed

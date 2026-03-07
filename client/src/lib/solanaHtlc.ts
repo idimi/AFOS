@@ -203,3 +203,105 @@ export async function generateHtlcSecret(): Promise<{
     secretHashHex: toHex(new Uint8Array(secretHashBuf)),
   };
 }
+
+// ─── Refund Transaction Builder ───────────────────────────────────────────────
+
+export interface SolanaHtlcRefundParams {
+  /** Sender's Solana public key (the original locker who wants their funds back) */
+  senderPubkey: PublicKey;
+  /** SHA-256 hash of the secret (32 bytes as hex string) — same as used in lock */
+  secretHash: string;
+  /** Amount in SOL (not lamports) to reclaim */
+  amountSol: number;
+  /** Solana connection for fetching recent blockhash */
+  connection: Connection;
+}
+
+export interface SolanaHtlcRefundResult {
+  /** The built refund transaction (unsigned) */
+  transaction: Transaction;
+  /** The PDA escrow address funds are being reclaimed from */
+  escrowAddress: string;
+}
+
+/**
+ * Build a Solana HTLC refund transaction.
+ *
+ * If VITE_SOL_HTLC_PROGRAM_ID is set, builds a real Anchor program "refund"
+ * instruction that verifies the timelock has expired and returns funds to sender.
+ *
+ * Without a deployed program, builds a SystemProgram.transfer from the PDA back
+ * to the sender. Note: this only works if the PDA has no program authority
+ * (i.e. the fallback escrow path). For production, deploy the Anchor program.
+ *
+ * The returned transaction must be signed by the sender before submission.
+ */
+export async function buildSolanaHtlcRefundTx(
+  params: SolanaHtlcRefundParams
+): Promise<SolanaHtlcRefundResult> {
+  const { senderPubkey, secretHash, amountSol, connection } = params;
+
+  const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
+  const secretHashBytes = hexToBytes(secretHash);
+
+  // Derive the same PDA escrow address used during lock
+  const htlcProgramId = HTLC_PROGRAM_ID_STR
+    ? new PublicKey(HTLC_PROGRAM_ID_STR)
+    : SystemProgram.programId;
+
+  const [escrowPda] = await PublicKey.findProgramAddress(
+    [
+      Buffer.from("htlc"),
+      Buffer.from(secretHashBytes),
+      senderPubkey.toBuffer(),
+    ],
+    htlcProgramId
+  );
+
+  const { blockhash, lastValidBlockHeight } =
+    await connection.getLatestBlockhash("confirmed");
+  void lastValidBlockHeight;
+
+  const tx = new Transaction();
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = senderPubkey;
+
+  if (HTLC_PROGRAM_ID_STR) {
+    // ── Real Anchor program "refund" instruction ─────────────────────────────
+    // Anchor discriminator for "refund": first 8 bytes of sha256("global:refund")
+    const REFUND_DISCRIMINATOR = Buffer.from([0xa3, 0x1c, 0x7e, 0x4f, 0x2b, 0x8d, 0x5a, 0x06]);
+
+    const data = Buffer.concat([
+      REFUND_DISCRIMINATOR,
+      Buffer.from(secretHashBytes),
+    ]);
+
+    const refundIx = new TransactionInstruction({
+      programId: htlcProgramId,
+      keys: [
+        { pubkey: senderPubkey, isSigner: true,  isWritable: true },
+        { pubkey: escrowPda,    isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data,
+    });
+
+    tx.add(refundIx);
+  } else {
+    // ── Fallback: transfer from PDA back to sender ───────────────────────────
+    // This works only for the no-program fallback path where the PDA has no
+    // program authority. In production, use the Anchor program refund instruction.
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: escrowPda,
+        toPubkey:   senderPubkey,
+        lamports,
+      })
+    );
+  }
+
+  return {
+    transaction: tx,
+    escrowAddress: escrowPda.toBase58(),
+  };
+}

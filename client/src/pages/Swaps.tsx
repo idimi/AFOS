@@ -31,6 +31,7 @@ import { usePeerReputation } from "../hooks/usePeerReputation";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
+import { getTnkBalance } from "../lib/tnkHtlc";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ const TOKENS = [
   { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
+  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f59e0b", tvSymbol: "BINANCE:BTCUSD" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
@@ -102,6 +104,13 @@ const SWAP_PAIRS = [
   { from: "SOL",      to: "USDC-SOL", protocol: "Jupiter SPL Swap",          native: true,  fee: "0.3%", time: "~1s" },
   { from: "USDT",     to: "USDC",     protocol: "Jupiter SPL Swap",          native: true,  fee: "0.1%", time: "~1s" },
   { from: "USDT-ETH", to: "USDC",     protocol: "1inch EVM Route",           native: false, fee: "0.1%", time: "~12s" },
+  // TNK (Trac Network) P2P swap pairs — agent-escrow HTLC model
+  { from: "TNK",      to: "BTC",      protocol: "AFOS P2P HTLC (TNK↔BTC)",   native: true,  fee: "0.8%", time: "~10m" },
+  { from: "TNK",      to: "SOL",      protocol: "AFOS P2P HTLC (TNK↔SOL)",   native: true,  fee: "0.7%", time: "~5m" },
+  { from: "TNK",      to: "ETH",      protocol: "AFOS P2P HTLC (TNK↔ETH)",   native: true,  fee: "0.8%", time: "~10m" },
+  { from: "BTC",      to: "TNK",      protocol: "AFOS P2P HTLC (BTC↔TNK)",   native: true,  fee: "0.8%", time: "~10m" },
+  { from: "SOL",      to: "TNK",      protocol: "AFOS P2P HTLC (SOL↔TNK)",   native: true,  fee: "0.7%", time: "~5m" },
+  { from: "ETH",      to: "TNK",      protocol: "AFOS P2P HTLC (ETH↔TNK)",   native: true,  fee: "0.8%", time: "~10m" },
 ];
 
 // ─── Token color lookup (for RecentSwaps row coloring) ─────────────────────────
@@ -2356,14 +2365,29 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       const raw = btcWallet.balance.split(' ')[0];
       map['BTC'] = parseFloat(raw) || 0;
     }
+    // TNK balance is fetched asynchronously — see tnkBalance state below
     return map;
   }, [solBalances, ethWallet, btcWallet, erc20Balances]);
 
+  // TNK balance: fetched asynchronously from Tap Wallet (window.tracnetwork)
+  const [tnkBalance, setTnkBalance] = useState<number>(0);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTnk = async () => {
+      const raw = await getTnkBalance();
+      if (!cancelled) setTnkBalance(parseFloat(raw) || 0);
+    };
+    fetchTnk();
+    const iv = setInterval(fetchTnk, 30_000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
   // Helper: get the display balance for a token (live if connected, static fallback)
   const getTokenBalance = useCallback((token: typeof TOKENS[0]): number => {
+    if (token.symbol === 'TNK') return tnkBalance;
     const live = liveBalances[token.symbol];
     return live !== undefined ? live : token.balance;
-  }, [liveBalances]);
+  }, [liveBalances, tnkBalance]);
 
   // Auto-refresh Solana balances every 15 seconds
   useEffect(() => {
