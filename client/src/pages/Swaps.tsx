@@ -2436,13 +2436,23 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [expiry, setExpiry] = useState("+5m");
   const [swapPhase, setSwapPhase] = useState<SwapPhase>("idle");
   const [selectedPeer, setSelectedPeer] = useState<LivePeer | null>(null);
+  // Per-pair Advanced Settings state — keyed by "FROM/TO" pair symbol
+  const advancedPairKey = `afos_advanced_${fromToken.symbol}_${toToken.symbol}`;
   const [showAdvanced, setShowAdvanced] = useState(() => {
-    try { return localStorage.getItem('afos_advanced_open') === 'true'; } catch { return false; }
+    try { return localStorage.getItem(`afos_advanced_${TOKENS[0].symbol}_${TOKENS[3].symbol}`) === 'true'; } catch { return false; }
   });
-  // Persist Advanced Settings panel state across navigations
+  // Persist Advanced Settings panel state per trading pair
   useEffect(() => {
-    try { localStorage.setItem('afos_advanced_open', showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
-  }, [showAdvanced]);
+    try { localStorage.setItem(advancedPairKey, showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
+  }, [showAdvanced, advancedPairKey]);
+  // Restore per-pair state when the pair changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(advancedPairKey);
+      setShowAdvanced(saved === 'true');
+    } catch { setShowAdvanced(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromToken.symbol, toToken.symbol]);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Live quote from backend
   const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
@@ -2477,6 +2487,21 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
   // Collapsible chart on mobile (hidden by default)
   const [chartOpen, setChartOpen] = useState(false);
+  // Scroll fade indicator — ref to the scrollable swap card inner div
+  const swapCardRef = useRef<HTMLDivElement>(null);
+  const [showScrollFade, setShowScrollFade] = useState(false);
+  useEffect(() => {
+    const el = swapCardRef.current;
+    if (!el) return;
+    const check = () => {
+      setShowScrollFade(el.scrollHeight > el.clientHeight + 4 && el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    };
+    check();
+    el.addEventListener('scroll', check);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', check); ro.disconnect(); };
+  }, [showAdvanced]);
 
   // Fetch live peers from relay registry + getAgentStatus + SSE events
   useEffect(() => {
@@ -2664,6 +2689,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     haptic.tap();
     setSwapPhase("rfq");
     setLastTxHash(undefined);
+    // Auto-collapse Advanced Settings to reduce visual clutter during swap flow
+    setShowAdvanced(false);
 
     try {
       // Step 1: Submit RFQ to get best route + quote
@@ -2850,7 +2877,10 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
         {/* ═ 1. SWAP CARD — mobile first, desktop col-2 row-1 (sticky) ═ */}
         {/* xl:row-span-6 so the right column spans all left-column rows */}
         <div className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
+          {/* Scroll fade wrapper — relative so the fade overlay can be positioned at the bottom */}
+          <div className="relative">
           <div
+            ref={swapCardRef}
             className="rounded-2xl p-4 xl:max-h-[calc(100vh-6rem)] xl:overflow-y-auto"
             style={{
               background: "var(--card)",
@@ -3360,6 +3390,16 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
 
 
           </div>{/* end swap card inner */}
+          {/* Scroll fade indicator — only visible on desktop when card is scrollable */}
+          {showScrollFade && (
+            <div
+              className="hidden xl:block absolute bottom-0 left-0 right-0 h-10 pointer-events-none rounded-b-2xl"
+              style={{
+                background: "linear-gradient(to bottom, transparent, var(--card))",
+              }}
+            />
+          )}
+          </div>{/* end scroll fade wrapper */}
 
           {/* Swap Progress — stays with swap card */}
           {swapPhase !== "idle" && (

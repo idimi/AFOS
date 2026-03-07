@@ -1879,3 +1879,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Keep 30s auto-refresh only after user has explicitly requested quotes (hasRequestedQuotes flag)
 - [x] Show idle state "Enter amount and click Get Quotes" when no quotes have been requested yet
 - [x] Clear swap_analytics table (done — was 12 rows from previous test sessions)
+
+## Swap Card UX Improvements
+
+- [x] Scroll fade indicator — gradient fade at bottom of swap card when scrollable
+- [x] Auto-collapse Advanced Settings when user clicks Swap Now
+- [x] Persist Advanced Settings open/closed state per trading pair (localStorage keyed by pair)
