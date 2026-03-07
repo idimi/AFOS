@@ -264,9 +264,10 @@ function MobileSidebarDrawer({
 // SupportedChain and QuoteData types imported from ChatContext
 
 const CHAIN_BADGE: Record<SupportedChain, { label: string; color: string }> = {
-  solana:   { label: "SOL",  color: "#9945FF" },
-  ethereum: { label: "ETH",  color: "#627EEA" },
-  bitcoin:  { label: "BTC",  color: "#F7931A" },
+  solana:       { label: "SOL",  color: "#9945FF" },
+  ethereum:     { label: "ETH",  color: "#627EEA" },
+  bitcoin:      { label: "BTC",  color: "#F7931A" },
+  trac_network: { label: "TNK",  color: "#F97316" },
 };
 
 // MiniChatMessage type removed — using ChatMessage from ChatContext
@@ -1349,6 +1350,7 @@ const CHAIN_DOT_COLORS: Record<string, string> = {
   Solana: "bg-purple-400",
   Ethereum: "bg-blue-400",
   Bitcoin: "bg-amber-400",
+  "Trac Network": "bg-orange-400",
 };
 interface WalletRowData {
   asset: string;
@@ -1412,6 +1414,7 @@ function WalletsCard() {
   // Browser wallets
   const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
   const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
+  const { prices: rawPrices } = usePrices();
 
   // Solana browser address — prefer Phantom multi-chain, fall back to WalletContext
   const solBrowserAddr = phantomMultiChain?.solanaAddress
@@ -1429,6 +1432,12 @@ function WalletsCard() {
   const solAddr = solBrowserAddr ? `Solana · ${solBrowserAddr}` : "Solana";
   const ethAddr = ethereum?.shortAddress ? `Ethereum · ${ethereum.shortAddress}` : "Ethereum";
   const btcAddr = bitcoin?.shortAddress ? `Bitcoin · ${bitcoin.shortAddress}` : "Bitcoin";
+  const tapAddr = bitcoin?.shortAddress ? `Trac Network · ${bitcoin.shortAddress}` : "Trac Network";
+  // Extract TNK balance from Tap Wallet (stored as "X BTC / Y TNK" or "Y TNK")
+  const tnkRaw = bitcoin?.walletName === "Tap Wallet" ? bitcoin.balance : null;
+  const tnkBalance = tnkRaw ? (tnkRaw.includes("TNK") ? (tnkRaw.split(" / ")[1]?.replace(" TNK", "") ?? tnkRaw.replace(" TNK", "")) : "0.0000") : "0.0000";
+  const tnkPriceUsd = rawPrices.TNK?.usd ?? 0;
+  const tnkUsd = parseFloat(tnkBalance) * tnkPriceUsd;
 
   const myWallets: WalletRowData[] = [
     // ── Solana ──
@@ -1478,10 +1487,18 @@ function WalletsCard() {
     // ── Bitcoin ──
     {
       asset: "BTC", chain: "Bitcoin", networkLabel: btcAddr,
-      balance: bitcoin?.connected ? bitcoin.balance : "0.00000000",
+      balance: bitcoin?.connected ? (bitcoin.balance.includes(" / ") ? bitcoin.balance.split(" / ")[0] : bitcoin.balance.replace(" TNK", "").replace(" BTC", "") + " BTC") : "0.00000000",
       usd: bitcoin?.connected && bitcoin.balanceUsd > 0 ? `$${bitcoin.balanceUsd.toFixed(2)}` : "$0",
       connected: !!(bitcoin?.connected),
       ...WALLET_ASSET_STYLE["BTC"],
+    },
+    // ── Trac Network (TNK) ──
+    {
+      asset: "TNK", chain: "Trac Network", networkLabel: tapAddr,
+      balance: bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? tnkBalance : "0.0000",
+      usd: bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && tnkUsd > 0 ? `$${tnkUsd.toFixed(2)}` : "$0",
+      connected: !!(bitcoin?.connected && bitcoin.walletName === "Tap Wallet"),
+      ...WALLET_ASSET_STYLE["TNK"],
     },
   ];
 
@@ -1499,7 +1516,7 @@ function WalletsCard() {
             <h3 className="text-sm font-semibold text-foreground">Wallets</h3>
           </div>
           <span className="text-[10px] text-muted-foreground font-mono">
-            {myConnected}/7 active
+            {myConnected}/8 active
           </span>
         </div>
 
@@ -1529,6 +1546,7 @@ const TV_SYMBOLS: Record<string, string> = {
   "BTC/USDT": "BINANCE:BTCUSDT",
   "ETH/USDT": "BINANCE:ETHUSDT",
   "SOL/USDT": "BINANCE:SOLUSDT",
+  "TNK/USDT": "COINGECKO:TNKUSD",
 };
 
 // TradingView Advanced Chart widget — uses a keyed inner component so
@@ -1615,6 +1633,7 @@ function MarketTicker() {
     BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
     ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
     SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+    TNK: { price: rawPrices.TNK?.usd ?? null, change: rawPrices.TNK?.change24h ?? 0 },
   };
   // Persist chart pair + timeframe in localStorage
   const [activePair, setActivePairState] = useState<string | null>(() => {
@@ -1645,6 +1664,7 @@ function MarketTicker() {
     { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
     { symbol: "ETH/USDT", ...prices.ETH, color: "text-blue-400",  bg: "bg-blue-500/10",  border: "border-blue-500/20",  icon: "Ξ" },
     { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400",bg: "bg-purple-500/10",border: "border-purple-500/20",icon: "◎" },
+    { symbol: "TNK/USDT", ...prices.TNK, color: "text-yellow-400",bg: "bg-yellow-500/10",border: "border-yellow-500/20",icon: "T" },
   ];
 
   const activeTicker = tickers.find(t => t.symbol === activePair);
@@ -2573,6 +2593,7 @@ function MobileMarketCard() {
     BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
     ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
     SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+    TNK: { price: rawPrices.TNK?.usd ?? null, change: rawPrices.TNK?.change24h ?? 0 },
   };
   // Persist chart pair + timeframe in localStorage (shared key with desktop)
   const [activePair, setActivePairState] = useState<string | null>(() => {
@@ -2594,6 +2615,7 @@ function MobileMarketCard() {
     { symbol: "BTC/USDT", ...prices.BTC, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "₿" },
     { symbol: "ETH/USDT", ...prices.ETH, color: "text-blue-400",  bg: "bg-blue-500/10",  border: "border-blue-500/20",  icon: "Ξ" },
     { symbol: "SOL/USDT", ...prices.SOL, color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20", icon: "◎" },
+    { symbol: "TNK/USDT", ...prices.TNK, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20", icon: "T" },
   ];
 
   const TF_OPTIONS = [

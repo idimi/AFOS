@@ -108,7 +108,7 @@ async function fetchErc20Balance(
 // ─── Per-chain wallet helpers ─────────────────────────────────────────────────
 
 export interface HtlcChainWallet {
-  chain: "bitcoin" | "ethereum" | "solana";
+  chain: "bitcoin" | "ethereum" | "solana" | "trac_network";
   asset: string;
   address: string | null;
   balance: string;
@@ -357,7 +357,7 @@ export const htlcWalletRouter = router({
   getHtlcHistory: publicProcedure
     .input(
       z.object({
-        chain: z.enum(["all", "bitcoin", "ethereum", "solana"]).default("all"),
+        chain: z.enum(["all", "bitcoin", "ethereum", "solana", "trac_network"]).default("all"),
         limit: z.number().min(1).max(100).default(20),
       })
     )
@@ -376,7 +376,7 @@ export const htlcWalletRouter = router({
             : await db
                 .select()
                 .from(htlcSwaps)
-                .where(eq(htlcSwaps.chain, input.chain as "bitcoin" | "ethereum" | "solana"))
+                .where(eq(htlcSwaps.chain, input.chain as "bitcoin" | "ethereum" | "solana" | "trac_network"))
                 .orderBy(desc(htlcSwaps.createdAt))
                 .limit(input.limit);
 

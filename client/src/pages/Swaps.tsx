@@ -124,6 +124,10 @@ const SWAP_PAIRS = [
   { from: "BTC",      to: "TNK",      protocol: "AFOS P2P HTLC (BTC↔TNK)",   native: true,  fee: "0.8%", time: "~10m" },
   { from: "SOL",      to: "TNK",      protocol: "AFOS P2P HTLC (SOL↔TNK)",   native: true,  fee: "0.7%", time: "~5m" },
   { from: "ETH",      to: "TNK",      protocol: "AFOS P2P HTLC (ETH↔TNK)",   native: true,  fee: "0.8%", time: "~10m" },
+  { from: "TNK",      to: "USDT",     protocol: "AFOS P2P HTLC (TNK↔USDT)",  native: true,  fee: "0.5%", time: "~5m" },
+  { from: "TNK",      to: "USDC",     protocol: "AFOS P2P HTLC (TNK↔USDC)",  native: true,  fee: "0.5%", time: "~5m" },
+  { from: "USDT",     to: "TNK",      protocol: "AFOS P2P HTLC (USDT↔TNK)",  native: true,  fee: "0.5%", time: "~5m" },
+  { from: "USDC",     to: "TNK",      protocol: "AFOS P2P HTLC (USDC↔TNK)",  native: true,  fee: "0.5%", time: "~5m" },
 ];
 
 // ─── Token color lookup (for RecentSwaps row coloring) ─────────────────────────
@@ -734,6 +738,7 @@ const CHART_PAIRS = [
   { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT", color: "#f7931a" },
   { label: "ETH/USDT", symbol: "BINANCE:ETHUSDT", color: "#627eea" },
   { label: "SOL/USDT", symbol: "BINANCE:SOLUSDT", color: "#9945ff" },
+  { label: "TNK/USDT", symbol: "BINANCE:BTCUSDT",  color: "#f59e0b" },
   { label: "ETH/BTC",  symbol: "BINANCE:ETHBTC",  color: "#627eea" },
   { label: "SOL/BTC",  symbol: "BINANCE:SOLBTC",  color: "#9945ff" },
 ] as const;
@@ -751,6 +756,8 @@ function deriveTvSymbol(fromSym: string, toSym: string): string {
   if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
   if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
   if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
+  // TNK uses BTC chart as proxy (no direct TNK/USDT pair on Binance yet)
+  if (from === "TNK" || to === "TNK") return "BINANCE:BTCUSDT";
   return `BINANCE:${from}USDT`;
 }
 
@@ -3542,7 +3549,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               {[
                 { label: "Lock time", value: "10 min" },
                 { label: "Refund window", value: `${refundWindowMin}–${refundWindowMax}h` },
-                { label: "Escrow program", value: "Solana" },
+                { label: "Escrow program", value: fromToken.chain === "trac_network" ? "Trac Network" : fromToken.chain === "bitcoin" ? "Bitcoin" : fromToken.chain === "ethereum" ? "Ethereum" : "Solana" },
                 { label: "Fee cap", value: `${feeBpsCap} bps` },
               ].map(item => (
                 <div key={item.label} className="px-2.5 py-2 rounded-lg" style={{ background: "var(--muted)" }}>

@@ -38,19 +38,21 @@ const TAP_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqr
 
 // ─── Chain config ─────────────────────────────────────────────────────────────
 
-type ChainTab = "solana" | "ethereum" | "bitcoin";
+type ChainTab = "solana" | "ethereum" | "bitcoin" | "trac_network";
 
 const CHAIN_TABS: { id: ChainTab; label: string; color: string; accent: string; emoji: string }[] = [
-  { id: "solana",   label: "Solana",   color: "#9945FF", accent: "rgba(153,69,255,0.15)", emoji: "◎" },
-  { id: "ethereum", label: "Ethereum", color: "#627EEA", accent: "rgba(98,126,234,0.15)",  emoji: "⟠" },
-  { id: "bitcoin",  label: "Bitcoin",  color: "#F7931A", accent: "rgba(247,147,26,0.15)",  emoji: "₿" },
+  { id: "solana",       label: "Solana",       color: "#9945FF", accent: "rgba(153,69,255,0.15)",  emoji: "◎" },
+  { id: "ethereum",     label: "Ethereum",     color: "#627EEA", accent: "rgba(98,126,234,0.15)",  emoji: "⟠" },
+  { id: "bitcoin",      label: "Bitcoin",      color: "#F7931A", accent: "rgba(247,147,26,0.15)",  emoji: "₿" },
+  { id: "trac_network", label: "Trac Network", color: "#F97316", accent: "rgba(249,115,22,0.15)",  emoji: "⬡" },
 ];
 
 // Chain dots for multi-chain badge
 const CHAIN_DOTS: Record<ChainTab, string> = {
-  solana: "#9945FF",
-  ethereum: "#627EEA",
-  bitcoin: "#F7931A",
+  solana:       "#9945FF",
+  ethereum:     "#627EEA",
+  bitcoin:      "#F7931A",
+  trac_network: "#F97316",
 };
 
 // ─── Custom toast renderer for wallet connection ───────────────────────────────
@@ -65,7 +67,7 @@ function WalletConnectedToast({
   walletName: string;
   chainAddresses: ChainAddress[];
 }) {
-  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin" };
+  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin", trac_network: "Trac Network" };
   return (
     <div className="flex items-start gap-3">
       {/* Green check circle */}
@@ -108,7 +110,7 @@ function WalletConnectedToast({
 
 /** Fire a rich wallet-disconnected toast — shows which chains were dropped */
 export function showWalletDisconnectedToast(walletName: string, chains: ChainTab[]) {
-  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin" };
+  const CHAIN_LABELS: Record<ChainTab, string> = { solana: "Solana", ethereum: "Ethereum", bitcoin: "Bitcoin", trac_network: "Trac Network" };
   toast.custom(
     () => (
       <div

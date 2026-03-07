@@ -1264,9 +1264,10 @@ function OperatorConfigTab() {
 // ─── HTLC Wallet Section ─────────────────────────────────────────────────────
 
 const CHAIN_COLORS: Record<string, string> = {
-  bitcoin:  "#F7931A",
-  ethereum: "#627EEA",
-  solana:   "#9945FF",
+  bitcoin:      "#F7931A",
+  ethereum:     "#627EEA",
+  solana:       "#9945FF",
+  trac_network: "#F97316",
 };
 
 function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: string, chainColor: string) => void }) {
@@ -1328,7 +1329,7 @@ function HtlcWalletSection({ onShowQr }: { onShowQr: (address: string, label: st
             {wallets.map((w) => {
               const chainColor = CHAIN_COLORS[w.chain] ?? "#888";
               const isStable = w.asset === "USDT" || w.asset === "USDC";
-              const chainLabel = w.chain === "solana" ? "SOL" : w.chain === "ethereum" ? "ETH" : "BTC";
+              const chainLabel = w.chain === "solana" ? "SOL" : w.chain === "ethereum" ? "ETH" : w.chain === "trac_network" ? "TNK" : "BTC";
               return (
                 <div key={`${w.chain}-${w.asset}`}
                   className="rounded-xl p-3"
@@ -1412,7 +1413,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 };
 
 function HtlcHistorySection() {
-  const [chainFilter, setChainFilter] = useState<"all" | "bitcoin" | "ethereum" | "solana">("all");
+  const [chainFilter, setChainFilter] = useState<"all" | "bitcoin" | "ethereum" | "solana" | "trac_network">("all");
 
   const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcHistory.useQuery(
     { chain: chainFilter, limit: 20 },
@@ -1421,11 +1422,12 @@ function HtlcHistorySection() {
 
   const rows = data?.rows ?? [];
 
-  const chainTabs: { key: "all" | "bitcoin" | "ethereum" | "solana"; label: string; color: string }[] = [
+  const chainTabs: { key: "all" | "bitcoin" | "ethereum" | "solana" | "trac_network"; label: string; color: string }[] = [
     { key: "all",      label: "All",      color: "#888" },
-    { key: "bitcoin",  label: "BTC",      color: CHAIN_COLORS.bitcoin },
-    { key: "ethereum", label: "ETH",      color: CHAIN_COLORS.ethereum },
-    { key: "solana",   label: "SOL",      color: CHAIN_COLORS.solana },
+    { key: "bitcoin",      label: "BTC", color: CHAIN_COLORS.bitcoin },
+    { key: "ethereum",     label: "ETH", color: CHAIN_COLORS.ethereum },
+    { key: "solana",       label: "SOL", color: CHAIN_COLORS.solana },
+    { key: "trac_network", label: "TNK", color: CHAIN_COLORS.trac_network },
   ];
 
   return (

@@ -1947,3 +1947,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix Swaps token selector crash — CHAINS lookup throws when token.chain is "trac_network" (key missing from CHAINS map)
 - [x] Set TNK_ESCROW_ADDRESS env var so the TNK HTLC monitor starts live polling
+
+## Round 8 — Full TNK/Trac Network Parity
+
+- [ ] Swaps.tsx: add TNK↔BTC, TNK↔SOL, TNK↔ETH, TNK↔USDT, TNK↔USDC swap pairs
+- [ ] Swaps.tsx: add TNK/USDT row to market ticker strip
+- [ ] Swaps.tsx: add TNK to HTLC escrow info card (settlement time, escrow program)
+- [ ] Chat agent: add TNK to price map, quick-action chips, swap intent parser
+- [ ] Dashboard Overview: add TNK/USDT to market ticker, TNK to portfolio/wallets
+- [ ] Admin wallet page: add TNK fee wallet row + TNK HTLC escrow wallet row
+- [ ] AgentSettings / LP settings: add TNK trading pairs (TNK/SOL, TNK/BTC, TNK/USDT)
+- [ ] MultiChainWalletContext: TNK balance fetch via Trac Network API after Tap Wallet connect
+- [ ] tnkHtlcMonitor: notifyOwner when pending TNK HTLC has no lock after 10 minutes
+- [ ] HTLC Transaction History tab: add TNK filter tab alongside BTC/ETH/SOL
+- [ ] Network page: add TNK to HTLC escrow section
+- [ ] SwapHistory: ensure TNK chain filter works in history table

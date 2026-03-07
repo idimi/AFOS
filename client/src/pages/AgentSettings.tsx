@@ -795,7 +795,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                       Select which pairs you are willing to quote. Only peers requesting these pairs will send you RFQs.
                     </p>
                     <div className="flex flex-wrap gap-2 mt-1">
-                      {["SOL/USDT", "SOL/USDC", "ETH/USDT", "ETH/USDC", "BTC/USDT", "BTC/ETH", "BTC/SOL"].map((pair) => {
+                      {["SOL/USDT", "SOL/USDC", "ETH/USDT", "ETH/USDC", "BTC/USDT", "BTC/ETH", "BTC/SOL", "TNK/SOL", "TNK/USDT", "TNK/USDC", "TNK/ETH", "TNK/BTC"].map((pair) => {
                         const accepted = (lightPeer.prefs?.acceptedPairs ?? []).includes(pair);
                         return (
                           <button
@@ -822,7 +822,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                       })}
                     </div>
                     <p className="text-[10px] text-muted-foreground/60">
-                      {(lightPeer.prefs?.acceptedPairs ?? []).length} of 7 pairs selected
+                      {(lightPeer.prefs?.acceptedPairs ?? []).length} of 12 pairs selected
                     </p>
                   </div>
 

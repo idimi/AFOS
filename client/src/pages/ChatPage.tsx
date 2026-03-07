@@ -31,6 +31,8 @@ const SUGGESTIONS = [
   "swap 1 USDT to SOL",
   "swap 0.1 SOL to USDT",
   "what's the SOL price?",
+  "swap 100 TNK to SOL",
+  "what's the TNK price?",
   "show my balances",
   "swap 10 USDT to USDC",
 ];
@@ -40,6 +42,7 @@ const TOKEN_CHAIN_FALLBACK: Record<string, SupportedChain> = {
   SOL: "solana",
   BTC: "bitcoin",
   ETH: "ethereum",
+  TNK: "trac_network",
   // USDT/USDC intentionally omitted — ambiguous without chain context, defaults to "solana"
 };
 
@@ -50,6 +53,7 @@ const TOKEN_COLORS: Record<string, { bg: string; text: string; border: string }>
   USDC: { bg: "rgba(39,117,202,0.15)", text: "#2775CA", border: "rgba(39,117,202,0.3)" },
   BTC: { bg: "rgba(247,147,26,0.15)", text: "#F7931A", border: "rgba(247,147,26,0.3)" },
   ETH: { bg: "rgba(98,126,234,0.15)", text: "#627EEA", border: "rgba(98,126,234,0.3)" },
+  TNK: { bg: "rgba(245,158,11,0.15)",  text: "#f59e0b", border: "rgba(245,158,11,0.3)" },
 };
 
 function TokenBadge({ symbol }: { symbol: string }) {
@@ -590,7 +594,7 @@ export default function ChatPage() {
   const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
 
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin">("solana");
+  const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin" | "trac_network">("solana");
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();

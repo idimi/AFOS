@@ -4,7 +4,7 @@
  */
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
 
-export type SupportedChain = "solana" | "ethereum" | "bitcoin";
+export type SupportedChain = "solana" | "ethereum" | "bitcoin" | "trac_network";
 
 export interface QuoteData {
   fromToken: string;
@@ -63,8 +63,8 @@ export function makeWelcomeMessage(connected: boolean): ChatMessage {
     id: "welcome",
     role: "assistant",
     content: connected
-      ? "Hi! I'm AFOS. Try: *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *how much SOL can I get for $500?*"
-      : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping — e.g. *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, or *bridge 1 SOL to Bitcoin*.",
+      ? "Hi! I'm AFOS. Try: *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, *swap 500 TNK to SOL*, or *how much SOL can I get for $500?*"
+      : "Hi! I'm AFOS, your autonomous financial agent. Connect your wallet to start swapping — e.g. *swap 0.01 BTC to USDT*, *swap 100 USDT to ETH*, *swap 500 TNK to SOL*, or *bridge 1 SOL to Bitcoin*.",
     type: "text",
     timestamp: Date.now(),
   };

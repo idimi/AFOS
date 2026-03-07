@@ -911,20 +911,26 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
     const refreshBtcBalance = async () => {
       try {
-        const [{ btc, sats }, priceUsd] = await Promise.all([
+        // Fetch BTC balance from mempool and TNK balance from Tap Wallet API in parallel
+        const isTapWallet = bitcoin.walletName === "Tap Wallet";
+        const [{ btc, sats }, priceUsd, rawTnkBalance] = await Promise.all([
           fetchBtcBalanceFromMempool(bitcoin.address),
           fetchBtcPriceUsd(),
+          isTapWallet && window.tracnetwork
+            ? window.tracnetwork.getBalance().catch(() => null)
+            : Promise.resolve(null),
         ]);
         const balanceUsd = (sats / 1e8) * priceUsd;
 
         setBitcoin(prev => {
           if (!prev) return null;
-          const isTapWallet = prev.walletName === "Tap Wallet";
-          const tnkPart = isTapWallet && prev.balance.includes("TNK")
-            ? prev.balance.split(" / ")[1] ?? ""
-            : "";
-          const newBalance = isTapWallet && tnkPart
-            ? (sats > 0 ? `${btc} BTC / ${tnkPart}` : tnkPart)
+          const isTap = prev.walletName === "Tap Wallet";
+          // Use fresh TNK balance from Tap Wallet API if available, otherwise preserve existing
+          const freshTnk = rawTnkBalance != null
+            ? `${(parseInt(String(rawTnkBalance)) / 1e8).toFixed(4)} TNK`
+            : (prev.balance.includes("TNK") ? (prev.balance.split(" / ")[1] ?? "") : "");
+          const newBalance = isTap && freshTnk
+            ? (sats > 0 ? `${btc} BTC / ${freshTnk}` : freshTnk)
             : btc;
           return {
             ...prev,

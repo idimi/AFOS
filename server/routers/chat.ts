@@ -577,14 +577,16 @@ async function parseIntent(
   const systemPrompt = `You are AFOS, an autonomous multi-chain financial agent.
 
 Supported assets:
-  Solana chain:   SOL, USDT, USDC
-  Ethereum chain: ETH, USDT_ETH (USDT on Ethereum), USDC_ETH (USDC on Ethereum)
-  Bitcoin chain:  BTC
+  Solana chain:        SOL, USDT, USDC
+  Ethereum chain:      ETH, USDT_ETH (USDT on Ethereum), USDC_ETH (USDC on Ethereum)
+  Bitcoin chain:       BTC
+  Trac Network chain:  TNK
 
 Routing:
   - Solana swaps (SOL/USDT/USDC) → Jupiter DEX (instant, on-chain)
   - Ethereum swaps (ETH/USDT_ETH/USDC_ETH) → 1inch aggregator + AFOS P2P
   - Bitcoin swaps (BTC) → AFOS P2P network
+  - Trac Network swaps (TNK) → AFOS P2P HTLC (agent-escrow model, ~5–10m)
   - Cross-chain swaps → AFOS P2P bridge
 
 Current live prices (source: ${priceSource ?? "live"}): ${JSON.stringify(prices)}
@@ -593,10 +595,10 @@ ${walletBalances ? `User wallet balances: ${JSON.stringify(walletBalances)}` : "
 Parse the user message and return ONLY a JSON object with this exact schema:
 {
   "type": "swap" | "price_check" | "balance_check" | "general",
-  "fromToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | null,
-  "fromChain": "solana" | "ethereum" | "bitcoin" | null,
-  "toToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | null,
-  "toChain": "solana" | "ethereum" | "bitcoin" | null,
+  "fromToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | "TNK" | null,
+  "fromChain": "solana" | "ethereum" | "bitcoin" | "trac_network" | null,
+  "toToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | "TNK" | null,
+  "toChain": "solana" | "ethereum" | "bitcoin" | "trac_network" | null,
   "amount": number | null,
   "amountToken": string | null,
   "isMax": boolean,
@@ -611,6 +613,8 @@ Token disambiguation rules:
 - "swap 1 USDT to SOL" → fromToken: USDT, fromChain: solana, toToken: SOL, toChain: solana
 - "swap 0.01 ETH to USDC" → fromToken: ETH, fromChain: ethereum, toToken: USDC_ETH, toChain: ethereum
 - "swap 0.001 BTC to SOL" → fromToken: BTC, fromChain: bitcoin, toToken: SOL, toChain: solana
+- "TNK" or "Trac Network" → fromToken: TNK, fromChain: trac_network
+- "swap 100 TNK to SOL" → fromToken: TNK, fromChain: trac_network, toToken: SOL, toChain: solana
 - For price checks: reply with price and source
 - For balance checks: reply with balance info
 - For general questions: reply about AFOS multi-chain capabilities
@@ -943,7 +947,7 @@ export const chatRouter = router({
       if (!fromAsset || !toAsset) {
         return {
           type: "text" as const,
-          content: `I don't recognise the token pair ${fromToken} → ${toToken}. Supported: SOL, USDT, USDC (Solana), ETH, USDT/USDC (Ethereum), BTC.`,
+          content: `I don't recognise the token pair ${fromToken} → ${toToken}. Supported: SOL, USDT, USDC (Solana), ETH, USDT/USDC (Ethereum), BTC (Bitcoin), TNK (Trac Network).`,
         };
       }
 
