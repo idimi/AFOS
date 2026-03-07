@@ -3392,6 +3392,38 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               );
             })()}
 
+            {/* Wallet indicator — shows which wallet will sign */}
+            {(() => {
+              const chain = fromToken.chain;
+              let addr: string | null = null;
+              let chainLabel = "";
+              let dotColor = "";
+              if (chain === "solana" && connected && shortAddress) {
+                addr = shortAddress;
+                chainLabel = "SOL";
+                dotColor = "#9945FF";
+              } else if (chain === "ethereum" && ethWallet?.address) {
+                const raw = ethWallet.address;
+                addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`;
+                chainLabel = "ETH";
+                dotColor = "#627EEA";
+              } else if (chain === "bitcoin" && btcWallet?.address) {
+                const raw = btcWallet.address;
+                addr = `${raw.slice(0, 6)}\u2026${raw.slice(-4)}`;
+                chainLabel = "BTC";
+                dotColor = "#F7931A";
+              }
+              if (!addr) return null;
+              return (
+                <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground font-mono">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
+                  <span className="opacity-60">Signing with</span>
+                  <span className="font-semibold" style={{ color: dotColor }}>{chainLabel}</span>
+                  <span>{addr}</span>
+                </div>
+              );
+            })()}
+
 
           </div>{/* end swap card inner */}
           {/* Scroll fade indicator — only visible on desktop when card is scrollable */}

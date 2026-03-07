@@ -1904,3 +1904,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Show truncated connected wallet address below the Confirm Swap button in Dashboard chat
 - [x] Detect which wallet is signing (Phantom multi-chain SOL, standard adapter, ETH, BTC) and show chain-colored dot + label + truncated address
+
+## Swaps Page Wallet Indicator
+
+- [x] Add signing-wallet indicator below the "Swap Now" button on the Swaps page (same as Dashboard chat)
