@@ -15,7 +15,7 @@ import {
   Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
   Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge,
-  Bot, X as XIcon
+  Bot, X as XIcon, UserPlus
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -23,6 +23,7 @@ import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { useTheme } from "../contexts/ThemeContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
+import { FindLPsDialog } from "../components/FindLPsDialog";
 import { Wallet } from "lucide-react";
 import { getSwapQuote, submitRfq, executeSwap, onSSEEvent, isSSEConnected, getSwaps, getAgentStatus, getRelayPeers, type SwapQuote, type RfqResult } from "../lib/afosApi";
 import NetworkPanel from "../components/NetworkPanel";
@@ -1186,7 +1187,7 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings, triggerGetQuotesRef }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings, triggerGetQuotesRef, onFindLPs }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
@@ -1197,6 +1198,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   ownPeerId?: string | null; // own peer ID — filtered out from the order book
   onNavigateToSettings?: () => void;
   triggerGetQuotesRef?: React.MutableRefObject<(() => void) | null>; // parent can call this to imperatively trigger Get Quotes
+  onFindLPs?: () => void; // open Find LPs dialog
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1433,12 +1435,13 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 
   // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
+  // When ALL live quotes expire, auto-rebroadcast RFQ so the order book stays fresh
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setOrders(prev => {
         if (prev.length === 0) return prev;
-        return prev.map(o => {
+        const next = prev.map(o => {
           // Check 30s timeout for pending (rate=0) rows
           if (o.rate === 0 && o.rfqSentAt && now - o.rfqSentAt >= 30_000) {
             return { ...o, timedOut: true, expiresIn: 0 };
@@ -1449,10 +1452,19 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           if (o.timedOut) return true;
           return o.expiresIn > 0;
         });
+        // If all live quotes just expired (no rows with rate > 0 remaining) and
+        // we have matching peers, auto-rebroadcast a fresh RFQ
+        const hasLiveQuotes = next.some(o => o.rate > 0 && !o.timedOut);
+        if (!hasLiveQuotes && prev.some(o => o.rate > 0) && walletConnected && matchingPeerCount > 0) {
+          // Defer broadcast to avoid calling setState inside setState
+          setTimeout(() => broadcastRfqRef.current?.(), 0);
+        }
+        return next;
       });
     }, 4000);
     return () => clearInterval(interval);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletConnected, matchingPeerCount]);
 
   // Include own quote in best rate calculation
   const allRates = [
@@ -1508,6 +1520,18 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
               <Radio className="w-3 h-3" />
               <span>{matchingPeerCount} peer{matchingPeerCount !== 1 ? "s" : ""}</span>
             </div>
+          )}
+          {/* Find LPs button — always visible when wallet connected */}
+          {walletConnected && onFindLPs && (
+            <button
+              onClick={onFindLPs}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80"
+              style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#64748b" }}
+              title="Find LP peers for this pair"
+            >
+              <UserPlus className="w-3 h-3" />
+              <span className="hidden sm:inline">Find LPs</span>
+            </button>
           )}
           <div className="text-right">
             <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
@@ -1593,6 +1617,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
               <p className="text-[9px] text-slate-600 text-center max-w-[180px] leading-relaxed">
                 Enable LP Mode in settings to be the first liquidity provider for this pair.
               </p>
+              {onFindLPs && (
+                <button
+                  onClick={onFindLPs}
+                  className="mt-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-80"
+                  style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.3)", color: "#06b6d4" }}
+                >
+                  <UserPlus className="w-3 h-3" />
+                  Find LPs for this pair
+                </button>
+              )}
             </>
           ) : rfqActive ? (
             <>
@@ -2486,6 +2520,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const connectedWallets = connected ? [{ chain: 'solana', name: 'Phantom', address: shortAddress || '' }] : [];
   const primaryWallet = connected ? { shortAddress, chain: 'solana' } : null;
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [showFindLPs, setShowFindLPs] = useState(false);
   const [fromToken, setFromToken] = useState(TOKENS[0]); // BTC
   const [toToken, setToToken] = useState(TOKENS[3]);     // USDT
   const [fromAmount, setFromAmount] = useState("0.001");
@@ -2866,7 +2901,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-safe" style={{ background: "transparent" }}>
+    <div className="flex-1 p-3 sm:p-5 pb-safe" style={{ background: "transparent" }}>
       <div className="max-w-[1280px] mx-auto">
       {/* Page Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
@@ -3578,6 +3613,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             ownPeerId={lightPeer.peerId}
             onNavigateToSettings={onNavigateToSettings}
             triggerGetQuotesRef={triggerGetQuotesRef}
+            onFindLPs={() => setShowFindLPs(true)}
           />
         </div>
 
@@ -3618,6 +3654,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       </div>{/* end grid */}
       </> }
       <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
+      <FindLPsDialog open={showFindLPs} onClose={() => setShowFindLPs(false)} pair={`${fromToken.symbol}/${toToken.symbol}`} />
       </div>{/* end max-w wrapper */}
     </div>
   );

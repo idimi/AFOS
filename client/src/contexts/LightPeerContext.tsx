@@ -106,6 +106,8 @@ export interface LightPeerState {
   sendPeerMessage: (targetPeerId: string, payload: unknown) => void;
   /** Broadcast an RFQ to all connected peers */
   broadcastRfq: (rfq: unknown) => void;
+  /** Send an LP invite to a specific peer asking them to register for a pair */
+  sendLpInvite: (targetPeerId: string, pair: string, fromAlias: string) => void;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -334,14 +336,23 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Handle peer messages received via signaling relay or WebRTC
     unsubs.push(client.on("peer_message", (data) => {
       const { fromPeerId, payload } = data as { fromPeerId: string; payload: unknown };
-      const msg = payload as { type?: string };
+      const msg = payload as { type?: string; pair?: string; fromAlias?: string };
       if (msg?.type === "rfq") {
         // Process as RFQ (same as SSE p2p_rfq)
         window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...payload as object } }));
       } else if (msg?.type === "chat") {
         // Peer chat message
         window.dispatchEvent(new CustomEvent("afos:peer-chat", { detail: { fromPeerId, ...payload as object } }));
+      } else if (msg?.type === "lp_invite") {
+        // LP invite — dispatch event so the UI can show a notification
+        window.dispatchEvent(new CustomEvent("afos:lp-invite", { detail: { fromPeerId, pair: msg.pair, fromAlias: msg.fromAlias } }));
       }
+    }));
+
+    // Handle incoming lp_invite messages from signaling server
+    unsubs.push(client.on("lp_invite", (data) => {
+      const { fromPeerId, payload } = data as { fromPeerId: string; payload: { pair?: string; fromAlias?: string } };
+      window.dispatchEvent(new CustomEvent("afos:lp-invite", { detail: { fromPeerId, pair: payload?.pair, fromAlias: payload?.fromAlias } }));
     }));
 
     // Handle RFQ broadcasts
@@ -946,6 +957,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     signalingRef.current?.broadcastRfq(rfq);
   }, []);
 
+  const sendLpInvite = useCallback((targetPeerId: string, pair: string, fromAlias: string) => {
+    signalingRef.current?.sendLpInvite(targetPeerId, {
+      type: "lp_invite",
+      pair,
+      fromAlias,
+      fromPeerId: peerId,
+      timestamp: Date.now(),
+    });
+  }, [peerId]);
+
   // ── Listen for afos:broadcast-rfq events from other components ────────────
   // The LiveOrderBook dispatches this event when the user clicks "Get Quotes".
   // We forward it via the signaling server so LP peers receive it over WebSocket
@@ -959,6 +980,33 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     window.addEventListener('afos:broadcast-rfq', handler);
     return () => window.removeEventListener('afos:broadcast-rfq', handler);
   }, [prefs.enabled]);
+
+  // ── Listen for afos:lp-invite events (incoming LP invites from other peers) ─
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { pair, fromAlias } = (e as CustomEvent<{ fromPeerId: string; pair?: string; fromAlias?: string }>).detail;
+      if (!pair) return;
+      const from = fromAlias ?? "A peer";
+      toast(`LP Invite: ${pair}`, {
+        description: `${from} wants you to provide liquidity for ${pair}.`,
+        duration: 15_000,
+        action: {
+          label: "Add pair",
+          onClick: () => {
+            setPrefs({
+              acceptedPairs: prefs.acceptedPairs.includes(pair)
+                ? prefs.acceptedPairs
+                : [...prefs.acceptedPairs, pair],
+              enabled: true,
+            });
+            toast.success(`Added ${pair} to your LP pairs`);
+          },
+        },
+      });
+    };
+    window.addEventListener('afos:lp-invite', handler);
+    return () => window.removeEventListener('afos:lp-invite', handler);
+  }, [prefs.acceptedPairs, setPrefs]);
 
   return (
     <LightPeerContext.Provider value={{
@@ -984,6 +1032,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       dismissHtlc,
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
+      sendLpInvite,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

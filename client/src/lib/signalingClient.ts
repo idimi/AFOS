@@ -44,6 +44,7 @@ export type SignalingEvent =
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
+  | "lp_invite"
   | "error";
 
 type EventHandler = (data: unknown) => void;
@@ -340,6 +341,15 @@ export class SignalingClient {
     });
   }
 
+  /** Send an LP invite to a specific peer via signaling server */
+  sendLpInvite(targetPeerId: string, payload: unknown) {
+    this.sendMessage({
+      type: "lp_invite",
+      targetPeerId,
+      payload,
+    });
+  }
+
   /** Broadcast an RFQ to all peers */
   broadcastRfq(rfq: unknown) {
     // Send via signaling server (reaches all peers)
@@ -459,6 +469,14 @@ export class SignalingClient {
       case "agent_rfq":
         // Agent-dispatched RFQ — server pushes this directly to the matched peer
         this.emit("agent_rfq", msg);
+        break;
+
+      case "lp_invite":
+        // LP invite — another peer is asking us to register for a pair
+        this.emit("lp_invite", {
+          fromPeerId: msg.fromPeerId,
+          payload: msg.payload,
+        });
         break;
 
       case "error":

@@ -1943,3 +1943,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show live LP peer count indicator in order book header (replaces button)
 - [x] Show "No LP peers online" empty state when no matching peers exist
 - [x] Show "Waiting for quotes..." spinner while RFQ is in-flight
+
+## Bug Fixes & New Features (Mar 7)
+
+- [x] Fix Advanced Settings overlay bug — when expanded it overlaps the Recent Swaps card below
+- [x] Quote expiry auto-refresh — re-broadcast RFQ when all quotes in the order book have expired
+- [x] Find LPs flow — invite specific peers to register for a pair (modal/dialog with shareable link or peer ID input)
+- [x] LP invite link — shareable URL that pre-fills LP registration form with the requested pair
+- [x] LP invite notification — toast when receiving an lp_invite with quick-add button
+- [x] LP auto-quote fix — LP peers now always submit quotes (not just when autoAccept is enabled)

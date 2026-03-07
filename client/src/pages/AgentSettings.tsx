@@ -267,6 +267,42 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     if (defaultTab) setActiveTab(defaultTab);
   }, [defaultTab]);
 
+  // ── Handle lp_invite_pair URL param ──────────────────────────────────────────
+  // When a user opens an invite link like /?lp_invite_pair=SOL%2FETH, auto-switch
+  // to the Network tab and show a toast prompting them to add the pair.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invitePair = params.get('lp_invite_pair');
+    if (!invitePair) return;
+    // Switch to the Network tab where LP Mode settings live
+    setActiveTab('network');
+    // Clean the URL so refreshing doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete('lp_invite_pair');
+    window.history.replaceState({}, '', url.toString());
+    // Show a toast with an action to add the pair
+    const alreadyHas = (lightPeer.prefs?.acceptedPairs ?? []).includes(invitePair);
+    if (alreadyHas) {
+      toast.info(`You already support ${invitePair}`, { description: 'This pair is already in your LP accepted pairs.' });
+    } else {
+      toast(`LP Invite: ${invitePair}`, {
+        description: `You were invited to provide liquidity for ${invitePair}. Add it to your LP pairs?`,
+        duration: 20_000,
+        action: {
+          label: 'Add pair',
+          onClick: () => {
+            lightPeer.setPrefs({
+              acceptedPairs: [...(lightPeer.prefs?.acceptedPairs ?? []), invitePair],
+              enabled: true,
+            });
+            toast.success(`Added ${invitePair} to your LP pairs`);
+          },
+        },
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Blocked peers ─────────────────────────────────────────────────────────────
   const { data: blockedPeersRaw = [], refetch: refetchBlocked } = trpc.peerBlocks.listBlocked.useQuery(
     { blockerPeerId: lightPeer.peerId! },

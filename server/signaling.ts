@@ -366,6 +366,26 @@ export function attachSignalingServer(httpServer: HttpServer) {
           break;
         }
 
+        // ── LP Invite (send to specific peer to invite them to register for a pair) ─
+        case "lp_invite": {
+          const fromId6 = msg.peerId || registeredPeerId;
+          if (!fromId6) {
+            ws.send(JSON.stringify({ type: "error", message: "Not registered" }));
+            return;
+          }
+          if (!msg.targetPeerId || !msg.payload) {
+            ws.send(JSON.stringify({ type: "error", message: "targetPeerId and payload required" }));
+            return;
+          }
+          const inviteDelivered = sendToPeer(msg.targetPeerId, {
+            type: "lp_invite",
+            fromPeerId: fromId6,
+            payload: msg.payload,
+          });
+          ws.send(JSON.stringify({ type: "message_ack", targetPeerId: msg.targetPeerId, delivered: inviteDelivered }));
+          break;
+        }
+
         // ── RFQ Broadcast (sent to all peers) ─────────────────────────────
         case "rfq_broadcast": {
           const fromId5 = msg.peerId || registeredPeerId;

@@ -3072,6 +3072,16 @@ export default function Dashboard() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Handle lp_invite_pair URL param: auto-navigate to Settings > Network tab
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const invitePair = params.get('lp_invite_pair');
+    if (!invitePair) return;
+    // Navigate to Settings > Network tab (AgentSettings handles the rest)
+    navigateToSettings('network');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Handle invite link hash on mount: #network?peer=<peerId>
   useEffect(() => {
     const parseInviteHash = () => {
