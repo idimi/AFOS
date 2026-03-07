@@ -1906,7 +1906,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
   // Liquidity Channels — wired to Oracle VM /api/channels
   const [liquidityChannels, setLiquidityChannels] = useState<LiquidityChannel[]>([]);
   const [openChannelForm, setOpenChannelForm] = useState(false);
-  const [newChannel, setNewChannel] = useState({ peer: "", capacity: "", chain: "SOL" as "BTC" | "ETH" | "SOL", feeRate: "100" });
+  const [newChannel, setNewChannel] = useState({ peer: "", capacity: "", chain: "SOL" as "BTC" | "ETH" | "SOL" | "TNK", feeRate: "100" });
   const [channelSubmitting, setChannelSubmitting] = useState(false);
   // Ping state
   const [pingResults, setPingResults] = useState<Record<string, { latencyMs: number | null; loading: boolean; history: number[] }>>({}); 
@@ -2577,12 +2577,13 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
                     <label className="text-[10px] text-muted-foreground mb-1 block">Chain</label>
                     <select
                       value={newChannel.chain}
-                      onChange={e => setNewChannel(prev => ({ ...prev, chain: e.target.value as "BTC" | "ETH" | "SOL" }))}
+                      onChange={e => setNewChannel(prev => ({ ...prev, chain: e.target.value as "BTC" | "ETH" | "SOL" | "TNK" }))}
                       className="w-full px-3 py-2 rounded-lg text-xs text-foreground outline-none"
                       style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
                       <option value="SOL">Solana (SOL)</option>
                       <option value="ETH">Ethereum (ETH)</option>
                       <option value="BTC">Bitcoin (BTC)</option>
+                      <option value="TNK">Trac Network (TNK)</option>
                     </select>
                   </div>
                   <div>
@@ -2629,7 +2630,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
           )}
 
           {liquidityChannels.map((ch: LiquidityChannel) => {
-            const chainColors: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', SOL: '#14f195' };
+            const chainColors: Record<string, string> = { BTC: '#f7931a', ETH: '#627eea', SOL: '#14f195', TNK: '#f97316' };
             const chainColor = chainColors[ch.chain] || '#06b6d4';
             const health = channelHealth[ch.id];
             const isUnhealthy = health && !health.healthy;

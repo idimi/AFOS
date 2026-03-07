@@ -1980,3 +1980,24 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] SwapHistory: Add trac_network entry to CHAIN_CONFIG explorer map so TNK trades show "View on Explorer" link to https://explorer.trac.network/tx/{hash}
 - [x] SwapHistory: Add TNK stats column to stats strip (24h TNK volume, TNK fees earned) via extended history.stats procedure
 - [x] NetworkPage: Surface TNK escrow address in HTLC escrow section alongside SOL/ETH/BTC escrow rows
+
+## TNK Consistency Audit Fixes (Round 12)
+
+- [ ] afosApi.ts: Add trac_network to SupportedChain, ASSET_REGISTRY, inferChain, inferChainFromNetwork
+- [ ] AdminPanel.tsx: Fix Volume by Chain chart label/color for trac_network
+- [ ] AdminPanel.tsx: Fix HtlcHistory row chain label for trac_network
+- [ ] AdminPanel.tsx + schema.ts + adminConfig.ts: Add trac_network to TreasuryWallet chain type and dropdown
+- [ ] AdminPanel.tsx: Fix treasury wallet chain badge color for trac_network
+- [ ] SwapHistoryTabs.tsx: Add trac_network to explorerTxUrl and explorerAddrUrl
+- [ ] SwapHistoryTabs.tsx: Add trac_network to BLOCK_TIMES
+- [ ] SwapHistoryTabs.tsx: Fix mapHtlcToOpenTrade and mapHtlcToRefund fromSymbol for TNK
+- [ ] SwapHistoryTabs.tsx: Fix HTLC countdown amount display for TNK
+- [ ] ChatPage.tsx: Add trac_network to CHAIN_PILL_STYLES
+- [ ] ChatPage.tsx: Add TNK execution branch and fix type casts
+- [ ] analytics.ts: Add trac_network to byChain array
+- [ ] oracleVmSync.ts: Add TNK to tokenToChain function
+- [ ] pathFinder.ts: Add trac_network to all chain type unions and z.enum calls
+- [ ] NetworkPanel.tsx: Add TNK pairs to ALL_PAIRS
+- [ ] LightPeerContext.tsx: Add TNK pairs to default acceptedPairs
+- [ ] NetworkPage.tsx: Add TNK to channel form chain dropdown and chainColors
+- [ ] agentSwapEth.ts: Add trac_network to chain type casts

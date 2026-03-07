@@ -87,17 +87,19 @@ interface HtlcSwapRow {
 
 function explorerTxUrl(chain: string, txHash: string): string {
   if (!txHash) return "#";
-  if (chain === "solana")   return `https://solscan.io/tx/${txHash}`;
-  if (chain === "ethereum") return `https://etherscan.io/tx/${txHash}`;
-  if (chain === "bitcoin")  return `https://mempool.space/tx/${txHash}`;
+  if (chain === "solana")       return `https://solscan.io/tx/${txHash}`;
+  if (chain === "ethereum")    return `https://etherscan.io/tx/${txHash}`;
+  if (chain === "bitcoin")     return `https://mempool.space/tx/${txHash}`;
+  if (chain === "trac_network") return `https://explorer.trac.network/tx/${txHash}`;
   return "#";
 }
 
 function explorerAddrUrl(chain: string, addr: string): string {
   if (!addr) return "#";
-  if (chain === "solana")   return `https://solscan.io/account/${addr}`;
-  if (chain === "ethereum") return `https://etherscan.io/address/${addr}`;
-  if (chain === "bitcoin")  return `https://mempool.space/address/${addr}`;
+  if (chain === "solana")       return `https://solscan.io/account/${addr}`;
+  if (chain === "ethereum")    return `https://etherscan.io/address/${addr}`;
+  if (chain === "bitcoin")     return `https://mempool.space/address/${addr}`;
+  if (chain === "trac_network") return `https://explorer.trac.network/address/${addr}`;
   return "#";
 }
 
@@ -118,9 +120,10 @@ interface BlockCountdown {
 }
 
 const BLOCK_TIMES: Record<string, number> = {
-  solana: 0.4,    // ~0.4s per slot
-  ethereum: 12,   // ~12s per block
-  bitcoin: 600,   // ~10min per block
+  solana: 0.4,         // ~0.4s per slot
+  ethereum: 12,        // ~12s per block
+  bitcoin: 600,        // ~10min per block
+  trac_network: 5,     // ~5s per Trac Network block
 };
 
 async function fetchCurrentBlock(chain: string): Promise<number | null> {
@@ -266,7 +269,7 @@ function HtlcDetailDrawer({ htlcId, onClose }: HtlcDetailDrawerProps) {
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Amount</span>
                   <span className="text-sm font-bold font-mono text-foreground">
-                    {data.amountHuman} {chain === "bitcoin" ? "BTC" : chain === "ethereum" ? "ETH" : "SOL"}
+                    {data.amountHuman} {chain === "bitcoin" ? "BTC" : chain === "ethereum" ? "ETH" : chain === "trac_network" ? "TNK" : "SOL"}
                     {data.toToken && ` → ${data.toToken}`}
                   </span>
                 </div>
@@ -399,7 +402,7 @@ const PHASE_COLORS = {
 
 function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
   const ageMs = Date.now() - new Date(row.createdAt).getTime();
-  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL";
+  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
   const toSymbol = row.toToken ?? "USDT";
   const fromAmount = parseFloat(row.amountHuman);
   const isBuy = toSymbol === "BTC";
@@ -933,7 +936,7 @@ const PRICE_ESTIMATES: Record<string, number> = {
 };
 
 function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
-  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL";
+  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
   const toSymbol = row.toToken ?? "USDT";
   const amount = parseFloat(row.amountHuman);
   const price = PRICE_ESTIMATES[fromSymbol] ?? 1;

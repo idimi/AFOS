@@ -5,9 +5,10 @@
  * This avoids the browser mixed-content block (HTTPS frontend → HTTP Oracle VM)
  *
  * Supported assets:
- *   Solana:   SOL, USDT (SPL), USDC (SPL)
- *   Ethereum: ETH, USDT (ERC-20), USDC (ERC-20)
- *   Bitcoin:  BTC
+ *   Solana:       SOL, USDT (SPL), USDC (SPL)
+ *   Ethereum:     ETH, USDT (ERC-20), USDC (ERC-20)
+ *   Bitcoin:      BTC
+ *   Trac Network: TNK
  */
 
 // Use relative URL so it works on both dev (localhost:3000) and production (manus.space)
@@ -26,7 +27,7 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
 
 // ─── Chain / Asset constants ──────────────────────────────────────────────────
 
-export type SupportedChain = 'solana' | 'ethereum' | 'bitcoin';
+export type SupportedChain = 'solana' | 'ethereum' | 'bitcoin' | 'trac_network';
 
 export interface AssetDefinition {
   symbol: string;
@@ -48,7 +49,8 @@ export const ASSET_REGISTRY: AssetDefinition[] = [
   { symbol: 'ETH',       chain: 'ethereum', chainLabel: 'Ethereum', address: null,                                         decimals: 18, isStable: false },
   { symbol: 'USDT',      chain: 'ethereum', chainLabel: 'Ethereum', address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6,  isStable: true  },
   { symbol: 'USDC',      chain: 'ethereum', chainLabel: 'Ethereum', address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6,  isStable: true  },
-  { symbol: 'BTC',       chain: 'bitcoin',  chainLabel: 'Bitcoin',  address: null,                                         decimals: 8,  isStable: false  },
+  { symbol: 'BTC',       chain: 'bitcoin',      chainLabel: 'Bitcoin',       address: null,                                         decimals: 8,  isStable: false  },
+  { symbol: 'TNK',       chain: 'trac_network', chainLabel: 'Trac Network',  address: null,                                         decimals: 8,  isStable: false  },
 ];
 
 /** Look up an asset definition by symbol + chain */
@@ -657,7 +659,7 @@ export interface LiquidityChannel {
   name: string;
   peerAlias: string;
   capacity: number;
-  chain: 'BTC' | 'ETH' | 'SOL';
+  chain: 'BTC' | 'ETH' | 'SOL' | 'TNK';
   feeRatePpm: number;
   localBalance: number;
   remoteBalance: number;
@@ -684,7 +686,7 @@ export async function getChannels(): Promise<ChannelsResponse> {
 export async function openChannel(params: {
   peerAlias: string;
   capacity: number;
-  chain: 'BTC' | 'ETH' | 'SOL';
+  chain: 'BTC' | 'ETH' | 'SOL' | 'TNK';
   feeRatePpm?: number;
 }): Promise<{ success: boolean; channel: LiquidityChannel }> {
   const res = await fetchWithTimeout(`${BACKEND_URL}/api/channels/open`, {
@@ -720,6 +722,7 @@ export function inferChain(symbol: string): SupportedChain {
   const upper = symbol?.toUpperCase();
   if (upper === 'ETH') return 'ethereum';
   if (upper === 'BTC') return 'bitcoin';
+  if (upper === 'TNK') return 'trac_network';
   return 'solana'; // SOL, USDT, USDC default to Solana
 }
 
@@ -732,6 +735,7 @@ export function inferChainFromNetwork(network: string | undefined): SupportedCha
   const lower = network.toLowerCase();
   if (lower.includes('ethereum')) return 'ethereum';
   if (lower.includes('bitcoin')) return 'bitcoin';
+  if (lower.includes('trac') || lower.includes('trac_network')) return 'trac_network';
   if (lower.includes('solana')) return 'solana';
   return null;
 }

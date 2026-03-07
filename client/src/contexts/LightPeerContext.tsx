@@ -121,6 +121,7 @@ const DEFAULT_PREFS: LightPeerPrefs = {
   acceptedPairs: [
     "SOL/USDT", "SOL/USDC", "ETH/USDT", "ETH/USDC",
     "BTC/USDT", "BTC/ETH", "BTC/SOL",
+    "TNK/USDT", "TNK/ETH", "TNK/SOL", "TNK/BTC",
   ],
   autoAccept: false,
 };

@@ -237,7 +237,7 @@ export async function executeEthAgentSwap(params: {
 
           void recordSwapAnalytic({
             fromChain:     fromChain as "ethereum",
-            toChain:       toChain   as "solana" | "ethereum" | "bitcoin",
+            toChain:       toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
             fromToken:     fromToken.toUpperCase(),
             toToken:       toToken.toUpperCase(),
             amount:        String(amount),
@@ -297,7 +297,7 @@ export async function executeEthAgentSwap(params: {
   if (zeroxResult.success) {
     void recordSwapAnalytic({
       fromChain:    "ethereum",
-      toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    fromToken.toUpperCase(),
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -420,7 +420,7 @@ export async function executeEthAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "ethereum",
-      toChain:      toChain as "solana" | "ethereum" | "bitcoin",
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    fromToken.toUpperCase(),
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),

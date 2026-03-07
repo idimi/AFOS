@@ -31,7 +31,7 @@ const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 const treasuryWalletSchema = z.object({
   id:           z.string(),
   label:        z.string(),
-  chain:        z.enum(["solana", "ethereum", "bitcoin"]),
+  chain:        z.enum(["solana", "ethereum", "bitcoin", "trac_network"]),
   address:      z.string(),
   splitPercent: z.number().min(0).max(100),
 });

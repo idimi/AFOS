@@ -140,9 +140,10 @@ function RouteBadge({ route }: { route: string }) {
 // ─── Chain Pill ───────────────────────────────────────────────────────────────
 // Shows source → destination chain for cross-chain swaps
 const CHAIN_PILL_STYLES: Record<string, { color: string; label: string }> = {
-  solana:   { color: "#9945FF", label: "SOL" },
-  ethereum: { color: "#627EEA", label: "ETH" },
-  bitcoin:  { color: "#F7931A", label: "BTC" },
+  solana:       { color: "#9945FF", label: "SOL" },
+  ethereum:     { color: "#627EEA", label: "ETH" },
+  bitcoin:      { color: "#F7931A", label: "BTC" },
+  trac_network: { color: "#F97316", label: "TNK" },
 };
 
 function ChainPill({ fromChain, toChain }: { fromChain?: string; toChain?: string }) {
@@ -786,8 +787,9 @@ export default function ChatPage() {
     const effectivePublicKey = publicKey || (phantomSolAddr ? { toString: () => phantomSolAddr } : null);
     const noWalletConnected =
       (!connected && !phantomSolAddr) || !effectivePublicKey ||
-      (fromChainNorm === "ethereum" && !ethereum?.address) ||
-      (fromChainNorm === "bitcoin"  && !bitcoin?.address);
+      (fromChainNorm === "ethereum"    && !ethereum?.address) ||
+      (fromChainNorm === "bitcoin"     && !bitcoin?.address) ||
+      (fromChainNorm === "trac_network" && !bitcoin?.address); // TNK uses BTC-style HTLC wallet
 
     if (noWalletConnected) {
       // Non-custodial: the agent cannot execute swaps on behalf of the user.

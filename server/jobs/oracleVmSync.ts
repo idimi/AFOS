@@ -50,10 +50,11 @@ interface OracleSwapsResponse {
 
 // ─── Token → chain mapping (best-effort) ─────────────────────────────────────
 
-function tokenToChain(token: string): "bitcoin" | "ethereum" | "solana" {
+function tokenToChain(token: string): "bitcoin" | "ethereum" | "solana" | "trac_network" {
   const t = token.toUpperCase();
   if (t === "BTC" || t === "WBTC") return "bitcoin";
   if (t === "ETH" || t === "WETH" || t === "USDC" || t === "DAI") return "ethereum";
+  if (t === "TNK") return "trac_network";
   return "solana"; // SOL, USDT (Solana), USDC (Solana), etc.
 }
 

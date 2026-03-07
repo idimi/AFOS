@@ -2,7 +2,7 @@
  * Analytics Router — Swap Analytics Dashboard Backend
  *
  * Provides DB-backed metrics for the swap analytics dashboard:
- *   - Swap volume by chain (BTC / ETH / SOL)
+ *   - Swap volume by chain (BTC / ETH / SOL / TNK)
  *   - Average settlement time per route
  *   - HTLC success / refund ratio
  *   - Peer reputation leaderboard (P2P peers ranked by completed swaps)
@@ -61,7 +61,7 @@ export const analyticsRouter = router({
         chainMap[key].totalUsd  += parseFloat(row.totalUsd ?? "0");
       }
 
-      const chains = ["bitcoin", "ethereum", "solana"] as const;
+      const chains = ["bitcoin", "ethereum", "solana", "trac_network"] as const;
       const byChain = chains.map(chain => ({
         chain,
         swapCount: chainMap[chain]?.swapCount ?? 0,

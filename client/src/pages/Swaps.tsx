@@ -273,9 +273,10 @@ function TokenSelector({
 // ─── Swap Progress Tracker ────────────────────────────────────────────────────
 
 function chainExplorerUrl(txHash: string, chain: string): string {
-  if (chain === "solana") return `https://solscan.io/tx/${txHash}`;
-  if (chain === "ethereum") return `https://etherscan.io/tx/${txHash}`;
-  if (chain === "bitcoin") return `https://mempool.space/tx/${txHash}`;
+  if (chain === "solana")       return `https://solscan.io/tx/${txHash}`;
+  if (chain === "ethereum")    return `https://etherscan.io/tx/${txHash}`;
+  if (chain === "bitcoin")     return `https://mempool.space/tx/${txHash}`;
+  if (chain === "trac_network") return `https://explorer.trac.network/tx/${txHash}`;
   return `https://solscan.io/tx/${txHash}`;
 }
 
@@ -3622,7 +3623,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
 
       </div>{/* end grid */}
       </> }
-      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin"} />
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={fromToken.chain as "solana" | "ethereum" | "bitcoin" | "trac_network"} />
       </div>{/* end max-w wrapper */}
     </div>
   );

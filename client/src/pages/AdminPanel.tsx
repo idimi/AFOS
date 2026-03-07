@@ -32,7 +32,7 @@ const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
 interface TreasuryWallet {
   id: string;
   label: string;
-  chain: "solana" | "ethereum" | "bitcoin";
+  chain: "solana" | "ethereum" | "bitcoin" | "trac_network";
   address: string;
   splitPercent: number;
 }
@@ -135,8 +135,8 @@ function RevenueTab() {
             {volumeData.byChain.map(c => {
               const maxUsd = Math.max(...volumeData.byChain.map(x => x.totalUsd), 1);
               const pct = (c.totalUsd / maxUsd) * 100;
-              const chainLabel = c.chain === "bitcoin" ? "BTC" : c.chain === "ethereum" ? "ETH" : "SOL";
-              const chainColor = c.chain === "bitcoin" ? "#F7931A" : c.chain === "ethereum" ? "#627EEA" : "#9945FF";
+              const chainLabel = c.chain === "bitcoin" ? "BTC" : c.chain === "ethereum" ? "ETH" : c.chain === "trac_network" ? "TNK" : "SOL";
+              const chainColor = c.chain === "bitcoin" ? "#F7931A" : c.chain === "ethereum" ? "#627EEA" : c.chain === "trac_network" ? "#F97316" : "#9945FF";
               return (
                 <div key={c.chain}>
                   <div className="flex items-center justify-between mb-1">
@@ -527,8 +527,8 @@ function TreasuryTab() {
                   <p className="text-xs font-bold text-foreground">{wallet.label}</p>
                   <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase"
                     style={{
-                      background: wallet.chain === "solana" ? "rgba(153,69,255,0.15)" : wallet.chain === "ethereum" ? "rgba(98,126,234,0.15)" : "rgba(247,147,26,0.15)",
-                      color: wallet.chain === "solana" ? "#9945FF" : wallet.chain === "ethereum" ? "#627EEA" : "#F7931A",
+                      background: wallet.chain === "solana" ? "rgba(153,69,255,0.15)" : wallet.chain === "ethereum" ? "rgba(98,126,234,0.15)" : wallet.chain === "trac_network" ? "rgba(249,115,22,0.15)" : "rgba(247,147,26,0.15)",
+                      color: wallet.chain === "solana" ? "#9945FF" : wallet.chain === "ethereum" ? "#627EEA" : wallet.chain === "trac_network" ? "#F97316" : "#F7931A",
                     }}>
                     {wallet.chain}
                   </span>
@@ -595,6 +595,7 @@ function TreasuryTab() {
               <option value="solana">Solana</option>
               <option value="ethereum">Ethereum</option>
               <option value="bitcoin">Bitcoin</option>
+              <option value="trac_network">Trac Network (TNK)</option>
             </select>
             <div className="flex gap-2">
               <button onClick={addWallet}
@@ -1497,12 +1498,12 @@ function HtlcHistorySection() {
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-bold font-mono shrink-0"
                     style={{ background: `${chainColor}20`, color: chainColor, border: `1px solid ${chainColor}40` }}>
-                    {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL"}
+                    {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-mono font-semibold text-foreground">
-                        {row.amountHuman} {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : "SOL"}
+                        {row.amountHuman} {row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL"}
                       </span>
                       {row.toToken && (
                         <span className="text-[9px] text-muted-foreground">

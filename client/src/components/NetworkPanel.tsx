@@ -123,6 +123,7 @@ function RfqCard({ rfq, onAccept, onReject }: {
 const ALL_PAIRS = [
   "SOL/USDT", "SOL/USDC", "ETH/USDT", "ETH/USDC",
   "BTC/USDT", "BTC/ETH", "BTC/SOL",
+  "TNK/USDT", "TNK/ETH", "TNK/SOL", "TNK/BTC",
 ];
 
 function PairToggle({ pair, active, onToggle }: { pair: string; active: boolean; onToggle: () => void }) {

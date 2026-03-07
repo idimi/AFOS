@@ -298,7 +298,7 @@ export const DEFAULT_ADMIN_CONFIG = {
   botFeeCents: 10,
   minTradeUsdCents: 1000,
   maxTradeUsdCents: 100000,
-  treasuryWallets: [] as Array<{ id: string; label: string; chain: "solana" | "ethereum" | "bitcoin"; address: string; splitPercent: number }>,
+  treasuryWallets: [] as Array<{ id: string; label: string; chain: "solana" | "ethereum" | "bitcoin" | "trac_network"; address: string; splitPercent: number }>,
 };
 
 // ─── Operator Config ──────────────────────────────────────────────────────────
