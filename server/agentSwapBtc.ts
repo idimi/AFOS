@@ -582,8 +582,18 @@ export async function executeTnkAgentSwap(params: {
   } = params;
 
   const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
+  // TNK_HTLC_WIF is the Trac Network HTLC signing key for live execution.
+  // If absent, the function runs in demo mode (simulated result, no real on-chain transaction).
+  const tnkHtlcWif = process.env.TNK_HTLC_WIF;
+  if (!tnkHtlcWif) {
+    console.warn(
+      "[TNK Agent Swap] WARNING: TNK_HTLC_WIF is not set. " +
+      "Running in demo mode — no real Trac Network HTLC will be created. " +
+      "Set TNK_HTLC_WIF in project secrets to enable live execution."
+    );
+  }
 
-  console.log(`[TNK Agent Swap] ${amount} ${fromToken} → ${toToken} (${toChain}) via Oracle VM`);
+  console.log(`[TNK Agent Swap] ${amount} ${fromToken} → ${toToken} (${toChain}) via Oracle VM${tnkHtlcWif ? " [LIVE]" : " [DEMO]"}`);
 
   // ── Step 1: Oracle VM RFQ ─────────────────────────────────────────────────
   let rfqId: string | null = null;
@@ -666,13 +676,13 @@ export async function executeTnkAgentSwap(params: {
 
           return {
             success: true,
-            demo: false,
+            demo: !tnkHtlcWif,
             txHash,
             outAmount: finalOutAmount,
             route: finalRoute,
             feeBps: P2P_FEE_BPS,
             feeAmountOut,
-            message: `TNK swap via ${finalRoute}: ${amount} ${fromToken} → ${finalOutAmount.toFixed(6)} ${toToken}${txHash ? `. Tx: ${txHash}` : ""}.`,
+            message: `${tnkHtlcWif ? "" : "[DEMO] "}TNK swap via ${finalRoute}: ${amount} ${fromToken} → ${finalOutAmount.toFixed(6)} ${toToken}${txHash ? `. Tx: ${txHash}` : ""}.`,
             nextStep: p2pPeerId
               ? `P2P peer ${p2pPeerId} matched. Coordinating HTLC on both legs via Oracle VM.`
               : `Oracle VM executing ${fromToken}→${toToken} swap. Status: ${swap.status ?? "processing"}.`,

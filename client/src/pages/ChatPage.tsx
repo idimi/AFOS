@@ -168,6 +168,7 @@ function QuoteCard({
   isExecuting,
   onRequestConnect,
   limitWarning,
+  tnkPeerCount,
 }: {
   data: QuoteData;
   onConfirm: () => void;
@@ -175,6 +176,7 @@ function QuoteCard({
   isExecuting: boolean;
   onRequestConnect: () => void;
   limitWarning?: string;
+  tnkPeerCount?: number;
 }) {
   const { connected } = useWallet();
 
@@ -191,6 +193,21 @@ function QuoteCard({
         <Zap className="w-4 h-4 text-cyan-400" />
         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Swap Quote</span>
         <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+          {/* TNK peer count badge — shown when swap involves TNK */}
+          {(data.fromToken === "TNK" || data.toToken === "TNK") && tnkPeerCount !== undefined && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+              style={{
+                background: tnkPeerCount > 0 ? "rgba(249,115,22,0.15)" : "rgba(100,116,139,0.15)",
+                color: tnkPeerCount > 0 ? "#f97316" : "#94a3b8",
+                border: `1px solid ${tnkPeerCount > 0 ? "rgba(249,115,22,0.35)" : "rgba(100,116,139,0.25)"}`,
+              }}
+              title={tnkPeerCount > 0 ? `${tnkPeerCount} active TNK P2P peer${tnkPeerCount !== 1 ? "s" : ""} on the network` : "No TNK P2P peers online — will route via Oracle VM DEX"}
+            >
+              <span style={{ fontSize: "9px" }}>⬡</span>
+              {tnkPeerCount > 0 ? `${tnkPeerCount} TNK peer${tnkPeerCount !== 1 ? "s" : ""}` : "No TNK peers"}
+            </span>
+          )}
           <ChainPill fromChain={data.fromChain} toChain={data.toChain} />
           <RouteBadge route={data.route} />
         </div>
@@ -413,6 +430,7 @@ function MessageBubble({
   onRequestConnect,
   onAcceptRfq,
   onDeclineRfq,
+  tnkPeerCount,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -421,6 +439,7 @@ function MessageBubble({
   onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
   onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number) => void;
   onDeclineRfq?: (rfqId: string) => void;
+  tnkPeerCount?: number;
 }) {
   const isUser = msg.role === "user";
 
@@ -500,6 +519,7 @@ function MessageBubble({
               isExecuting={executingId === msg.id}
               onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken, msg.quoteData!.fromChain)}
               limitWarning={msg.limitWarning}
+              tnkPeerCount={tnkPeerCount}
             />
           </div>
         )}
@@ -1125,6 +1145,7 @@ export default function ChatPage() {
               onCancelSwap={handleCancelSwap}
               executingId={executingId}
               onRequestConnect={openWalletForChain}
+              tnkPeerCount={remotePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length}
               onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
                 const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;
                 handleSend(text);

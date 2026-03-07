@@ -2007,3 +2007,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] agentSwapBtc.ts: Add trac_network case so TNK→BTC cross-chain swaps fall through to Oracle VM P2P path
 - [x] AdminPanel: Add TNK (#f97316) colour entry to Analytics volume-by-chain bar chart colour map
 - [x] SwapHistory: Add TNK entry to PRICE_ESTIMATES fallback map for USD value column
+
+## TNK Enhancement Round 14
+
+- [ ] agentSwapBtc.ts: Wire TNK_HTLC_WIF secret into executeTnkAgentSwap for live execution (mirrors BTC_HTLC_WIF pattern)
+- [ ] agentSwapEth.ts: Add trac_network cross-chain case so ETH→TNK swaps route through Oracle VM P2P path
+- [ ] ChatPage: Surface TNK peer count badge on swap confirmation card showing active TNK P2P peers

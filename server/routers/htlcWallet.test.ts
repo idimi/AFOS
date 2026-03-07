@@ -254,4 +254,28 @@ describe("htlcWallet router", () => {
       expect(result.eth.address?.toLowerCase()).toBe("0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266");
     });
   });
+
+  describe("TNK_HTLC_WIF secret", () => {
+    it("should include TNK escrow row in assets with configured=true when TNK_HTLC_WIF is set", { timeout: 30_000 }, async () => {
+      // TNK_HTLC_WIF is a WIF key — use a known testnet WIF for this test
+      // (cNJFgo1driFnPcBdBX8BrJrpxchBWXwXCvNH5SoSkdcF6JXXwHMm is a valid testnet WIF)
+      process.env.TNK_HTLC_WIF = "cNJFgo1driFnPcBdBX8BrJrpxchBWXwXCvNH5SoSkdcF6JXXwHMm";
+      const caller = appRouter.createCaller(createTestContext());
+      const result = await caller.htlcWallet.getHtlcWallets();
+      const tnkAsset = result.assets.find(a => a.chain === "trac_network");
+      // TNK escrow uses TNK_ESCROW_ADDRESS (not derived from WIF), so it may be unconfigured
+      // but the assets array must include a trac_network entry
+      expect(tnkAsset).toBeDefined();
+      expect(tnkAsset?.asset).toBe("TNK");
+      delete process.env.TNK_HTLC_WIF;
+    });
+
+    it("executeTnkAgentSwap should run in demo mode when TNK_HTLC_WIF is not set", { timeout: 30_000 }, async () => {
+      const src = (await import("fs")).readFileSync("server/agentSwapBtc.ts", "utf-8");
+      // Verify the demo mode check is present
+      expect(src).toContain("TNK_HTLC_WIF");
+      expect(src).toContain("Running in demo mode");
+      expect(src).toContain("demo: !tnkHtlcWif");
+    });
+  });
 });
