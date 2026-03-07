@@ -399,15 +399,17 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     }
 
     // Solana swap via Jupiter + Phantom
-    if (!publicKey) {
+    // Accept both standard Solana adapter (publicKey) and Phantom multi-chain (phantomMultiChain.solanaAddress)
+    const solanaPublicKeyStr = publicKey?.toString() ?? phantomMultiChain?.solanaAddress ?? null;
+    if (!solanaPublicKeyStr) {
       addMessage({ role: "assistant", content: "Please connect your Solana wallet first to execute swaps.", type: "error" });
       return;
     }
-    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}…`, type: "text" });
+    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} \u2192 ${quoteData.toToken}\u2026`, type: "text" });
     try {
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
-        userPublicKey: publicKey.toString(),
+        userPublicKey: solanaPublicKeyStr,
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
         fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin") ?? "solana",
@@ -454,7 +456,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       const msg = err instanceof Error ? err.message : "Transaction failed";
       addMessage({ role: "assistant", content: `Swap failed: ${msg}`, type: "error" });
     }
-  }, [publicKey, buildSwapTx, executeBtcSwap, bitcoin, addMessage]);
+  }, [publicKey, phantomMultiChain, buildSwapTx, executeBtcSwap, bitcoin, addMessage]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text ?? input).trim();
