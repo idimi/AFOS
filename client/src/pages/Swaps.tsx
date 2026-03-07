@@ -1234,6 +1234,9 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   const [flash, setFlash] = useState<string | null>(null);
   // pendingPeers: peerId → timestamp when RFQ was sent (for 30s timeout tracking)
   const pendingPeersRef = useRef<Map<string, number>>(new Map());
+  // hasRequestedQuotes: true only after the user explicitly clicks "Get Quotes"
+  // RFQs are NEVER auto-broadcast on wallet connect or peer list change
+  const [hasRequestedQuotes, setHasRequestedQuotes] = useState(false);
 
   // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
@@ -1300,26 +1303,31 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     ).catch(() => { /* best-effort */ });
   };
 
-  // Pair change: clear orders and pending state
+  // Pair change: clear orders, pending state, and reset quote request flag
   useEffect(() => {
     setOrders([]);
     pendingPeersRef.current.clear();
+    setHasRequestedQuotes(false);
   }, [fromToken.symbol, toToken.symbol]);
 
-  // Re-broadcast when wallet connects, peers list changes, pair changes, or debounced amount changes
+  // Auto-refresh: re-broadcast every 30s ONLY after user has explicitly requested quotes
   useEffect(() => {
-    broadcastRfqRef.current?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol, debouncedRfqAmount]);
-
-  // Auto-refresh: re-broadcast every 30s so peer rate updates are reflected live
-  useEffect(() => {
-    if (!walletConnected) return;
+    if (!walletConnected || !hasRequestedQuotes) return;
     const interval = setInterval(() => {
       broadcastRfqRef.current?.();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [walletConnected]);
+  }, [walletConnected, hasRequestedQuotes]);
+
+  // Re-broadcast when debounced amount changes — but only after user has already requested quotes
+  const prevDebouncedRfqAmountRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!hasRequestedQuotes) return;
+    if (prevDebouncedRfqAmountRef.current === debouncedRfqAmount) return;
+    prevDebouncedRfqAmountRef.current = debouncedRfqAmount;
+    broadcastRfqRef.current?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedRfqAmount, hasRequestedQuotes]);
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1421,36 +1429,59 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           <div className="flex items-center gap-2">
             <BarChart3 className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-bold text-foreground">Live Order Book</span>
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            {hasRequestedQuotes && <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
-            {walletConnected ? "P2P SSE quotes" : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
+            {walletConnected
+              ? hasRequestedQuotes
+                ? "P2P SSE quotes · live"
+                : "Enter amount above and click Get Quotes"
+              : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
-        <div className="text-right">
-          <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
-          {/* DEX depth row: quoted output for the exact swap size (debounced) */}
-          {dexLoading ? (
-            <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"}…`}</span>
-            </div>
-          ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
-            <div className="text-right">
-              <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : dexRef.source === "0x" ? "#6366f1" : "#1470ef" }}>
-                {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
-              </div>
-              {beatsDex && dexBeatsPct !== null && (
-                <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
-              )}
-            </div>
-          ) : dexRef.rate && dexRef.source !== "none" ? (
-            <div className="text-[9px] text-slate-500">
-              {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
-            </div>
-          ) : (
-            <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
+        <div className="flex items-center gap-2">
+          {walletConnected && (
+            <button
+              onClick={() => {
+                setHasRequestedQuotes(true);
+                broadcastRfqRef.current?.();
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all"
+              style={{
+                background: hasRequestedQuotes ? "rgba(6,182,212,0.08)" : "rgba(6,182,212,0.15)",
+                border: "1px solid rgba(6,182,212,0.35)",
+                color: "#22d3ee",
+              }}
+            >
+              <Radio className="w-3 h-3" />
+              {hasRequestedQuotes ? "Refresh" : "Get Quotes"}
+            </button>
           )}
+          <div className="text-right">
+            <div className="text-[10px] font-mono text-amber-400">{orders.length} offers</div>
+            {/* DEX depth row: quoted output for the exact swap size (debounced) */}
+            {dexLoading ? (
+              <div className="text-[9px] text-slate-600 flex items-center justify-end gap-1">
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                <span>{isDebouncing ? "Waiting…" : `Fetching ${dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x" : "1inch"}…`}</span>
+              </div>
+            ) : dexDepthOutput !== null && dexRef.source !== "none" ? (
+              <div className="text-right">
+                <div className="text-[9px] font-mono" style={{ color: dexRef.source === "jupiter" ? "#9945ff" : dexRef.source === "0x" ? "#6366f1" : "#1470ef" }}>
+                  {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : "1inch"}: {debouncedFromAmount?.toLocaleString(undefined, { maximumFractionDigits: 6 })} {fromToken.symbol} → {dexDepthOutput.toLocaleString(undefined, { maximumFractionDigits: 4 })} {toToken.symbol}
+                </div>
+                {beatsDex && dexBeatsPct !== null && (
+                  <div className="text-[8px] font-mono text-emerald-500">★ P2P beats by +{dexBeatsPct.toFixed(2)}%</div>
+                )}
+              </div>
+            ) : dexRef.rate && dexRef.source !== "none" ? (
+              <div className="text-[9px] text-slate-500">
+                {dexRef.source === "jupiter" ? "Jupiter" : dexRef.source === "0x" ? "0x Protocol" : dexRef.source === "1inch" ? "1inch" : "DEX"}: {dexRef.rate.toFixed(4)}
+              </div>
+            ) : (
+              <div className="text-[9px] text-slate-600">Best: {bestRate.toFixed(4)}</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1498,15 +1529,20 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       {/* Empty state */}
       {orders.length === 0 && !ownQuote && (
         <div className="flex flex-col items-center justify-center py-8 gap-2">
-          {walletConnected ? (
-            <>
-              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
-            </>
-          ) : (
+          {!walletConnected ? (
             <>
               <Wallet className="w-5 h-5 text-slate-500" />
               <p className="text-[10px] text-slate-500">Connect wallet to request live quotes</p>
+            </>
+          ) : !hasRequestedQuotes ? (
+            <>
+              <Radio className="w-5 h-5 text-slate-500" />
+              <p className="text-[10px] text-slate-500">Click “Get Quotes” to request P2P offers</p>
+            </>
+          ) : (
+            <>
+              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
             </>
           )}
         </div>

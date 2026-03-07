@@ -1859,3 +1859,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Diagnose why AdminPanel triggers Manus OAuth redirect after wallet login
 - [x] Fix tRPC query auth handling so Admin panel stays stable (adminConfig + operatorConfig now use publicProcedure; main.tsx skips redirect on /admin)
+
+## Remove Phantom Data from Live Order Book and Analytics
+
+- [ ] Find source of fake LP peers in Live Order Book (lp-1be729fb6c, lp-f544bbc268)
+- [ ] Find source of fake Jupiter DEX route distribution data in Analytics
+- [ ] Remove/stub all phantom data so UI shows empty/fresh state
+
+## Live Order Book — RFQ Broadcast Fix
+
+- [x] Fix: LiveOrderBook auto-broadcasts RFQ to all LP peers on wallet connect without user intent
+- [x] Add "Get Quotes" button — RFQs only broadcast when user explicitly clicks it (or changes amount after first request)
+- [x] Remove auto-broadcast useEffect triggered by walletConnected/signalingPeers changes
+- [x] Keep 30s auto-refresh only after user has explicitly requested quotes (hasRequestedQuotes flag)
+- [x] Show idle state "Enter amount and click Get Quotes" when no quotes have been requested yet
+- [x] Clear swap_analytics table (done — was 12 rows from previous test sessions)

@@ -1,0 +1,118 @@
+{
+  "query": "SELECT id, route, status, fromToken, toToken, amountUsd, createdAt FROM swap_analytics ORDER BY createdAt DESC LIMIT 20",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, route, status, fromToken, toToken, amountUsd, createdAt FROM swap_analytics ORDER BY createdAt DESC LIMIT 20",
+  "rows": [
+    {
+      "id": "60034",
+      "route": "Jupiter DEX (GoonFi V2)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:52:21"
+    },
+    {
+      "id": "60033",
+      "route": "Jupiter DEX (Raydium CLMM → AlphaQ)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:52:20"
+    },
+    {
+      "id": "60032",
+      "route": "Jupiter DEX (HumidiFi → AlphaQ)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:33:47"
+    },
+    {
+      "id": "60031",
+      "route": "Jupiter DEX (HumidiFi → AlphaQ)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:33:46"
+    },
+    {
+      "id": "60030",
+      "route": "Jupiter DEX (Whirlpool → GoonFi V2)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:31:22"
+    },
+    {
+      "id": "60029",
+      "route": "Jupiter DEX (Whirlpool → GoonFi V2)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:31:21"
+    },
+    {
+      "id": "60028",
+      "route": "Jupiter DEX (Whirlpool → AlphaQ)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:30:49"
+    },
+    {
+      "id": "60027",
+      "route": "Jupiter DEX (Whirlpool → AlphaQ)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:30:48"
+    },
+    {
+      "id": "60026",
+      "route": "Jupiter DEX (PancakeSwap)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:28:34"
+    },
+    {
+      "id": "60025",
+      "route": "Jupiter DEX (BisonFi → ZeroFi → Aquifer)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:28:33"
+    },
+    {
+      "id": "60024",
+      "route": "Jupiter DEX (Whirlpool → Aquifer)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:27:58"
+    },
+    {
+      "id": "60023",
+      "route": "Jupiter DEX (Invariant → Aquifer)",
+      "status": "completed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amountUsd": "NULL",
+      "createdAt": "2026-03-07 02:27:57"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\troute\tstatus\tfromToken\ttoToken\tamountUsd\tcreatedAt\n60034\tJupiter DEX (GoonFi V2)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:52:21\n60033\tJupiter DEX (Raydium CLMM → AlphaQ)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:52:20\n60032\tJupiter DEX (HumidiFi → AlphaQ)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:33:47\n60031\tJupiter DEX (HumidiFi → AlphaQ)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:33:46\n60030\tJupiter DEX (Whirlpool → GoonFi V2)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:31:22\n60029\tJupiter DEX (Whirlpool → GoonFi V2)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:31:21\n60028\tJupiter DEX (Whirlpool → AlphaQ)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:30:49\n60027\tJupiter DEX (Whirlpool → AlphaQ)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:30:48\n60026\tJupiter DEX (PancakeSwap)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:28:34\n60025\tJupiter DEX (BisonFi → ZeroFi → Aquifer)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:28:33\n60024\tJupiter DEX (Whirlpool → Aquifer)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:27:58\n60023\tJupiter DEX (Invariant → Aquifer)\tcompleted\tSOL\tUSDT\tNULL\t2026-03-07 02:27:57\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

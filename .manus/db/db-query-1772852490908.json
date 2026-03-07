@@ -1,0 +1,61 @@
+{
+  "query": "SELECT COUNT(*) as total_rows FROM swap_analytics; SELECT route, COUNT(*) as cnt FROM swap_analytics GROUP BY route; SELECT * FROM swap_analytics LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COUNT(*) as total_rows FROM swap_analytics; SELECT route, COUNT(*) as cnt FROM swap_analytics GROUP BY route; SELECT * FROM swap_analytics LIMIT 5;",
+  "rows": [
+    {
+      "total_rows": "12"
+    },
+    {
+      "total_rows": "route\tcnt"
+    },
+    {
+      "total_rows": "Jupiter DEX (Invariant → Aquifer)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (Whirlpool → Aquifer)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (Raydium CLMM → AlphaQ)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (HumidiFi → AlphaQ)\t2"
+    },
+    {
+      "total_rows": "Jupiter DEX (GoonFi V2)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (PancakeSwap)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (BisonFi → ZeroFi → Aquifer)\t1"
+    },
+    {
+      "total_rows": "Jupiter DEX (Whirlpool → AlphaQ)\t2"
+    },
+    {
+      "total_rows": "Jupiter DEX (Whirlpool → GoonFi V2)\t2"
+    },
+    {
+      "total_rows": "id\tfromChain\ttoChain\tfromToken\ttoToken\tamount\tamountUsd\troute\tstatus\tsettlementMs\ttxId\tpeerId\tcreatedAt\tplatformFeeUsd\tfeeBps\tfeeAmountOut\toutAmount\twalletAddress\trfqId"
+    },
+    {
+      "total_rows": "60023\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Invariant → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:27:57\tNULL\t20\t0.00016869\tNULL\tNULL\tNULL"
+    },
+    {
+      "total_rows": "60024\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Whirlpool → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:27:58\tNULL\t20\t0.00016868\tNULL\tNULL\tNULL"
+    },
+    {
+      "total_rows": "60025\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (BisonFi → ZeroFi → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:28:33\tNULL\t20\t0.00016865\tNULL\tNULL\tNULL"
+    },
+    {
+      "total_rows": "60026\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (PancakeSwap)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:28:34\tNULL\t20\t0.00016864\tNULL\tNULL\tNULL"
+    },
+    {
+      "total_rows": "60027\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Whirlpool → AlphaQ)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:30:48\tNULL\t20\t0.00016839\tNULL\tNULL\tNULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "total_rows\n12\nroute\tcnt\nJupiter DEX (Invariant → Aquifer)\t1\nJupiter DEX (Whirlpool → Aquifer)\t1\nJupiter DEX (Raydium CLMM → AlphaQ)\t1\nJupiter DEX (HumidiFi → AlphaQ)\t2\nJupiter DEX (GoonFi V2)\t1\nJupiter DEX (PancakeSwap)\t1\nJupiter DEX (BisonFi → ZeroFi → Aquifer)\t1\nJupiter DEX (Whirlpool → AlphaQ)\t2\nJupiter DEX (Whirlpool → GoonFi V2)\t2\nid\tfromChain\ttoChain\tfromToken\ttoToken\tamount\tamountUsd\troute\tstatus\tsettlementMs\ttxId\tpeerId\tcreatedAt\tplatformFeeUsd\tfeeBps\tfeeAmountOut\toutAmount\twalletAddress\trfqId\n60023\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Invariant → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:27:57\tNULL\t20\t0.00016869\tNULL\tNULL\tNULL\n60024\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Whirlpool → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:27:58\tNULL\t20\t0.00016868\tNULL\tNULL\tNULL\n60025\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (BisonFi → ZeroFi → Aquifer)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:28:33\tNULL\t20\t0.00016865\tNULL\tNULL\tNULL\n60026\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (PancakeSwap)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:28:34\tNULL\t20\t0.00016864\tNULL\tNULL\tNULL\n60027\tsolana\tsolana\tSOL\tUSDT\t0.001\tNULL\tJupiter DEX (Whirlpool → AlphaQ)\tcompleted\tNULL\tNULL\tNULL\t2026-03-07 02:30:48\tNULL\t20\t0.00016839\tNULL\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 98
+}
