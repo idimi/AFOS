@@ -1186,7 +1186,7 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, ownPeerId, onNavigateToSettings }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
@@ -1194,6 +1194,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   fromAmount?: number; // current swap input amount for DEX depth comparison
   walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
   lpEnabled?: boolean; // whether the user has LP Mode enabled
+  ownPeerId?: string | null; // own peer ID — filtered out from the order book
   onNavigateToSettings?: () => void;
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
@@ -1258,7 +1259,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
     const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
     const matchingPeers = (signalingPeers ?? []).filter(p =>
-      p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
+      // Only include peers that have LP pairs registered AND are not our own peer
+      p.pairs.length > 0 &&
+      p.pairs.some(pair => pair === pairKey || pair === reversePairKey) &&
+      p.peerId !== ownPeerId
     );
     if (matchingPeers.length === 0) return;
     const quoteAmount = Math.max(debouncedRfqAmount ?? 0.001, 0.001);
@@ -3478,6 +3482,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             fromAmount={parseFloat(fromAmount) || undefined}
             walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
             lpEnabled={lightPeer.prefs?.enabled ?? false}
+            ownPeerId={lightPeer.peerId}
             onNavigateToSettings={onNavigateToSettings}
           />
         </div>

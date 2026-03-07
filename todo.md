@@ -1885,3 +1885,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Scroll fade indicator — gradient fade at bottom of swap card when scrollable
 - [x] Auto-collapse Advanced Settings when user clicks Swap Now
 - [x] Persist Advanced Settings open/closed state per trading pair (localStorage keyed by pair)
+
+## Live Order Book — Phantom Quoting Entries
+
+- [x] Investigate: 3 phantom "quoting..." entries appear after clicking Get Quotes — root cause: all peers register with full pair list regardless of LP mode
+- [x] Find where these entries are created: broadcastRfqRef seeds pending rows for ALL signaling peers matching the pair, including non-LP peers and own peer
+- [x] Fix 1: LightPeerContext now registers with empty pairs [] when LP Mode is disabled; only LP-enabled peers broadcast their pair list
+- [x] Fix 2: LiveOrderBook filters out own peerId from matchingPeers (no self-quoting)
+- [x] Fix 3: broadcastRfqRef now also filters out peers with empty pairs list (p.pairs.length > 0)

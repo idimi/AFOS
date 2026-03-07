@@ -229,6 +229,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
   // ── Announce / heartbeat (legacy HTTP — kept as fallback) ─────────────────
   const announce = useCallback(async (id: string, alias: string) => {
+    // Only announce with pairs when LP Mode is enabled
     if (!prefsRef.current.enabled) return;
     try {
       const controller = new AbortController();
@@ -478,8 +479,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     }));
 
     // Connect and register
+    // Only broadcast pairs when LP Mode is explicitly enabled.
+    // Non-LP peers register with an empty pairs list so they are invisible
+    // to the Live Order Book's peer-matching filter.
+    const registrationPairs = prefs.enabled ? prefs.acceptedPairs : [];
     client.connect();
-    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses);
+    client.register(peerId, peerAlias, registrationPairs, walletAddresses);
 
     // Also do legacy HTTP announce (best-effort fallback)
     announce(peerId, peerAlias);
