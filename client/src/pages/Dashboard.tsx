@@ -1546,7 +1546,7 @@ const TV_SYMBOLS: Record<string, string> = {
   "BTC/USDT": "BINANCE:BTCUSDT",
   "ETH/USDT": "BINANCE:ETHUSDT",
   "SOL/USDT": "BINANCE:SOLUSDT",
-  "TNK/USDT": "COINGECKO:TNKUSD",
+  "TNK/USDT": "GATEIO:TNKUSDT",
 };
 
 // TradingView Advanced Chart widget — uses a keyed inner component so

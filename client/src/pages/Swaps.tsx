@@ -97,7 +97,7 @@ const TOKENS = [
   { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
-  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f97316", tvSymbol: "MEXC:TNKUSDT" },
+  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f97316", tvSymbol: "GATEIO:TNKUSDT" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
@@ -739,7 +739,7 @@ const CHART_PAIRS = [
   { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT", color: "#f7931a" },
   { label: "ETH/USDT", symbol: "BINANCE:ETHUSDT", color: "#627eea" },
   { label: "SOL/USDT", symbol: "BINANCE:SOLUSDT", color: "#9945ff" },
-  { label: "TNK/USDT", symbol: "MEXC:TNKUSDT",    color: "#f97316" },
+  { label: "TNK/USDT", symbol: "GATEIO:TNKUSDT",   color: "#f97316" },
   { label: "ETH/BTC",  symbol: "BINANCE:ETHBTC",  color: "#627eea" },
   { label: "SOL/BTC",  symbol: "BINANCE:SOLBTC",  color: "#9945ff" },
 ] as const;
@@ -757,8 +757,8 @@ function deriveTvSymbol(fromSym: string, toSym: string): string {
   if (from === "SOL" && to === "BTC") return "BINANCE:SOLBTC";
   if (from === "ETH" && to === "SOL") return "BINANCE:SOLETH";
   if (from === "SOL" && to === "ETH") return "BINANCE:SOLETH";
-  // TNK trades on MEXC as TNKUSDT
-  if (from === "TNK" || to === "TNK") return "MEXC:TNKUSDT";
+  // TNK trades on Gate.io as TNKUSDT
+  if (from === "TNK" || to === "TNK") return "GATEIO:TNKUSDT";
   return `BINANCE:${from}USDT`;
 }
 

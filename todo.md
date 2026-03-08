@@ -2050,3 +2050,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update MultiChainWalletContext header comment from "three chains" to "four chains"
 - [x] Confirmed: all 4 chain pills present on landing page (Bitcoin, Ethereum, Solana, Trac Network)
 - [x] Confirmed: git diff between saved branch and current HEAD is 0 lines — no features were lost in the divergence resolution
+
+## TNK Chart Symbol Fix (Round 19)
+
+- [x] Fix Dashboard.tsx TNK/USDT chart symbol from COINGECKO:TNKUSD to GATEIO:TNKUSDT
+- [x] Fix Swaps.tsx tvSymbol from MEXC:TNKUSDT to GATEIO:TNKUSDT (token definition)
+- [x] Fix Swaps.tsx chart tab label from MEXC:TNKUSDT to GATEIO:TNKUSDT
+- [x] Fix Swaps.tsx chart symbol resolver from MEXC:TNKUSDT to GATEIO:TNKUSDT
