@@ -2024,3 +2024,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [ ] Secrets: Enter TNK_HTLC_WIF value to activate live HTLC signing for TNK→BTC swaps
 - [x] AdminPanel: Add TNK volume sparkline to Analytics section alongside BTC/ETH/SOL sparklines
+
+## Swap Gap Fixes (Audit 2026-03-07)
+
+- [x] Gap 1: Add TNK execution branch in ChatPage.tsx handleConfirmSwap
+- [x] Gap 2: Set TNK_HTLC_WIF secret for live TNK HTLC signing
+- [x] Gap 3: Set TNK_AGENT_KEY secret for live TNK refund monitor
+- [x] Gap 4: Add TNK to SwapPage.tsx TOKENS array

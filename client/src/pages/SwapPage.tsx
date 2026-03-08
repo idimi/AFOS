@@ -50,8 +50,9 @@ const TOKENS: TokenDef[] = [
   { symbol: "SOL",   name: "Solana",        chain: "solana",   chainLabel: "Solana",   icon: "◎",  decimals: 9  },
   { symbol: "BTC",   name: "Bitcoin",       chain: "bitcoin",  chainLabel: "Bitcoin",  icon: "₿",  decimals: 8  },
   { symbol: "ETH",   name: "Ethereum",      chain: "ethereum", chainLabel: "Ethereum", icon: "Ξ",  decimals: 18 },
-  { symbol: "USDT",  name: "Tether USD",    chain: "ethereum", chainLabel: "Ethereum", icon: "💵", decimals: 6  },
-  { symbol: "USDC",  name: "USD Coin",      chain: "ethereum", chainLabel: "Ethereum", icon: "🔵", decimals: 6  },
+  { symbol: "USDT",  name: "Tether USD",    chain: "ethereum",     chainLabel: "Ethereum",     icon: "💵", decimals: 6  },
+  { symbol: "USDC",  name: "USD Coin",      chain: "ethereum",     chainLabel: "Ethereum",     icon: "🔵", decimals: 6  },
+  { symbol: "TNK",   name: "TNK (Trac Net)", chain: "trac_network", chainLabel: "Trac Network", icon: "🔶", decimals: 8  },
 ];
 
 function tokenKey(t: { symbol: string; chain: SupportedChain }) {
@@ -132,7 +133,8 @@ function formatAmount(amount: number, decimals: number): string {
 function chainExplorerUrl(txHash: string, chain: SupportedChain): string {
   if (chain === "solana") return `https://solscan.io/tx/${txHash}`;
   if (chain === "ethereum") return `https://etherscan.io/tx/${txHash}`;
-  if (chain === "bitcoin") return `https://mempool.space/tx/${txHash}`;
+  if (chain === "bitcoin")      return `https://mempool.space/tx/${txHash}`;
+  if (chain === "trac_network") return `https://explorer.trac.network/tx/${txHash}`;
   return "#";
 }
 
