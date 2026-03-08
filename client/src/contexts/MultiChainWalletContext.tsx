@@ -1,9 +1,10 @@
 /**
  * MultiChainWalletContext
- * Manages wallet connections for three chains:
+ * Manages wallet connections for four chains:
  *   - Solana: via @solana/wallet-adapter-react (Phantom, Solflare)
  *   - Ethereum: via EIP-1193 window.ethereum or window.phantom.ethereum (MetaMask, Coinbase, Phantom)
- *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tracnetwork (Tap Wallet), or window.phantom.bitcoin (Phantom)
+ *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tapprotocol (Tap Wallet), or window.phantom.bitcoin (Phantom)
+ *   - Trac Network (TNK): via window.tracnetwork (Tap Wallet)
  *
  * Phantom is a multi-chain wallet: connecting it once unlocks Solana, Ethereum, and Bitcoin simultaneously.
  * MetaMask → Ethereum + native Bitcoin via wallet_createSession (CAIP-25 bip122 scope).

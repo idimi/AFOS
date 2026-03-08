@@ -533,7 +533,7 @@ export default function LandingPage() {
       >
         <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {[
-            { label: "Chains Supported", value: 3, suffix: "", prefix: "" },
+            { label: "Chains Supported", value: 4, suffix: "", prefix: "" },
             { label: "Slippage", value: 0, suffix: "%", prefix: "" },
             { label: "Bridges Required", value: 0, suffix: "", prefix: "" },
             { label: "Custodians", value: 0, suffix: "", prefix: "" },
@@ -573,7 +573,7 @@ export default function LandingPage() {
               <StepCard
                 step={1}
                 title="Connect your wallet"
-                description="Link Phantom (Solana), MetaMask (Ethereum), or use AFOS's built-in Bitcoin wallet. No account, no KYC, no email."
+                description="Link Phantom (Solana), MetaMask (Ethereum), Tap Wallet (Trac Network), or use AFOS's built-in Bitcoin wallet. No account, no KYC, no email."
                 color="oklch(0.72 0.18 195)"
               />
               <StepCard

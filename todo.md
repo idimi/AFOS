@@ -2042,3 +2042,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix totalPortfolioUsd to include tnkWallet.balanceUsd
 - [x] Fix wallet display header to show Bitcoin and Trac Network separately
 - [x] Verified: 0 TypeScript errors with fresh tsc --noEmit --incremental false
+
+## Landing Page Fixes (Round 18)
+
+- [x] Fix "Chains Supported" stats counter from 3 to 4 (LandingPage.tsx line 536)
+- [x] Update Step 1 description to mention Tap Wallet (Trac Network) alongside Phantom, MetaMask, and built-in Bitcoin wallet
+- [x] Update MultiChainWalletContext header comment from "three chains" to "four chains"
+- [x] Confirmed: all 4 chain pills present on landing page (Bitcoin, Ethereum, Solana, Trac Network)
+- [x] Confirmed: git diff between saved branch and current HEAD is 0 lines — no features were lost in the divergence resolution
