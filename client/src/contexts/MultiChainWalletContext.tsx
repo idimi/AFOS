@@ -306,6 +306,24 @@ async function fetchTnkPriceUsd(): Promise<number> {
 }
 
 /**
+ * Wrap a promise with a timeout. If the promise doesn't resolve within `ms`,
+ * reject with a descriptive error. This prevents Tap Wallet API calls from
+ * hanging forever when the extension's BroadcastChannel relay is broken
+ * (e.g., due to Phantom or MetaMask content-script conflicts).
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms / 1000}s — the Tap Wallet extension may not be responding. Try refreshing the page or disabling conflicting extensions.`));
+    }, ms);
+    promise.then(
+      (val) => { clearTimeout(timer); resolve(val); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+/**
  * Parse TNK balance from the wallet's raw string (smallest-unit, 18 decimals)
  * to a human-readable decimal string.  TNK uses 18 decimals (like ETH wei),
  * so "1000000000000000000" → "1.0000".
@@ -818,12 +836,16 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
     try {
       // ── Step 1: Connect TNK via window.tracnetwork ─────────────────────────────────────
-      console.log("[AFOS] Tap Wallet: calling tracnetwork.requestAccount()…");
-      const tnkAddress = await window.tracnetwork!.requestAccount();
+      console.log("[AFOS] Tap Wallet: calling tracnetwork.requestAccount()\u2026");
+      const tnkAddress = await withTimeout(
+        window.tracnetwork!.requestAccount(),
+        15000,
+        "tracnetwork.requestAccount()"
+      );
       console.log("[AFOS] Tap Wallet: TNK address", tnkAddress);
 
       const [rawTnkBalance, tnkPriceUsd] = await Promise.all([
-        window.tracnetwork!.getBalance(),
+        withTimeout(window.tracnetwork!.getBalance(), 10000, "tracnetwork.getBalance()"),
         fetchTnkPriceUsd(),
       ]);
       const tnkBalance = parseTnkBalance(rawTnkBalance);
@@ -845,8 +867,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // ── Step 2: Connect BTC via window.tapprotocol (if available) ──────────────────
       if (window.tapprotocol) {
         try {
-          console.log("[AFOS] Tap Wallet: calling tapprotocol.requestAccounts()…");
-          const btcAccounts = await window.tapprotocol.requestAccounts();
+          console.log("[AFOS] Tap Wallet: calling tapprotocol.requestAccounts()\u2026");
+          const btcAccounts = await withTimeout(
+            window.tapprotocol.requestAccounts(),
+            15000,
+            "tapprotocol.requestAccounts()"
+          );
           const btcAddress = btcAccounts?.[0];
           if (btcAddress) {
             console.log("[AFOS] Tap Wallet: BTC address", btcAddress);
@@ -894,7 +920,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         // Refresh TNK balance for the new address
         try {
           const [rawBal, tnkPrice] = await Promise.all([
-            window.tracnetwork!.getBalance(),
+            withTimeout(window.tracnetwork!.getBalance(), 10000, "tracnetwork.getBalance() [accountsChanged]"),
             fetchTnkPriceUsd(),
           ]);
           const newTnk = parseTnkBalance(rawBal);
@@ -914,7 +940,13 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const msg = err instanceof Error ? err.message : String(err);
       console.error("[AFOS] Tap Wallet connection error:", err);
       const isUserCancel = msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied");
-      if (!isUserCancel) {
+      const isTimeout = msg.toLowerCase().includes("timed out");
+      if (isTimeout) {
+        toast.error("Tap Wallet not responding", {
+          description: "The extension didn't respond in time. This usually happens when other wallet extensions (MetaMask, Phantom) interfere with Tap Wallet's messaging. Try: 1) Refresh the page, 2) Disable other wallet extensions in chrome://extensions, 3) Try again.",
+          duration: 12000,
+        });
+      } else if (!isUserCancel) {
         toast.error("Tap Wallet connection failed", { description: msg });
       }
     }
@@ -1079,13 +1111,17 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
     try {
       // ── Restore TNK via window.tracnetwork ──────────────────────────────────
-      const tnkAddress = await window.tracnetwork!.getAddress();
+      const tnkAddress = await withTimeout(
+        window.tracnetwork!.getAddress(),
+        10000,
+        "tracnetwork.getAddress() [silent restore]"
+      );
       if (!tnkAddress) {
         clearWalletSession();
         return;
       }
       const [rawBalance, tnkPriceUsd] = await Promise.all([
-        window.tracnetwork!.getBalance(),
+        withTimeout(window.tracnetwork!.getBalance(), 10000, "tracnetwork.getBalance() [silent restore]"),
         fetchTnkPriceUsd(),
       ]);
       const tnkBalance = parseTnkBalance(rawBalance);
@@ -1107,7 +1143,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // ── Restore BTC via window.tapprotocol (if available) ──────────────────
       if (window.tapprotocol) {
         try {
-          const btcAccounts = await window.tapprotocol.requestAccounts();
+          const btcAccounts = await withTimeout(
+            window.tapprotocol.requestAccounts(),
+            10000,
+            "tapprotocol.requestAccounts() [silent restore]"
+          );
           const btcAddress = btcAccounts?.[0];
           if (btcAddress) {
             const [{ btc: btcBalance, sats }, btcPriceUsd] = await Promise.all([
@@ -1146,7 +1186,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         }
         try {
           const [rawBal, tnkPrice] = await Promise.all([
-            window.tracnetwork!.getBalance(),
+            withTimeout(window.tracnetwork!.getBalance(), 10000, "tracnetwork.getBalance() [restore accountsChanged]"),
             fetchTnkPriceUsd(),
           ]);
           const newTnk = parseTnkBalance(rawBal);
@@ -1266,7 +1306,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       if (!window.tracnetwork) return;
       try {
         const [rawBal, tnkPrice] = await Promise.all([
-          window.tracnetwork.getBalance(),
+          withTimeout(window.tracnetwork.getBalance(), 10000, "tracnetwork.getBalance() [refresh]"),
           fetchTnkPriceUsd(),
         ]);
         const tnkBalance = parseTnkBalance(rawBal);
