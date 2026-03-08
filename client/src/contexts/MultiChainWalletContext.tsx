@@ -675,6 +675,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   //   2. Sets window.tracnetwork via Object.defineProperty
   //   3. Dispatches `tracnetwork#initialized` event when fully ready
   //
+  // Known issue: if another wallet extension (MetaMask, Phantom, etc.) declares
+  // the same internal variable ($t) as tap-script.js, a SyntaxError prevents
+  // window.tracnetwork from being initialized. User must disable conflicting
+  // extensions or use a separate browser profile.
+  //
   // We listen for that event first (most reliable), then fall back to polling.
   const waitForTracNetwork = useCallback(async (ms = 5000): Promise<boolean> => {
     if (window.tracnetwork) {
@@ -715,10 +720,21 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const connectTapWallet = useCallback(async () => {
     const detected = await waitForTracNetwork(5000);
     if (!detected) {
-      toast.error("Tap Wallet not detected", {
-        description: "Please install the Tap Wallet extension and refresh the page.",
-        action: { label: "Install", onClick: () => window.open("https://chromewebstore.google.com/detail/tap-wallet/blcaacmeglnfblclocdgaomhopnfobof", "_blank") },
-      });
+      // Check if the extension script was injected but failed due to a conflict
+      // (SyntaxError: Identifier '$t' has already been declared — caused by
+      // MetaMask, Phantom, or other wallet extensions injecting the same variable)
+      const hasConflict = !window.tracnetwork;
+      if (hasConflict) {
+        toast.error("Tap Wallet not responding", {
+          description: "If you have MetaMask or Phantom installed, try disabling them temporarily — they can conflict with Tap Wallet's script injection. Then refresh the page.",
+          duration: 8000,
+        });
+      } else {
+        toast.error("Tap Wallet not detected", {
+          description: "Please install the Tap Wallet extension and refresh the page.",
+          action: { label: "Install", onClick: () => window.open("https://chromewebstore.google.com/detail/tap-wallet/blcaacmeglnfblclocdgaomhopnfobof", "_blank") },
+        });
+      }
       return;
     }
     try {
