@@ -265,6 +265,33 @@ async function fetchBtcPriceUsd(): Promise<number> {
   return 0;
 }
 
+/**
+ * Fetch TNK/USDT price in USD.
+ * Primary:  Oracle VM proxy (/api/afos/api/prices) — same source as BTC/ETH/SOL prices.
+ * Fallback: Gate.io public REST API (no API key required).
+ */
+async function fetchTnkPriceUsd(): Promise<number> {
+  // Primary: try Oracle VM (already proxied, avoids CORS)
+  try {
+    const res = await fetch("/api/afos/api/prices");
+    if (res.ok) {
+      const data = await res.json();
+      const price = data.prices?.TNK?.usd || data.prices?.tnk?.usd || 0;
+      if (price > 0) return price;
+    }
+  } catch (_) {}
+  // Fallback: Gate.io public REST API
+  try {
+    const res = await fetch("https://api.gateio.ws/api/v4/spot/tickers?currency_pair=TNK_USDT");
+    if (res.ok) {
+      const data = await res.json();
+      const last = parseFloat(data?.[0]?.last ?? "0");
+      if (last > 0) return last;
+    }
+  } catch (_) {}
+  return 0;
+}
+
 // ─── Solana balance fetcher via backend tRPC (avoids browser CORS/403 from public RPC) ──
 
 async function fetchSolanaBalancesForAddress(
@@ -761,8 +788,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const tnkAddress = await window.tracnetwork!.requestAccount();
       console.log("[AFOS] Tap Wallet: TNK address", tnkAddress);
 
-      const rawTnkBalance = await window.tracnetwork!.getBalance();
+      const [rawTnkBalance, tnkPriceUsd] = await Promise.all([
+        window.tracnetwork!.getBalance(),
+        fetchTnkPriceUsd(),
+      ]);
       const tnkBalance = rawTnkBalance ? (parseInt(rawTnkBalance) / 1e8).toFixed(4) : "0.0000";
+      const tnkBalanceUsd = parseFloat(tnkBalance) * tnkPriceUsd;
 
       setTracNetwork({
         chain: "trac_network",
@@ -770,7 +801,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         address: tnkAddress,
         shortAddress: shortAddr(tnkAddress),
         balance: `${tnkBalance} TNK`,
-        balanceUsd: 0,
+        balanceUsd: tnkBalanceUsd,
         symbol: "TNK",
         connected: true,
         connecting: false,
@@ -828,13 +859,17 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         }
         // Refresh TNK balance for the new address
         try {
-          const rawBal = await window.tracnetwork!.getBalance();
+          const [rawBal, tnkPrice] = await Promise.all([
+            window.tracnetwork!.getBalance(),
+            fetchTnkPriceUsd(),
+          ]);
           const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
           setTracNetwork(prev => prev ? {
             ...prev,
             address: newAddress,
             shortAddress: shortAddr(newAddress),
             balance: `${newTnk} TNK`,
+            balanceUsd: parseFloat(newTnk) * tnkPrice,
           } : null);
           toast.info("Tap Wallet account changed", {
             description: `Switched to ${shortAddr(newAddress)}`,
@@ -972,6 +1007,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     if (bitcoin?.isPhantom) {
       disconnectPhantom();
     } else {
+      // If Tap Wallet was used, both BTC (tapprotocol) and TNK (tracnetwork) were connected
+      // together — disconnect both so the UI is fully clean.
+      if (bitcoin?.walletName === "Tap Wallet") {
+        setTracNetwork(null);
+      }
       setBitcoin(null);
       clearWalletSession();
       showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
@@ -1010,8 +1050,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         clearWalletSession();
         return;
       }
-      const rawBalance = await window.tracnetwork!.getBalance();
+      const [rawBalance, tnkPriceUsd] = await Promise.all([
+        window.tracnetwork!.getBalance(),
+        fetchTnkPriceUsd(),
+      ]);
       const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+      const tnkBalanceUsd = parseFloat(tnkBalance) * tnkPriceUsd;
 
       setTracNetwork({
         chain: "trac_network",
@@ -1019,13 +1063,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         address: tnkAddress,
         shortAddress: shortAddr(tnkAddress),
         balance: `${tnkBalance} TNK`,
-        balanceUsd: 0,
+        balanceUsd: tnkBalanceUsd,
         symbol: "TNK",
         connected: true,
         connecting: false,
         isPhantom: false,
       });
-      console.log(`[AFOS] Tap Wallet silently restored TNK: ${shortAddr(tnkAddress)}`);
 
       // ── Restore BTC via window.tapprotocol (if available) ──────────────────
       if (window.tapprotocol) {
@@ -1068,13 +1111,17 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           return;
         }
         try {
-          const rawBal = await window.tracnetwork!.getBalance();
+          const [rawBal, tnkPrice] = await Promise.all([
+            window.tracnetwork!.getBalance(),
+            fetchTnkPriceUsd(),
+          ]);
           const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
           setTracNetwork(prev => prev ? {
             ...prev,
             address: newAddress,
             shortAddress: shortAddr(newAddress),
             balance: `${newTnk} TNK`,
+            balanceUsd: parseFloat(newTnk) * tnkPrice,
           } : null);
         } catch (_) {}
       });
@@ -1184,9 +1231,16 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     const refreshTnkBalance = async () => {
       if (!window.tracnetwork) return;
       try {
-        const rawBal = await window.tracnetwork.getBalance();
+        const [rawBal, tnkPrice] = await Promise.all([
+          window.tracnetwork.getBalance(),
+          fetchTnkPriceUsd(),
+        ]);
         const tnkBalance = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
-        setTracNetwork(prev => prev ? { ...prev, balance: `${tnkBalance} TNK` } : null);
+        setTracNetwork(prev => prev ? {
+          ...prev,
+          balance: `${tnkBalance} TNK`,
+          balanceUsd: parseFloat(tnkBalance) * tnkPrice,
+        } : null);
       } catch (err) {
         console.warn("[TNK refresh] Failed:", err);
       }
