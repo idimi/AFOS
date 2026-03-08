@@ -2121,3 +2121,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix Recent Swaps on Overview showing stale Oracle VM test swaps — added "Clear" button (localStorage clearSince filter) to both desktop RecentSwapsCard and mobile MobileRecentSwaps; empty state shows when cleared
 - [x] Fix TNK fee collection wallet showing "offline" in AdminPanel — root cause: browser CORS block on tracapi.trac.network; fixed by adding server-side tRPC procedure htlcWallet.checkTnkLive, reactive useEffect in AdminPanel patches TNK live status when result arrives
+
+## TNK Chart + Swap History Clear (2026-03-08 session 3)
+
+- [ ] Fix TNK/USDT TradingView chart symbol to GATE:TNKUSDT in SwapPage.tsx (currently BINANCE:TNKUSDT which doesn't exist)
+- [ ] Clear Oracle VM swap history via SSH using provided oracle_key
+- [ ] Remove "Clear" button from RecentSwapsCard and MobileRecentSwaps (no longer needed after SSH clear)
