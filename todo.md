@@ -2062,3 +2062,23 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Reorder Trac Network RPC below Bitcoin RPC (correct display order)
 - [x] Fix Trac Network endpoint: use https://tracapi.trac.network/v1/confirmed-length (returns block height, HTTP 200)
 - [x] Fix AFOS Signaling: use local getSignalingPeerCount() instead of external fetch to intercomswap.io (which is unreachable from sandbox)
+
+## Node Health Block Height Parity (2026-03-08 batch 3)
+
+- [ ] Oracle VM /health: parse block heights for ETH/SOL/BTC from response and show in detail line
+- [ ] All RPC nodes: consistent detail pattern "Block height: {n} · Connected via Oracle VM"
+- [ ] Trac Network RPC: consistent detail "Block height: {n} · Connected via tracapi.trac.network"
+- [ ] AFOS Signaling: keep peer count pattern (no block height applicable)
+
+## Admin Tab Tooltips (2026-03-08)
+
+- [x] Add info tooltip (?) icon to each admin tab showing a short description of what the tab does, its features, and how it works
+- [x] Revenue: swap fee income analytics, charts, volume breakdown by chain
+- [x] Fee Config: set platform fee %, per-chain overrides, save/reset
+- [x] Treasury: HTLC wallet balances, treasury wallet management, chain addresses
+- [x] Node Health: live RPC connectivity status for all nodes, block heights, signaling peer count
+- [x] Users: registered user list, roles, login history, promote/demote admin
+- [x] Agent Wallet: agent hot-wallet addresses and balances across all chains
+- [x] Operator Config: Oracle VM URL, swap settings, LP parameters, system toggles
+- [x] Peer Reports: P2P peer abuse reports, dispute logs, ban management
+- [x] Audit Log: immutable record of all admin actions with timestamps and actor
