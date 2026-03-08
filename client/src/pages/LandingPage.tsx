@@ -944,7 +944,7 @@ export default function LandingPage() {
                 style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
               >
                 <Network className="w-2.5 h-2.5" />
-                Powered by AFOS P2P
+                Powered by Intercomswap on Trac Network
               </div>
             </div>
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
