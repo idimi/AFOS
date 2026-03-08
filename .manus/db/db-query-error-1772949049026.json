@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps\nUNION ALL SELECT 'agent_decisions', COUNT(*) FROM agent_decisions\nUNION ALL SELECT 'peer_reports', COUNT(*) FROM peer_reports\nUNION ALL SELECT 'audit_log', COUNT(*) FROM audit_log\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'admin_config', COUNT(*) FROM admin_config;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT 'swap_analytics' as tbl, COUNT(*) as cnt FROM swap_analytics\nUNION ALL SELECT 'htlc_swaps', COUNT(*) FROM htlc_swaps\nUNION ALL SELECT 'agent_decisions', COUNT(*) FROM agent_decisions\nUNION ALL SELECT 'peer_reports', COUNT(*) FROM peer_reports\nUNION ALL SELECT 'audit_log', COUNT(*) FROM audit_log\nUNION ALL SELECT 'users', COUNT(*) FROM users\nUNION ALL SELECT 'admin_config', COUNT(*) FROM admin_config;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1146 (42S02) at line 2: Table 'cv4jvx35n7jgsqrm8y5had.agent_decisions' doesn't exist"
+  ]
+}

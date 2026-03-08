@@ -2089,3 +2089,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Purge ALL Oracle VM-sourced swap_analytics rows (DELETE WHERE rfqId IS NOT NULL) — 116 phantom rows removed
 - [x] Update OracleSwap type to include optional txHash/signature/txId fields
 - [x] Sync job now logs: inserted=0 skipped=0 backfilled=0 phantoms=50 (correctly blocking all fake entries)
+
+## Full Database Purge (2026-03-08)
+
+- [x] Audit all 12 tables for phantom/test data
+- [x] Purge swap_analytics: 116 phantom Oracle VM rows deleted
+- [x] Purge peer_reputation: 7 test rows deleted
+- [x] Purge admin_audit_log: 2 test rows deleted
+- [x] Verified all data tables are now at 0 rows (users=1 owner, admin_config=2 config rows, operator_config=1 config row, user_settings=2 settings rows preserved as legitimate config)
