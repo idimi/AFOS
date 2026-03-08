@@ -3433,17 +3433,15 @@ export default function Dashboard() {
                   }}
                   title={topbarBtc?.connected ? `Bitcoin: ${topbarBtc.shortAddress}` : "Bitcoin: not connected"}
                 />
-                {/* TNK dot — only shown when Tap Wallet is connected */}
-                {topbarTnk?.connected && (
-                  <span
-                    className="w-2 h-2 rounded-full transition-all duration-300"
-                    style={{
-                      background: "#E87D3E",
-                      boxShadow: "0 0 5px rgba(232,125,62,0.6)",
-                    }}
-                    title={`Trac Network (TNK): ${topbarTnk.shortAddress}`}
-                  />
-                )}
+                {/* TNK dot — always visible, dim when disconnected */}
+                <span
+                  className="w-2 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    background: topbarTnk?.connected ? "#E87D3E" : "rgba(232,125,62,0.2)",
+                    boxShadow: topbarTnk?.connected ? "0 0 5px rgba(232,125,62,0.6)" : "none",
+                  }}
+                  title={topbarTnk?.connected ? `Trac Network (TNK): ${topbarTnk.shortAddress}` : "Trac Network (TNK): not connected"}
+                />
               </span>
               {/* Label — hidden on xs, visible on sm+ */}
               {(solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected) ? (

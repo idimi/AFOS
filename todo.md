@@ -2189,3 +2189,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Remove separate TNK toast ("Tap Wallet connected · TNK: …")
 - [x] Update BTC toast to show both Bitcoin + Trac Network addresses in one Phantom-style toast
 - [x] Suppress standalone BTC modal toast when Tap Wallet connects (same as Phantom suppression)
+
+## Wallet Pill — 4 Chain Dots When Disconnected
+
+- [x] Show 4 dots (SOL, ETH, BTC, TNK) in the disconnected wallet pill, matching the connected state
