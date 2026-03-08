@@ -504,6 +504,37 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
             <div className="p-5 pt-3 space-y-3">
 
+              {/* ── Tap Wallet multi-chain banner (shown when Tap Wallet is connected) ── */}
+              {(tracNetwork?.connected || (bitcoin?.connected && bitcoin.walletName === "Tap Wallet")) && (
+                <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"
+                  style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.25)" }}>
+                  <img src={TAP_ICON} alt="Tap Wallet" className="w-5 h-5 rounded-md shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-foreground">Tap Wallet connected</p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${CHAIN_DOTS.bitcoin}18`, color: CHAIN_DOTS.bitcoin }}>
+                          Bitcoin
+                        </span>
+                      )}
+                      {tracNetwork?.connected && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                          style={{ background: `${CHAIN_DOTS.trac_network}18`, color: CHAIN_DOTS.trac_network }}>
+                          Trac Network
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { disconnectTracNetwork(); disconnectBitcoin(); }}
+                    className="text-[10px] text-red-400 hover:text-red-300 font-semibold px-2 py-1 rounded-lg transition-colors"
+                    style={{ background: "rgba(239,68,68,0.08)" }}>
+                    Disconnect
+                  </button>
+                </div>
+              )}
+
               {/* ── Phantom multi-chain banner (shown when Phantom is connected across chains) ── */}
               {phantomMultiChain?.connected && (
                 <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl"

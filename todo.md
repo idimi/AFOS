@@ -2193,3 +2193,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Wallet Pill — 4 Chain Dots When Disconnected
 
 - [x] Show 4 dots (SOL, ETH, BTC, TNK) in the disconnected wallet pill, matching the connected state
+
+## Connect Wallet Modal — Tap Wallet Connected Banner
+
+- [x] Add "Tap Wallet connected · Bitcoin · Trac Network · [Disconnect]" banner to modal, matching Phantom banner style
