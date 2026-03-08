@@ -224,24 +224,44 @@ function RevenueTab() {
               ))}
             </div>
           </div>
-          {/* Summary row */}
-          <div className="grid grid-cols-4 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-            {([
+          {/* Summary row — 24H + period totals */}
+          {(() => {
+            const last = dailyVolume[dailyVolume.length - 1];
+            const chains = [
               { key: "tnk" as const, label: "TNK", color: "#F97316" },
               { key: "btc" as const, label: "BTC", color: "#F7931A" },
               { key: "eth" as const, label: "ETH", color: "#627EEA" },
               { key: "sol" as const, label: "SOL", color: "#9945FF" },
-            ]).map(({ key, label, color }) => {
-              const total = dailyVolume.reduce((s, d) => s + d[key], 0);
-              return (
-                <div key={key} className="text-center">
-                  <p className="text-[9px] font-bold" style={{ color }}>{label}</p>
-                  <p className="text-[10px] font-mono text-foreground">${total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toFixed(0)}</p>
-                  <p className="text-[8px] text-muted-foreground">{days}D total</p>
+            ];
+            const fmt = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`;
+            return (
+              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
+                {/* 24H row */}
+                <div className="grid grid-cols-4 gap-2">
+                  {chains.map(({ key, label, color }) => (
+                    <div key={key} className="text-center rounded-lg py-1.5 px-1" style={{ background: "var(--muted)" }}>
+                      <p className="text-[8px] font-bold mb-0.5" style={{ color }}>{label}</p>
+                      <p className="text-[11px] font-mono font-semibold text-foreground">{fmt(last?.[key] ?? 0)}</p>
+                      <p className="text-[8px] text-muted-foreground">24H vol</p>
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+                {/* Period total row */}
+                <div className="grid grid-cols-4 gap-2">
+                  {chains.map(({ key, label, color }) => {
+                    const total = dailyVolume.reduce((s, d) => s + d[key], 0);
+                    return (
+                      <div key={key} className="text-center">
+                        <p className="text-[9px] font-bold" style={{ color }}>{label}</p>
+                        <p className="text-[10px] font-mono text-foreground">{fmt(total)}</p>
+                        <p className="text-[8px] text-muted-foreground">{days}D total</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

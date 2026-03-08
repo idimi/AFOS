@@ -2036,3 +2036,5 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] HtlcWallets panel: live TNK escrow balance fetch from Oracle VM
 - [x] SwapPage: add TNK to SSE price feed so live rate updates in real time
+- [x] SwapPage: show TNK balance from Tap Wallet in "You pay" max balance hint
+- [x] AdminPanel Analytics: add 24h volume figure below TNK sparkline card

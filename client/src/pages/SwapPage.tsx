@@ -275,6 +275,13 @@ export default function SwapPage() {
     if (fromChain === "bitcoin") {
       return btcWallet ? parseFloat(btcWallet.balance) : 0;
     }
+    if (fromChain === "trac_network") {
+      // TNK balance is stored in btcWallet.balance as "X BTC / Y TNK" or "Y TNK"
+      if (!btcWallet) return 0;
+      const bal = btcWallet.balance;
+      const tnkMatch = bal.match(/([\d.]+)\s*TNK/);
+      return tnkMatch ? parseFloat(tnkMatch[1]) : 0;
+    }
     return 0;
   }, [fromChain, fromToken, solBalances, ethWallet, btcWallet, erc20Balances]);
 
