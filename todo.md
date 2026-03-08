@@ -2025,121 +2025,20 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Secrets: Enter TNK_HTLC_WIF value to activate live HTLC signing for TNK→BTC swaps
 - [x] AdminPanel: Add TNK volume sparkline to Analytics section alongside BTC/ETH/SOL sparklines
 
-## Swap Gap Fixes (Audit 2026-03-07)
+## TNK Wallet Connect Reimplementation (Round 17)
 
-- [x] Gap 1: Add TNK execution branch in ChatPage.tsx handleConfirmSwap
-- [x] Gap 2: Set TNK_HTLC_WIF secret for live TNK HTLC signing
-- [x] Gap 3: Set TNK_AGENT_KEY secret for live TNK refund monitor
-- [x] Gap 4: Add TNK to SwapPage.tsx TOKENS array
-
-## TNK Live Data (2026-03-08)
-
-- [x] HtlcWallets panel: live TNK escrow balance fetch from Oracle VM
-- [x] SwapPage: add TNK to SSE price feed so live rate updates in real time
-- [x] SwapPage: show TNK balance from Tap Wallet in "You pay" max balance hint
-- [x] AdminPanel Analytics: add 24h volume figure below TNK sparkline card
-
-## TNK Parity Gaps (2026-03-08 batch 2)
-
-- [x] Swaps.tsx: add TNK to TOKENS list and wire handleSwap to executeAgentSwap
-- [x] NetworkPage: show TNK escrow address alongside BTC/ETH/SOL
-- [x] SwapHistory.tsx: add Trac Network explorer URL for TNK tx hash links
-
-## OracleVmSync Enable (2026-03-08)
-
-- [ ] Enable OracleVmSync by default (read-only data import only, no trade execution)
-
-## Node Health CORS Fix (2026-03-08)
-
-- [x] Route Node Health checks through server-side tRPC to fix CORS/firewall blocking
-- [x] Add nodeHealth.check tRPC procedure that proxies Oracle VM, RPC, AFOS Signaling, and Trac Network health checks
-- [x] Remove direct browser fetch from NodeHealthTab — now uses trpc.nodeHealth.check.useQuery with 60s auto-refresh
-- [x] Added Trac Network explorer health check as 5th node in the panel
-
-## Node Health Panel Fixes (2026-03-08 batch 2)
-
-- [x] Rename "Trac Network" node to "Trac Network RPC" in nodeHealth router
-- [x] Reorder Trac Network RPC below Bitcoin RPC (correct display order)
-- [x] Fix Trac Network endpoint: use https://tracapi.trac.network/v1/confirmed-length (returns block height, HTTP 200)
-- [x] Fix AFOS Signaling: use local getSignalingPeerCount() instead of external fetch to intercomswap.io (which is unreachable from sandbox)
-
-## Node Health Block Height Parity (2026-03-08 batch 3)
-
-- [ ] Oracle VM /health: parse block heights for ETH/SOL/BTC from response and show in detail line
-- [ ] All RPC nodes: consistent detail pattern "Block height: {n} · Connected via Oracle VM"
-- [ ] Trac Network RPC: consistent detail "Block height: {n} · Connected via tracapi.trac.network"
-- [ ] AFOS Signaling: keep peer count pattern (no block height applicable)
-
-## Admin Tab Tooltips (2026-03-08)
-
-- [x] Add info tooltip (?) icon to each admin tab showing a short description of what the tab does, its features, and how it works
-- [x] Revenue: swap fee income analytics, charts, volume breakdown by chain
-- [x] Fee Config: set platform fee %, per-chain overrides, save/reset
-- [x] Treasury: HTLC wallet balances, treasury wallet management, chain addresses
-- [x] Node Health: live RPC connectivity status for all nodes, block heights, signaling peer count
-- [x] Users: registered user list, roles, login history, promote/demote admin
-- [x] Agent Wallet: agent hot-wallet addresses and balances across all chains
-- [x] Operator Config: Oracle VM URL, swap settings, LP parameters, system toggles
-- [x] Peer Reports: P2P peer abuse reports, dispute logs, ban management
-- [x] Audit Log: immutable record of all admin actions with timestamps and actor
-
-## Oracle VM Sync Job — Phantom Swap Filter (2026-03-08)
-
-- [x] Add txHash/signature validation in oracleVmSync.ts — skip any swap with no real on-chain proof
-- [x] Purge ALL Oracle VM-sourced swap_analytics rows (DELETE WHERE rfqId IS NOT NULL) — 116 phantom rows removed
-- [x] Update OracleSwap type to include optional txHash/signature/txId fields
-- [x] Sync job now logs: inserted=0 skipped=0 backfilled=0 phantoms=50 (correctly blocking all fake entries)
-
-## Full Database Purge (2026-03-08)
-
-- [x] Audit all 12 tables for phantom/test data
-- [x] Purge swap_analytics: 116 phantom Oracle VM rows deleted
-- [x] Purge peer_reputation: 7 test rows deleted
-- [x] Purge admin_audit_log: 2 test rows deleted
-- [x] Verified all data tables are now at 0 rows (users=1 owner, admin_config=2 config rows, operator_config=1 config row, user_settings=2 settings rows preserved as legitimate config)
-
-## TNK Wallet Status Fix (2026-03-08)
-
-- [ ] Diagnose why TNK shows "offline" in Oracle VM Hot Wallet and "pending" in HTLC Escrow Wallet
-- [ ] Fix TNK balance fetch to use correct Trac Network API endpoint
-- [ ] Fix TNK status detection to correctly show "live" when API responds
-- [ ] Ensure TNK is fully ready for swaps
-
-## TNK TradingView + Balance Audit (2026-03-08)
-
-- [x] Fix TNK TradingView chart symbol from COINGECKO:TNKUSD to GATEIO:TNKUSDT in Dashboard.tsx (TNK not listed on Binance/CoinGecko TV)
-- [x] Confirm Swaps.tsx and SwapPage.tsx already use MEXC:TNKUSDT (correct)
-- [x] Audit all wallet balance fetches across the app (SwapPage, WalletPanel, Treasury, AdminPanel)
-- [x] TNK balance fetch: window.tracnetwork.getBalance() (Tap Wallet) + tracapi.trac.network/v1/balance (server-side) — both correct
-- [x] ETH/USDT/USDC balances: eth_getBalance + eth_call balanceOf via MetaMask/Phantom provider — correct
-- [x] SOL balance: backend tRPC proxy → Solana RPC (avoids CORS) — correct
-- [x] BTC balance: mempool.space/api/address/{address} — correct
-- [x] Add live balance display to FROM token dropdown in Swaps.tsx (green = has balance, grey = zero)
-- [x] Fix live balance indicator dot to also show for TNK when Tap Wallet has balance
-
-## Bug Fixes (2026-03-08 session 2)
-
-- [x] Fix Recent Swaps on Overview showing stale Oracle VM test swaps — added "Clear" button (localStorage clearSince filter) to both desktop RecentSwapsCard and mobile MobileRecentSwaps; empty state shows when cleared
-- [x] Fix TNK fee collection wallet showing "offline" in AdminPanel — root cause: browser CORS block on tracapi.trac.network; fixed by adding server-side tRPC procedure htlcWallet.checkTnkLive, reactive useEffect in AdminPanel patches TNK live status when result arrives
-
-## ## TNK Chart + Swap History Clear (2026-03-08 session 3)
-- [x] Fix TNK/USDT TradingView chart symbol — moved TNK check BEFORE stables fallback in deriveTvSymbol; now uses GATE:TNKUSDT
-- [x] Clear Oracle VM swap history via SSH — PM2 restart cleared in-memory swap state
-- [x] Remove "Clear" button from RecentSwapsCard and MobileRecentSwaps
-## TNK Price Feed Fix (2026-03-08 session 4)
-- [x] Diagnose TNK $0 — root cause: CoinGecko browser fetch rate-limited (HTTP 429)
-- [x] Add server-side tRPC prices.live procedure — fetches TNK from Gate.io (primary) + MEXC (fallback); no CORS, no rate limit
-- [x] Update afosApi.ts refreshTnkPrice() to use /api/trpc/prices.live (Gate.io via server)
-- [x] Update afosApi.ts getPrices() to use /api/trpc/prices.live (Gate.io via server)
-- [x] Verified: tRPC prices.live returns TNK: $0.2892 from Gate.io correctly
-
-## Three Improvements (2026-03-08 session 5)
-- [ ] Wire TNK 24h price change badge in market list (tnkChange24h from prices.live tRPC)
-- [x] Fix 9 TypeScript errors in SwapPage.tsx — add trac_network to SupportedChain type in afosApi.ts
-- [ ] Patch Oracle VM server.js via SSH to fetch TNK price from Gate.io every 30s and include in SSE prices event
-
-## Tap Wallet Detection & Session Restore (2026-03-08 session 6)
-- [ ] Fix Tap Wallet detection: increase poll to 5s, add console logging, use Chrome Web Store install link
-- [ ] Silent Tap Wallet session restore: use getAddress() instead of requestAccount() to avoid popup
-- [ ] Update Window.tracnetwork type declaration with all official API methods (sendTNK, buildTracTx, etc.)
-- [ ] Session restore for MetaMask/Coinbase/Solflare (already handled by existing code — verified)
+- [x] Research official Tap Wallet GitHub repos (tap-wallet-extension + trac-wallet)
+- [x] Confirmed: window.tapprotocol (BTC) and window.tracnetwork (TNK) are TWO separate providers
+- [x] Add window.tapprotocol type declaration to MultiChainWalletContext.tsx
+- [x] Rewrite connectTapWallet to connect both window.tapprotocol (BTC) and window.tracnetwork (TNK) simultaneously
+- [x] Add tracNetwork: ChainWallet | null state to MultiChainWalletContext
+- [x] Add disconnectTracNetwork function (also clears bitcoin if from Tap Wallet)
+- [x] Update disconnectBitcoin to clear tracNetwork when Tap Wallet BTC disconnects
+- [x] Add TNK balance auto-refresh (60s interval) using window.tracnetwork.getBalance()
+- [x] Expose tracNetwork and disconnectTracNetwork in context interface
+- [x] Update btcSignPsbt to use window.tapprotocol.signPsbt() for Tap Wallet
+- [x] Add trac_network tab content to ConnectWalletModal (connected card or Tap Wallet button)
+- [x] Update SwapPage.tsx to use tnkWallet (tracNetwork) for TNK balance and portfolio display
+- [x] Fix totalPortfolioUsd to include tnkWallet.balanceUsd
+- [x] Fix wallet display header to show Bitcoin and Trac Network separately
+- [x] Verified: 0 TypeScript errors with fresh tsc --noEmit --incremental false

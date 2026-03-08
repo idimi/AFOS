@@ -1,8 +1,0 @@
-{
-  "query": "SELECT id, user_id, chain, from_token, to_token, amount_in, amount_out, fee_usd, route, created_at FROM fee_events ORDER BY created_at DESC LIMIT 20;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, user_id, chain, from_token, to_token, amount_in, amount_out, fee_usd, route, created_at FROM fee_events ORDER BY created_at DESC LIMIT 20;",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1146 (42S02) at line 1: Table 'cv4jvx35n7jgsqrm8y5had.fee_events' doesn't exist"
-  ]
-}

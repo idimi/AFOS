@@ -21,7 +21,6 @@
 import { ethers } from "ethers";
 import { recordSwapAnalytic } from "./htlcMonitor";
 import { executeZeroxSwap } from "./zeroxSwap";
-import type { SupportedChain } from "@shared/const";
 
 // ─── Fee constants (must match chat.ts) ──────────────────────────────────────
 const P2P_FEE_BPS      = 15;   // 0.15% for IntercomSwap P2P
@@ -238,7 +237,7 @@ export async function executeEthAgentSwap(params: {
 
           void recordSwapAnalytic({
             fromChain:     fromChain as "ethereum",
-            toChain:       toChain as SupportedChain,
+            toChain:       toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
             fromToken:     fromToken.toUpperCase(),
             toToken:       toToken.toUpperCase(),
             amount:        String(amount),
@@ -298,7 +297,7 @@ export async function executeEthAgentSwap(params: {
   if (zeroxResult.success) {
     void recordSwapAnalytic({
       fromChain:    "ethereum",
-      toChain:      toChain as SupportedChain,
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    fromToken.toUpperCase(),
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -421,7 +420,7 @@ export async function executeEthAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "ethereum",
-      toChain:      toChain as SupportedChain,
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    fromToken.toUpperCase(),
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),

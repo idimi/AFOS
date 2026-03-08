@@ -27,7 +27,6 @@ import * as tinysecp from "tiny-secp256k1";
 import { ethers } from "ethers";
 import { Keypair, Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
-import type { SupportedChain } from "@shared/const";
 
 const ECPair = ECPairFactory(tinysecp);
 
@@ -109,7 +108,7 @@ async function fetchErc20Balance(
 // ─── Per-chain wallet helpers ─────────────────────────────────────────────────
 
 export interface HtlcChainWallet {
-  chain: SupportedChain;
+  chain: "bitcoin" | "ethereum" | "solana" | "trac_network";
   asset: string;
   address: string | null;
   balance: string;
@@ -332,38 +331,15 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
 
 // ─── TNK Escrow Wallet (agent-escrow model, no private key) ─────────────────────
 
-// Correct Trac Network RPC API — explorer.trac.network/api returns 404 for address endpoints
-// Use: GET https://tracapi.trac.network/v1/balance/{address} → { address, balance: number }
-const TRAC_RPC_API = "https://tracapi.trac.network/v1";
+const TRAC_EXPLORER_API = "https://explorer.trac.network/api";
 
 /**
- * Fetch the TNK HTLC wallet balance.
- * Priority order for address resolution:
- *   1. TNK_HTLC_WIF  — derive P2WPKH address from the HTLC signing key (live signing wallet)
- *   2. TNK_ESCROW_ADDRESS — shared agent-escrow address (read-only fallback)
- * Balance is fetched from the Trac Network RPC API (tracapi.trac.network).
+ * Fetch the TNK escrow wallet balance from the Trac Network explorer API.
+ * The TNK escrow address is a shared agent-escrow address (no private key stored here).
+ * Balance is fetched from the public explorer API.
  */
 async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
-  // Prefer the HTLC signing key address when available
-  let address = process.env.TNK_ESCROW_ADDRESS ?? "";
-  let addressSource: "htlc_wif" | "escrow_address" | "none" = address ? "escrow_address" : "none";
-
-  const tnkHtlcWif = process.env.TNK_HTLC_WIF;
-  if (tnkHtlcWif) {
-    try {
-      // TNK uses Bitcoin-compatible P2WPKH addressing (Trac Network is a Bitcoin meta-protocol)
-      const keyPair = ECPair.fromWIF(tnkHtlcWif);
-      const { address: derived } = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(keyPair.publicKey) });
-      if (derived) {
-        address = derived;
-        addressSource = "htlc_wif";
-      }
-    } catch {
-      // WIF may not be a standard Bitcoin WIF (e.g. raw hex key) — fall back to escrow address
-    }
-  }
-
-  const configured = !!tnkHtlcWif || !!process.env.TNK_ESCROW_ADDRESS;
+  const address = process.env.TNK_ESCROW_ADDRESS ?? "";
   if (!address || address.includes("placeholder")) {
     return {
       chain: "trac_network",
@@ -372,18 +348,15 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: "0.00",
       usd: "$0",
       live: false,
-      configured,
-      error: configured ? "Address derivation failed — check TNK_HTLC_WIF format" : "TNK_HTLC_WIF and TNK_ESCROW_ADDRESS not set",
+      configured: !!address && !address.includes("placeholder"),
+      error: address ? undefined : "TNK_ESCROW_ADDRESS not set",
     };
   }
 
   try {
-    // Fetch balance from Trac Network RPC API
-    // Endpoint: GET https://tracapi.trac.network/v1/balance/{address}
-    // Response: { address: string, balance: number }
-    // Note: explorer.trac.network/api returns 404 for address endpoints — use tracapi instead
+    // Fetch balance from Trac Network explorer
     const res = await fetch(
-      `${TRAC_RPC_API}/balance/${address}`,
+      `${TRAC_EXPLORER_API}/address/${address}/balance`,
       { signal: AbortSignal.timeout(8000) }
     );
 
@@ -391,10 +364,38 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
     let live = false;
 
     if (res.ok) {
-      const data = await res.json() as { address?: string; balance?: number | string };
-      const raw = data.balance ?? 0;
-      balanceTnk = typeof raw === "string" ? parseFloat(raw) : (raw ?? 0);
-      live = true; // API responded — wallet is live even if balance is 0
+      const data = await res.json() as { balance?: number | string; confirmed?: number | string };
+      const raw = data.balance ?? data.confirmed ?? 0;
+      balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
+      live = true;
+    } else {
+      // Fallback: try the /txs endpoint and sum incoming - outgoing
+      const txRes = await fetch(
+        `${TRAC_EXPLORER_API}/address/${address}/txs?limit=100`,
+        { signal: AbortSignal.timeout(8000) }
+      );
+      if (txRes.ok) {
+        const txData = await txRes.json() as {
+          txs?: Array<{ to: string; from: string; amount: string }>;
+          transfers?: Array<{ to: string; from: string; amount: string }>;
+          balance?: number | string;
+        };
+        // If the API returns a balance field at the top level, use it
+        if (txData.balance !== undefined) {
+          const raw = txData.balance;
+          balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
+          live = true;
+        } else {
+          // Sum transfers: incoming minus outgoing
+          const txs = txData.txs ?? txData.transfers ?? [];
+          for (const tx of txs) {
+            const amt = parseFloat(tx.amount) || 0;
+            if (tx.to === address) balanceTnk += amt;
+            if (tx.from === address) balanceTnk -= amt;
+          }
+          live = txs.length > 0;
+        }
+      }
     }
 
     // Fetch TNK price from CoinGecko
@@ -419,9 +420,7 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: balanceTnk.toFixed(2),
       usd: usdValue > 0 ? `$${usdValue.toFixed(2)}` : "$0",
       live,
-      configured,
-      // Surface which key is being used so operators can verify in the UI
-      error: addressSource === "htlc_wif" ? undefined : "Using TNK_ESCROW_ADDRESS (set TNK_HTLC_WIF for HTLC signing wallet)",
+      configured: true,
     };
   } catch (err: unknown) {
     return {
@@ -431,7 +430,7 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: "0.00",
       usd: "$0",
       live: false,
-      configured,
+      configured: true,
       error: err instanceof Error ? err.message : String(err),
     };
   }
@@ -484,7 +483,7 @@ export const htlcWalletRouter = router({
             : await db
                 .select()
                 .from(htlcSwaps)
-                .where(eq(htlcSwaps.chain, input.chain as SupportedChain))
+                .where(eq(htlcSwaps.chain, input.chain as "bitcoin" | "ethereum" | "solana" | "trac_network"))
                 .orderBy(desc(htlcSwaps.createdAt))
                 .limit(input.limit);
 
@@ -627,24 +626,5 @@ export const htlcWalletRouter = router({
       sol: { chain: "solana" as const, asset: "SOL", address: sol.address, balance: sol.balance, usd: sol.usd, live: sol.live, configured: sol.configured, error: sol.error },
       tnk: { chain: "trac_network" as const, asset: "TNK", address: tnk.address, balance: tnk.balance, usd: tnk.usd, live: tnk.live, configured: tnk.configured, error: tnk.error },
     };
-  }),
-
-  /**
-   * Check if the Trac Network RPC is reachable (server-side, bypasses browser CORS).
-   * Used by AdminPanel to determine TNK live status for the fee collection wallet.
-   */
-  checkTnkLive: publicProcedure.query(async () => {
-    try {
-      const res = await fetch('https://tracapi.trac.network/v1/confirmed-length', {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const data = await res.json() as { confirmed_length?: number };
-        return { live: true, confirmedLength: data.confirmed_length ?? 0 };
-      }
-      return { live: false, confirmedLength: 0 };
-    } catch {
-      return { live: false, confirmedLength: 0 };
-    }
   }),
 });

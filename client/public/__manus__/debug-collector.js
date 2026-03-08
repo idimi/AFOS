@@ -399,11 +399,6 @@
   });
 
   window.addEventListener("error", function (event) {
-    // Ignore cross-origin "Script error." events thrown by browser extensions
-    // (e.g. Phantom, Solflare, MetaMask probing). These arrive with no filename,
-    // lineno 0, colno 0 and cannot be acted on — filtering prevents false alerts.
-    if (!event.filename && event.lineno === 0 && event.colno === 0) return;
-
     store.consoleLogs.push({
       timestamp: Date.now(),
       level: "ERROR",

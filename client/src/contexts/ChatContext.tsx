@@ -4,8 +4,7 @@
  */
 import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
 
-import type { SupportedChain } from "@/lib/afosApi";
-export type { SupportedChain } from "@/lib/afosApi";
+export type SupportedChain = "solana" | "ethereum" | "bitcoin" | "trac_network";
 
 export interface QuoteData {
   fromToken: string;

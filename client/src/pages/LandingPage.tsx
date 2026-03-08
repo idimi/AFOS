@@ -151,11 +151,6 @@ function FeatureCard({
 function StepCard({ step, title, description, color }: {
   step: number; title: string; description: string; color: string;
 }) {
-  // Use color-mix for opacity so both hex (#rrggbb) and oklch() colors work correctly.
-  // Appending a hex opacity suffix to oklch() strings produces invalid CSS.
-  const bg = `color-mix(in srgb, ${color} 12%, transparent)`;
-  const border = `color-mix(in srgb, ${color} 40%, transparent)`;
-  const connector = `color-mix(in srgb, ${color} 15%, transparent)`;
   return (
     <motion.div
       initial={{ opacity: 0, x: -16 }}
@@ -167,11 +162,11 @@ function StepCard({ step, title, description, color }: {
       <div className="flex-shrink-0 flex flex-col items-center">
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-          style={{ background: bg, border: `1.5px solid ${border}`, color }}
+          style={{ background: `${color}20`, border: `1.5px solid ${color}60`, color }}
         >
           {step}
         </div>
-        {step < 3 && <div className="w-px flex-1 mt-2" style={{ background: connector }} />}
+        {step < 3 && <div className="w-px flex-1 mt-2" style={{ background: `${color}25` }} />}
       </div>
       <div className="pb-8">
         <p className="text-sm font-bold text-foreground mb-1">{title}</p>
@@ -183,7 +178,7 @@ function StepCard({ step, title, description, color }: {
 
 // ─── Comparison table ─────────────────────────────────────────────────────────
 const COMPARISON = [
-  { feature: "Cross-chain (BTC ↔ ETH ↔ SOL ↔ TNK)", afos: true, uni: false, jup: false, inch: false },
+  { feature: "Cross-chain (BTC ↔ ETH ↔ SOL)", afos: true, uni: false, jup: false, inch: false },
   { feature: "No bridge or wrapped assets", afos: true, uni: false, jup: false, inch: false },
   { feature: "No AMM / no liquidity pools", afos: true, uni: false, jup: false, inch: false },
   { feature: "Zero slippage (exact P2P fill)", afos: true, uni: false, jup: false, inch: false },
@@ -400,7 +395,7 @@ export default function LandingPage() {
                   LIVE ON MAINNET
                 </div>
                 <a
-                  href="https://github.com/TracSystems/intercom-swap"
+                  href="https://intercomswap.io"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-80"
@@ -538,7 +533,7 @@ export default function LandingPage() {
       >
         <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {[
-            { label: "Chains Supported", value: 4, suffix: "", prefix: "" },
+            { label: "Chains Supported", value: 3, suffix: "", prefix: "" },
             { label: "Slippage", value: 0, suffix: "%", prefix: "" },
             { label: "Bridges Required", value: 0, suffix: "", prefix: "" },
             { label: "Custodians", value: 0, suffix: "", prefix: "" },
@@ -578,13 +573,13 @@ export default function LandingPage() {
               <StepCard
                 step={1}
                 title="Connect your wallet"
-                description="Link Phantom (Solana), MetaMask (Ethereum), AFOS's built-in Bitcoin wallet, or Tap Wallet (Trac Network). No account, no KYC, no email."
+                description="Link Phantom (Solana), MetaMask (Ethereum), or use AFOS's built-in Bitcoin wallet. No account, no KYC, no email."
                 color="oklch(0.72 0.18 195)"
               />
               <StepCard
                 step={2}
                 title="Tell the AI agent what you want"
-                description="Type naturally — 'swap 0.1 BTC for SOL', 'get me the best rate for 1 ETH to USDT', or 'swap 1000 TNK for BTC'. The agent finds a peer or routes through the best DEX automatically."
+                description="Type naturally — 'swap 0.1 BTC for SOL' or 'get me the best rate for 1 ETH to USDT'. The agent finds a peer or routes through Jupiter DEX automatically."
                 color="#9945FF"
               />
               <StepCard
@@ -662,7 +657,7 @@ export default function LandingPage() {
             <FeatureCard
               icon={Globe}
               title="True cross-chain"
-              description="BTC ↔ ETH ↔ SOL ↔ TNK without wrapped tokens or bridges. Native assets settle on their native chains."
+              description="BTC ↔ ETH ↔ SOL without wrapped tokens or bridges. Native assets settle on their native chains."
               color="oklch(0.72 0.18 195)"
               delay={0}
             />
@@ -740,7 +735,7 @@ export default function LandingPage() {
                 { name: "AFOS", color: "oklch(0.72 0.18 195)" },
                 { name: "Uniswap", color: "#ff007a" },
                 { name: "Jupiter", color: "#14F195" },
-                { name: "1inch", color: "#2d9cdb" },
+                { name: "1inch", color: "#1b314f" },
               ].map(col => (
                 <div key={col.name} className="p-4 text-center">
                   <p className="text-xs font-bold" style={{ color: col.color }}>{col.name}</p>
@@ -813,7 +808,7 @@ export default function LandingPage() {
                   <ArrowRight className="w-5 h-5" />
                 </a>
                 <a
-                  href="https://github.com/TracSystems/intercom-swap"
+                  href="https://intercomswap.io"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-base font-bold transition-all hover:opacity-80"
@@ -944,7 +939,7 @@ export default function LandingPage() {
                 style={{ background: "oklch(0.55 0.22 290 / 0.12)", border: "1px solid oklch(0.55 0.22 290 / 0.3)", color: "oklch(0.75 0.18 290)" }}
               >
                 <Network className="w-2.5 h-2.5" />
-                Powered by Intercomswap on Trac Network
+                Powered by AFOS P2P
               </div>
             </div>
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground">

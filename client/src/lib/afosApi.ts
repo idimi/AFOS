@@ -185,41 +185,6 @@ const sseHandlers = new Map<SSEEventType, Set<SSEHandler>>();
 let sseConnected = false;
 let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-// ─── TNK price cache (Gate.io via server-side tRPC, refreshed every 60s) ──────────
-// The Oracle VM SSE stream does not include TNK. We poll our own backend's
-// prices.live tRPC endpoint (which fetches from Gate.io server-side, no CORS/rate-limit)
-// and inject the result into every `prices` SSE event so SwapPage always has a live TNK rate.
-let tnkPriceCache: TokenPrice = { usd: 0, change24h: 0, volume24h: 0 };
-let tnkPriceFetchTimer: ReturnType<typeof setInterval> | null = null;
-
-async function refreshTnkPrice(): Promise<void> {
-  try {
-    // Use our own backend tRPC endpoint — fetches from Gate.io server-side (no rate limit, no CORS)
-    const res = await fetch("/api/trpc/prices.live?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D", {
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!res.ok) return;
-    const json = await res.json() as Array<{
-      result?: { data?: { json?: { tnkPrice?: number; tnkChange24h?: number; tnkVol24h?: number } } }
-    }>;
-    const data = json?.[0]?.result?.data?.json;
-    if (data?.tnkPrice && data.tnkPrice > 0) {
-      tnkPriceCache = {
-        usd: data.tnkPrice,
-        change24h: data.tnkChange24h ?? 0,
-        volume24h: data.tnkVol24h ?? 0,
-      };
-    }
-  } catch { /* non-fatal */ }
-}
-
-function startTnkPricePoll(): void {
-  if (tnkPriceFetchTimer) return;
-  // Fetch immediately, then every 60 s
-  void refreshTnkPrice();
-  tnkPriceFetchTimer = setInterval(() => void refreshTnkPrice(), 60_000);
-}
-
 function connectSSE() {
   if (sseSource) {
     sseSource.close();
@@ -269,19 +234,13 @@ function connectSSE() {
   }
 }
 
-/**
- * Normalise a raw `prices` SSE event:
- *  - Always inject USDC and USDT at $1.00 (Oracle VM may omit them)
- *  - Always inject TNK from the background CoinGecko cache
- */
+/** Ensure USDC and USDT are always present in prices SSE events */
 function normalisePricesEvent(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const event = raw as Record<string, unknown>;
   const prices = (event.prices ?? {}) as Record<string, unknown>;
   if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
   if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
-  // Inject TNK — always present so SwapPage can show a live rate
-  prices.TNK = tnkPriceCache;
   return { ...event, prices };
 }
 
@@ -289,9 +248,8 @@ export function onSSEEvent(event: SSEEventType, handler: SSEHandler): () => void
   if (!sseHandlers.has(event)) sseHandlers.set(event, new Set());
   sseHandlers.get(event)!.add(handler);
 
-  // Start SSE connection and TNK price poll if not already started
+  // Start SSE connection if not already started
   if (!sseSource) connectSSE();
-  startTnkPricePoll();
 
   // Return unsubscribe function
   return () => {
@@ -307,17 +265,18 @@ export function isSSEConnected(): boolean {
 
 /**
  * GET /api/prices
- * Returns prices for all 7 supported assets + TNK (Trac Network).
- * TNK price is fetched from Gate.io via the server-side tRPC prices.live endpoint.
+ * Returns prices for all 7 supported assets + TNK (Trac Network) from CoinGecko.
  * USDC and USDT are always injected at $1.00 if the Oracle VM omits them.
  */
 export async function getPrices(): Promise<Record<string, TokenPrice>> {
-  // Fetch Oracle VM prices and TNK (via server-side tRPC) in parallel
+  // Fetch Oracle VM prices and TNK from CoinGecko in parallel
   const [oracleRes, tnkRes] = await Promise.allSettled([
     fetchWithTimeout(`${BACKEND_URL}/api/prices`),
-    fetch("/api/trpc/prices.live?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D", {
-      signal: AbortSignal.timeout(5000),
-    }),
+    fetchWithTimeout(
+      "https://api.coingecko.com/api/v3/simple/price?ids=trac-network&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true",
+      {},
+      5000
+    ),
   ]);
 
   const prices: Record<string, TokenPrice> = {};
@@ -334,30 +293,28 @@ export async function getPrices(): Promise<Record<string, TokenPrice>> {
   if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
   if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
 
-  // Inject TNK price from Gate.io (via server-side tRPC — no CORS, no rate limits)
+  // Inject TNK price from CoinGecko
   if (tnkRes.status === "fulfilled" && tnkRes.value.ok) {
     try {
-      const json = await tnkRes.value.json() as Array<{
-        result?: { data?: { json?: { tnkPrice?: number; tnkChange24h?: number; tnkVol24h?: number } } }
-      }>;
-      const d = json?.[0]?.result?.data?.json;
-      if (d?.tnkPrice && d.tnkPrice > 0) {
+      const tnkData = await tnkRes.value.json() as {
+        "trac-network"?: { usd: number; usd_24h_change?: number; usd_24h_vol?: number };
+      };
+      const tnk = tnkData["trac-network"];
+      if (tnk?.usd) {
         prices.TNK = {
-          usd: d.tnkPrice,
-          change24h: d.tnkChange24h ?? 0,
-          volume24h: d.tnkVol24h ?? 0,
+          usd: tnk.usd,
+          change24h: tnk.usd_24h_change ?? 0,
+          volume24h: tnk.usd_24h_vol ?? 0,
         };
-        // Also update the SSE cache so the injected TNK price stays fresh
-        tnkPriceCache = prices.TNK;
       }
     } catch {
       // TNK price unavailable — leave out rather than crashing
     }
   }
 
-  // Fallback TNK price from SSE cache or zero
+  // Fallback TNK price if CoinGecko is unavailable
   if (!prices.TNK) {
-    prices.TNK = tnkPriceCache.usd > 0 ? tnkPriceCache : { usd: 0, change24h: 0, volume24h: 0 };
+    prices.TNK = { usd: 0, change24h: 0, volume24h: 0 };
   }
 
   return prices;

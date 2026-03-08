@@ -18,7 +18,6 @@ import { buildSolanaHtlcRefundTx } from "@/lib/solanaHtlc";
 import { requestTnkHtlcRefund } from "@/lib/tnkHtlc";
 import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import type { SupportedChain } from "@shared/const";
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
@@ -65,7 +64,7 @@ export function HtlcSearchBar({
 
 interface HtlcSwapRow {
   id: number;
-  chain: SupportedChain;
+  chain: "bitcoin" | "ethereum" | "solana" | "trac_network";
   htlcAddress: string;
   secretHash: string;
   lockTxId: string | null;
@@ -76,7 +75,7 @@ interface HtlcSwapRow {
   peerId: string | null;
   rfqId: string | null;
   toToken: string | null;
-  toChain: SupportedChain | null;
+  toChain: "bitcoin" | "ethereum" | "solana" | "trac_network" | null;
   refundTxId: string | null;
   senderAddress: string | null;
   createdAt: Date;

@@ -22,7 +22,6 @@ import * as tinysecp from "tiny-secp256k1";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 import { recordSwapAnalytic } from "./htlcMonitor";
-import type { SupportedChain } from "@shared/const";
 
 const ECPair = ECPairFactory(tinysecp);
 
@@ -256,7 +255,7 @@ export async function executeBtcAgentSwap(params: {
 
           void recordSwapAnalytic({
             fromChain:    "bitcoin",
-            toChain:      toChain as SupportedChain,
+            toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
             fromToken:    "BTC",
             toToken:      toToken.toUpperCase(),
             amount:       String(amount),
@@ -310,7 +309,7 @@ export async function executeBtcAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "bitcoin",
-      toChain:      toChain as SupportedChain,
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    "BTC",
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -489,7 +488,7 @@ export async function executeBtcAgentSwap(params: {
 
     void recordSwapAnalytic({
       fromChain:    "bitcoin",
-      toChain:      toChain as SupportedChain,
+      toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
       fromToken:    "BTC",
       toToken:      toToken.toUpperCase(),
       amount:       String(amount),
@@ -663,7 +662,7 @@ export async function executeTnkAgentSwap(params: {
 
           void recordSwapAnalytic({
             fromChain:    "trac_network",
-            toChain:      toChain as SupportedChain,
+            toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
             fromToken:    fromToken.toUpperCase(),
             toToken:      toToken.toUpperCase(),
             amount:       String(amount),
@@ -701,7 +700,7 @@ export async function executeTnkAgentSwap(params: {
 
   void recordSwapAnalytic({
     fromChain:    "trac_network",
-    toChain:      toChain as SupportedChain,
+    toChain:      toChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
     fromToken:    fromToken.toUpperCase(),
     toToken:      toToken.toUpperCase(),
     amount:       String(amount),

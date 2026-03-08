@@ -44,20 +44,16 @@ async function getOrCreateConfig() {
   const [row] = await db.select().from(adminConfig).where(eq(adminConfig.id, 1)).limit(1);
   if (row) return row;
 
-  // Bootstrap singleton row with defaults.
-  // oracleSyncEnabled defaults to 1 (enabled) — the sync job is read-only:
-  // it only back-fills completed swap analytics from the Oracle VM and never
-  // initiates or executes any trades automatically.
+  // Bootstrap singleton row with defaults
   await db.insert(adminConfig).values({
     id: 1,
-    feeEnabled:        DEFAULT_ADMIN_CONFIG.feeEnabled ? 1 : 0,
-    swapFeeBps:        DEFAULT_ADMIN_CONFIG.swapFeeBps,
-    expressFeeBps:     DEFAULT_ADMIN_CONFIG.expressFeeBps,
-    botFeeCents:       DEFAULT_ADMIN_CONFIG.botFeeCents,
-    minTradeUsdCents:  DEFAULT_ADMIN_CONFIG.minTradeUsdCents,
-    maxTradeUsdCents:  DEFAULT_ADMIN_CONFIG.maxTradeUsdCents,
-    treasuryWallets:   JSON.stringify(DEFAULT_ADMIN_CONFIG.treasuryWallets),
-    oracleSyncEnabled: 1, // enabled by default — read-only analytics import
+    feeEnabled:       DEFAULT_ADMIN_CONFIG.feeEnabled ? 1 : 0,
+    swapFeeBps:       DEFAULT_ADMIN_CONFIG.swapFeeBps,
+    expressFeeBps:    DEFAULT_ADMIN_CONFIG.expressFeeBps,
+    botFeeCents:      DEFAULT_ADMIN_CONFIG.botFeeCents,
+    minTradeUsdCents: DEFAULT_ADMIN_CONFIG.minTradeUsdCents,
+    maxTradeUsdCents: DEFAULT_ADMIN_CONFIG.maxTradeUsdCents,
+    treasuryWallets:  JSON.stringify(DEFAULT_ADMIN_CONFIG.treasuryWallets),
   });
 
   const [created] = await db.select().from(adminConfig).where(eq(adminConfig.id, 1)).limit(1);
@@ -95,7 +91,7 @@ export const adminConfigRouter = router({
       feeAlertThresholdCents: 100,
       feeAlertLastNotifiedDate: null as string | null,
       treasuryWallets:  DEFAULT_ADMIN_CONFIG.treasuryWallets,
-      oracleSyncEnabled: true, // enabled by default — read-only analytics import
+      oracleSyncEnabled: false,
       lastOracleSyncAt:  null as Date | null,
       lastSyncInserted:  0,
     };
