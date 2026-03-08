@@ -2122,8 +2122,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix Recent Swaps on Overview showing stale Oracle VM test swaps — added "Clear" button (localStorage clearSince filter) to both desktop RecentSwapsCard and mobile MobileRecentSwaps; empty state shows when cleared
 - [x] Fix TNK fee collection wallet showing "offline" in AdminPanel — root cause: browser CORS block on tracapi.trac.network; fixed by adding server-side tRPC procedure htlcWallet.checkTnkLive, reactive useEffect in AdminPanel patches TNK live status when result arrives
 
-## TNK Chart + Swap History Clear (2026-03-08 session 3)
-
-- [ ] Fix TNK/USDT TradingView chart symbol to GATE:TNKUSDT in SwapPage.tsx (currently BINANCE:TNKUSDT which doesn't exist)
-- [ ] Clear Oracle VM swap history via SSH using provided oracle_key
-- [ ] Remove "Clear" button from RecentSwapsCard and MobileRecentSwaps (no longer needed after SSH clear)
+## ## TNK Chart + Swap History Clear (2026-03-08 session 3)
+- [x] Fix TNK/USDT TradingView chart symbol — moved TNK check BEFORE stables fallback in deriveTvSymbol; now uses GATE:TNKUSDT
+- [x] Clear Oracle VM swap history via SSH — PM2 restart cleared in-memory swap state
+- [x] Remove "Clear" button from RecentSwapsCard and MobileRecentSwaps
+## TNK Price Feed Fix (2026-03-08 session 4)
+- [x] Diagnose TNK $0 — root cause: CoinGecko browser fetch rate-limited (HTTP 429)
+- [x] Add server-side tRPC prices.live procedure — fetches TNK from Gate.io (primary) + MEXC (fallback); no CORS, no rate limit
+- [x] Update afosApi.ts refreshTnkPrice() to use /api/trpc/prices.live (Gate.io via server)
+- [x] Update afosApi.ts getPrices() to use /api/trpc/prices.live (Gate.io via server)
+- [x] Verified: tRPC prices.live returns TNK: $0.2892 from Gate.io correctly
