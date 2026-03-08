@@ -1,0 +1,14 @@
+{
+  "query": "SELECT COUNT(*) as total, SUM(CASE WHEN rfqId IS NOT NULL AND walletAddress IS NULL THEN 1 ELSE 0 END) as oracle_sourced FROM swap_analytics;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COUNT(*) as total, SUM(CASE WHEN rfqId IS NOT NULL AND walletAddress IS NULL THEN 1 ELSE 0 END) as oracle_sourced FROM swap_analytics;",
+  "rows": [
+    {
+      "total": "116",
+      "oracle_sourced": "50"
+    }
+  ],
+  "messages": [],
+  "stdout": "total\toracle_sourced\n116\t50\n",
+  "stderr": "",
+  "execution_time_ms": 57
+}

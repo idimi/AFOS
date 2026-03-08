@@ -133,8 +133,8 @@ function formatAmount(amount: number, decimals: number): string {
 function chainExplorerUrl(txHash: string, chain: SupportedChain): string {
   if (chain === "solana") return `https://solscan.io/tx/${txHash}`;
   if (chain === "ethereum") return `https://etherscan.io/tx/${txHash}`;
-  if (chain === "bitcoin") return `https://mempool.space/tx/${txHash}`;
-  if (chain === "trac_network") return `https://trac.network/explorer/tx/${txHash}`;
+  if (chain === "bitcoin")      return `https://mempool.space/tx/${txHash}`;
+  if (chain === "trac_network") return `https://explorer.trac.network/tx/${txHash}`;
   return "#";
 }
 
@@ -151,7 +151,6 @@ export default function SwapPage() {
   const {
     ethereum: ethWallet,
     bitcoin: btcWallet,
-    tracNetwork: tnkWallet,
     erc20Balances,
     phantomMultiChain,
   } = useMultiChainWallet();
@@ -166,16 +165,15 @@ export default function SwapPage() {
     ? `${phantomSolAddress.slice(0, 4)}…${phantomSolAddress.slice(-4)}`
     : null;
 
-  const isConnected = solConnected || !!ethWallet?.address || !!btcWallet?.address || !!tnkWallet?.address;
+  const isConnected = solConnected || !!ethWallet?.address || !!btcWallet?.address;
 
   const totalPortfolioUsd = useMemo(() => {
     let total = solTotalUsd;
     if (ethWallet) total += ethWallet.balanceUsd;
     total += (erc20Balances.usdc + erc20Balances.usdt);
     if (btcWallet) total += btcWallet.balanceUsd;
-    if (tnkWallet) total += tnkWallet.balanceUsd;
     return total;
-  }, [solTotalUsd, ethWallet, btcWallet, tnkWallet, erc20Balances]);
+  }, [solTotalUsd, ethWallet, btcWallet, erc20Balances]);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -273,19 +271,19 @@ export default function SwapPage() {
       if (fromToken === "ETH") return ethWallet ? parseFloat(ethWallet.balance) : 0;
       if (fromToken === "USDC") return erc20Balances.usdc;
       if (fromToken === "USDT") return erc20Balances.usdt;
-      return 0;
     }
     if (fromChain === "bitcoin") {
       return btcWallet ? parseFloat(btcWallet.balance) : 0;
     }
     if (fromChain === "trac_network") {
-      // TNK balance from dedicated tracNetwork wallet state
-      if (!tnkWallet) return 0;
-      const tnkMatch = tnkWallet.balance.match(/([\d.]+)\s*TNK/);
+      // TNK balance is stored in btcWallet.balance as "X BTC / Y TNK" or "Y TNK"
+      if (!btcWallet) return 0;
+      const bal = btcWallet.balance;
+      const tnkMatch = bal.match(/([\d.]+)\s*TNK/);
       return tnkMatch ? parseFloat(tnkMatch[1]) : 0;
     }
     return 0;
-  }, [fromChain, fromToken, solBalances, ethWallet, btcWallet, tnkWallet, erc20Balances]);
+  }, [fromChain, fromToken, solBalances, ethWallet, btcWallet, erc20Balances]);
 
   // ── Swap execution ────────────────────────────────────────────────────────
   const needsBitcoinAddress = toChain === "bitcoin" && !btcWallet?.address;
@@ -475,10 +473,7 @@ export default function SwapPage() {
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   <div>
                     <p className="text-xs font-semibold text-foreground">
-                      {[solConnected && "Solana",
-                        ethWallet?.address && "Ethereum",
-                        btcWallet?.address && "Bitcoin",
-                        tnkWallet?.address && "Trac Network"]
+                      {[solConnected && "Solana", ethWallet?.address && "Ethereum", btcWallet?.address && "Bitcoin"]
                         .filter(Boolean).join(" · ") || "Wallet connected"}
                     </p>
                     <p className="text-[10px] text-muted-foreground">
@@ -486,9 +481,7 @@ export default function SwapPage() {
                         ? effectiveSolShortAddress
                         : ethWallet?.address
                           ? ethWallet.address.slice(0, 6) + "…" + ethWallet.address.slice(-4)
-                          : btcWallet?.address
-                            ? btcWallet.address.slice(0, 8) + "…"
-                            : tnkWallet?.address?.slice(0, 8) + "…"}
+                          : btcWallet?.address?.slice(0, 8) + "…"}
                     </p>
                   </div>
                 </div>
@@ -760,8 +753,8 @@ export default function SwapPage() {
                               {([
                                 ["Protocol fee", `${AFOS_FEE_BPS / 100}%`, "AFOS network fee"],
                                 ["Network fee",
-                                  fromChain === "bitcoin" ? "~$1–5" : fromChain === "ethereum" ? "~$0.50–2" : fromChain === "trac_network" ? "~$0.001" : "~$0.01",
-                                  `${fromChain === "trac_network" ? "Trac Network" : fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} transaction`],
+                                  fromChain === "bitcoin" ? "~$1–5" : fromChain === "ethereum" ? "~$0.50–2" : "~$0.01",
+                                  `${fromChain.charAt(0).toUpperCase() + fromChain.slice(1)} transaction`],
                                 ["Settlement", "Atomic HTLC", "Hash time-locked contract"],
                                 ["Price impact",
                                   quote?.priceImpact != null ? `${(quote.priceImpact * 100).toFixed(2)}%` : "< 0.1%",
@@ -846,6 +839,53 @@ export default function SwapPage() {
               </div>
             )}
           </div>
+
+          {/* Market prices bar — BTC / ETH / SOL / TNK */}
+          {!pricesLoading && Object.keys(prices).length > 0 && (
+            <div
+              className="rounded-2xl px-4 py-3"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Live Prices</p>
+                <div className="flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${sseOk ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                  <span className="text-[9px] text-muted-foreground">{sseOk ? "Live" : "Polling"}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {([
+                  { symbol: "BTC", icon: "₿",  color: "#F7931A" },
+                  { symbol: "ETH", icon: "Ξ",  color: "#627EEA" },
+                  { symbol: "SOL", icon: "◎",  color: "#9945FF" },
+                  { symbol: "TNK", icon: "🔶", color: "#F97316" },
+                ] as { symbol: string; icon: string; color: string }[]).map(({ symbol, icon, color }) => {
+                  const p = prices[symbol];
+                  const usd = p?.usd ?? 0;
+                  const change = p?.change24h ?? 0;
+                  const isUp = change >= 0;
+                  return (
+                    <div key={symbol} className="flex flex-col items-center gap-0.5 py-1">
+                      <span className="text-sm" aria-hidden>{icon}</span>
+                      <p className="text-[10px] font-bold font-mono text-foreground">
+                        {usd >= 1000
+                          ? `$${(usd / 1000).toFixed(1)}k`
+                          : usd >= 1
+                            ? `$${usd.toFixed(2)}`
+                            : `$${usd.toFixed(4)}`}
+                      </p>
+                      <p
+                        className="text-[9px] font-mono"
+                        style={{ color: isUp ? "#10b981" : "#ef4444" }}
+                      >
+                        {isUp ? "+" : ""}{change.toFixed(2)}%
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Recent swaps — live from Oracle VM */}
           <AnimatePresence>

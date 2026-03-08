@@ -26,6 +26,7 @@ import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Wallet, CheckCircle2, ExternalLink, Loader2, Zap, Globe } from "lucide-react";
 import { toast } from "sonner";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Wallet logos ─────────────────────────────────────────────────────────────
 
@@ -38,13 +39,13 @@ const TAP_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqr
 
 // ─── Chain config ─────────────────────────────────────────────────────────────
 
-type ChainTab = "solana" | "ethereum" | "bitcoin" | "trac_network";
+type ChainTab = SupportedChain;
 
 const CHAIN_TABS: { id: ChainTab; label: string; color: string; accent: string; emoji: string }[] = [
+  { id: "trac_network", label: "Trac Network", color: "#F97316", accent: "rgba(249,115,22,0.15)",  emoji: "⬡" },
   { id: "solana",       label: "Solana",       color: "#9945FF", accent: "rgba(153,69,255,0.15)",  emoji: "◎" },
   { id: "ethereum",     label: "Ethereum",     color: "#627EEA", accent: "rgba(98,126,234,0.15)",  emoji: "⟠" },
   { id: "bitcoin",      label: "Bitcoin",      color: "#F7931A", accent: "rgba(247,147,26,0.15)",  emoji: "₿" },
-  { id: "trac_network", label: "Trac Network", color: "#F97316", accent: "rgba(249,115,22,0.15)",  emoji: "⬡" },
 ];
 
 // Chain dots for multi-chain badge
@@ -182,7 +183,7 @@ interface ConnectWalletModalProps {
   defaultChain?: ChainTab;
 }
 
-export default function ConnectWalletModal({ open, onClose, defaultChain = "solana" }: ConnectWalletModalProps) {
+export default function ConnectWalletModal({ open, onClose, defaultChain = "trac_network" }: ConnectWalletModalProps) {
   const [activeChain, setActiveChain] = useState<ChainTab>(defaultChain);
   // Success overlay state: null = hidden, otherwise holds the connection info to display
   const [successState, setSuccessState] = useState<{
@@ -231,11 +232,11 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
 
   // Ethereum + Bitcoin + Phantom multi-chain
   const {
-    ethereum, bitcoin, tracNetwork,
+    ethereum, bitcoin,
     phantomMultiChain,
     connectEthereum, connectBitcoin,
     connectPhantomMultiChain,
-    disconnectEthereum, disconnectBitcoin, disconnectTracNetwork,
+    disconnectEthereum, disconnectBitcoin,
     disconnectPhantom,
     ethConnecting, btcConnecting, phantomConnecting,
   } = useMultiChainWallet();
@@ -649,6 +650,54 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                 )
               )}
 
+              {/* ── TRAC NETWORK ── */}
+              {activeChain === "trac_network" && (
+                bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? (
+                  <ConnectedCard
+                    walletName={bitcoin.walletName}
+                    shortAddress={bitcoin.shortAddress}
+                    explorerUrl={`https://trac.network/address/${bitcoin.address}`}
+                    balances={[
+                      { symbol: "TNK", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd },
+                    ]}
+                    totalUsd={bitcoin.balanceUsd}
+                    accentColor="#F97316"
+                    onDisconnect={disconnectBitcoin}
+                  />
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground text-center py-1">
+                      Connect your Tap Wallet to swap TNK via AFOS P2P.
+                    </p>
+
+                    {/* Tap Wallet — BTC + TNK (Trac Network) */}
+                    <WalletButton
+                      icon={TAP_ICON}
+                      name="Tap Wallet"
+                      desc="The native wallet for Trac Network"
+                      chains={["bitcoin", "trac_network"]}
+                      customChips={[
+                        { label: "BTC", color: "#F7931A" },
+                        { label: "TNK (Trac Network)", color: "#F97316" },
+                      ]}
+                      accentColor="#F97316"
+                      bg="rgba(249,115,22,0.08)"
+                      border="rgba(249,115,22,0.25)"
+                      loading={btcConnecting}
+                      onClick={() => connectBitcoin("tap")}
+                    />
+
+                    <PrimaryCTA
+                      label="Connect Tap Wallet"
+                      gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
+                      shadow="rgba(249,115,22,0.3)"
+                      loading={btcConnecting}
+                      onClick={() => connectBitcoin("tap")}
+                    />
+                  </>
+                )
+              )}
+
               {/* ── BITCOIN ── */}
               {activeChain === "bitcoin" && (
                 bitcoin?.connected ? (
@@ -707,51 +756,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
                       gradient="linear-gradient(135deg,#F7931A 0%,#FFCC00 100%)"
                       shadow="rgba(247,147,26,0.3)"
                       onClick={() => connectBitcoin("metamask")}
-                      loading={btcConnecting}
-                    />
-                  </>
-                )
-              )}
-
-              {/* ── TRAC NETWORK (TNK) ── */}
-              {activeChain === "trac_network" && (
-                tracNetwork?.connected ? (
-                  <ConnectedCard
-                    walletName={tracNetwork.walletName}
-                    shortAddress={tracNetwork.shortAddress}
-                    explorerUrl={`https://explorer.trac.network/address/${tracNetwork.address}`}
-                    balances={[{ symbol: tracNetwork.symbol, amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd }]}
-                    totalUsd={tracNetwork.balanceUsd}
-                    accentColor="#F97316"
-                    onDisconnect={disconnectTracNetwork}
-                  />
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground text-center py-1">
-                      Connect Tap Wallet to access TNK (Trac Network) swaps via AFOS P2P.
-                    </p>
-
-                    {/* Tap Wallet — Bitcoin + TNK */}
-                    <WalletButton
-                      icon={TAP_ICON}
-                      name="Tap Wallet"
-                      desc="BTC + TNK (Trac Network)"
-                      chains={["trac_network"]}
-                      customChips={[
-                        { label: "BTC", color: "#F7931A" },
-                        { label: "TNK", color: "#F97316" },
-                      ]}
-                      bg="rgba(249,115,22,0.08)"
-                      border="rgba(249,115,22,0.2)"
-                      loading={btcConnecting}
-                      onClick={() => connectBitcoin("tap")}
-                    />
-
-                    <PrimaryCTA
-                      label="Connect Tap Wallet"
-                      gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
-                      shadow="rgba(249,115,22,0.3)"
-                      onClick={() => connectBitcoin("tap")}
                       loading={btcConnecting}
                     />
                   </>

@@ -1,10 +1,9 @@
 /**
  * MultiChainWalletContext
- * Manages wallet connections for four chains:
+ * Manages wallet connections for three chains:
  *   - Solana: via @solana/wallet-adapter-react (Phantom, Solflare)
  *   - Ethereum: via EIP-1193 window.ethereum or window.phantom.ethereum (MetaMask, Coinbase, Phantom)
- *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tapprotocol (Tap Wallet), or window.phantom.bitcoin (Phantom)
- *   - Trac Network (TNK): via window.tracnetwork (Tap Wallet)
+ *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tracnetwork (Tap Wallet), or window.phantom.bitcoin (Phantom)
  *
  * Phantom is a multi-chain wallet: connecting it once unlocks Solana, Ethereum, and Bitcoin simultaneously.
  * MetaMask → Ethereum + native Bitcoin via wallet_createSession (CAIP-25 bip122 scope).
@@ -23,10 +22,11 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 import { showWalletConnectedToast, showWalletDisconnectedToast } from "../components/ConnectWalletModal";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Chain = "solana" | "ethereum" | "bitcoin" | "trac_network";
+export type Chain = SupportedChain;
 export type EthProviderType = "metamask" | "coinbase" | "phantom";
 export type BtcProviderType = "metamask" | "tap" | "phantom" | "xverse";
 
@@ -70,8 +70,6 @@ export interface PhantomMultiChainState {
 interface MultiChainWalletContextValue {
   ethereum: ChainWallet | null;
   bitcoin: ChainWallet | null;
-  /** TNK / Trac Network wallet — populated when Tap Wallet is connected via window.tracnetwork */
-  tracNetwork: ChainWallet | null;
   erc20Balances: EthErc20Balances;
   /** Phantom multi-chain state — non-null when Phantom is connected */
   phantomMultiChain: PhantomMultiChainState | null;
@@ -82,8 +80,6 @@ interface MultiChainWalletContextValue {
   disconnectEthereum: () => void;
   disconnectBitcoin: () => void;
   disconnectPhantom: () => void;
-  /** Disconnect the TNK / Trac Network wallet (window.tracnetwork) */
-  disconnectTracNetwork: () => void;
   /** Manually refresh Solana balances for Phantom multi-chain connection */
   refreshPhantomSolBalance: () => Promise<void>;
   ethConnecting: boolean;
@@ -91,7 +87,7 @@ interface MultiChainWalletContextValue {
   phantomConnecting: boolean;
   /**
    * Unified BTC PSBT signing helper — auto-routes to whichever wallet is connected.
-   * Supports: Phantom, Xverse, Tap Wallet (window.tapprotocol), MetaMask (Bitcoin Snap).
+   * Supports: Phantom, Xverse, Tap Wallet, MetaMask (Bitcoin Snap).
    * @param psbtBase64 - Base64-encoded PSBT string
    * @param inputsToSign - Array of input indices to sign
    * @returns Signed PSBT as base64 string
@@ -158,49 +154,21 @@ declare global {
   interface Window {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ethereum?: any;
-    /**
-     * Tap Wallet — Bitcoin / TAP Protocol provider (window.tapprotocol)
-     * Source: https://github.com/Trac-Systems/tap-wallet-extension/blob/main/src/content-script/tap-script/index.ts
-     * Event: tapprotocol#initialized
-     */
-    tapprotocol?: {
-      requestAccounts: () => Promise<string[]>;
-      getAccounts: () => Promise<string[]>;
-      getBalance: () => Promise<{ confirmed: number; unconfirmed: number; total: number }>;
-      getNetwork: () => Promise<string>;
-      switchNetwork: (network: string) => Promise<void>;
-      getPublicKey: () => Promise<string>;
-      signMessage: (text: string, type: string) => Promise<string>;
-      signPsbt: (psbtHex: string, options?: unknown) => Promise<string>;
-      signPsbts: (psbtHexs: string[], options?: unknown[]) => Promise<string[]>;
-      pushTx: (rawtx: string) => Promise<string>;
-      pushPsbt: (psbtHex: string) => Promise<string>;
-      sendBitcoin: (toAddress: string, satoshis: number, options?: { feeRate?: number; memo?: string }) => Promise<string>;
-      getBitcoinUtxos: (cursor?: number, size?: number) => Promise<unknown[]>;
-      disconnect: () => Promise<void>;
-      on?: (event: string, listener: (...args: unknown[]) => void) => void;
-      off?: (event: string, listener: (...args: unknown[]) => void) => void;
-    };
-    /**
-     * Tap Wallet — TNK / Trac Network provider (window.tracnetwork)
-     * Source: https://github.com/Trac-Systems/tap-wallet-extension/blob/main/src/content-script/tap-script/index.ts
-     * Event: tracnetwork#initialized
-     */
     tracnetwork?: {
       requestAccount: () => Promise<string>;
       getAddress: () => Promise<string>;
       getBalance: () => Promise<string>;
       getNetwork: () => Promise<string>;
-      switchNetwork: (network: string) => Promise<void>;
+      switchNetwork: (network: string) => Promise<string>;
       getPublicKey: () => Promise<string>;
-      signMessage: (message: string) => Promise<string>;
-      sendTNK: (from: string, to: string, amount: string) => Promise<string>;
-      buildTracTx: (params: { from?: string; to: string; amount: string }) => Promise<string>;
-      pushTracTx: (txPayload: string) => Promise<string>;
-      signTracTx: (contractTx: unknown) => Promise<string>;
-      /** EventEmitter methods — per official Tap Wallet API */
-      on: (event: "accountsChanged" | "networkChanged" | string, listener: (...args: unknown[]) => void) => void;
-      off: (event: string, listener: (...args: unknown[]) => void) => void;
+      signMessage: (message: string) => Promise<{ signature: string; publicKey: string; address: string }>;
+      sendTNK: (from: string, to: string, amount: string) => Promise<{ txHash: string; success: boolean }>;
+      buildTracTx: (params: { from?: string; to: string; amount: string | number }) => Promise<string>;
+      pushTracTx: (txPayload: string) => Promise<{ txHash: string; success: boolean }>;
+      signTracTx: (contractTx: unknown) => Promise<{ tx: string; signature: string }>;
+      signPsbt?: (psbtHex: string) => Promise<string>;
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      off?: (event: string, handler: (...args: unknown[]) => void) => void;
     };
     XverseProviders?: {
       BitcoinProvider?: {
@@ -338,8 +306,6 @@ function clearWalletSession() {
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
   const [ethereum, setEthereum] = useState<ChainWallet | null>(null);
   const [bitcoin, setBitcoin] = useState<ChainWallet | null>(null);
-  /** TNK / Trac Network wallet state — populated by window.tracnetwork (Tap Wallet) */
-  const [tracNetwork, setTracNetwork] = useState<ChainWallet | null>(null);
   const [erc20Balances, setErc20Balances] = useState<EthErc20Balances>({ usdc: 0, usdt: 0 });
   const [phantomMultiChain, setPhantomMultiChain] = useState<PhantomMultiChainState | null>(null);
   const [ethConnecting, setEthConnecting] = useState(false);
@@ -702,187 +668,165 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, []);
 
-  // ── Tap Wallet Connect (reimplemented per official GitHub source) ─────────────
+  // Helper: wait for window.tracnetwork to be ready (up to `ms` milliseconds).
   //
-  // Source: https://github.com/Trac-Systems/tap-wallet-extension/blob/main/src/content-script/tap-script/index.ts
+  // The Tap Wallet extension:
+  //   1. Injects tap-script.js synchronously at document_start
+  //   2. Sets window.tracnetwork via Object.defineProperty
+  //   3. Dispatches `tracnetwork#initialized` event when fully ready
   //
-  // The extension injects TWO separate window objects:
-  //   - window.tapprotocol  → Bitcoin / TAP Protocol (BTC addresses, PSBT signing)
-  //     Event: tapprotocol#initialized
-  //   - window.tracnetwork  → TNK / Trac Network (TNK addresses, TNK transactions)
-  //     Event: tracnetwork#initialized
+  // Known issue: if another wallet extension (MetaMask, Phantom, etc.) declares
+  // the same internal variable ($t) as tap-script.js, a SyntaxError prevents
+  // window.tracnetwork from being initialized. User must disable conflicting
+  // extensions or use a separate browser profile.
   //
-  // Both are injected simultaneously, so connecting Tap Wallet gives BTC + TNK.
-  //
-  // Detection strategy: poll for BOTH providers for up to 3s since extensions
-  // inject asynchronously after page load.
-  const connectTapWallet = useCallback(async () => {
-    // Step 1: Poll for both providers (extensions inject asynchronously)
-    const hasTap = !!window.tapprotocol;
-    const hasTrac = !!window.tracnetwork;
+  // We listen for that event first (most reliable), then fall back to polling.
+  const waitForTracNetwork = useCallback(async (ms = 5000): Promise<boolean> => {
+    if (window.tracnetwork) {
+      console.log("[AFOS] Tap Wallet: already available");
+      return true;
+    }
+    console.log("[AFOS] Tap Wallet: waiting for tracnetwork#initialized event or poll…");
+    return new Promise<boolean>(resolve => {
+      let resolved = false;
+      const done = (found: boolean, via: string) => {
+        if (resolved) return;
+        resolved = true;
+        clearInterval(interval);
+        window.removeEventListener("tracnetwork#initialized", onEvent);
+        if (found) console.log(`[AFOS] Tap Wallet: detected via ${via}`);
+        else console.warn(`[AFOS] Tap Wallet: not detected after ${ms}ms`);
+        resolve(found);
+      };
 
-    if (!hasTap && !hasTrac) {
-      console.log("[AFOS] Tap Wallet: providers not yet available, polling…");
-      const found = await new Promise<boolean>(resolve => {
-        let elapsed = 0;
-        const interval = setInterval(() => {
-          elapsed += 100;
-          // Consider found if at least one provider is available
-          if (window.tapprotocol || window.tracnetwork) {
-            clearInterval(interval);
-            resolve(true);
-          } else if (elapsed >= 3000) {
-            clearInterval(interval);
-            resolve(false);
-          }
-        }, 100);
-      });
-      if (!found) {
+      // Primary: listen for the official ready event
+      const onEvent = () => done(true, "tracnetwork#initialized event");
+      window.addEventListener("tracnetwork#initialized", onEvent);
+
+      // Fallback: poll every 150ms
+      let elapsed = 0;
+      const step = 150;
+      const interval = setInterval(() => {
+        elapsed += step;
+        if (window.tracnetwork) {
+          done(true, `poll after ${elapsed}ms`);
+        } else if (elapsed >= ms) {
+          done(false, "timeout");
+        }
+      }, step);
+    });
+  }, []);
+
+  const connectTapWallet = useCallback(async () => {
+    const detected = await waitForTracNetwork(5000);
+    if (!detected) {
+      // Check if the extension script was injected but failed due to a conflict
+      // (SyntaxError: Identifier '$t' has already been declared — caused by
+      // MetaMask, Phantom, or other wallet extensions injecting the same variable)
+      const hasConflict = !window.tracnetwork;
+      if (hasConflict) {
+        toast.error("Tap Wallet not responding", {
+          description: "If you have MetaMask or Phantom installed, try disabling them temporarily — they can conflict with Tap Wallet's script injection. Then refresh the page.",
+          duration: 8000,
+        });
+      } else {
         toast.error("Tap Wallet not detected", {
           description: "Please install the Tap Wallet extension and refresh the page.",
           action: { label: "Install", onClick: () => window.open("https://chromewebstore.google.com/detail/tap-wallet/blcaacmeglnfblclocdgaomhopnfobof", "_blank") },
-          duration: 8000,
         });
-        return;
       }
+      return;
     }
-
-    // Step 2: Connect both providers in parallel
-    const btcPromise = window.tapprotocol
-      ? window.tapprotocol.requestAccounts().catch((e: unknown) => { console.warn("[AFOS] tapprotocol.requestAccounts failed:", e); return null; })
-      : Promise.resolve(null);
-
-    const tnkPromise = window.tracnetwork
-      ? window.tracnetwork.requestAccount().catch((e: unknown) => { console.warn("[AFOS] tracnetwork.requestAccount failed:", e); return null; })
-      : Promise.resolve(null);
-
-    let btcAccounts: string[] | null = null;
-    let tnkAddress: string | null = null;
-
     try {
-      [btcAccounts, tnkAddress] = await Promise.all([btcPromise, tnkPromise]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes("cancel") && !msg.includes("reject") && !msg.includes("User rejected")) {
-        toast.error("Tap Wallet connection failed", { description: msg });
-      }
-      return;
-    }
+      console.log("[AFOS] Tap Wallet: calling requestAccount()…");
+      const address = await window.tracnetwork!.requestAccount();
+      console.log("[AFOS] Tap Wallet: got address", address);
 
-    if (!btcAccounts?.length && !tnkAddress) {
-      toast.error("Tap Wallet connection failed", { description: "No addresses returned. Please try again." });
-      return;
-    }
+      // Detect which network is active: trac1... = Trac Network, otherwise BTC
+      const isTrac = address.startsWith("trac1");
+      const network = isTrac ? "trac_network" : "bitcoin";
+      console.log(`[AFOS] Tap Wallet: detected network=${network} for address=${address}`);
 
-    // Step 3: Store BTC wallet (from window.tapprotocol)
-    if (btcAccounts?.length) {
-      const btcAddr = btcAccounts[0];
-      let btcBal = "0.00000000";
-      let btcUsd = 0;
-      try {
-        const [{ btc, sats }, priceUsd] = await Promise.all([
-          fetchBtcBalanceFromMempool(btcAddr),
+      let displayBalance: string;
+      let balanceUsd = 0;
+      let symbol: string;
+
+      if (isTrac) {
+        // TNK address — get TNK balance
+        const rawBalance = await window.tracnetwork!.getBalance();
+        const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+        displayBalance = `${tnkBalance} TNK`;
+        symbol = "TNK";
+      } else {
+        // BTC address — get BTC balance from mempool
+        const [{ btc: btcBal, sats }, btcPrice] = await Promise.all([
+          fetchBtcBalanceFromMempool(address),
           fetchBtcPriceUsd(),
         ]);
-        btcBal = btc;
-        btcUsd = (sats / 1e8) * priceUsd;
-      } catch (_) {
-        console.warn("[AFOS] Tap Wallet: BTC balance fetch failed");
+        displayBalance = `${btcBal} BTC`;
+        balanceUsd = (sats / 1e8) * btcPrice;
+        symbol = "BTC";
       }
+
       setBitcoin({
-        chain: "bitcoin",
+        chain: network as "bitcoin" | "trac_network",
         walletName: "Tap Wallet",
-        address: btcAddr,
-        shortAddress: shortAddr(btcAddr),
-        balance: `${btcBal} BTC`,
-        balanceUsd: btcUsd,
-        symbol: "BTC",
+        address,
+        shortAddress: shortAddr(address),
+        balance: displayBalance,
+        balanceUsd,
+        symbol,
         connected: true,
         connecting: false,
         isPhantom: false,
       });
-      console.log("[AFOS] Tap Wallet: BTC connected", btcAddr);
+      saveWalletSession({ btc: "tap" });
+      toast.success("Tap Wallet connected", {
+        description: `${shortAddr(address)} · ${displayBalance}`,
+      });
 
-      // Register accountsChanged listener for BTC
-      window.tapprotocol?.on?.("accountsChanged", async (...args: unknown[]) => {
-        const newAccounts = args[0] as string[] | undefined;
-        const newAddr = newAccounts?.[0];
-        if (!newAddr) {
+      // ── accountsChanged: update address when user switches accounts in Tap Wallet ──
+      window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {
+        const newAccounts = args[0] as string[] | string | undefined;
+        const newAddress = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
+        if (!newAddress) {
+          // User disconnected all accounts in the extension
           setBitcoin(null);
           clearWalletSession();
-          showWalletDisconnectedToast("Tap Wallet", ["bitcoin"]);
+          showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
           return;
         }
+        // Refresh balances for the new address
         try {
-          const [{ btc: newBtc, sats: newSats }, newPrice] = await Promise.all([
-            fetchBtcBalanceFromMempool(newAddr),
+          const [rawBal, { btc: newBtc, sats: newSats }, newBtcPrice] = await Promise.all([
+            window.tracnetwork!.getBalance(),
+            fetchBtcBalanceFromMempool(newAddress),
             fetchBtcPriceUsd(),
           ]);
-          setBitcoin(prev => prev?.walletName === "Tap Wallet" ? {
-            ...prev,
-            address: newAddr,
-            shortAddress: shortAddr(newAddr),
-            balance: `${newBtc} BTC`,
-            balanceUsd: (newSats / 1e8) * newPrice,
-          } : prev);
-        } catch (_) {}
-      });
-    }
-
-    // Step 4: Store TNK wallet (from window.tracnetwork)
-    if (tnkAddress) {
-      let tnkBal = "0.0000";
-      try {
-        const rawBalance = await window.tracnetwork!.getBalance();
-        tnkBal = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
-      } catch (_) {
-        console.warn("[AFOS] Tap Wallet: TNK balance fetch failed");
-      }
-      setTracNetwork({
-        chain: "trac_network",
-        walletName: "Tap Wallet",
-        address: tnkAddress,
-        shortAddress: shortAddr(tnkAddress),
-        balance: `${tnkBal} TNK`,
-        balanceUsd: 0,
-        symbol: "TNK",
-        connected: true,
-        connecting: false,
-        isPhantom: false,
-      });
-      console.log("[AFOS] Tap Wallet: TNK connected", tnkAddress);
-
-      // Register accountsChanged listener for TNK
-      window.tracnetwork!.on("accountsChanged", async (...args: unknown[]) => {
-        const newAccounts = args[0] as string[] | string | undefined;
-        const newAddr = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
-        if (!newAddr) {
-          setTracNetwork(null);
-          showWalletDisconnectedToast("Tap Wallet", ["trac_network"]);
-          return;
-        }
-        try {
-          const rawBal = await window.tracnetwork!.getBalance();
           const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
-          setTracNetwork(prev => prev ? {
+          const newDisplay = newSats > 0 ? `${newBtc} BTC / ${newTnk} TNK` : `${newTnk} TNK`;
+          setBitcoin(prev => prev ? {
             ...prev,
-            address: newAddr,
-            shortAddress: shortAddr(newAddr),
-            balance: `${newTnk} TNK`,
+            address: newAddress,
+            shortAddress: shortAddr(newAddress),
+            balance: newDisplay,
+            balanceUsd: (newSats / 1e8) * newBtcPrice,
+            symbol: newSats > 0 ? "BTC" : "TNK",
           } : null);
+          toast.info("Tap Wallet account changed", {
+            description: `Switched to ${shortAddr(newAddress)}`,
+          });
         } catch (_) {}
       });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[AFOS] Tap Wallet connection error:", err);
+      const isUserCancel = msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied");
+      if (!isUserCancel) {
+        toast.error("Tap Wallet connection failed", { description: msg });
+      }
     }
-
-    // Step 5: Save session and show success toast
-    saveWalletSession({ btc: "tap" });
-    const connectedChains: string[] = [];
-    if (btcAccounts?.length) connectedChains.push(`${shortAddr(btcAccounts[0])} (BTC)`);
-    if (tnkAddress) connectedChains.push(`${shortAddr(tnkAddress)} (TNK)`);
-    toast.success("Tap Wallet connected", {
-      description: connectedChains.join(" · "),
-    });
-  }, []);
+  }, [waitForTracNetwork]);
 
   // ── Xverse Bitcoin Connect ────────────────────────────────────────────────
   const connectXverseBitcoin = useCallback(async () => {
@@ -973,10 +917,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
     // ── Tap Wallet ────────────────────────────────────────────────────────────
     if (walletName === "Tap Wallet") {
-      // Use window.tapprotocol for PSBT signing (Bitcoin provider)
-      // Source: https://github.com/Trac-Systems/tap-wallet-extension
-      const tap = window.tapprotocol;
-      if (!tap) throw new Error("Tap Wallet (tapprotocol) provider not available");
+      const tap = window.tracnetwork;
+      if (!tap?.signPsbt) throw new Error("Tap Wallet signPsbt not available");
       const psbtHex = Array.from(Uint8Array.from(atob(psbtBase64), c => c.charCodeAt(0)))
         .map(b => b.toString(16).padStart(2, "0")).join("");
       const signedHex = await tap.signPsbt(psbtHex);
@@ -1006,37 +948,111 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     if (bitcoin?.isPhantom) {
       disconnectPhantom();
     } else {
-      const wasTapWallet = bitcoin?.walletName === "Tap Wallet";
       setBitcoin(null);
-      // If Tap Wallet was connected, also clear the TNK (tracNetwork) state
-      if (wasTapWallet) {
-        setTracNetwork(null);
-      }
       clearWalletSession();
       showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
     }
   }, [bitcoin, disconnectPhantom]);
-
-  const disconnectTracNetwork = useCallback(() => {
-    setTracNetwork(null);
-    // If bitcoin (BTC) is also from Tap Wallet, clear it too
-    if (bitcoin?.walletName === "Tap Wallet") {
-      setBitcoin(null);
-      clearWalletSession();
-    }
-    showWalletDisconnectedToast("Tap Wallet", ["trac_network"]);
-  }, [bitcoin]);
 
   // ── Assign connect refs (updated every render so they always point to latest callbacks) ──
   connectEthereumRef.current = connectEthereum;
   connectBitcoinRef.current = connectBitcoin;
   connectPhantomRef.current = connectPhantomMultiChain;
 
+  // ── Silent Tap Wallet restore (no popup) ────────────────────────────────────
+  // Uses getAddress() (read-only) instead of requestAccount() (shows popup).
+  const silentRestoreTapWallet = useCallback(async () => {
+    const detected = await waitForTracNetwork(5000);
+    if (!detected) {
+      console.log("[AFOS] Silent Tap Wallet restore: extension not detected, clearing session");
+      clearWalletSession();
+      return;
+    }
+    try {
+      // getAddress() returns the currently connected address without prompting
+      const address = await window.tracnetwork!.getAddress();
+      if (!address) {
+        clearWalletSession();
+        return;
+      }
+      const rawBalance = await window.tracnetwork!.getBalance();
+      const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+
+      // Detect which network is active: trac1... = Trac Network, otherwise BTC
+      const isTrac = address.startsWith("trac1");
+      const network = isTrac ? "trac_network" : "bitcoin";
+
+      let displayBalance: string;
+      let btcBalanceUsd = 0;
+      let symbol: string;
+
+      if (isTrac) {
+        displayBalance = `${tnkBalance} TNK`;
+        symbol = "TNK";
+      } else {
+        const [{ btc: btcBalance, sats }, btcPriceUsd] = await Promise.all([
+          fetchBtcBalanceFromMempool(address),
+          fetchBtcPriceUsd(),
+        ]);
+        btcBalanceUsd = (sats / 1e8) * btcPriceUsd;
+        displayBalance = `${btcBalance} BTC`;
+        symbol = "BTC";
+      }
+
+      setBitcoin({
+        chain: network as "bitcoin" | "trac_network",
+        walletName: "Tap Wallet",
+        address,
+        shortAddress: shortAddr(address),
+        balance: displayBalance,
+        balanceUsd: btcBalanceUsd,
+        symbol,
+        connected: true,
+        connecting: false,
+        isPhantom: false,
+      });
+      console.log(`[AFOS] Tap Wallet silently restored: ${shortAddr(address)} (${network})`);
+
+      // Re-register accountsChanged listener
+      window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {
+        const newAccounts = args[0] as string[] | string | undefined;
+        const newAddress = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
+        if (!newAddress) {
+          setBitcoin(null);
+          clearWalletSession();
+          showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
+          return;
+        }
+        try {
+          const [rawBal, { btc: newBtc, sats: newSats }, newBtcPrice] = await Promise.all([
+            window.tracnetwork!.getBalance(),
+            fetchBtcBalanceFromMempool(newAddress),
+            fetchBtcPriceUsd(),
+          ]);
+          const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
+          const newDisplay = newSats > 0 ? `${newBtc} BTC / ${newTnk} TNK` : `${newTnk} TNK`;
+          setBitcoin(prev => prev ? {
+            ...prev,
+            address: newAddress,
+            shortAddress: shortAddr(newAddress),
+            balance: newDisplay,
+            balanceUsd: (newSats / 1e8) * newBtcPrice,
+            symbol: newSats > 0 ? "BTC" : "TNK",
+          } : null);
+        } catch (_) {}
+      });
+    } catch (err) {
+      console.warn("[AFOS] Silent Tap Wallet restore failed:", err);
+      clearWalletSession();
+    }
+  }, [waitForTracNetwork]);
+
   // ── Auto-reconnect on mount ─────────────────────────────────────────────────────────
   // Silently restores the last wallet session on page load without showing any popup.
   // For Phantom: checks window.phantom.solana.isConnected (already approved, no prompt).
   // For ETH: uses eth_accounts (read-only, no popup) to verify the session is still valid.
-  // For BTC (Xverse/Tap/MetaMask): calls connect functions which handle their own silent checks.
+  // For BTC Tap Wallet: uses getAddress() (read-only, no popup) via silentRestoreTapWallet.
+  // For BTC Xverse/MetaMask: calls connect functions which handle their own silent checks.
   useEffect(() => {
     const session = loadWalletSession();
     if (!session) return;
@@ -1068,9 +1084,13 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             }
           }
           if (session.btc && session.btc !== "phantom") {
-            // For Xverse/Tap/MetaMask BTC: attempt silent reconnect
-            // connectBitcoin handles its own "not installed" gracefully
-            await connectBitcoinRef.current?.(session.btc);
+            if (session.btc === "tap") {
+              // Tap Wallet: use silent restore with getAddress() (no popup)
+              await silentRestoreTapWallet();
+            } else {
+              // Xverse/MetaMask BTC: attempt reconnect via their connect functions
+              await connectBitcoinRef.current?.(session.btc);
+            }
           }
         }
       } catch (_) {
@@ -1144,6 +1164,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [bitcoin?.connected, bitcoin?.address]);
 
+  // ── Tap Wallet accountsChanged cleanup on disconnect ───────────────────────
+  // The listener is registered inside connectTapWallet. When the user disconnects
+  // (bitcoin becomes null), we remove the listener so it doesn't fire stale updates.
+  useEffect(() => {
+    if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet") return; // still connected — keep listener
+    // Disconnected or switched to a different wallet — remove the listener
+    window.tracnetwork?.off?.("accountsChanged", () => {});
+  }, [bitcoin?.connected, bitcoin?.walletName]);
+
   // ── Auto-refresh SOL balance every 60 seconds when Phantom multi-chain is connected ──
   useEffect(() => {
     const addr = phantomMultiChain?.solanaAddress;
@@ -1156,28 +1185,10 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
-  // ── Auto-refresh TNK balance every 60 seconds when Tap Wallet is connected ────────────
-  useEffect(() => {
-    if (!tracNetwork?.connected || !tracNetwork.address) return;
-    const refreshTnkBalance = async () => {
-      try {
-        if (!window.tracnetwork) return;
-        const rawBalance = await window.tracnetwork.getBalance();
-        const tnkBal = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
-        setTracNetwork(prev => prev ? { ...prev, balance: `${tnkBal} TNK` } : null);
-      } catch (err) {
-        console.warn("[TNK refresh] Failed:", err);
-      }
-    };
-    const interval = setInterval(refreshTnkBalance, 60_000);
-    return () => clearInterval(interval);
-  }, [tracNetwork?.connected, tracNetwork?.address]);
-
   return (
     <MultiChainWalletContext.Provider value={{
       ethereum,
       bitcoin,
-      tracNetwork,
       erc20Balances,
       phantomMultiChain,
       connectEthereum,
@@ -1186,7 +1197,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       disconnectEthereum,
       disconnectBitcoin,
       disconnectPhantom,
-      disconnectTracNetwork,
       refreshPhantomSolBalance,
       ethConnecting,
       btcConnecting,

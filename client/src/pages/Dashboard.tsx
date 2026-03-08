@@ -411,8 +411,8 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         userPublicKey: publicKey.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
-        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
-        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
+        fromChain:     (quoteData.fromChain as SupportedChain) ?? "solana",
+        toChain:       (quoteData.toChain   as SupportedChain) ?? "solana",
         amount:        quoteData.fromAmount,
       });
 
@@ -1002,11 +1002,10 @@ function MetricsRow({ onNavigate }: { onNavigate?: (page: NavPage) => void }) {
   );
 }
 
-// ── Recent Swaps Card ──────────────────────────────────────────────────────
+//// ── Recent Swaps Card ──────────────────────────────────────────────────────
 function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
   const [allSwaps, setAllSwaps] = useState<{ pending: RfqResult[]; completed: RfqResult[] }>({ pending: [], completed: [] });
   const [loading, setLoading] = useState(true);
-
   useEffect(() => {
     const fetchSwaps = async () => {
       try {
@@ -1018,7 +1017,6 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
     const t = setInterval(fetchSwaps, 30000);
     return () => clearInterval(t);
   }, []);
-
   // Merge pending + completed, sort by timestamp desc, take top 5
   const combined = [...allSwaps.pending, ...allSwaps.completed]
     .sort((a, b) => b.timestamp - a.timestamp)
@@ -1050,11 +1048,11 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
           <h3 className="text-sm font-semibold text-foreground">Recent Swaps</h3>
         </div>
         <button
-          onClick={onViewAll}
-          className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1"
-        >
-          View all <ArrowRight className="w-3 h-3" />
-        </button>
+            onClick={onViewAll}
+            className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1"
+          >
+            View all <ArrowRight className="w-3 h-3" />
+          </button>
       </div>
 
       <div className="flex-1 overflow-auto space-y-1.5 min-h-0">
@@ -2381,11 +2379,9 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
     </div>
   );
 }
-
-// ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────
+// ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────────────────
 function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
   const [rawSwaps, setRawSwaps] = useState<RfqResult[]>([]);
-
   useEffect(() => {
     const fetchSwaps = async () => {
       try {
@@ -2397,7 +2393,6 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
     const t = setInterval(fetchSwaps, 30000);
     return () => clearInterval(t);
   }, []);
-
   const SWAPS = rawSwaps.map(s => ({
     id: s.rfqId,
     from: s.fromToken,
@@ -2423,10 +2418,15 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
           <span className="text-xs font-semibold text-foreground">Recent Swaps</span>
         </div>
         <button onClick={onViewAll} className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1">
-          View all <ArrowRight className="w-2.5 h-2.5" />
-        </button>
+            View all <ArrowRight className="w-2.5 h-2.5" />
+          </button>
       </div>
       <div className="space-y-2">
+        {SWAPS.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-4 text-center">
+            <p className="text-[10px] text-muted-foreground font-mono">No swaps yet</p>
+          </div>
+        )}
         {SWAPS.slice(0, 3).map(swap => {
           const s = STATUS_STYLE[swap.status];
           return (
