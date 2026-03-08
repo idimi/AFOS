@@ -2157,3 +2157,5 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Fix Chains Supported counter from 3 to 4 on landing page
 - [ ] Update Step 1 description to include Tap Wallet (Trac Network)
 - [ ] TypeScript: 0 errors (fresh tsc --noEmit --incremental false)
+
+- [ ] Fix Tap Wallet "not responding" — connection fails even with all other wallet extensions disabled
