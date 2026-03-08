@@ -42,10 +42,10 @@ const TAP_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqr
 type ChainTab = SupportedChain;
 
 const CHAIN_TABS: { id: ChainTab; label: string; color: string; accent: string; emoji: string }[] = [
+  { id: "trac_network", label: "Trac Network", color: "#F97316", accent: "rgba(249,115,22,0.15)",  emoji: "⬡" },
   { id: "solana",       label: "Solana",       color: "#9945FF", accent: "rgba(153,69,255,0.15)",  emoji: "◎" },
   { id: "ethereum",     label: "Ethereum",     color: "#627EEA", accent: "rgba(98,126,234,0.15)",  emoji: "⟠" },
   { id: "bitcoin",      label: "Bitcoin",      color: "#F7931A", accent: "rgba(247,147,26,0.15)",  emoji: "₿" },
-  { id: "trac_network", label: "Trac Network", color: "#F97316", accent: "rgba(249,115,22,0.15)",  emoji: "⬡" },
 ];
 
 // Chain dots for multi-chain badge
@@ -183,7 +183,7 @@ interface ConnectWalletModalProps {
   defaultChain?: ChainTab;
 }
 
-export default function ConnectWalletModal({ open, onClose, defaultChain = "solana" }: ConnectWalletModalProps) {
+export default function ConnectWalletModal({ open, onClose, defaultChain = "trac_network" }: ConnectWalletModalProps) {
   const [activeChain, setActiveChain] = useState<ChainTab>(defaultChain);
   // Success overlay state: null = hidden, otherwise holds the connection info to display
   const [successState, setSuccessState] = useState<{
