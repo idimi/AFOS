@@ -2137,3 +2137,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Wire TNK 24h price change badge in market list (tnkChange24h from prices.live tRPC)
 - [x] Fix 9 TypeScript errors in SwapPage.tsx — add trac_network to SupportedChain type in afosApi.ts
 - [ ] Patch Oracle VM server.js via SSH to fetch TNK price from Gate.io every 30s and include in SSE prices event
+
+## Tap Wallet Detection & Session Restore (2026-03-08 session 6)
+- [ ] Fix Tap Wallet detection: increase poll to 5s, add console logging, use Chrome Web Store install link
+- [ ] Silent Tap Wallet session restore: use getAddress() instead of requestAccount() to avoid popup
+- [ ] Update Window.tracnetwork type declaration with all official API methods (sendTNK, buildTracTx, etc.)
+- [ ] Session restore for MetaMask/Coinbase/Solflare (already handled by existing code — verified)
