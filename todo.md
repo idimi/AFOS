@@ -2055,3 +2055,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add nodeHealth.check tRPC procedure that proxies Oracle VM, RPC, AFOS Signaling, and Trac Network health checks
 - [x] Remove direct browser fetch from NodeHealthTab — now uses trpc.nodeHealth.check.useQuery with 60s auto-refresh
 - [x] Added Trac Network explorer health check as 5th node in the panel
+
+## Node Health Panel Fixes (2026-03-08 batch 2)
+
+- [x] Rename "Trac Network" node to "Trac Network RPC" in nodeHealth router
+- [x] Reorder Trac Network RPC below Bitcoin RPC (correct display order)
+- [x] Fix Trac Network endpoint: use https://tracapi.trac.network/v1/confirmed-length (returns block height, HTTP 200)
+- [x] Fix AFOS Signaling: use local getSignalingPeerCount() instead of external fetch to intercomswap.io (which is unreachable from sandbox)
