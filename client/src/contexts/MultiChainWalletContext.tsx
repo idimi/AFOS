@@ -662,6 +662,21 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   }, []);
 
   const connectTapWallet = useCallback(async () => {
+    // Browser extensions inject their APIs asynchronously after page load.
+    // Poll for window.tracnetwork for up to 2 seconds before giving up,
+    // so a freshly-loaded page doesn't falsely report the wallet as missing.
+    if (!window.tracnetwork) {
+      await new Promise<void>(resolve => {
+        let elapsed = 0;
+        const interval = setInterval(() => {
+          elapsed += 100;
+          if (window.tracnetwork || elapsed >= 2000) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+      });
+    }
     if (!window.tracnetwork) {
       toast.error("Tap Wallet not detected", {
         description: "Please install the Tap Wallet extension and refresh.",
