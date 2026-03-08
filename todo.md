@@ -2104,3 +2104,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Fix TNK balance fetch to use correct Trac Network API endpoint
 - [ ] Fix TNK status detection to correctly show "live" when API responds
 - [ ] Ensure TNK is fully ready for swaps
+
+## TNK TradingView + Balance Audit (2026-03-08)
+
+- [x] Fix TNK TradingView chart symbol from COINGECKO:TNKUSD to GATEIO:TNKUSDT in Dashboard.tsx (TNK not listed on Binance/CoinGecko TV)
+- [x] Confirm Swaps.tsx and SwapPage.tsx already use MEXC:TNKUSDT (correct)
+- [x] Audit all wallet balance fetches across the app (SwapPage, WalletPanel, Treasury, AdminPanel)
+- [x] TNK balance fetch: window.tracnetwork.getBalance() (Tap Wallet) + tracapi.trac.network/v1/balance (server-side) — both correct
+- [x] ETH/USDT/USDC balances: eth_getBalance + eth_call balanceOf via MetaMask/Phantom provider — correct
+- [x] SOL balance: backend tRPC proxy → Solana RPC (avoids CORS) — correct
+- [x] BTC balance: mempool.space/api/address/{address} — correct
+- [x] Add live balance display to FROM token dropdown in Swaps.tsx (green = has balance, grey = zero)
+- [x] Fix live balance indicator dot to also show for TNK when Tap Wallet has balance

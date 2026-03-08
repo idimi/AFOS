@@ -3017,6 +3017,8 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                         const revKey  = `${toToken.symbol.toUpperCase()}/${token.symbol.toUpperCase()}`;
                         const depth = pairDepthMap[pairKey] ?? pairDepthMap[revKey];
                         const depthLabel = formatDepth(depth);
+                        const liveBal = getTokenBalance(token);
+                        const hasBalance = liveBal > 0;
                         return (
                           <button key={token.symbol}
                             onClick={() => { setFromToken(token); setFromDropOpen(false); }}
@@ -3041,10 +3043,15 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                               </div>
                               <div className="text-[10px] text-muted-foreground">{token.name}</div>
                             </div>
-                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
-                              style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
-                              {CHAINS[token.chain as keyof typeof CHAINS].shortName}
-                            </span>
+                            <div className="text-right shrink-0">
+                              <div className={`text-[10px] font-mono font-semibold ${hasBalance ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                                {liveBal.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                              </div>
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full"
+                                style={{ background: CHAINS[token.chain as keyof typeof CHAINS].bgColor, color: CHAINS[token.chain as keyof typeof CHAINS].color, border: `1px solid ${CHAINS[token.chain as keyof typeof CHAINS].borderColor}` }}>
+                                {CHAINS[token.chain as keyof typeof CHAINS].shortName}
+                              </span>
+                            </div>
                           </button>
                         );
                       })}
@@ -3060,9 +3067,9 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                   title="Click to use max balance">
                   Balance: {getTokenBalance(fromToken).toLocaleString(undefined, { maximumFractionDigits: 8 })}
                   <span className="px-1 py-0.5 rounded text-[9px] font-bold" style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.3)" }}>MAX</span>
-                  {connected && liveBalances[fromToken.symbol] !== undefined && (
+                  {(connected && liveBalances[fromToken.symbol] !== undefined) || (fromToken.symbol === 'TNK' && tnkBalance > 0) ? (
                     <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" title="Live balance" />
-                  )}
+                  ) : null}
                 </button>
               </div>
               {/* Balance too low warning */}
