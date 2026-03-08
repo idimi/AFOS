@@ -400,7 +400,7 @@ export default function LandingPage() {
                   LIVE ON MAINNET
                 </div>
                 <a
-                  href="https://intercomswap.io"
+                  href="https://github.com/TracSystems/intercom-swap"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold transition-opacity hover:opacity-80"
@@ -813,7 +813,7 @@ export default function LandingPage() {
                   <ArrowRight className="w-5 h-5" />
                 </a>
                 <a
-                  href="https://intercomswap.io"
+                  href="https://github.com/TracSystems/intercom-swap"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl text-base font-bold transition-all hover:opacity-80"
