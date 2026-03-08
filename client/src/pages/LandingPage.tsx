@@ -151,6 +151,11 @@ function FeatureCard({
 function StepCard({ step, title, description, color }: {
   step: number; title: string; description: string; color: string;
 }) {
+  // Use color-mix for opacity so both hex (#rrggbb) and oklch() colors work correctly.
+  // Appending a hex opacity suffix to oklch() strings produces invalid CSS.
+  const bg = `color-mix(in srgb, ${color} 12%, transparent)`;
+  const border = `color-mix(in srgb, ${color} 40%, transparent)`;
+  const connector = `color-mix(in srgb, ${color} 15%, transparent)`;
   return (
     <motion.div
       initial={{ opacity: 0, x: -16 }}
@@ -162,11 +167,11 @@ function StepCard({ step, title, description, color }: {
       <div className="flex-shrink-0 flex flex-col items-center">
         <div
           className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black"
-          style={{ background: `${color}20`, border: `1.5px solid ${color}60`, color }}
+          style={{ background: bg, border: `1.5px solid ${border}`, color }}
         >
           {step}
         </div>
-        {step < 3 && <div className="w-px flex-1 mt-2" style={{ background: `${color}25` }} />}
+        {step < 3 && <div className="w-px flex-1 mt-2" style={{ background: connector }} />}
       </div>
       <div className="pb-8">
         <p className="text-sm font-bold text-foreground mb-1">{title}</p>
@@ -735,7 +740,7 @@ export default function LandingPage() {
                 { name: "AFOS", color: "oklch(0.72 0.18 195)" },
                 { name: "Uniswap", color: "#ff007a" },
                 { name: "Jupiter", color: "#14F195" },
-                { name: "1inch", color: "#1b314f" },
+                { name: "1inch", color: "#2d9cdb" },
               ].map(col => (
                 <div key={col.name} className="p-4 text-center">
                   <p className="text-xs font-bold" style={{ color: col.color }}>{col.name}</p>
