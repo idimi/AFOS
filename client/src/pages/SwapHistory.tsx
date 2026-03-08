@@ -20,11 +20,12 @@ import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
 import { OpenTradesTab, RefundsTab, HtlcSearchBar } from "./SwapHistoryTabs";
 import { useAuth } from "@/_core/hooks/useAuth";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SwapStatus = "complete" | "failed" | "pending" | "refunded";
-type ChainId = "bitcoin" | "ethereum" | "solana" | "trac_network";
+type ChainId = SupportedChain;
 
 interface SwapRecord {
   id: string;
@@ -70,8 +71,8 @@ function guessChain(token: string): ChainId {
 
 function mapDbRowToSwapRecord(row: {
   id: number;
-  fromChain: "bitcoin" | "ethereum" | "solana" | "trac_network";
-  toChain: "bitcoin" | "ethereum" | "solana" | "trac_network";
+  fromChain: SupportedChain;
+  toChain: SupportedChain;
   fromToken: string;
   toToken: string;
   amount: string;
@@ -250,7 +251,7 @@ interface Filters {
   search: string;
   status: string;
   dateRange: string;
-  chain: "all" | "bitcoin" | "ethereum" | "solana" | "trac_network";
+  chain: "all" | SupportedChain;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────

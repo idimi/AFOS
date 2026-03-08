@@ -16,14 +16,21 @@ import {
   Plus, Trash2, Save, RefreshCw, TrendingUp, Zap, Users,
   ArrowUpRight, Server, Database,
   Cpu, QrCode, X, Bot, Network, Repeat, Moon, ToggleLeft, ToggleRight,
-  ClipboardList, ChevronLeft, ChevronRight, LogIn, Loader2
+  ClipboardList, ChevronLeft, ChevronRight, LogIn, Loader2, Info
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getWallet, mergeWithAllAssets, type WalletAsset } from "@/lib/afosApi";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import QRCode from "react-qr-code";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "@/components/ConnectWalletModal";
+import type { SupportedChain } from "@shared/const";
 
 // Admin wallet allowlist — set via VITE_ADMIN_WALLETS env var (comma-separated)
 const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
@@ -35,7 +42,7 @@ const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
 interface TreasuryWallet {
   id: string;
   label: string;
-  chain: "solana" | "ethereum" | "bitcoin" | "trac_network";
+  chain: SupportedChain;
   address: string;
   splitPercent: number;
 }
@@ -224,24 +231,44 @@ function RevenueTab() {
               ))}
             </div>
           </div>
-          {/* Summary row */}
-          <div className="grid grid-cols-4 gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-            {([
+          {/* Summary row — 24H + period totals */}
+          {(() => {
+            const last = dailyVolume[dailyVolume.length - 1];
+            const chains = [
               { key: "tnk" as const, label: "TNK", color: "#F97316" },
               { key: "btc" as const, label: "BTC", color: "#F7931A" },
               { key: "eth" as const, label: "ETH", color: "#627EEA" },
               { key: "sol" as const, label: "SOL", color: "#9945FF" },
-            ]).map(({ key, label, color }) => {
-              const total = dailyVolume.reduce((s, d) => s + d[key], 0);
-              return (
-                <div key={key} className="text-center">
-                  <p className="text-[9px] font-bold" style={{ color }}>{label}</p>
-                  <p className="text-[10px] font-mono text-foreground">${total >= 1000 ? `${(total / 1000).toFixed(1)}k` : total.toFixed(0)}</p>
-                  <p className="text-[8px] text-muted-foreground">{days}D total</p>
+            ];
+            const fmt = (v: number) => v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(2)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toFixed(0)}`;
+            return (
+              <div className="mt-3 pt-3 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
+                {/* 24H row */}
+                <div className="grid grid-cols-4 gap-2">
+                  {chains.map(({ key, label, color }) => (
+                    <div key={key} className="text-center rounded-lg py-1.5 px-1" style={{ background: "var(--muted)" }}>
+                      <p className="text-[8px] font-bold mb-0.5" style={{ color }}>{label}</p>
+                      <p className="text-[11px] font-mono font-semibold text-foreground">{fmt(last?.[key] ?? 0)}</p>
+                      <p className="text-[8px] text-muted-foreground">24H vol</p>
+                    </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+                {/* Period total row */}
+                <div className="grid grid-cols-4 gap-2">
+                  {chains.map(({ key, label, color }) => {
+                    const total = dailyVolume.reduce((s, d) => s + d[key], 0);
+                    return (
+                      <div key={key} className="text-center">
+                        <p className="text-[9px] font-bold" style={{ color }}>{label}</p>
+                        <p className="text-[10px] font-mono text-foreground">{fmt(total)}</p>
+                        <p className="text-[8px] text-muted-foreground">{days}D total</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -791,86 +818,28 @@ interface NodeStatus {
 }
 
 function NodeHealthTab() {
-  const [nodes, setNodes] = useState<NodeStatus[]>([]);
-  const [loading, setLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
-  const checkHealth = useCallback(async () => {
-    setLoading(true);
-    const results: NodeStatus[] = [];
-
-    // 1. Oracle VM health endpoint
-    try {
-      const t0 = Date.now();
-      const resp = await fetch("http://141.253.123.101:4000/health", { signal: AbortSignal.timeout(5000) });
-      const latency = `${Date.now() - t0}ms`;
-      if (resp.ok) {
-        const data = await resp.json() as {
-          status?: string;
-          rpc?: { eth?: { ok: boolean }; sol?: { ok: boolean }; btc?: { ok: boolean } };
-        };
-        results.push({
-          name: "Oracle VM",
-          status: "live",
-          detail: `HTTP 200 · ${data.status ?? "ok"}`,
-          latency,
-        });
-        // Derive RPC statuses from Oracle VM health
-        if (data.rpc) {
-          results.push({
-            name: "Ethereum RPC",
-            status: data.rpc.eth?.ok ? "live" : "degraded",
-            detail: data.rpc.eth?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.eth?.ok ? latency : undefined,
-          });
-          results.push({
-            name: "Solana RPC",
-            status: data.rpc.sol?.ok ? "live" : "degraded",
-            detail: data.rpc.sol?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.sol?.ok ? latency : undefined,
-          });
-          results.push({
-            name: "Bitcoin RPC",
-            status: data.rpc.btc?.ok ? "live" : "degraded",
-            detail: data.rpc.btc?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.btc?.ok ? latency : undefined,
-          });
-        }
-      } else {
-        results.push({ name: "Oracle VM", status: "degraded", detail: `HTTP ${resp.status}`, latency });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Timeout";
-      results.push({ name: "Oracle VM", status: "offline", detail: "Unreachable", error: msg });
-      results.push({ name: "Ethereum RPC", status: "offline", detail: "Oracle VM offline" });
-      results.push({ name: "Solana RPC", status: "offline", detail: "Oracle VM offline" });
-      results.push({ name: "Bitcoin RPC", status: "offline", detail: "Oracle VM offline" });
+  // Health checks are now performed server-side to avoid CORS/firewall blocks
+  // on direct browser requests to internal IPs (e.g., Oracle VM at 141.253.123.101:4000)
+  const { data: nodes = [], isFetching, refetch } = trpc.nodeHealth.check.useQuery(
+    undefined,
+    {
+      staleTime: 55_000,
+      refetchInterval: 60_000,
+      retry: false,
     }
+  );
 
-    // 2. IntercomSwap signaling server (HTTPS ping)
-    try {
-      const t0 = Date.now();
-      const resp = await fetch("https://intercomswap.io", { method: "HEAD", signal: AbortSignal.timeout(5000) });
-      results.push({
-        name: "AFOS Signaling",
-        status: resp.ok || resp.status < 500 ? "live" : "degraded",
-        detail: `HTTP ${resp.status}`,
-        latency: `${Date.now() - t0}ms`,
-      });
-    } catch {
-      results.push({ name: "AFOS Signaling", status: "offline", detail: "Unreachable" });
-    }
-
-    setNodes(results);
-    setLastChecked(new Date());
-    setLoading(false);
-  }, []);
-
+  // Update lastChecked timestamp whenever fresh data arrives
   useEffect(() => {
-    checkHealth();
-    const t = setInterval(checkHealth, 60_000);
-    return () => clearInterval(t);
-  }, [checkHealth]);
+    if (!isFetching && nodes.length > 0) {
+      setLastChecked(new Date());
+    }
+  }, [isFetching, nodes.length]);
+
+  const loading = isFetching && nodes.length === 0;
+  const checkHealth = useCallback(() => { void refetch(); }, [refetch]);
 
   const statusColor = (s: NodeStatus["status"]) =>
     s === "live" ? "#10b981" : s === "degraded" ? "#f59e0b" : "#ef4444";
@@ -1503,7 +1472,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 };
 
 function HtlcHistorySection() {
-  const [chainFilter, setChainFilter] = useState<"all" | "bitcoin" | "ethereum" | "solana" | "trac_network">("all");
+  const [chainFilter, setChainFilter] = useState<"all" | SupportedChain>("all");
 
   const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcHistory.useQuery(
     { chain: chainFilter, limit: 20 },
@@ -1512,7 +1481,7 @@ function HtlcHistorySection() {
 
   const rows = data?.rows ?? [];
 
-  const chainTabs: { key: "all" | "bitcoin" | "ethereum" | "solana" | "trac_network"; label: string; color: string }[] = [
+  const chainTabs: { key: "all" | SupportedChain; label: string; color: string }[] = [
     { key: "all",      label: "All",      color: "#888" },
     { key: "bitcoin",      label: "BTC", color: CHAIN_COLORS.bitcoin },
     { key: "ethereum",     label: "ETH", color: CHAIN_COLORS.ethereum },
@@ -1964,11 +1933,27 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const [qrModal, setQrModal] = useState<{ address: string; label: string; chainColor: string } | null>(null);
 
+  // Server-side TNK live check (bypasses browser CORS on tracapi.trac.network)
+  const { data: tnkLiveData } = trpc.htlcWallet.checkTnkLive.useQuery(undefined, {
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  // Use a ref so fetchNodeWallet always sees the latest tnkLiveData value
+  const tnkLiveRef = React.useRef(tnkLiveData);
+  React.useEffect(() => { tnkLiveRef.current = tnkLiveData; }, [tnkLiveData]);
+
   const fetchNodeWallet = async () => {
     setNodeWalletLoading(true);
     try {
       const data = await getWallet();
-      setNodeWalletData(mergeWithAllAssets(data.wallets));
+      const merged = mergeWithAllAssets(data.wallets);
+      // Patch TNK live status — Oracle VM doesn't return TNK, so mergeWithAllAssets defaults
+      // to live=false. Use server-side checkTnkLive result (avoids browser CORS block).
+      const tnkIdx = merged.findIndex(w => w.chain === 'trac_network' && w.asset === 'TNK');
+      if (tnkIdx !== -1 && tnkLiveRef.current?.live) {
+        merged[tnkIdx] = { ...merged[tnkIdx], live: true };
+      }
+      setNodeWalletData(merged);
       setNodeKey(data.nodeKey);
     } catch { /* keep empty */ }
     try {
@@ -1987,16 +1972,56 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     return () => clearInterval(t);
   }, []);
 
-  const TABS: { id: AdminTab; label: string; icon: React.ElementType }[] = [
-    { id: "revenue", label: "Revenue", icon: BarChart3 },
-    { id: "fees", label: "Fee Config", icon: Settings },
-    { id: "treasury", label: "Treasury", icon: Wallet },
-    { id: "nodes", label: "Node Health", icon: Server },
-    { id: "users", label: "Users", icon: Users },
-    { id: "agent_wallet", label: "Agent Wallet", icon: Cpu },
-    { id: "operator_config", label: "Operator Config", icon: Settings },
-    { id: "reports",     label: "Peer Reports",  icon: AlertTriangle },
-    { id: "audit_log",  label: "Audit Log",     icon: ClipboardList },
+  // Reactively patch TNK live status when tnkLiveData arrives (handles initial load timing)
+  useEffect(() => {
+    if (!tnkLiveData) return;
+    setNodeWalletData(prev => {
+      const idx = prev.findIndex(w => w.chain === 'trac_network' && w.asset === 'TNK');
+      if (idx === -1) return prev;
+      if (prev[idx].live === tnkLiveData.live) return prev; // no change
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], live: tnkLiveData.live };
+      return updated;
+    });
+  }, [tnkLiveData]);
+
+  const TABS: { id: AdminTab; label: string; icon: React.ElementType; tooltip: string }[] = [
+    {
+      id: "revenue", label: "Revenue", icon: BarChart3,
+      tooltip: "Fee revenue analytics dashboard. Tracks total platform income from P2P swaps (0.15% fee) and DEX swaps (0.20% fee). Shows KPI cards for total revenue, P2P vs DEX split, volume by chain (BTC/ETH/SOL/TNK), and daily trend sparklines. Configurable alert threshold triggers an owner notification when daily revenue exceeds a set USD amount.",
+    },
+    {
+      id: "fees", label: "Fee Config", icon: Settings,
+      tooltip: "Platform fee configuration. Set the global swap fee percentage and per-chain overrides for P2P and DEX routes. Changes are saved to the database and applied immediately to all new swaps. Use Reset to restore defaults. Fee changes do not affect in-flight swaps.",
+    },
+    {
+      id: "treasury", label: "Treasury", icon: Wallet,
+      tooltip: "Treasury wallet management. Manage the multi-chain wallet addresses that receive platform fee income. Add or remove wallets per chain (BTC, ETH, SOL, TNK), set revenue split percentages, and view QR codes for each address. The treasury is separate from the HTLC escrow wallets used for atomic swaps.",
+    },
+    {
+      id: "nodes", label: "Node Health", icon: Server,
+      tooltip: "Live infrastructure health monitor. Checks connectivity and block heights for all critical nodes: Oracle VM (AFOS backend), Ethereum RPC, Solana RPC, Bitcoin RPC, Trac Network RPC, and the AFOS WebSocket signaling server. All checks run server-side to bypass CORS/firewall restrictions. Auto-refreshes every 60 seconds. Also shows the Oracle VM sync job status and allows enabling/disabling it.",
+    },
+    {
+      id: "users", label: "Users", icon: Users,
+      tooltip: "Registered user management. View all users who have authenticated via Manus OAuth, including their wallet addresses, login history, and account roles. Admins can promote users to admin role or revoke admin access. User data is read-only except for role management.",
+    },
+    {
+      id: "agent_wallet", label: "Agent Wallet", icon: Cpu,
+      tooltip: "AFOS Oracle VM hot wallet monitor. Displays real-time balances for the agent fee-collection wallets across all chains (SOL_AGENT_KEY, ETH_AGENT_KEY, BTC_AGENT_WIF). These wallets receive the 0.15% P2P and 0.20% DEX platform fees. Separate from the HTLC escrow wallets. Also shows the HTLC escrow wallet addresses used for atomic swap locking.",
+    },
+    {
+      id: "operator_config", label: "Operator Config", icon: Settings,
+      tooltip: "System-wide operator settings. Configure the Oracle VM URL, swap parameters (min/max amounts, timeouts), LP pool settings, and system feature toggles. Changes are persisted to the database and take effect on the next swap request. Use with caution — incorrect settings can break swap functionality.",
+    },
+    {
+      id: "reports", label: "Peer Reports", icon: AlertTriangle,
+      tooltip: "P2P peer abuse and dispute management. View reports submitted by users against counterparties in P2P swaps, including failed trades, unresponsive peers, and suspected fraud. Admins can review evidence, flag peers, and issue bans. All actions are logged to the Audit Log.",
+    },
+    {
+      id: "audit_log", label: "Audit Log", icon: ClipboardList,
+      tooltip: "Immutable admin action log. Records every action taken by admin users in this panel, including fee changes, user role updates, config modifications, and peer bans. Each entry includes the actor's identity, timestamp, action type, and before/after values. Cannot be edited or deleted.",
+    },
   ];
 
   return (
@@ -2023,19 +2048,34 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
       {/* Tab bar */}
       <div className="flex gap-1 px-4 py-3 overflow-x-auto" style={{ borderBottom: "1px solid var(--border)" }}>
-        {TABS.map(tab => (
-          <button key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0"
-            style={{
-              background: activeTab === tab.id ? "rgba(59,130,246,0.15)" : "transparent",
-              border: `1px solid ${activeTab === tab.id ? "rgba(59,130,246,0.3)" : "transparent"}`,
-              color: activeTab === tab.id ? "#60a5fa" : "var(--muted-foreground)",
-            }}>
-            <tab.icon className="w-3.5 h-3.5" />
-            {tab.label}
-          </button>
-        ))}
+        <TooltipProvider delayDuration={300}>
+          {TABS.map(tab => (
+            <Tooltip key={tab.id}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setActiveTab(tab.id)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0"
+                  style={{
+                    background: activeTab === tab.id ? "rgba(59,130,246,0.15)" : "transparent",
+                    border: `1px solid ${activeTab === tab.id ? "rgba(59,130,246,0.3)" : "transparent"}`,
+                    color: activeTab === tab.id ? "#60a5fa" : "var(--muted-foreground)",
+                  }}>
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                  <Info className="w-3 h-3 opacity-40" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                align="start"
+                className="max-w-xs text-[11px] leading-relaxed"
+                style={{ zIndex: 9999 }}>
+                <p className="font-semibold mb-1" style={{ color: "#60a5fa" }}>{tab.label}</p>
+                <p>{tab.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          ))}
+        </TooltipProvider>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-safe">

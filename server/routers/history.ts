@@ -15,6 +15,7 @@ import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
 import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ export const historyRouter = router({
       }
       if (input.chain !== "all") {
         conditions.push(
-          eq(swapAnalytics.fromChain, input.chain as "bitcoin" | "ethereum" | "solana" | "trac_network")
+          eq(swapAnalytics.fromChain, input.chain as SupportedChain)
         );
       }
       if (isWalletScoped) {

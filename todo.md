@@ -2057,3 +2057,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix Swaps.tsx tvSymbol from MEXC:TNKUSDT to GATEIO:TNKUSDT (token definition)
 - [x] Fix Swaps.tsx chart tab label from MEXC:TNKUSDT to GATEIO:TNKUSDT
 - [x] Fix Swaps.tsx chart symbol resolver from MEXC:TNKUSDT to GATEIO:TNKUSDT
+
+## Merge fd6f1421 → 568fac0e (Round 20)
+
+- [x] Restored server/routers/nodeHealth.ts (deleted in diverged branch)
+- [x] Restored server/tnkSecrets.test.ts (deleted in diverged branch)
+- [x] Restored Gate.io TNK price feed in server/routers.ts
+- [x] Restored full AdminPanel.tsx with 24H + period totals summary row and server-side NodeHealth check
+- [x] Restored full server/routers/chat.ts, server/routers/htlcWallet.ts, server/agentSwapBtc.ts, server/agentSwapEth.ts
+- [x] Restored full server/htlcMonitor.ts, server/jobs/oracleVmSync.ts, server/routers/adminConfig.ts
+- [x] Restored full client/src/lib/afosApi.ts, client/src/pages/ChatPage.tsx, client/src/pages/SwapHistory.tsx
+- [x] Preserved Tap Wallet dual-provider (tapprotocol + tracnetwork) from 568fac0e
+- [x] Preserved GATEIO:TNKUSDT chart symbols from 568fac0e
+- [x] Preserved tracNetwork state in context and ConnectWalletModal from 568fac0e
+- [x] Preserved Chains Supported = 4 on landing page from 568fac0e
+- [x] TypeScript: 0 errors (fresh tsc --noEmit --incremental false)

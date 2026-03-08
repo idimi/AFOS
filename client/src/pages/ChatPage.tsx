@@ -615,7 +615,7 @@ export default function ChatPage() {
   const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
 
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin" | "trac_network">("solana");
+  const [walletModalChain, setWalletModalChain] = useState<SupportedChain>("solana");
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
@@ -882,8 +882,8 @@ export default function ChatPage() {
           fromAddress: ethAddress,
           fromToken:   quoteData.fromToken,
           toToken:     quoteData.toToken,
-          fromChain:   (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "ethereum",
-          toChain:     (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "ethereum",
+          fromChain:   (quoteData.fromChain as SupportedChain) ?? "ethereum",
+          toChain:     (quoteData.toChain   as SupportedChain) ?? "ethereum",
           amount:      quoteData.fromAmount,
           slippage:    1,
           openId,
@@ -963,14 +963,62 @@ export default function ChatPage() {
         return;
       }
 
+      // ── Trac Network (TNK) swaps: AFOS P2P HTLC via executeAgentSwap ──────
+      if (quoteData.fromChain === "trac_network" || quoteData.toChain === "trac_network") {
+        const btcAddress = bitcoin?.address ?? "";
+        if (!btcAddress) {
+          toast.error("Trac Network wallet not connected", {
+            description: "Please connect your Tap Wallet (BTC+TNK) to execute TNK swaps.",
+          });
+          setExecutingId(null);
+          return;
+        }
+
+        toast.loading("Routing TNK swap via AFOS P2P HTLC…", { id: "tnk-swap" });
+        const tnkResult = await executeAgentSwap.mutateAsync({
+          fromToken:  quoteData.fromToken,
+          toToken:    quoteData.toToken,
+          amount:     quoteData.fromAmount,
+          fromChain:  "trac_network",
+          toChain:    (quoteData.toChain as SupportedChain) ?? "bitcoin",
+        });
+        toast.dismiss("tnk-swap");
+
+        if (tnkResult.success) {
+          const isDemoStr = tnkResult.demo ? " [DEMO]" : "";
+          toast.success(`TNK swap initiated${isDemoStr}`, {
+            description: tnkResult.txHash ? `Tx: ${tnkResult.txHash.slice(0, 14)}…` : "Awaiting counterparty",
+          });
+          setMessages(prev => prev.map(m =>
+            m.id === msgId
+              ? { ...m, type: "tx_success" as const, txHash: tnkResult.txHash ?? "pending" }
+              : m
+          ));
+          addMessage({
+            role: "assistant",
+            content: tnkResult.message ?? `TNK swap submitted${isDemoStr}. ${tnkResult.nextStep ?? "Waiting for HTLC settlement."}`,
+            type: "text",
+          });
+        } else {
+          addMessage({
+            role: "assistant",
+            content: tnkResult.message ?? "TNK swap could not be completed. Please try again.",
+            type: "error",
+          });
+        }
+
+        setExecutingId(null);
+        return;
+      }
+
       // ── Solana swaps: AFOS P2P primary + Jupiter fallback ──────────────
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: effectivePublicKey!.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
-        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
-        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
+        fromChain:     (quoteData.fromChain as SupportedChain) ?? "solana",
+        toChain:       (quoteData.toChain   as SupportedChain) ?? "solana",
         amount:        quoteData.fromAmount,
         openId,
       });
