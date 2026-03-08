@@ -185,6 +185,39 @@ const sseHandlers = new Map<SSEEventType, Set<SSEHandler>>();
 let sseConnected = false;
 let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
+// ─── TNK price cache (CoinGecko, refreshed every 60s) ────────────────────────
+// The Oracle VM SSE stream does not include TNK. We poll CoinGecko independently
+// and inject the result into every `prices` SSE event so SwapPage always has a
+// live TNK rate without any server-side changes.
+let tnkPriceCache: TokenPrice = { usd: 0, change24h: 0, volume24h: 0 };
+let tnkPriceFetchTimer: ReturnType<typeof setInterval> | null = null;
+
+async function refreshTnkPrice(): Promise<void> {
+  try {
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/simple/price?ids=trac-network&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true",
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!res.ok) return;
+    const data = await res.json() as { "trac-network"?: { usd: number; usd_24h_change?: number; usd_24h_vol?: number } };
+    const tnk = data["trac-network"];
+    if (tnk?.usd) {
+      tnkPriceCache = {
+        usd: tnk.usd,
+        change24h: tnk.usd_24h_change ?? 0,
+        volume24h: tnk.usd_24h_vol ?? 0,
+      };
+    }
+  } catch { /* non-fatal */ }
+}
+
+function startTnkPricePoll(): void {
+  if (tnkPriceFetchTimer) return;
+  // Fetch immediately, then every 60 s
+  void refreshTnkPrice();
+  tnkPriceFetchTimer = setInterval(() => void refreshTnkPrice(), 60_000);
+}
+
 function connectSSE() {
   if (sseSource) {
     sseSource.close();
@@ -234,13 +267,19 @@ function connectSSE() {
   }
 }
 
-/** Ensure USDC and USDT are always present in prices SSE events */
+/**
+ * Normalise a raw `prices` SSE event:
+ *  - Always inject USDC and USDT at $1.00 (Oracle VM may omit them)
+ *  - Always inject TNK from the background CoinGecko cache
+ */
 function normalisePricesEvent(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw;
   const event = raw as Record<string, unknown>;
   const prices = (event.prices ?? {}) as Record<string, unknown>;
   if (!prices.USDC) prices.USDC = { usd: 1, change24h: 0, volume24h: 0 };
   if (!prices.USDT) prices.USDT = { usd: 1, change24h: 0, volume24h: 0 };
+  // Inject TNK — always present so SwapPage can show a live rate
+  prices.TNK = tnkPriceCache;
   return { ...event, prices };
 }
 
@@ -248,8 +287,9 @@ export function onSSEEvent(event: SSEEventType, handler: SSEHandler): () => void
   if (!sseHandlers.has(event)) sseHandlers.set(event, new Set());
   sseHandlers.get(event)!.add(handler);
 
-  // Start SSE connection if not already started
+  // Start SSE connection and TNK price poll if not already started
   if (!sseSource) connectSSE();
+  startTnkPricePoll();
 
   // Return unsubscribe function
   return () => {

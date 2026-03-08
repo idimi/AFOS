@@ -2031,3 +2031,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Gap 2: Set TNK_HTLC_WIF secret for live TNK HTLC signing
 - [x] Gap 3: Set TNK_AGENT_KEY secret for live TNK refund monitor
 - [x] Gap 4: Add TNK to SwapPage.tsx TOKENS array
+
+## TNK Live Data (2026-03-08)
+
+- [x] HtlcWallets panel: live TNK escrow balance fetch from Oracle VM
+- [x] SwapPage: add TNK to SSE price feed so live rate updates in real time

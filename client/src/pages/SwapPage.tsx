@@ -833,6 +833,53 @@ export default function SwapPage() {
             )}
           </div>
 
+          {/* Market prices bar — BTC / ETH / SOL / TNK */}
+          {!pricesLoading && Object.keys(prices).length > 0 && (
+            <div
+              className="rounded-2xl px-4 py-3"
+              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Live Prices</p>
+                <div className="flex items-center gap-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${sseOk ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+                  <span className="text-[9px] text-muted-foreground">{sseOk ? "Live" : "Polling"}</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2">
+                {([
+                  { symbol: "BTC", icon: "₿",  color: "#F7931A" },
+                  { symbol: "ETH", icon: "Ξ",  color: "#627EEA" },
+                  { symbol: "SOL", icon: "◎",  color: "#9945FF" },
+                  { symbol: "TNK", icon: "🔶", color: "#F97316" },
+                ] as { symbol: string; icon: string; color: string }[]).map(({ symbol, icon, color }) => {
+                  const p = prices[symbol];
+                  const usd = p?.usd ?? 0;
+                  const change = p?.change24h ?? 0;
+                  const isUp = change >= 0;
+                  return (
+                    <div key={symbol} className="flex flex-col items-center gap-0.5 py-1">
+                      <span className="text-sm" aria-hidden>{icon}</span>
+                      <p className="text-[10px] font-bold font-mono text-foreground">
+                        {usd >= 1000
+                          ? `$${(usd / 1000).toFixed(1)}k`
+                          : usd >= 1
+                            ? `$${usd.toFixed(2)}`
+                            : `$${usd.toFixed(4)}`}
+                      </p>
+                      <p
+                        className="text-[9px] font-mono"
+                        style={{ color: isUp ? "#10b981" : "#ef4444" }}
+                      >
+                        {isUp ? "+" : ""}{change.toFixed(2)}%
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Recent swaps — live from Oracle VM */}
           <AnimatePresence>
             {isConnected && (

@@ -334,12 +334,33 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
 const TRAC_EXPLORER_API = "https://explorer.trac.network/api";
 
 /**
- * Fetch the TNK escrow wallet balance from the Trac Network explorer API.
- * The TNK escrow address is a shared agent-escrow address (no private key stored here).
- * Balance is fetched from the public explorer API.
+ * Fetch the TNK HTLC wallet balance.
+ * Priority order for address resolution:
+ *   1. TNK_HTLC_WIF  — derive P2WPKH address from the HTLC signing key (live signing wallet)
+ *   2. TNK_ESCROW_ADDRESS — shared agent-escrow address (read-only fallback)
+ * Balance is fetched from the public Trac Network explorer API.
  */
 async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
-  const address = process.env.TNK_ESCROW_ADDRESS ?? "";
+  // Prefer the HTLC signing key address when available
+  let address = process.env.TNK_ESCROW_ADDRESS ?? "";
+  let addressSource: "htlc_wif" | "escrow_address" | "none" = address ? "escrow_address" : "none";
+
+  const tnkHtlcWif = process.env.TNK_HTLC_WIF;
+  if (tnkHtlcWif) {
+    try {
+      // TNK uses Bitcoin-compatible P2WPKH addressing (Trac Network is a Bitcoin meta-protocol)
+      const keyPair = ECPair.fromWIF(tnkHtlcWif);
+      const { address: derived } = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(keyPair.publicKey) });
+      if (derived) {
+        address = derived;
+        addressSource = "htlc_wif";
+      }
+    } catch {
+      // WIF may not be a standard Bitcoin WIF (e.g. raw hex key) — fall back to escrow address
+    }
+  }
+
+  const configured = !!tnkHtlcWif || !!process.env.TNK_ESCROW_ADDRESS;
   if (!address || address.includes("placeholder")) {
     return {
       chain: "trac_network",
@@ -348,8 +369,8 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: "0.00",
       usd: "$0",
       live: false,
-      configured: !!address && !address.includes("placeholder"),
-      error: address ? undefined : "TNK_ESCROW_ADDRESS not set",
+      configured,
+      error: configured ? "Address derivation failed — check TNK_HTLC_WIF format" : "TNK_HTLC_WIF and TNK_ESCROW_ADDRESS not set",
     };
   }
 
@@ -420,7 +441,9 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: balanceTnk.toFixed(2),
       usd: usdValue > 0 ? `$${usdValue.toFixed(2)}` : "$0",
       live,
-      configured: true,
+      configured,
+      // Surface which key is being used so operators can verify in the UI
+      error: addressSource === "htlc_wif" ? undefined : "Using TNK_ESCROW_ADDRESS (set TNK_HTLC_WIF for HTLC signing wallet)",
     };
   } catch (err: unknown) {
     return {
@@ -430,7 +453,7 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
       balance: "0.00",
       usd: "$0",
       live: false,
-      configured: true,
+      configured,
       error: err instanceof Error ? err.message : String(err),
     };
   }
