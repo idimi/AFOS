@@ -178,7 +178,7 @@ function StepCard({ step, title, description, color }: {
 
 // ─── Comparison table ─────────────────────────────────────────────────────────
 const COMPARISON = [
-  { feature: "Cross-chain (BTC ↔ ETH ↔ SOL)", afos: true, uni: false, jup: false, inch: false },
+  { feature: "Cross-chain (BTC ↔ ETH ↔ SOL ↔ TNK)", afos: true, uni: false, jup: false, inch: false },
   { feature: "No bridge or wrapped assets", afos: true, uni: false, jup: false, inch: false },
   { feature: "No AMM / no liquidity pools", afos: true, uni: false, jup: false, inch: false },
   { feature: "Zero slippage (exact P2P fill)", afos: true, uni: false, jup: false, inch: false },
@@ -533,7 +533,7 @@ export default function LandingPage() {
       >
         <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {[
-            { label: "Chains Supported", value: 3, suffix: "", prefix: "" },
+            { label: "Chains Supported", value: 4, suffix: "", prefix: "" },
             { label: "Slippage", value: 0, suffix: "%", prefix: "" },
             { label: "Bridges Required", value: 0, suffix: "", prefix: "" },
             { label: "Custodians", value: 0, suffix: "", prefix: "" },
@@ -573,13 +573,13 @@ export default function LandingPage() {
               <StepCard
                 step={1}
                 title="Connect your wallet"
-                description="Link Phantom (Solana), MetaMask (Ethereum), or use AFOS's built-in Bitcoin wallet. No account, no KYC, no email."
+                description="Link Phantom (Solana), MetaMask (Ethereum), AFOS's built-in Bitcoin wallet, or Tap Wallet (Trac Network). No account, no KYC, no email."
                 color="oklch(0.72 0.18 195)"
               />
               <StepCard
                 step={2}
                 title="Tell the AI agent what you want"
-                description="Type naturally — 'swap 0.1 BTC for SOL' or 'get me the best rate for 1 ETH to USDT'. The agent finds a peer or routes through Jupiter DEX automatically."
+                description="Type naturally — 'swap 0.1 BTC for SOL', 'get me the best rate for 1 ETH to USDT', or 'swap 1000 TNK for BTC'. The agent finds a peer or routes through the best DEX automatically."
                 color="#9945FF"
               />
               <StepCard
@@ -657,7 +657,7 @@ export default function LandingPage() {
             <FeatureCard
               icon={Globe}
               title="True cross-chain"
-              description="BTC ↔ ETH ↔ SOL without wrapped tokens or bridges. Native assets settle on their native chains."
+              description="BTC ↔ ETH ↔ SOL ↔ TNK without wrapped tokens or bridges. Native assets settle on their native chains."
               color="oklch(0.72 0.18 195)"
               delay={0}
             />
