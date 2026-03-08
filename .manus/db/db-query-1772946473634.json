@@ -1,0 +1,16 @@
+{
+  "query": "-- Enable Oracle VM sync on the existing row (id=1), or insert a new row with it enabled\nINSERT INTO admin_config (id, oracleSyncEnabled) VALUES (1, 1)\nON DUPLICATE KEY UPDATE oracleSyncEnabled = 1;\n\n-- Verify\nSELECT id, oracleSyncEnabled, lastOracleSyncAt, lastSyncInserted FROM admin_config LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute -- Enable Oracle VM sync on the existing row (id=1), or insert a new row with it enabled\nINSERT INTO admin_config (id, oracleSyncEnabled) VALUES (1, 1)\nON DUPLICATE KEY UPDATE oracleSyncEnabled = 1;\n\n-- Verify\nSELECT id, oracleSyncEnabled, lastOracleSyncAt, lastSyncInserted FROM admin_config LIMIT 1;",
+  "rows": [
+    {
+      "id": "1",
+      "oracleSyncEnabled": "1",
+      "lastOracleSyncAt": "NULL",
+      "lastSyncInserted": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\toracleSyncEnabled\tlastOracleSyncAt\tlastSyncInserted\n1\t1\tNULL\t0\n",
+  "stderr": "",
+  "execution_time_ms": 130
+}

@@ -811,86 +811,28 @@ interface NodeStatus {
 }
 
 function NodeHealthTab() {
-  const [nodes, setNodes] = useState<NodeStatus[]>([]);
-  const [loading, setLoading] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
-  const checkHealth = useCallback(async () => {
-    setLoading(true);
-    const results: NodeStatus[] = [];
-
-    // 1. Oracle VM health endpoint
-    try {
-      const t0 = Date.now();
-      const resp = await fetch("http://141.253.123.101:4000/health", { signal: AbortSignal.timeout(5000) });
-      const latency = `${Date.now() - t0}ms`;
-      if (resp.ok) {
-        const data = await resp.json() as {
-          status?: string;
-          rpc?: { eth?: { ok: boolean }; sol?: { ok: boolean }; btc?: { ok: boolean } };
-        };
-        results.push({
-          name: "Oracle VM",
-          status: "live",
-          detail: `HTTP 200 · ${data.status ?? "ok"}`,
-          latency,
-        });
-        // Derive RPC statuses from Oracle VM health
-        if (data.rpc) {
-          results.push({
-            name: "Ethereum RPC",
-            status: data.rpc.eth?.ok ? "live" : "degraded",
-            detail: data.rpc.eth?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.eth?.ok ? latency : undefined,
-          });
-          results.push({
-            name: "Solana RPC",
-            status: data.rpc.sol?.ok ? "live" : "degraded",
-            detail: data.rpc.sol?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.sol?.ok ? latency : undefined,
-          });
-          results.push({
-            name: "Bitcoin RPC",
-            status: data.rpc.btc?.ok ? "live" : "degraded",
-            detail: data.rpc.btc?.ok ? "Connected via Oracle VM" : "RPC unreachable",
-            latency: data.rpc.btc?.ok ? latency : undefined,
-          });
-        }
-      } else {
-        results.push({ name: "Oracle VM", status: "degraded", detail: `HTTP ${resp.status}`, latency });
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Timeout";
-      results.push({ name: "Oracle VM", status: "offline", detail: "Unreachable", error: msg });
-      results.push({ name: "Ethereum RPC", status: "offline", detail: "Oracle VM offline" });
-      results.push({ name: "Solana RPC", status: "offline", detail: "Oracle VM offline" });
-      results.push({ name: "Bitcoin RPC", status: "offline", detail: "Oracle VM offline" });
+  // Health checks are now performed server-side to avoid CORS/firewall blocks
+  // on direct browser requests to internal IPs (e.g., Oracle VM at 141.253.123.101:4000)
+  const { data: nodes = [], isFetching, refetch } = trpc.nodeHealth.check.useQuery(
+    undefined,
+    {
+      staleTime: 55_000,
+      refetchInterval: 60_000,
+      retry: false,
     }
+  );
 
-    // 2. IntercomSwap signaling server (HTTPS ping)
-    try {
-      const t0 = Date.now();
-      const resp = await fetch("https://intercomswap.io", { method: "HEAD", signal: AbortSignal.timeout(5000) });
-      results.push({
-        name: "AFOS Signaling",
-        status: resp.ok || resp.status < 500 ? "live" : "degraded",
-        detail: `HTTP ${resp.status}`,
-        latency: `${Date.now() - t0}ms`,
-      });
-    } catch {
-      results.push({ name: "AFOS Signaling", status: "offline", detail: "Unreachable" });
-    }
-
-    setNodes(results);
-    setLastChecked(new Date());
-    setLoading(false);
-  }, []);
-
+  // Update lastChecked timestamp whenever fresh data arrives
   useEffect(() => {
-    checkHealth();
-    const t = setInterval(checkHealth, 60_000);
-    return () => clearInterval(t);
-  }, [checkHealth]);
+    if (!isFetching && nodes.length > 0) {
+      setLastChecked(new Date());
+    }
+  }, [isFetching, nodes.length]);
+
+  const loading = isFetching && nodes.length === 0;
+  const checkHealth = useCallback(() => { void refetch(); }, [refetch]);
 
   const statusColor = (s: NodeStatus["status"]) =>
     s === "live" ? "#10b981" : s === "degraded" ? "#f59e0b" : "#ef4444";

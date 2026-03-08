@@ -2044,3 +2044,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Swaps.tsx: add TNK to TOKENS list and wire handleSwap to executeAgentSwap
 - [x] NetworkPage: show TNK escrow address alongside BTC/ETH/SOL
 - [x] SwapHistory.tsx: add Trac Network explorer URL for TNK tx hash links
+
+## OracleVmSync Enable (2026-03-08)
+
+- [ ] Enable OracleVmSync by default (read-only data import only, no trade execution)
+
+## Node Health CORS Fix (2026-03-08)
+
+- [x] Route Node Health checks through server-side tRPC to fix CORS/firewall blocking
+- [x] Add nodeHealth.check tRPC procedure that proxies Oracle VM, RPC, AFOS Signaling, and Trac Network health checks
+- [x] Remove direct browser fetch from NodeHealthTab — now uses trpc.nodeHealth.check.useQuery with 60s auto-refresh
+- [x] Added Trac Network explorer health check as 5th node in the panel

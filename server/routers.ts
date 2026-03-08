@@ -16,6 +16,7 @@ import { settingsRouter } from "./routers/settings";
 import { adminConfigRouter } from "./routers/adminConfig";
 import { operatorConfigRouter } from "./routers/operatorConfig";
 import { historyRouter } from "./routers/history";
+import { nodeHealthRouter } from "./routers/nodeHealth";
 
 // ─── Simple in-memory price cache for the landing page swap card ──────────────
 let _priceCache: { btc: number; sol: number; eth: number; fetchedAt: number } | null = null;
@@ -64,6 +65,7 @@ export const appRouter = router({
   adminConfig: adminConfigRouter,
   operatorConfig: operatorConfigRouter,
   history: historyRouter,
+  nodeHealth: nodeHealthRouter,
 
   // Public price feed — used by the landing page live swap card (no auth required)
   prices: router({
