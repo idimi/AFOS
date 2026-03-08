@@ -2038,3 +2038,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] SwapPage: add TNK to SSE price feed so live rate updates in real time
 - [x] SwapPage: show TNK balance from Tap Wallet in "You pay" max balance hint
 - [x] AdminPanel Analytics: add 24h volume figure below TNK sparkline card
+
+## TNK Parity Gaps (2026-03-08 batch 2)
+
+- [x] Swaps.tsx: add TNK to TOKENS list and wire handleSwap to executeAgentSwap
+- [x] NetworkPage: show TNK escrow address alongside BTC/ETH/SOL
+- [x] SwapHistory.tsx: add Trac Network explorer URL for TNK tx hash links
