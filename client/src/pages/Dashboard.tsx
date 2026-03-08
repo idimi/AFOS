@@ -1149,7 +1149,7 @@ function PortfolioCard() {
   // Solana balances (SOL + USDT/SOL + USDC/SOL)
   const { totalUsd: solanaTotalUsd, connected: solAdapterConnected } = useWallet();
   // Ethereum native + ERC-20 (USDT/ETH + USDC/ETH)
-  const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork, erc20Balances, phantomMultiChain } = useMultiChainWallet();
   const solanaConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
 
   // Compute live total across all chains
@@ -1164,14 +1164,17 @@ function PortfolioCard() {
     if (ethereum?.connected) total += erc20Balances.usdc + erc20Balances.usdt;
     // Bitcoin
     if (bitcoin?.connected) total += bitcoin.balanceUsd;
+    // Trac Network (TNK) — separate wallet state from Tap Wallet
+    if (tracNetwork?.connected) total += tracNetwork.balanceUsd;
     return total;
-  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, erc20Balances]);
+  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, tracNetwork, erc20Balances]);
 
   // Count how many chains have connected wallets
   const connectedChains = [
     solanaConnected ? "SOL" : null,
     ethereum?.connected ? "ETH" : null,
     bitcoin?.connected ? "BTC" : null,
+    tracNetwork?.connected ? "TNK" : null,
   ].filter(Boolean);
 
   const anyConnected = connectedChains.length > 0;
@@ -1411,7 +1414,7 @@ function WalletsCard() {
   const [modal, setModal] = useState<WalletModalState | null>(null);
   // Browser wallets
   const { connected: solConnected, shortAddress: solShortAddr, balances: solBalances } = useWallet();
-  const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork, erc20Balances, phantomMultiChain } = useMultiChainWallet();
   const { prices: rawPrices } = usePrices();
 
   // Solana browser address — prefer Phantom multi-chain, fall back to WalletContext
@@ -1430,12 +1433,11 @@ function WalletsCard() {
   const solAddr = solBrowserAddr ? `Solana · ${solBrowserAddr}` : "Solana";
   const ethAddr = ethereum?.shortAddress ? `Ethereum · ${ethereum.shortAddress}` : "Ethereum";
   const btcAddr = bitcoin?.shortAddress ? `Bitcoin · ${bitcoin.shortAddress}` : "Bitcoin";
-  const tapAddr = bitcoin?.shortAddress ? `Trac Network · ${bitcoin.shortAddress}` : "Trac Network";
+  const tapAddr = tracNetwork?.shortAddress ? `Trac Network · ${tracNetwork.shortAddress}` : "Trac Network";
   // Extract TNK balance from Tap Wallet (stored as "X BTC / Y TNK" or "Y TNK")
-  const tnkRaw = bitcoin?.walletName === "Tap Wallet" ? bitcoin.balance : null;
-  const tnkBalance = tnkRaw ? (tnkRaw.includes("TNK") ? (tnkRaw.split(" / ")[1]?.replace(" TNK", "") ?? tnkRaw.replace(" TNK", "")) : "0.0000") : "0.0000";
-  const tnkPriceUsd = rawPrices.TNK?.usd ?? 0;
-  const tnkUsd = parseFloat(tnkBalance) * tnkPriceUsd;
+  // TNK balance and USD value from tracNetwork state (populated by fetchTnkPriceUsd)
+  const tnkBalance = tracNetwork?.connected ? tracNetwork.balance.replace(" TNK", "") : "0.0000";
+  const tnkUsd = tracNetwork?.connected ? tracNetwork.balanceUsd : 0;
 
   const myWallets: WalletRowData[] = [
     // ── Solana ──
@@ -1493,9 +1495,9 @@ function WalletsCard() {
     // ── Trac Network (TNK) ──
     {
       asset: "TNK", chain: "Trac Network", networkLabel: tapAddr,
-      balance: bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? tnkBalance : "0.0000",
-      usd: bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && tnkUsd > 0 ? `$${tnkUsd.toFixed(2)}` : "$0",
-      connected: !!(bitcoin?.connected && bitcoin.walletName === "Tap Wallet"),
+      balance: tracNetwork?.connected ? tnkBalance : "0.0000",
+      usd: tracNetwork?.connected && tnkUsd > 0 ? `$${tnkUsd.toFixed(2)}` : "$0",
+      connected: !!(tracNetwork?.connected),
       ...WALLET_ASSET_STYLE["TNK"],
     },
   ];
@@ -2120,7 +2122,7 @@ function MobileHeroBanner({ onNavigateToTerminal, onNavigateToChat }: {
 // ── Mobile Portfolio Strip (compact total across all chains) ─────────────
 function MobilePortfolioStrip() {
   const { totalUsd: solanaTotalUsd, connected: solAdapterConnected } = useWallet();
-  const { ethereum, bitcoin, erc20Balances, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork, erc20Balances, phantomMultiChain } = useMultiChainWallet();
   const solanaConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
 
   const totalUsd = useMemo(() => {
@@ -2129,13 +2131,15 @@ function MobilePortfolioStrip() {
     else if (phantomMultiChain?.solanaTotalUsd) total += phantomMultiChain.solanaTotalUsd;
     if (ethereum?.connected) total += ethereum.balanceUsd + erc20Balances.usdc + erc20Balances.usdt;
     if (bitcoin?.connected) total += bitcoin.balanceUsd;
+    if (tracNetwork?.connected) total += tracNetwork.balanceUsd;
     return total;
-  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, erc20Balances]);
+  }, [solanaTotalUsd, solAdapterConnected, phantomMultiChain?.solanaTotalUsd, ethereum, bitcoin, tracNetwork, erc20Balances]);
 
   const connectedChains = [
     solanaConnected ? "SOL" : null,
     ethereum?.connected ? "ETH" : null,
     bitcoin?.connected ? "BTC" : null,
+    tracNetwork?.connected ? "TNK" : null,
   ].filter(Boolean);
 
   const anyConnected = connectedChains.length > 0;
@@ -2264,7 +2268,7 @@ function MobileMetricStrip() {
 // ── Mobile Wallets Strip (horizontal scroll chips — all 7 assets) ─────────
 function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: string, network: string, mode: "send" | "receive") => void }) {
   const [walletData, setWalletData] = useState<WalletAsset[]>([]);
-  const { ethereum, bitcoin, erc20Balances } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork, erc20Balances } = useMultiChainWallet();
 
   useEffect(() => {
     const fetchWallet = async () => {
@@ -2295,6 +2299,7 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
     { asset: "USDT", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "ETH" },
     { asset: "USDC", network: "Ethereum", defaultBalance: "0.00",       defaultUsd: "$0",  chainLabel: "ETH" },
     { asset: "BTC",  network: "Bitcoin",  defaultBalance: "0.00000000", defaultUsd: "$0",  chainLabel: "BTC" },
+    { asset: "TNK",  network: "Trac Network", defaultBalance: "0.0000",      defaultUsd: "$0",  chainLabel: "TNK" },
   ];
 
   const wallets = ALL_ASSETS.map(def => {
@@ -2303,6 +2308,7 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
     const isEthUsdt   = def.network === "Ethereum" && def.asset === "USDT" && ethereum?.connected;
     const isEthUsdc   = def.network === "Ethereum" && def.asset === "USDC" && ethereum?.connected;
     const isBtcAsset  = def.network === "Bitcoin"  && def.asset === "BTC"  && bitcoin?.connected;
+    const isTnkAsset  = def.network === "Trac Network" && def.asset === "TNK"  && tracNetwork?.connected;
 
     const baseStyle = ASSET_STYLE[def.asset] ?? { color: "text-cyan-400", border: "border-cyan-500/25", bg: "bg-cyan-500/8", chainDot: "bg-cyan-400" };
     // Override chainDot for Ethereum rows
@@ -2321,6 +2327,9 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
       return { asset: "USDC", network: "Ethereum", balance: bal.toFixed(2), usd: bal > 0 ? `$${bal.toFixed(2)}` : "$0", connected: true, chainLabel: "ETH", ...style };
     } else if (isBtcAsset) {
       return { asset: "BTC", network: "Bitcoin", balance: bitcoin!.balance, usd: bitcoin!.balanceUsd > 0 ? `$${bitcoin!.balanceUsd.toFixed(2)}` : "$0", connected: true, chainLabel: "BTC", ...style };
+    } else if (isTnkAsset) {
+      const chainDotTnk = "bg-orange-400";
+      return { asset: "TNK", network: "Trac Network", balance: tracNetwork!.balance.replace(" TNK", ""), usd: tracNetwork!.balanceUsd > 0 ? `$${tracNetwork!.balanceUsd.toFixed(2)}` : "$0", connected: true, chainLabel: "TNK", ...style, chainDot: chainDotTnk };
     } else {
       return { asset: def.asset, network: def.network, balance: def.defaultBalance, usd: def.defaultUsd, connected: false, chainLabel: def.chainLabel, ...style };
     }

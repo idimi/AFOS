@@ -690,16 +690,18 @@ function ChainStatsBar() {
     BTC: { price: rawPrices.BTC?.usd ?? null, change: rawPrices.BTC?.change24h ?? 0 },
     ETH: { price: rawPrices.ETH?.usd ?? null, change: rawPrices.ETH?.change24h ?? 0 },
     SOL: { price: rawPrices.SOL?.usd ?? null, change: rawPrices.SOL?.change24h ?? 0 },
+    TNK: { price: rawPrices.TNK?.usd ?? null, change: rawPrices.TNK?.change24h ?? 0 },
   };
 
   const stats = [
     { symbol: "BTC", price: prices.BTC.price, change: prices.BTC.change, color: "#f7931a", icon: "₿", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
     { symbol: "ETH", price: prices.ETH.price, change: prices.ETH.change, color: "#627eea", icon: "Ξ", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
     { symbol: "SOL", price: prices.SOL.price, change: prices.SOL.change, color: "#9945ff", icon: "◎", network: source === 'live' ? "CoinGecko Live" : source === 'error' ? "Price unavailable" : "Loading…" },
+    { symbol: "TNK", price: prices.TNK.price, change: prices.TNK.change, color: "#f97316", icon: "⬡", network: source === 'live' ? "Gate.io Live" : source === 'error' ? "Price unavailable" : "Loading…" },
   ];
 
   return (
-    <div className="flex gap-3 mb-5 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
+    <div className="flex gap-3 mb-5 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0 sm:mx-0 sm:px-0">
       {stats.map(stat => (
         <div
           key={stat.symbol}

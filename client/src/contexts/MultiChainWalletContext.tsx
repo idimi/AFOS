@@ -271,7 +271,20 @@ async function fetchBtcPriceUsd(): Promise<number> {
  * Fallback: Gate.io public REST API (no API key required).
  */
 async function fetchTnkPriceUsd(): Promise<number> {
-  // Primary: try Oracle VM (already proxied, avoids CORS)
+  // Primary: server-side tRPC prices.live (30s cache, Gate.io + MEXC fallback — no CORS)
+  try {
+    const res = await fetch("/api/trpc/prices.live", {
+      method: "GET",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const price = json?.result?.data?.tnkPrice ?? json?.result?.data?.json?.tnkPrice ?? 0;
+      if (price > 0) return price;
+    }
+  } catch (_) {}
+  // Secondary: Oracle VM proxy
   try {
     const res = await fetch("/api/afos/api/prices");
     if (res.ok) {
@@ -280,7 +293,7 @@ async function fetchTnkPriceUsd(): Promise<number> {
       if (price > 0) return price;
     }
   } catch (_) {}
-  // Fallback: Gate.io public REST API
+  // Last resort: Gate.io public REST API
   try {
     const res = await fetch("https://api.gateio.ws/api/v4/spot/tickers?currency_pair=TNK_USDT");
     if (res.ok) {
