@@ -305,6 +305,27 @@ async function fetchTnkPriceUsd(): Promise<number> {
   return 0;
 }
 
+/**
+ * Parse TNK balance from the wallet's raw string (smallest-unit, 18 decimals)
+ * to a human-readable decimal string.  TNK uses 18 decimals (like ETH wei),
+ * so "1000000000000000000" → "1.0000".
+ * Uses BigInt to avoid floating-point precision loss.
+ */
+function parseTnkBalance(raw: string | undefined | null): string {
+  if (!raw || raw === "0" || raw === "") return "0.0000";
+  try {
+    const wei = BigInt(raw);
+    const divisor = BigInt("1000000000000000000"); // 10^18
+    const whole = wei / divisor;
+    const remainder = wei % divisor;
+    // Take first 4 decimal digits from the remainder
+    const decimalStr = remainder.toString().padStart(18, "0").slice(0, 4);
+    return `${whole.toString()}.${decimalStr}`;
+  } catch {
+    return "0.0000";
+  }
+}
+
 // ─── Solana balance fetcher via backend tRPC (avoids browser CORS/403 from public RPC) ──
 
 async function fetchSolanaBalancesForAddress(
@@ -805,7 +826,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         window.tracnetwork!.getBalance(),
         fetchTnkPriceUsd(),
       ]);
-      const tnkBalance = rawTnkBalance ? (parseInt(rawTnkBalance) / 1e8).toFixed(4) : "0.0000";
+      const tnkBalance = parseTnkBalance(rawTnkBalance);
       const tnkBalanceUsd = parseFloat(tnkBalance) * tnkPriceUsd;
 
       setTracNetwork({
@@ -876,7 +897,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             window.tracnetwork!.getBalance(),
             fetchTnkPriceUsd(),
           ]);
-          const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
+          const newTnk = parseTnkBalance(rawBal);
           setTracNetwork(prev => prev ? {
             ...prev,
             address: newAddress,
@@ -1067,7 +1088,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         window.tracnetwork!.getBalance(),
         fetchTnkPriceUsd(),
       ]);
-      const tnkBalance = rawBalance ? (parseInt(rawBalance) / 1e8).toFixed(4) : "0.0000";
+      const tnkBalance = parseTnkBalance(rawBalance);
       const tnkBalanceUsd = parseFloat(tnkBalance) * tnkPriceUsd;
 
       setTracNetwork({
@@ -1128,7 +1149,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             window.tracnetwork!.getBalance(),
             fetchTnkPriceUsd(),
           ]);
-          const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
+          const newTnk = parseTnkBalance(rawBal);
           setTracNetwork(prev => prev ? {
             ...prev,
             address: newAddress,
@@ -1248,7 +1269,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           window.tracnetwork.getBalance(),
           fetchTnkPriceUsd(),
         ]);
-        const tnkBalance = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
+        const tnkBalance = parseTnkBalance(rawBal);
         setTracNetwork(prev => prev ? {
           ...prev,
           balance: `${tnkBalance} TNK`,

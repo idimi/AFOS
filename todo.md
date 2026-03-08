@@ -2159,3 +2159,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] TypeScript: 0 errors (fresh tsc --noEmit --incremental false)
 
 - [ ] Fix Tap Wallet "not responding" — connection fails even with all other wallet extensions disabled
+
+## Tap Wallet TNK Balance Fix
+- [x] Fix TNK balance not displaying correctly — both BTC and TNK should show like Phantom does for BTC/SOL/ETH
+- [x] Research Trac Wallet GitHub repo and dApp developer docs for correct TNK API usage
+- [x] Update tracNetwork.getBalance() call to use correct API method from docs — TNK uses 18 decimals (like ETH), not 8 (like BTC)
