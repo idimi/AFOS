@@ -2082,3 +2082,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Operator Config: Oracle VM URL, swap settings, LP parameters, system toggles
 - [x] Peer Reports: P2P peer abuse reports, dispute logs, ban management
 - [x] Audit Log: immutable record of all admin actions with timestamps and actor
+
+## Oracle VM Sync Job — Phantom Swap Filter (2026-03-08)
+
+- [x] Add txHash/signature validation in oracleVmSync.ts — skip any swap with no real on-chain proof
+- [x] Purge ALL Oracle VM-sourced swap_analytics rows (DELETE WHERE rfqId IS NOT NULL) — 116 phantom rows removed
+- [x] Update OracleSwap type to include optional txHash/signature/txId fields
+- [x] Sync job now logs: inserted=0 skipped=0 backfilled=0 phantoms=50 (correctly blocking all fake entries)
