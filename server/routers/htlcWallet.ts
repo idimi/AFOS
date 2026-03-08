@@ -331,14 +331,16 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
 
 // ─── TNK Escrow Wallet (agent-escrow model, no private key) ─────────────────────
 
-const TRAC_EXPLORER_API = "https://explorer.trac.network/api";
+// Correct Trac Network RPC API — explorer.trac.network/api returns 404 for address endpoints
+// Use: GET https://tracapi.trac.network/v1/balance/{address} → { address, balance: number }
+const TRAC_RPC_API = "https://tracapi.trac.network/v1";
 
 /**
  * Fetch the TNK HTLC wallet balance.
  * Priority order for address resolution:
  *   1. TNK_HTLC_WIF  — derive P2WPKH address from the HTLC signing key (live signing wallet)
  *   2. TNK_ESCROW_ADDRESS — shared agent-escrow address (read-only fallback)
- * Balance is fetched from the public Trac Network explorer API.
+ * Balance is fetched from the Trac Network RPC API (tracapi.trac.network).
  */
 async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
   // Prefer the HTLC signing key address when available
@@ -375,9 +377,12 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
   }
 
   try {
-    // Fetch balance from Trac Network explorer
+    // Fetch balance from Trac Network RPC API
+    // Endpoint: GET https://tracapi.trac.network/v1/balance/{address}
+    // Response: { address: string, balance: number }
+    // Note: explorer.trac.network/api returns 404 for address endpoints — use tracapi instead
     const res = await fetch(
-      `${TRAC_EXPLORER_API}/address/${address}/balance`,
+      `${TRAC_RPC_API}/balance/${address}`,
       { signal: AbortSignal.timeout(8000) }
     );
 
@@ -385,38 +390,10 @@ async function getTnkEscrowWallet(): Promise<HtlcChainWallet> {
     let live = false;
 
     if (res.ok) {
-      const data = await res.json() as { balance?: number | string; confirmed?: number | string };
-      const raw = data.balance ?? data.confirmed ?? 0;
-      balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
-      live = true;
-    } else {
-      // Fallback: try the /txs endpoint and sum incoming - outgoing
-      const txRes = await fetch(
-        `${TRAC_EXPLORER_API}/address/${address}/txs?limit=100`,
-        { signal: AbortSignal.timeout(8000) }
-      );
-      if (txRes.ok) {
-        const txData = await txRes.json() as {
-          txs?: Array<{ to: string; from: string; amount: string }>;
-          transfers?: Array<{ to: string; from: string; amount: string }>;
-          balance?: number | string;
-        };
-        // If the API returns a balance field at the top level, use it
-        if (txData.balance !== undefined) {
-          const raw = txData.balance;
-          balanceTnk = typeof raw === "string" ? parseFloat(raw) : raw;
-          live = true;
-        } else {
-          // Sum transfers: incoming minus outgoing
-          const txs = txData.txs ?? txData.transfers ?? [];
-          for (const tx of txs) {
-            const amt = parseFloat(tx.amount) || 0;
-            if (tx.to === address) balanceTnk += amt;
-            if (tx.from === address) balanceTnk -= amt;
-          }
-          live = txs.length > 0;
-        }
-      }
+      const data = await res.json() as { address?: string; balance?: number | string };
+      const raw = data.balance ?? 0;
+      balanceTnk = typeof raw === "string" ? parseFloat(raw) : (raw ?? 0);
+      live = true; // API responded — wallet is live even if balance is 0
     }
 
     // Fetch TNK price from CoinGecko

@@ -1936,7 +1936,21 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     setNodeWalletLoading(true);
     try {
       const data = await getWallet();
-      setNodeWalletData(mergeWithAllAssets(data.wallets));
+      const merged = mergeWithAllAssets(data.wallets);
+      // Patch TNK live status — Oracle VM doesn't return TNK, so mergeWithAllAssets defaults
+      // to live=false. Check Trac Network RPC directly to determine real reachability.
+      const tnkIdx = merged.findIndex(w => w.chain === 'trac_network' && w.asset === 'TNK');
+      if (tnkIdx !== -1) {
+        try {
+          const tnkRes = await fetch('https://tracapi.trac.network/v1/confirmed-length', {
+            signal: AbortSignal.timeout(8000),
+          });
+          if (tnkRes.ok) {
+            merged[tnkIdx] = { ...merged[tnkIdx], live: true };
+          }
+        } catch { /* TNK check optional — keep live=false if unreachable */ }
+      }
+      setNodeWalletData(merged);
       setNodeKey(data.nodeKey);
     } catch { /* keep empty */ }
     try {

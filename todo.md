@@ -2097,3 +2097,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Purge peer_reputation: 7 test rows deleted
 - [x] Purge admin_audit_log: 2 test rows deleted
 - [x] Verified all data tables are now at 0 rows (users=1 owner, admin_config=2 config rows, operator_config=1 config row, user_settings=2 settings rows preserved as legitimate config)
+
+## TNK Wallet Status Fix (2026-03-08)
+
+- [ ] Diagnose why TNK shows "offline" in Oracle VM Hot Wallet and "pending" in HTLC Escrow Wallet
+- [ ] Fix TNK balance fetch to use correct Trac Network API endpoint
+- [ ] Fix TNK status detection to correctly show "live" when API responds
+- [ ] Ensure TNK is fully ready for swaps
