@@ -652,44 +652,50 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
               {/* ── TRAC NETWORK ── */}
               {activeChain === "trac_network" && (
-                <>
-                  <p className="text-sm text-muted-foreground text-center py-1">
-                    Connect your Tap Wallet to swap TNK via AFOS P2P.
-                  </p>
-
-                  {/* Tap Wallet — BTC + TNK (Trac Network) */}
-                  <WalletButton
-                    icon={TAP_ICON}
-                    name="Tap Wallet"
-                    desc="The native wallet for Trac Network"
-                    chains={["bitcoin", "trac_network"]}
-                    customChips={[
-                      { label: "BTC", color: "#F7931A" },
-                      { label: "TNK (Trac Network)", color: "#F97316" },
+                bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? (
+                  <ConnectedCard
+                    walletName={bitcoin.walletName}
+                    shortAddress={bitcoin.shortAddress}
+                    explorerUrl={`https://trac.network/address/${bitcoin.address}`}
+                    balances={[
+                      { symbol: "TNK", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd },
                     ]}
+                    totalUsd={bitcoin.balanceUsd}
                     accentColor="#F97316"
-                    bg="rgba(249,115,22,0.08)"
-                    border="rgba(249,115,22,0.25)"
-                    onClick={() => {
-                      toast.info("Tap Wallet connection coming soon", {
-                        description: "Install Tap Wallet from trac.network and connect via the browser extension.",
-                        duration: 5000,
-                      });
-                    }}
+                    onDisconnect={disconnectBitcoin}
                   />
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground text-center py-1">
+                      Connect your Tap Wallet to swap TNK via AFOS P2P.
+                    </p>
 
-                  <PrimaryCTA
-                    label="Connect Tap Wallet"
-                    gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
-                    shadow="rgba(249,115,22,0.3)"
-                    onClick={() => {
-                      toast.info("Tap Wallet connection coming soon", {
-                        description: "Install Tap Wallet from trac.network and connect via the browser extension.",
-                        duration: 5000,
-                      });
-                    }}
-                  />
-                </>
+                    {/* Tap Wallet — BTC + TNK (Trac Network) */}
+                    <WalletButton
+                      icon={TAP_ICON}
+                      name="Tap Wallet"
+                      desc="The native wallet for Trac Network"
+                      chains={["bitcoin", "trac_network"]}
+                      customChips={[
+                        { label: "BTC", color: "#F7931A" },
+                        { label: "TNK (Trac Network)", color: "#F97316" },
+                      ]}
+                      accentColor="#F97316"
+                      bg="rgba(249,115,22,0.08)"
+                      border="rgba(249,115,22,0.25)"
+                      loading={btcConnecting}
+                      onClick={() => connectBitcoin("tap")}
+                    />
+
+                    <PrimaryCTA
+                      label="Connect Tap Wallet"
+                      gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
+                      shadow="rgba(249,115,22,0.3)"
+                      loading={btcConnecting}
+                      onClick={() => connectBitcoin("tap")}
+                    />
+                  </>
+                )
               )}
 
               {/* ── BITCOIN ── */}
