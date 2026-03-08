@@ -654,7 +654,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "sola
               {activeChain === "trac_network" && (
                 <>
                   <p className="text-sm text-muted-foreground text-center py-1">
-                    Connect your Tap Wallet to swap TNK via Trac Network.
+                    Connect your Tap Wallet to swap TNK via AFOS P2P.
                   </p>
 
                   {/* Tap Wallet — BTC + TNK (Trac Network) */}
