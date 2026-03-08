@@ -2143,3 +2143,17 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Silent Tap Wallet session restore: use getAddress() instead of requestAccount() to avoid popup
 - [ ] Update Window.tracnetwork type declaration with all official API methods (sendTNK, buildTracTx, etc.)
 - [ ] Session restore for MetaMask/Coinbase/Solflare (already handled by existing code — verified)
+
+## Tap Wallet Dual-Provider Fix (Round 21 — on clean fd6f1421 base)
+
+- [ ] Add window.tapprotocol type declaration to Window interface in MultiChainWalletContext
+- [ ] Add tracNetwork state (ChainWallet | null) to context interface and provider
+- [ ] Update connectTapWallet to connect window.tapprotocol (BTC) AND window.tracnetwork (TNK) simultaneously
+- [ ] Update btcSignPsbt to use window.tapprotocol.signPsbt() for Tap Wallet
+- [ ] Add disconnectTracNetwork function and expose in context
+- [ ] Update ConnectWalletModal trac_network tab to show TNK connected state or Tap Wallet button
+- [ ] Update SwapPage to use tracNetwork state for TNK balance display
+- [ ] Fix GATEIO:TNKUSDT chart symbol in Dashboard.tsx and Swaps.tsx
+- [ ] Fix Chains Supported counter from 3 to 4 on landing page
+- [ ] Update Step 1 description to include Tap Wallet (Trac Network)
+- [ ] TypeScript: 0 errors (fresh tsc --noEmit --incremental false)

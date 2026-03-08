@@ -151,6 +151,7 @@ export default function SwapPage() {
   const {
     ethereum: ethWallet,
     bitcoin: btcWallet,
+    tracNetwork: tnkWallet,
     erc20Balances,
     phantomMultiChain,
   } = useMultiChainWallet();
@@ -165,15 +166,16 @@ export default function SwapPage() {
     ? `${phantomSolAddress.slice(0, 4)}…${phantomSolAddress.slice(-4)}`
     : null;
 
-  const isConnected = solConnected || !!ethWallet?.address || !!btcWallet?.address;
+  const isConnected = solConnected || !!ethWallet?.address || !!btcWallet?.address || !!tnkWallet?.address;
 
   const totalPortfolioUsd = useMemo(() => {
     let total = solTotalUsd;
     if (ethWallet) total += ethWallet.balanceUsd;
     total += (erc20Balances.usdc + erc20Balances.usdt);
     if (btcWallet) total += btcWallet.balanceUsd;
+    if (tnkWallet) total += tnkWallet.balanceUsd;
     return total;
-  }, [solTotalUsd, ethWallet, btcWallet, erc20Balances]);
+  }, [solTotalUsd, ethWallet, btcWallet, tnkWallet, erc20Balances]);
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -276,9 +278,9 @@ export default function SwapPage() {
       return btcWallet ? parseFloat(btcWallet.balance) : 0;
     }
     if (fromChain === "trac_network") {
-      // TNK balance is stored in btcWallet.balance as "X BTC / Y TNK" or "Y TNK"
-      if (!btcWallet) return 0;
-      const bal = btcWallet.balance;
+      // TNK balance is stored in tnkWallet (tracNetwork state from Tap Wallet)
+      if (!tnkWallet) return 0;
+      const bal = tnkWallet.balance;
       const tnkMatch = bal.match(/([\d.]+)\s*TNK/);
       return tnkMatch ? parseFloat(tnkMatch[1]) : 0;
     }

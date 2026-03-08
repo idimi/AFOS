@@ -232,11 +232,11 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
   // Ethereum + Bitcoin + Phantom multi-chain
   const {
-    ethereum, bitcoin,
+    ethereum, bitcoin, tracNetwork,
     phantomMultiChain,
     connectEthereum, connectBitcoin,
     connectPhantomMultiChain,
-    disconnectEthereum, disconnectBitcoin,
+    disconnectEthereum, disconnectBitcoin, disconnectTracNetwork,
     disconnectPhantom,
     ethConnecting, btcConnecting, phantomConnecting,
   } = useMultiChainWallet();
@@ -652,17 +652,17 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
               {/* ── TRAC NETWORK ── */}
               {activeChain === "trac_network" && (
-                bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? (
+                tracNetwork?.connected ? (
                   <ConnectedCard
-                    walletName={bitcoin.walletName}
-                    shortAddress={bitcoin.shortAddress}
-                    explorerUrl={`https://trac.network/address/${bitcoin.address}`}
+                    walletName={tracNetwork.walletName}
+                    shortAddress={tracNetwork.shortAddress}
+                    explorerUrl={`https://trac.network/address/${tracNetwork.address}`}
                     balances={[
-                      { symbol: "TNK", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd },
+                      { symbol: "TNK", amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd },
                     ]}
-                    totalUsd={bitcoin.balanceUsd}
+                    totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
-                    onDisconnect={disconnectBitcoin}
+                    onDisconnect={disconnectTracNetwork}
                   />
                 ) : (
                   <>

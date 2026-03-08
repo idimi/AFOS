@@ -97,7 +97,7 @@ const TOKENS = [
   { symbol: "USDC",     name: "USD Coin (ETH)",    chain: "ethereum", balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDT-ETH", name: "Tether (Ethereum)", chain: "ethereum", balance: 0, usdPrice: 1, icon: "₮", color: "#26a17b", tvSymbol: "BINANCE:ETHUSD" },
   { symbol: "USDC-SOL", name: "USD Coin (Solana)", chain: "solana",   balance: 0, usdPrice: 1, icon: "$", color: "#2775ca", tvSymbol: "BINANCE:SOLUSD" },
-  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f97316", tvSymbol: "GATE:TNKUSDT" },
+  { symbol: "TNK",      name: "TNK (Trac Network)", chain: "trac_network", balance: 0, usdPrice: 0, icon: "⬡", color: "#f97316", tvSymbol: "GATEIO:TNKUSDT" },
 ];
 
 // ─── Swap Pairs (IntercomSwap native + extended) ──────────────────────────────
@@ -739,7 +739,7 @@ const CHART_PAIRS = [
   { label: "BTC/USDT", symbol: "BINANCE:BTCUSDT", color: "#f7931a" },
   { label: "ETH/USDT", symbol: "BINANCE:ETHUSDT", color: "#627eea" },
   { label: "SOL/USDT", symbol: "BINANCE:SOLUSDT", color: "#9945ff" },
-  { label: "TNK/USDT", symbol: "GATE:TNKUSDT",    color: "#f97316" },
+  { label: "TNK/USDT", symbol: "GATEIO:TNKUSDT",    color: "#f97316" },
   { label: "ETH/BTC",  symbol: "BINANCE:ETHBTC",  color: "#627eea" },
   { label: "SOL/BTC",  symbol: "BINANCE:SOLBTC",  color: "#9945ff" },
 ] as const;
@@ -749,7 +749,7 @@ function deriveTvSymbol(fromSym: string, toSym: string): string {
   const to = toSym.replace("-ETH", "").replace("-SOL", "");
   // TNK is ONLY listed on Gate.io and MEXC — must check BEFORE the generic stables
   // fallback which would incorrectly produce BINANCE:TNKUSDT (symbol doesn't exist on Binance)
-  if (from === "TNK" || to === "TNK") return "GATE:TNKUSDT";
+  if (from === "TNK" || to === "TNK") return "GATEIO:TNKUSDT";
   const stables = ["USDT", "USDC"];
   if (stables.includes(from) && !stables.includes(to)) return `BINANCE:${to}USDT`;
   if (stables.includes(to) && !stables.includes(from)) return `BINANCE:${from}USDT`;
