@@ -2116,3 +2116,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] BTC balance: mempool.space/api/address/{address} — correct
 - [x] Add live balance display to FROM token dropdown in Swaps.tsx (green = has balance, grey = zero)
 - [x] Fix live balance indicator dot to also show for TNK when Tap Wallet has balance
+
+## Bug Fixes (2026-03-08 session 2)
+
+- [x] Fix Recent Swaps on Overview showing stale Oracle VM test swaps — added "Clear" button (localStorage clearSince filter) to both desktop RecentSwapsCard and mobile MobileRecentSwaps; empty state shows when cleared
+- [x] Fix TNK fee collection wallet showing "offline" in AdminPanel — root cause: browser CORS block on tracapi.trac.network; fixed by adding server-side tRPC procedure htlcWallet.checkTnkLive, reactive useEffect in AdminPanel patches TNK live status when result arrives

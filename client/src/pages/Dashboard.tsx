@@ -1003,9 +1003,16 @@ function MetricsRow({ onNavigate }: { onNavigate?: (page: NavPage) => void }) {
 }
 
 // ── Recent Swaps Card ──────────────────────────────────────────────────────
+const RECENT_SWAPS_CLEAR_KEY = 'afos:recentSwaps:clearSince';
+
 function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
   const [allSwaps, setAllSwaps] = useState<{ pending: RfqResult[]; completed: RfqResult[] }>({ pending: [], completed: [] });
   const [loading, setLoading] = useState(true);
+  // clearSince: timestamp (ms) — swaps older than this are hidden after user clears
+  const [clearSince, setClearSince] = useState<number>(() => {
+    const stored = localStorage.getItem(RECENT_SWAPS_CLEAR_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+  });
 
   useEffect(() => {
     const fetchSwaps = async () => {
@@ -1019,8 +1026,15 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
     return () => clearInterval(t);
   }, []);
 
-  // Merge pending + completed, sort by timestamp desc, take top 5
+  const handleClear = () => {
+    const now = Date.now();
+    localStorage.setItem(RECENT_SWAPS_CLEAR_KEY, String(now));
+    setClearSince(now);
+  };
+
+  // Merge pending + completed, filter by clearSince, sort by timestamp desc, take top 5
   const combined = [...allSwaps.pending, ...allSwaps.completed]
+    .filter(s => (s.timestamp ?? 0) > clearSince)
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 5);
 
@@ -1049,12 +1063,23 @@ function RecentSwapsCard({ onViewAll }: { onViewAll: () => void }) {
           <Activity className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold text-foreground">Recent Swaps</h3>
         </div>
-        <button
-          onClick={onViewAll}
-          className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1"
-        >
-          View all <ArrowRight className="w-3 h-3" />
-        </button>
+        <div className="flex items-center gap-2">
+          {combined.length > 0 && (
+            <button
+              onClick={handleClear}
+              title="Clear swap history display"
+              className="text-[10px] text-muted-foreground/60 hover:text-red-400 transition-colors font-mono"
+            >
+              Clear
+            </button>
+          )}
+          <button
+            onClick={onViewAll}
+            className="text-xs text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1"
+          >
+            View all <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto space-y-1.5 min-h-0">
@@ -2382,9 +2407,13 @@ function MobileWalletStrip({ onOpenWalletModal }: { onOpenWalletModal: (asset: s
   );
 }
 
-// ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────
+// ── Mobile Recent Swaps (compact, 3 items) ────────────────────────────────────
 function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
   const [rawSwaps, setRawSwaps] = useState<RfqResult[]>([]);
+  const [clearSince, setClearSince] = useState<number>(() => {
+    const stored = localStorage.getItem(RECENT_SWAPS_CLEAR_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+  });
 
   useEffect(() => {
     const fetchSwaps = async () => {
@@ -2398,7 +2427,15 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
     return () => clearInterval(t);
   }, []);
 
-  const SWAPS = rawSwaps.map(s => ({
+  const handleClear = () => {
+    const now = Date.now();
+    localStorage.setItem(RECENT_SWAPS_CLEAR_KEY, String(now));
+    setClearSince(now);
+  };
+
+  const filteredSwaps = rawSwaps.filter(s => (s.timestamp ?? 0) > clearSince);
+
+  const SWAPS = filteredSwaps.map(s => ({
     id: s.rfqId,
     from: s.fromToken,
     to: s.toToken,
@@ -2422,11 +2459,21 @@ function MobileRecentSwaps({ onViewAll }: { onViewAll: () => void }) {
           <Activity className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs font-semibold text-foreground">Recent Swaps</span>
         </div>
-        <button onClick={onViewAll} className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1">
-          View all <ArrowRight className="w-2.5 h-2.5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {SWAPS.length > 0 && (
+            <button onClick={handleClear} className="text-[9px] text-muted-foreground/60 hover:text-red-400 transition-colors font-mono">Clear</button>
+          )}
+          <button onClick={onViewAll} className="text-[10px] text-muted-foreground hover:text-cyan-400 transition-colors font-mono flex items-center gap-1">
+            View all <ArrowRight className="w-2.5 h-2.5" />
+          </button>
+        </div>
       </div>
       <div className="space-y-2">
+        {SWAPS.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-4 text-center">
+            <p className="text-[10px] text-muted-foreground font-mono">No swaps yet</p>
+          </div>
+        )}
         {SWAPS.slice(0, 3).map(swap => {
           const s = STATUS_STYLE[swap.status];
           return (

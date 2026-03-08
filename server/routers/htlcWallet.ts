@@ -627,4 +627,23 @@ export const htlcWalletRouter = router({
       tnk: { chain: "trac_network" as const, asset: "TNK", address: tnk.address, balance: tnk.balance, usd: tnk.usd, live: tnk.live, configured: tnk.configured, error: tnk.error },
     };
   }),
+
+  /**
+   * Check if the Trac Network RPC is reachable (server-side, bypasses browser CORS).
+   * Used by AdminPanel to determine TNK live status for the fee collection wallet.
+   */
+  checkTnkLive: publicProcedure.query(async () => {
+    try {
+      const res = await fetch('https://tracapi.trac.network/v1/confirmed-length', {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) {
+        const data = await res.json() as { confirmed_length?: number };
+        return { live: true, confirmedLength: data.confirmed_length ?? 0 };
+      }
+      return { live: false, confirmedLength: 0 };
+    } catch {
+      return { live: false, confirmedLength: 0 };
+    }
+  }),
 });

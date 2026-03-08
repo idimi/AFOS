@@ -1932,23 +1932,25 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
   const [qrModal, setQrModal] = useState<{ address: string; label: string; chainColor: string } | null>(null);
 
+  // Server-side TNK live check (bypasses browser CORS on tracapi.trac.network)
+  const { data: tnkLiveData } = trpc.htlcWallet.checkTnkLive.useQuery(undefined, {
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+  // Use a ref so fetchNodeWallet always sees the latest tnkLiveData value
+  const tnkLiveRef = React.useRef(tnkLiveData);
+  React.useEffect(() => { tnkLiveRef.current = tnkLiveData; }, [tnkLiveData]);
+
   const fetchNodeWallet = async () => {
     setNodeWalletLoading(true);
     try {
       const data = await getWallet();
       const merged = mergeWithAllAssets(data.wallets);
       // Patch TNK live status — Oracle VM doesn't return TNK, so mergeWithAllAssets defaults
-      // to live=false. Check Trac Network RPC directly to determine real reachability.
+      // to live=false. Use server-side checkTnkLive result (avoids browser CORS block).
       const tnkIdx = merged.findIndex(w => w.chain === 'trac_network' && w.asset === 'TNK');
-      if (tnkIdx !== -1) {
-        try {
-          const tnkRes = await fetch('https://tracapi.trac.network/v1/confirmed-length', {
-            signal: AbortSignal.timeout(8000),
-          });
-          if (tnkRes.ok) {
-            merged[tnkIdx] = { ...merged[tnkIdx], live: true };
-          }
-        } catch { /* TNK check optional — keep live=false if unreachable */ }
+      if (tnkIdx !== -1 && tnkLiveRef.current?.live) {
+        merged[tnkIdx] = { ...merged[tnkIdx], live: true };
       }
       setNodeWalletData(merged);
       setNodeKey(data.nodeKey);
@@ -1968,6 +1970,19 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     const t = setInterval(fetchNodeWallet, 30_000);
     return () => clearInterval(t);
   }, []);
+
+  // Reactively patch TNK live status when tnkLiveData arrives (handles initial load timing)
+  useEffect(() => {
+    if (!tnkLiveData) return;
+    setNodeWalletData(prev => {
+      const idx = prev.findIndex(w => w.chain === 'trac_network' && w.asset === 'TNK');
+      if (idx === -1) return prev;
+      if (prev[idx].live === tnkLiveData.live) return prev; // no change
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], live: tnkLiveData.live };
+      return updated;
+    });
+  }, [tnkLiveData]);
 
   const TABS: { id: AdminTab; label: string; icon: React.ElementType; tooltip: string }[] = [
     {
