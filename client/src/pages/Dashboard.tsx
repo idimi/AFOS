@@ -494,9 +494,11 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     "swap 1 USDT to SOL",
     "swap 0.01 ETH to USDC",
     "swap 0.0001 BTC to USDT",
+    "swap 100 TNK to SOL",
     "SOL price?",
     "ETH price?",
     "BTC price?",
+    "TNK price?",
     "show balances",
   ];
 

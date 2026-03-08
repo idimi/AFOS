@@ -2197,3 +2197,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Connect Wallet Modal — Tap Wallet Connected Banner
 
 - [x] Add "Tap Wallet connected · Bitcoin · Trac Network · [Disconnect]" banner to modal, matching Phantom banner style
+
+## Tap Wallet UX Polish
+
+- [x] Add Tap Wallet success overlay in modal (green card, auto-close after 1.5s)
+- [x] Show TNK balance on Trac Network tab in Connect Wallet modal (shows BTC + TNK when Tap Wallet)
+- [x] Add "TNK price?" and "swap 100 TNK to SOL" quick chips to chat input row

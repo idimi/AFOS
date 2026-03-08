@@ -326,6 +326,26 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     }
   }, [bitcoin?.connected, open]);
 
+  // Watch for Tap Wallet connection — fires success overlay with both Bitcoin + Trac Network
+  const prevTnkRef = useRef(tracNetwork?.connected ?? false);
+  useEffect(() => {
+    const wasConnected = prevTnkRef.current;
+    const isNowConnected = tracNetwork?.connected ?? false;
+    prevTnkRef.current = isNowConnected;
+    if (!wasConnected && isNowConnected && open && !successState) {
+      const chainAddresses: { chain: ChainTab; address: string }[] = [];
+      if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress) {
+        chainAddresses.push({ chain: "bitcoin", address: bitcoin.shortAddress });
+      }
+      if (tracNetwork?.shortAddress) {
+        chainAddresses.push({ chain: "trac_network", address: tracNetwork.shortAddress });
+      }
+      if (chainAddresses.length > 0) {
+        showSuccessAndClose("Tap Wallet", chainAddresses, "#F97316");
+      }
+    }
+  }, [tracNetwork?.connected, open]);
+
   const handleSolanaConnect = () => {
     onClose();
     setTimeout(() => setVisible(true), 100);
@@ -433,7 +453,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                             border: `1px solid ${CHAIN_DOTS[c]}40`,
                           }}
                         >
-                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
+                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : c === "trac_network" ? "Trac Network" : "Bitcoin"}
                         </span>
                       ))}
                     </div>
@@ -546,7 +566,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       {phantomMultiChain.chains.map(c => (
                         <span key={c} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
                           style={{ background: `${CHAIN_DOTS[c as ChainTab]}18`, color: CHAIN_DOTS[c as ChainTab] }}>
-                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : "Bitcoin"}
+                          {c === "solana" ? "Solana" : c === "ethereum" ? "Ethereum" : c === "trac_network" ? "Trac Network" : "Bitcoin"}
                         </span>
                       ))}
                     </div>
@@ -691,9 +711,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     shortAddress={tracNetwork.shortAddress}
                     explorerUrl={`https://trac.network/address/${tracNetwork.address}`}
                     balances={[
+                      // Show BTC balance first when Tap Wallet is the wallet (connects both BTC + TNK)
+                      ...(bitcoin?.connected && bitcoin.walletName === "Tap Wallet"
+                        ? [{ symbol: "BTC", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]
+                        : []),
                       { symbol: "TNK", amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd },
                     ]}
-                    totalUsd={tracNetwork.balanceUsd}
+                    totalUsd={(bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? bitcoin.balanceUsd : 0) + tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
                   />
