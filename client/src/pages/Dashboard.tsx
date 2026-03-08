@@ -274,7 +274,7 @@ const CHAIN_BADGE: Record<SupportedChain, { label: string; color: string }> = {
 
 function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () => void; onOpenWallet: () => void }) {
   const { publicKey, balances, connected: solAdapterConnected } = useWallet();
-  const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
+  const { bitcoin, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
   const solConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
@@ -288,7 +288,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
 
   // Detect wallet connection and inject personalised welcome message
   // Debounce: wait for all chain balances to settle before showing the welcome
-  const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected);
+  const anyConnected = !!(solConnected || ethereum?.connected || bitcoin?.connected || tnkWallet?.connected);
   const welcomeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Build the welcome message with all available balances
@@ -310,8 +310,12 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     if (bitcoin?.connected) {
       lines.push(`BTC: **${parseFloat(bitcoin.balance).toFixed(6)} ₿**`);
     }
+    if (tnkWallet?.connected) {
+      const tnkAmt = parseFloat(tnkWallet.balance);
+      lines.push(`TNK: **${tnkAmt > 0 ? tnkAmt.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "0"} TNK**`);
+    }
     return lines;
-  }, [solConnected, balances, phantomMultiChain?.solanaBalances, ethereum, bitcoin]);
+  }, [solConnected, balances, phantomMultiChain?.solanaBalances, ethereum, bitcoin, tnkWallet]);
 
   useEffect(() => {
     if (!anyConnected || welcomeShownRef.current) {
@@ -349,7 +353,7 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     return () => {
       if (welcomeTimerRef.current) clearTimeout(welcomeTimerRef.current);
     };
-  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, balances, ethereum, bitcoin, phantomMultiChain?.solanaBalances, buildWelcomeMessage, welcomeShownRef, setMessages]);
+  }, [anyConnected, solConnected, ethereum?.connected, bitcoin?.connected, tnkWallet?.connected, balances, ethereum, bitcoin, tnkWallet, phantomMultiChain?.solanaBalances, buildWelcomeMessage, welcomeShownRef, setMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2992,7 +2996,7 @@ function TopbarAgentDot() {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
-  const { ethereum: topbarEth, bitcoin: topbarBtc, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum: topbarEth, bitcoin: topbarBtc, tracNetwork: topbarTnk, phantomMultiChain } = useMultiChainWallet();
   const { isOnline: lightPeerOnline, peerId: myPeerId, remotePeers: signalingPeers } = useLightPeer();
   // SOL is connected either via wallet-adapter OR via Phantom multi-chain
   const solConnected = connected || !!(phantomMultiChain?.chains.includes("solana"));
@@ -3392,10 +3396,10 @@ export default function Dashboard() {
               title="Manage wallets"
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all active:scale-95 hover:opacity-90"
               style={{
-                background: (solConnected || topbarEth?.connected || topbarBtc?.connected)
+                background: (solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected)
                   ? "rgba(16,185,129,0.08)"
                   : "rgba(59,130,246,0.12)",
-                border: (solConnected || topbarEth?.connected || topbarBtc?.connected)
+                border: (solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected)
                   ? "1px solid rgba(16,185,129,0.25)"
                   : "1px solid rgba(59,130,246,0.3)",
               }}
@@ -3429,11 +3433,22 @@ export default function Dashboard() {
                   }}
                   title={topbarBtc?.connected ? `Bitcoin: ${topbarBtc.shortAddress}` : "Bitcoin: not connected"}
                 />
+                {/* TNK dot — only shown when Tap Wallet is connected */}
+                {topbarTnk?.connected && (
+                  <span
+                    className="w-2 h-2 rounded-full transition-all duration-300"
+                    style={{
+                      background: "#E87D3E",
+                      boxShadow: "0 0 5px rgba(232,125,62,0.6)",
+                    }}
+                    title={`Trac Network (TNK): ${topbarTnk.shortAddress}`}
+                  />
+                )}
               </span>
               {/* Label — hidden on xs, visible on sm+ */}
-              {(solConnected || topbarEth?.connected || topbarBtc?.connected) ? (
+              {(solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected) ? (
                 <span style={{ color: "#10b981" }} className="hidden sm:inline">
-                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && "BTC"]
+                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && (topbarTnk?.connected ? "₿ + TNK" : "BTC"), !topbarBtc?.connected && topbarTnk?.connected && "TNK"]
                     .filter(Boolean).join(" + ")}
                 </span>
               ) : (

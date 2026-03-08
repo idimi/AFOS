@@ -2176,3 +2176,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Wrap Vite production bundle in IIFE to prevent minified variable name collisions with tap-script.js
 - [x] Verify window.tapprotocol and window.tracnetwork inject correctly after fix (0 global conflicts in new bundle)
 - [x] Update waitForTracNetwork comment to document the IIFE fix
+
+## Tap Wallet UI — Show ₿ + TNK in Pill and Chat
+
+- [x] Top-right wallet pill: show "₿ + TNK" when Tap Wallet connected (both BTC and TNK)
+- [x] Chat agent welcome message: include TNK balance alongside BTC balance
+- [x] WalletChatBridge: include TNK in anyConnected check so chat clears on Tap Wallet disconnect
+- [x] ChatPage: pass TNK balance to server-side agent via walletBalances so agent knows TNK amount

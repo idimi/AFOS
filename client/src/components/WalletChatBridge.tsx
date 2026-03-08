@@ -11,7 +11,7 @@ import { useChat } from "../contexts/ChatContext";
 
 export function WalletChatBridge() {
   const { connected: solConnected } = useWallet();
-  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
 
   const { clearMessages } = useChat();
 
@@ -19,7 +19,8 @@ export function WalletChatBridge() {
     solConnected ||
     !!phantomMultiChain?.connected ||
     !!ethereum?.connected ||
-    !!bitcoin?.connected;
+    !!bitcoin?.connected ||
+    !!tnkWallet?.connected;
 
   // Track previous connection state to detect disconnect transitions
   const prevConnected = useRef(anyConnected);

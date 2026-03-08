@@ -604,7 +604,7 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
-  const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
+  const { bitcoin, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
   const { user } = useAuth();
   const openId = user?.openId;
 
@@ -612,7 +612,7 @@ export default function ChatPage() {
   const phantomSolAddr = phantomMultiChain?.solanaAddress;
   const solConnected = connected || !!phantomSolAddr;
   // For swap execution gating: any wallet connected means the user can chat
-  const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
+  const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address || !!tnkWallet?.address;
 
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModalChain, setWalletModalChain] = useState<SupportedChain>("solana");
@@ -737,7 +737,12 @@ export default function ChatPage() {
         message: messageText,
         history,
         walletAddress: publicKey?.toString(),
-        walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
+        walletBalances: [
+          ...balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
+          ...(bitcoin?.connected ? [{ symbol: "BTC", amount: bitcoin.balance }] : []),
+          ...(tnkWallet?.connected ? [{ symbol: "TNK", amount: tnkWallet.balance }] : []),
+          ...(ethereum?.connected ? [{ symbol: "ETH", amount: ethereum.balance }] : []),
+        ],
         openId,
         senderPeerId: myPeerId ?? undefined,
         senderAlias: myPeerAlias ?? undefined,
