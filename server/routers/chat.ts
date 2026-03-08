@@ -38,7 +38,7 @@ import { getSignalingPeerList, sendToPeer } from "../signaling";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
-type SupportedChain = "solana" | "ethereum" | "bitcoin" | "trac_network";
+import type { SupportedChain } from "@shared/const";
 
 interface AssetDef {
   symbol: string;
@@ -596,9 +596,9 @@ Parse the user message and return ONLY a JSON object with this exact schema:
 {
   "type": "swap" | "price_check" | "balance_check" | "general",
   "fromToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | "TNK" | null,
-  "fromChain": "solana" | "ethereum" | "bitcoin" | "trac_network" | null,
+  "fromChain": SupportedChain | null,
   "toToken": "SOL" | "USDT" | "USDC" | "ETH" | "USDT_ETH" | "USDC_ETH" | "BTC" | "TNK" | null,
-  "toChain": "solana" | "ethereum" | "bitcoin" | "trac_network" | null,
+  "toChain": SupportedChain | null,
   "amount": number | null,
   "amountToken": string | null,
   "isMax": boolean,
@@ -1182,8 +1182,8 @@ export const chatRouter = router({
       if (p2pQuote) {
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  (fromChain ?? "solana") as "solana" | "ethereum" | "bitcoin" | "trac_network",
-          toChain:    (toChain   ?? "solana") as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          fromChain:  (fromChain ?? "solana") as SupportedChain,
+          toChain:    (toChain   ?? "solana") as SupportedChain,
           fromToken:  fromToken ?? "SOL",
           toToken:    toToken   ?? "USDT",
           amount:     String(amount ?? 0),
@@ -1333,8 +1333,8 @@ export const chatRouter = router({
       if (p2pQuote) {
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
-          toChain:    toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          fromChain:  fromChain as SupportedChain,
+          toChain:    toChain   as SupportedChain,
           fromToken:  fromSymbol,
           toToken:    toSymbol,
           amount:     String(amount),
@@ -1423,8 +1423,8 @@ export const chatRouter = router({
       if (swapTx) {
         // Record 1inch fallback swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
-          fromChain:  fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
-          toChain:    toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
+          fromChain:  fromChain as SupportedChain,
+          toChain:    toChain   as SupportedChain,
           fromToken:  fromSymbol,
           toToken:    toSymbol,
           amount:     String(amount),
@@ -1925,8 +1925,8 @@ export const chatRouter = router({
               const feeBps = isP2PRoute ? 15 : 20;
               const feeAmountOut = finalOutAmount * (feeBps / 10000);
               void recordSwapAnalytic({
-                fromChain:      fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network",
-                toChain:        toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network",
+                fromChain:      fromChain as SupportedChain,
+                toChain:        toChain   as SupportedChain,
                 fromToken:      fromToken.toUpperCase(),
                 toToken:        toToken.toUpperCase(),
                 amount:         String(amount),

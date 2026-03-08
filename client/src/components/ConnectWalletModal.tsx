@@ -26,6 +26,7 @@ import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Wallet, CheckCircle2, ExternalLink, Loader2, Zap, Globe } from "lucide-react";
 import { toast } from "sonner";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Wallet logos ─────────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ const TAP_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqr
 
 // ─── Chain config ─────────────────────────────────────────────────────────────
 
-type ChainTab = "solana" | "ethereum" | "bitcoin" | "trac_network";
+type ChainTab = SupportedChain;
 
 const CHAIN_TABS: { id: ChainTab; label: string; color: string; accent: string; emoji: string }[] = [
   { id: "solana",       label: "Solana",       color: "#9945FF", accent: "rgba(153,69,255,0.15)",  emoji: "◎" },

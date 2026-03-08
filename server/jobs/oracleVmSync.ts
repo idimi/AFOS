@@ -25,6 +25,7 @@
 import { getDb } from "../db";
 import { swapAnalytics, adminConfig } from "../../drizzle/schema";
 import { eq, isNull, and } from "drizzle-orm";
+import type { SupportedChain } from "@shared/const";
 
 const ORACLE_API = process.env.ORACLE_API_URL ?? "http://141.253.123.101:4000";
 
@@ -75,7 +76,7 @@ function hasOnChainProof(swap: OracleSwap): boolean {
 
 // ─── Token → chain mapping (best-effort) ─────────────────────────────────────
 
-function tokenToChain(token: string): "bitcoin" | "ethereum" | "solana" | "trac_network" {
+function tokenToChain(token: string): SupportedChain {
   const t = token.toUpperCase();
   if (t === "BTC" || t === "WBTC") return "bitcoin";
   if (t === "ETH" || t === "WETH" || t === "USDC" || t === "DAI") return "ethereum";

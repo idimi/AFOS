@@ -22,10 +22,11 @@ import React, {
 } from "react";
 import { toast } from "sonner";
 import { showWalletConnectedToast, showWalletDisconnectedToast } from "../components/ConnectWalletModal";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Chain = "solana" | "ethereum" | "bitcoin" | "trac_network";
+export type Chain = SupportedChain;
 export type EthProviderType = "metamask" | "coinbase" | "phantom";
 export type BtcProviderType = "metamask" | "tap" | "phantom" | "xverse";
 

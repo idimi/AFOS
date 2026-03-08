@@ -21,6 +21,7 @@
 import { getDb } from "./db";
 import { htlcSwaps, swapAnalytics } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import type { SupportedChain } from "@shared/const";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 const POLL_INTERVAL_MS = 60_000; // Check every 60 seconds
@@ -294,7 +295,7 @@ export function stopHtlcMonitor(): void {
  */
 export async function recordHtlcLock(params: {
 
-  chain:         "bitcoin" | "ethereum" | "solana" | "trac_network";
+  chain:         SupportedChain;
   htlcAddress:   string;
   secretHash:    string;
   lockTxId?:     string;
@@ -304,7 +305,7 @@ export async function recordHtlcLock(params: {
   peerId?:       string;
   rfqId?:        string;
   toToken?:      string;
-  toChain?:      "bitcoin" | "ethereum" | "solana" | "trac_network";
+  toChain?:      SupportedChain;
   senderAddress?: string;
 }): Promise<number> {
   const db = await getDb();
@@ -357,8 +358,8 @@ export async function markHtlcCompleted(secretHash: string, txId?: string): Prom
  * Record a swap in the analytics table.
  */
 export async function recordSwapAnalytic(params: {
-  fromChain:      "bitcoin" | "ethereum" | "solana" | "trac_network";
-  toChain:        "bitcoin" | "ethereum" | "solana" | "trac_network";
+  fromChain:      SupportedChain;
+  toChain:        SupportedChain;
   fromToken:      string;
   toToken:        string;
   amount:         string;

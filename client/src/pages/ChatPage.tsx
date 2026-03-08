@@ -615,7 +615,7 @@ export default function ChatPage() {
   const anyWalletConnected = solConnected || !!ethereum?.address || !!bitcoin?.address;
 
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [walletModalChain, setWalletModalChain] = useState<"solana" | "ethereum" | "bitcoin" | "trac_network">("solana");
+  const [walletModalChain, setWalletModalChain] = useState<SupportedChain>("solana");
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
@@ -882,8 +882,8 @@ export default function ChatPage() {
           fromAddress: ethAddress,
           fromToken:   quoteData.fromToken,
           toToken:     quoteData.toToken,
-          fromChain:   (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "ethereum",
-          toChain:     (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "ethereum",
+          fromChain:   (quoteData.fromChain as SupportedChain) ?? "ethereum",
+          toChain:     (quoteData.toChain   as SupportedChain) ?? "ethereum",
           amount:      quoteData.fromAmount,
           slippage:    1,
           openId,
@@ -980,7 +980,7 @@ export default function ChatPage() {
           toToken:    quoteData.toToken,
           amount:     quoteData.fromAmount,
           fromChain:  "trac_network",
-          toChain:    (quoteData.toChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "bitcoin",
+          toChain:    (quoteData.toChain as SupportedChain) ?? "bitcoin",
         });
         toast.dismiss("tnk-swap");
 
@@ -1017,8 +1017,8 @@ export default function ChatPage() {
         userPublicKey: effectivePublicKey!.toString(),
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
-        fromChain:     (quoteData.fromChain as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
-        toChain:       (quoteData.toChain   as "solana" | "ethereum" | "bitcoin" | "trac_network") ?? "solana",
+        fromChain:     (quoteData.fromChain as SupportedChain) ?? "solana",
+        toChain:       (quoteData.toChain   as SupportedChain) ?? "solana",
         amount:        quoteData.fromAmount,
         openId,
       });

@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import QRCode from "react-qr-code";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "@/components/ConnectWalletModal";
+import type { SupportedChain } from "@shared/const";
 
 // Admin wallet allowlist — set via VITE_ADMIN_WALLETS env var (comma-separated)
 const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
@@ -41,7 +42,7 @@ const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
 interface TreasuryWallet {
   id: string;
   label: string;
-  chain: "solana" | "ethereum" | "bitcoin" | "trac_network";
+  chain: SupportedChain;
   address: string;
   splitPercent: number;
 }
@@ -1471,7 +1472,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }>
 };
 
 function HtlcHistorySection() {
-  const [chainFilter, setChainFilter] = useState<"all" | "bitcoin" | "ethereum" | "solana" | "trac_network">("all");
+  const [chainFilter, setChainFilter] = useState<"all" | SupportedChain>("all");
 
   const { data, isLoading, refetch, isRefetching } = trpc.htlcWallet.getHtlcHistory.useQuery(
     { chain: chainFilter, limit: 20 },
@@ -1480,7 +1481,7 @@ function HtlcHistorySection() {
 
   const rows = data?.rows ?? [];
 
-  const chainTabs: { key: "all" | "bitcoin" | "ethereum" | "solana" | "trac_network"; label: string; color: string }[] = [
+  const chainTabs: { key: "all" | SupportedChain; label: string; color: string }[] = [
     { key: "all",      label: "All",      color: "#888" },
     { key: "bitcoin",      label: "BTC", color: CHAIN_COLORS.bitcoin },
     { key: "ethereum",     label: "ETH", color: CHAIN_COLORS.ethereum },

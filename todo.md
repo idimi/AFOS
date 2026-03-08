@@ -2132,3 +2132,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update afosApi.ts refreshTnkPrice() to use /api/trpc/prices.live (Gate.io via server)
 - [x] Update afosApi.ts getPrices() to use /api/trpc/prices.live (Gate.io via server)
 - [x] Verified: tRPC prices.live returns TNK: $0.2892 from Gate.io correctly
+
+## Three Improvements (2026-03-08 session 5)
+- [ ] Wire TNK 24h price change badge in market list (tnkChange24h from prices.live tRPC)
+- [x] Fix 9 TypeScript errors in SwapPage.tsx — add trac_network to SupportedChain type in afosApi.ts
+- [ ] Patch Oracle VM server.js via SSH to fetch TNK price from Gate.io every 30s and include in SSE prices event

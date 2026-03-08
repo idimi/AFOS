@@ -27,6 +27,7 @@ import * as tinysecp from "tiny-secp256k1";
 import { ethers } from "ethers";
 import { Keypair, Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
+import type { SupportedChain } from "@shared/const";
 
 const ECPair = ECPairFactory(tinysecp);
 
@@ -108,7 +109,7 @@ async function fetchErc20Balance(
 // ─── Per-chain wallet helpers ─────────────────────────────────────────────────
 
 export interface HtlcChainWallet {
-  chain: "bitcoin" | "ethereum" | "solana" | "trac_network";
+  chain: SupportedChain;
   asset: string;
   address: string | null;
   balance: string;
@@ -483,7 +484,7 @@ export const htlcWalletRouter = router({
             : await db
                 .select()
                 .from(htlcSwaps)
-                .where(eq(htlcSwaps.chain, input.chain as "bitcoin" | "ethereum" | "solana" | "trac_network"))
+                .where(eq(htlcSwaps.chain, input.chain as SupportedChain))
                 .orderBy(desc(htlcSwaps.createdAt))
                 .limit(input.limit);
 
