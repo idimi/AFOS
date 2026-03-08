@@ -479,6 +479,23 @@ interface PriceCache {
 let priceCache: PriceCache | null = null;
 const PRICE_CACHE_TTL_MS = 30_000;
 
+/** Fetch live TNK price from Gate.io (same source as the Oracle VM, updated every 30s). */
+async function getTnkPriceFromGateio(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      "https://api.gateio.ws/api/v4/spot/tickers?currency_pair=TNK_USDT",
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return null;
+    const data = await res.json() as { last?: string }[];
+    if (!Array.isArray(data) || !data[0]?.last) return null;
+    const price = parseFloat(data[0].last);
+    return price > 0 ? price : null;
+  } catch {
+    return null;
+  }
+}
+
 async function getTokenPricesFromCoinGecko(): Promise<Record<string, number> | null> {
   try {
     const res = await fetch(
@@ -494,11 +511,13 @@ async function getTokenPricesFromCoinGecko(): Promise<Record<string, number> | n
     };
     const sol = data.solana?.usd;
     if (!sol || sol < 1) return null;
+    // Prefer Gate.io for TNK (more liquid, faster updates) over CoinGecko
+    const tnkLive = await getTnkPriceFromGateio();
     return {
       SOL:  sol,
       ETH:  data.ethereum?.usd ?? 2000,
       BTC:  data.bitcoin?.usd  ?? 66000,
-      TNK:  data["trac-network"]?.usd ?? 0.28,
+      TNK:  tnkLive ?? data["trac-network"]?.usd ?? 0.28,
       USDT: 1,
       USDC: 1,
     };
@@ -523,8 +542,9 @@ async function getTokenPricesFromBinance(): Promise<Record<string, number> | nul
       if (item.symbol === "BTCUSDT") prices.BTC = parseFloat(item.price);
     }
     if (!prices.SOL || prices.SOL < 1) return null;
-    // TNK is not on Binance; add a fallback value so the map is complete
-    prices.TNK = 0.28;
+    // TNK is not on Binance; fetch from Gate.io instead
+    const tnkLive = await getTnkPriceFromGateio();
+    prices.TNK = tnkLive ?? 0.28;
     return prices;
   } catch {
     return null;
@@ -549,8 +569,9 @@ async function getTokenPricesWithSource(): Promise<{ prices: Record<string, numb
   }
 
   console.warn("[Chat] All price APIs failed, using approximate fallback prices");
-  const fallback = { SOL: 85, ETH: 1970, BTC: 66000, TNK: 0.28, USDT: 1, USDC: 1 };
-  return { prices: fallback, source: "approximate (APIs unavailable)" };
+  const tnkLive = await getTnkPriceFromGateio();
+  const fallback = { SOL: 85, ETH: 1970, BTC: 66000, TNK: tnkLive ?? 0.28, USDT: 1, USDC: 1 };
+  return { prices: fallback, source: tnkLive ? "Gate.io (TNK) + approximate (SOL/ETH/BTC)" : "approximate (APIs unavailable)" };
 }
 
 // ─── Intent parsing ────────────────────────────────────────────────────────────

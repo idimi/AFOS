@@ -156,9 +156,12 @@ declare global {
     ethereum?: any;
     tracnetwork?: {
       requestAccount: () => Promise<string>;
+      getAddress: () => Promise<string>;
       getBalance: () => Promise<string>;
       getNetwork: () => Promise<string>;
       signPsbt?: (psbtHex: string) => Promise<string>;
+      on?: (event: string, handler: (...args: unknown[]) => void) => void;
+      off?: (event: string, handler: (...args: unknown[]) => void) => void;
     };
     XverseProviders?: {
       BitcoinProvider?: {
@@ -697,6 +700,40 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       toast.success("Tap Wallet connected", {
         description: `${shortAddr(address)} · ${btcBalance} BTC · ${tnkBalance} TNK`,
       });
+
+      // ── accountsChanged: update address when user switches accounts in Tap Wallet ──
+      window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {
+        const newAccounts = args[0] as string[] | string | undefined;
+        const newAddress = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
+        if (!newAddress) {
+          // User disconnected all accounts in the extension
+          setBitcoin(null);
+          clearWalletSession();
+          showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
+          return;
+        }
+        // Refresh balances for the new address
+        try {
+          const [rawBal, { btc: newBtc, sats: newSats }, newBtcPrice] = await Promise.all([
+            window.tracnetwork!.getBalance(),
+            fetchBtcBalanceFromMempool(newAddress),
+            fetchBtcPriceUsd(),
+          ]);
+          const newTnk = rawBal ? (parseInt(rawBal) / 1e8).toFixed(4) : "0.0000";
+          const newDisplay = newSats > 0 ? `${newBtc} BTC / ${newTnk} TNK` : `${newTnk} TNK`;
+          setBitcoin(prev => prev ? {
+            ...prev,
+            address: newAddress,
+            shortAddress: shortAddr(newAddress),
+            balance: newDisplay,
+            balanceUsd: (newSats / 1e8) * newBtcPrice,
+            symbol: newSats > 0 ? "BTC" : "TNK",
+          } : null);
+          toast.info("Tap Wallet account changed", {
+            description: `Switched to ${shortAddr(newAddress)}`,
+          });
+        } catch (_) {}
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.includes("cancel") && !msg.includes("reject")) {
@@ -947,6 +984,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     const interval = setInterval(refreshBtcBalance, 60_000);
     return () => clearInterval(interval);
   }, [bitcoin?.connected, bitcoin?.address]);
+
+  // ── Tap Wallet accountsChanged cleanup on disconnect ───────────────────────
+  // The listener is registered inside connectTapWallet. When the user disconnects
+  // (bitcoin becomes null), we remove the listener so it doesn't fire stale updates.
+  useEffect(() => {
+    if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet") return; // still connected — keep listener
+    // Disconnected or switched to a different wallet — remove the listener
+    window.tracnetwork?.off?.("accountsChanged", () => {});
+  }, [bitcoin?.connected, bitcoin?.walletName]);
 
   // ── Auto-refresh SOL balance every 60 seconds when Phantom multi-chain is connected ──
   useEffect(() => {
