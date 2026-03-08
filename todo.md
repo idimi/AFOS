@@ -2203,3 +2203,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add Tap Wallet success overlay in modal (green card, auto-close after 1.5s)
 - [x] Show TNK balance on Trac Network tab in Connect Wallet modal (shows BTC + TNK when Tap Wallet)
 - [x] Add "TNK price?" and "swap 100 TNK to SOL" quick chips to chat input row
+
+## Tap Wallet Banner — Show Address
+
+- [x] Show truncated BTC address on Tap Wallet connected banner in modal (matching Phantom banner)

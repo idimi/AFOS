@@ -531,7 +531,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                   <img src={TAP_ICON} alt="Tap Wallet" className="w-5 h-5 rounded-md shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-[11px] font-semibold text-foreground">Tap Wallet connected</p>
-                    <div className="flex items-center gap-1 mt-0.5">
+                    <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                       {bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && (
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
                           style={{ background: `${CHAIN_DOTS.bitcoin}18`, color: CHAIN_DOTS.bitcoin }}>
@@ -542,6 +542,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                         <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
                           style={{ background: `${CHAIN_DOTS.trac_network}18`, color: CHAIN_DOTS.trac_network }}>
                           Trac Network
+                        </span>
+                      )}
+                      {/* Show truncated BTC address so user can confirm which account is connected */}
+                      {bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress && (
+                        <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">
+                          {bitcoin.shortAddress}
                         </span>
                       )}
                     </div>
