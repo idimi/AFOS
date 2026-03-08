@@ -771,12 +771,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   //   2. Sets window.tracnetwork via Object.defineProperty
   //   3. Dispatches `tracnetwork#initialized` event when fully ready
   //
-  // Known issue: if another wallet extension (MetaMask, Phantom, etc.) declares
-  // the same internal variable ($t) as tap-script.js, a SyntaxError prevents
-  // window.tracnetwork from being initialized. User must disable conflicting
-  // extensions or use a separate browser profile.
+  // The AFOS bundle is wrapped in an IIFE (vite.config.ts: format: 'iife') so
+  // our minified variable names (St, It, Lt, etc.) live in a private scope and
+  // never collide with tap-script.js's global-scope declarations.
   //
-  // We listen for that event first (most reliable), then fall back to polling.
+  // We listen for the ready event first (most reliable), then fall back to polling.
   const waitForTracNetwork = useCallback(async (ms = 5000): Promise<boolean> => {
     if (window.tracnetwork) {
       console.log("[AFOS] Tap Wallet: already available");

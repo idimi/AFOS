@@ -185,6 +185,18 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Wrap each chunk in an IIFE so minified variable names (e.g. `St`, `It`, `Lt`)
+        // stay in a private function scope and never collide with names declared by
+        // browser-extension injected scripts (Tap Wallet's tap-script.js uses the same
+        // short identifiers at the global level, causing SyntaxError on production).
+        // This matches how Phantom's extension avoids conflicts.
+        format: 'iife',
+        // Keep a single bundle for the main entry so the IIFE wraps everything
+        inlineDynamicImports: true,
+      },
+    },
   },
   server: {
     host: true,

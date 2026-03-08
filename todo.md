@@ -2170,3 +2170,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add timeout wrapper for requestAccount() to prevent infinite hang
 - [x] Add better error handling and user feedback when connection times out
 - [x] Investigate Phantom extension conflict with Tap Wallet messaging
+
+## Tap Wallet Extension Conflict Fix
+
+- [x] Wrap Vite production bundle in IIFE to prevent minified variable name collisions with tap-script.js
+- [x] Verify window.tapprotocol and window.tracnetwork inject correctly after fix (0 global conflicts in new bundle)
+- [x] Update waitForTracNetwork comment to document the IIFE fix
