@@ -314,8 +314,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     const wasConnected = prevBtcRef.current;
     const isNowConnected = bitcoin?.connected ?? false;
     prevBtcRef.current = isNowConnected;
-    // Skip standalone BTC toast if this is a Phantom multi-chain connection (toast already shown by Phantom handler)
-    if (!wasConnected && isNowConnected && open && !successState && !bitcoin?.isPhantom) {
+    // Skip standalone BTC toast if this is a Phantom multi-chain OR Tap Wallet connection
+    // (both fire their own combined multi-chain toast)
+    const isTapWalletBtc = bitcoin?.walletName === "Tap Wallet";
+    if (!wasConnected && isNowConnected && open && !successState && !bitcoin?.isPhantom && !isTapWalletBtc) {
       showSuccessAndClose(
         bitcoin?.walletName ?? "Bitcoin Wallet",
         [{ chain: "bitcoin", address: bitcoin?.shortAddress ?? "" }],

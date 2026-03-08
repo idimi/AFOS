@@ -864,6 +864,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       });
 
       // ── Step 2: Connect BTC via window.tapprotocol (if available) ──────────────────
+      let connectedBtcAddress: string | null = null;
       if (window.tapprotocol) {
         try {
           console.log("[AFOS] Tap Wallet: calling tapprotocol.requestAccounts()\u2026");
@@ -874,6 +875,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           );
           const btcAddress = btcAccounts?.[0];
           if (btcAddress) {
+            connectedBtcAddress = btcAddress;
             console.log("[AFOS] Tap Wallet: BTC address", btcAddress);
             const [{ btc: btcBal, sats }, btcPrice] = await Promise.all([
               fetchBtcBalanceFromMempool(btcAddress),
@@ -900,9 +902,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       saveWalletSession({ btc: "tap" });
-      toast.success("Tap Wallet connected", {
-        description: `TNK: ${shortAddr(tnkAddress)} · ${tnkBalance} TNK`,
-      });
+      // Single Phantom-style toast showing all connected chains
+      const toastChains: { chain: "bitcoin" | "trac_network"; address: string }[] = [];
+      if (connectedBtcAddress) toastChains.push({ chain: "bitcoin", address: shortAddr(connectedBtcAddress) });
+      toastChains.push({ chain: "trac_network", address: shortAddr(tnkAddress) });
+      showWalletConnectedToast("Tap Wallet", toastChains);
 
       // ── accountsChanged: update TNK address when user switches accounts ─────────────
       window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {

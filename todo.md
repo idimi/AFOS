@@ -2183,3 +2183,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Chat agent welcome message: include TNK balance alongside BTC balance
 - [x] WalletChatBridge: include TNK in anyConnected check so chat clears on Tap Wallet disconnect
 - [x] ChatPage: pass TNK balance to server-side agent via walletBalances so agent knows TNK amount
+
+## Tap Wallet Toast — Combined Phantom-Style Notification
+
+- [x] Remove separate TNK toast ("Tap Wallet connected · TNK: …")
+- [x] Update BTC toast to show both Bitcoin + Trac Network addresses in one Phantom-style toast
+- [x] Suppress standalone BTC modal toast when Tap Wallet connects (same as Phantom suppression)
