@@ -11,7 +11,7 @@
  * Operator/infrastructure config lives in Admin Panel → Operator Config.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Settings2,
@@ -399,6 +399,45 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   // Message preferences
   const [showReadReceipts, setShowReadReceipts] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
+  // ── Migrate localStorage → DB when user logs in ────────────────────────────
+  // When isAuthenticated transitions to true and a local settings snapshot exists,
+  // push it to the DB and then clear the local copy so there's no drift.
+  const hasMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (hasMigratedRef.current) return;
+    const raw = localStorage.getItem('afos_settings_local');
+    if (!raw) return;
+    try {
+      const local = JSON.parse(raw) as Record<string, unknown>;
+      saveMutation.mutate({
+        maxTxAmountUsd: typeof local.maxTxAmountUsd === 'number' ? local.maxTxAmountUsd : 500,
+        autoConfirm: Boolean(local.autoConfirm),
+        slippagePct: typeof local.slippagePct === 'string' ? local.slippagePct : '0.5',
+        preferredRoute: (local.preferredRoute as string) ?? 'best',
+        theme: (local.theme as string) ?? 'dark',
+        autoAcceptRfq: Boolean(local.autoAcceptRfq),
+        autoAcceptMaxUsd: typeof local.autoAcceptMaxUsd === 'number' ? local.autoAcceptMaxUsd : 0,
+        notifyReactions: Boolean(local.notifyReactions),
+        notifyIncomingDm: local.notifyIncomingDm !== false,
+        notifyUnreadBadge: local.notifyUnreadBadge !== false,
+        notifyTradeInquiry: local.notifyTradeInquiry !== false,
+        showReadReceipts: local.showReadReceipts !== false,
+        showTypingIndicator: local.showTypingIndicator !== false,
+      }, {
+        onSuccess: () => {
+          localStorage.removeItem('afos_settings_local');
+          toast.success('Local settings synced to your account', {
+            description: 'Your preferences are now saved across devices.',
+            duration: 5000,
+          });
+        },
+      });
+      hasMigratedRef.current = true;
+    } catch { /* malformed local data — skip */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
   // Load localStorage settings on first mount for unauthenticated users
   useEffect(() => {
     if (isAuthenticated) return; // DB settings will be loaded by the remoteSettings effect

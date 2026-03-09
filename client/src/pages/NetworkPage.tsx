@@ -2312,6 +2312,16 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
     });
   };
 
+  // ── Notification preferences from Settings ─────────────────────────────────
+  // settings.get is a publicProcedure — works for both authed and unauthed users.
+  const { data: userSettings } = trpc.settings.get.useQuery(undefined, {
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const notifyIncomingDm   = userSettings ? (userSettings as Record<string, unknown>).notifyIncomingDm  !== false : true;
+  const notifyUnreadBadge  = userSettings ? (userSettings as Record<string, unknown>).notifyUnreadBadge !== false : true;
+  const notifyTradeInquiry = userSettings ? (userSettings as Record<string, unknown>).notifyTradeInquiry !== false : true;
+
   // The matched peer from the invite link (if any)
   const invitedPeer = useMemo(() => {
     if (!invitePeerId || livePeers.length === 0) return null;
@@ -2369,13 +2379,13 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
   const unreadByPeer = useMemo(() => {
     const map: Record<string, { count: number; snippet: string }> = {};
     for (const entry of unreadBySenderRaw) {
-      // Still track unread count but skip badge for muted peers
-      if (!mutedPeerIds.has(entry.fromPeerId)) {
+      // Still track unread count but skip badge for muted peers or when badge is disabled
+      if (!mutedPeerIds.has(entry.fromPeerId) && notifyUnreadBadge) {
         map[entry.fromPeerId] = { count: entry.count, snippet: entry.snippet };
       }
     }
     return map;
-  }, [unreadBySenderRaw, mutedPeerIds]);
+  }, [unreadBySenderRaw, mutedPeerIds, notifyUnreadBadge]);
 
   // Fire a toast when a new unread message arrives from a peer we haven't toasted yet.
   // Skip toasts for muted peers.
@@ -2384,7 +2394,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
     const prev = prevUnreadRef.current;
     for (const entry of unreadBySenderRaw) {
       const prevCount = prev[entry.fromPeerId] ?? 0;
-      if (entry.count > prevCount && !mutedPeerIds.has(entry.fromPeerId)) {
+      if (entry.count > prevCount && !mutedPeerIds.has(entry.fromPeerId) && notifyIncomingDm) {
         // Find the peer's alias from livePeers
         const senderPeer = livePeers.find(p => p.fullKey === entry.fromPeerId);
         const alias = senderPeer?.alias ?? entry.fromPeerId.slice(0, 12);
@@ -2405,7 +2415,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
     const next: Record<string, number> = {};
     for (const entry of unreadBySenderRaw) next[entry.fromPeerId] = entry.count;
     prevUnreadRef.current = next;
-  }, [unreadBySenderRaw, livePeers, setActiveTab, mutedPeerIds]);
+  }, [unreadBySenderRaw, livePeers, setActiveTab, mutedPeerIds, notifyIncomingDm]);
 
   // ── Peer Reputation ────────────────────────────────────────────────────────
   // Collect all remote peer IDs (short IDs used as keys in livePeers)

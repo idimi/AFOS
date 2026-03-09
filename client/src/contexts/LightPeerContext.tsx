@@ -872,7 +872,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
             duration: 10000,
           });
-          toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
+          // Gate by notifyTradeInquiry setting (read from localStorage for context-level access)
+          const _notifyTrade = (() => { try { const s = localStorage.getItem('afos_settings_local'); if (s) { const p = JSON.parse(s); if (typeof p.notifyTradeInquiry === 'boolean') return p.notifyTradeInquiry; } } catch {} return true; })();
+          if (_notifyTrade) toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
             description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
             duration: 10000,
             action: {
@@ -884,8 +886,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
         }
       } else {
-        // Show notification
-        toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
+        // Show notification — gated by notifyTradeInquiry setting
+        const _notifyTrade2 = (() => { try { const s = localStorage.getItem('afos_settings_local'); if (s) { const p = JSON.parse(s); if (typeof p.notifyTradeInquiry === 'boolean') return p.notifyTradeInquiry; } } catch {} return true; })();
+        if (_notifyTrade2) toast(`Incoming trade request: ${amount.toFixed(4)} ${rfq.fromToken} → ${outAmount.toFixed(4)} ${rfq.toToken}`, {
           description: `From peer ${incoming.requestorPeer.slice(0, 8)}… · $${tradeUsd.toFixed(2)} USD`,
           duration: 10000,
           action: {
