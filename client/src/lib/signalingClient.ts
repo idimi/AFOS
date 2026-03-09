@@ -46,6 +46,7 @@ export type SignalingEvent =
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
+  | "data_channel_error"
   | "error";
 
 type EventHandler = (data: unknown) => void;
@@ -651,8 +652,17 @@ export class SignalingClient {
       }
     };
 
-    dc.onerror = (err) => {
-      console.error(`[SignalingClient] Data channel error with ${peerId}:`, err);
+    dc.onerror = (event) => {
+      // RTCErrorEvent wraps the actual error — extract it for a readable log
+      const rtcErr = (event as RTCErrorEvent).error;
+      const detail = rtcErr
+        ? `${rtcErr.errorDetail ?? "unknown"} (code: ${rtcErr.sctpCauseCode ?? "n/a"})`
+        : String(event);
+      // Log as warn — data channel errors are transient (ICE failure, peer drop)
+      // and the existing dc.onclose handler already cleans up the peer state.
+      console.warn(`[SignalingClient] Data channel error with ${peerId.slice(0, 12)}…: ${detail}`);
+      // Emit so higher-level code can react (e.g., attempt reconnect)
+      this.emit("data_channel_error", { peerId, detail });
     };
   }
 

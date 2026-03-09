@@ -2211,3 +2211,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Tap Wallet — Remove Duplicate Toast
 
 - [x] Remove the Trac-Network-only toast so only the combined Bitcoin + Trac Network toast fires on connection
+
+## SignalingClient — RTCErrorEvent Data Channel Error
+
+- [x] Fix unhandled RTCErrorEvent in signalingClient.ts dc.onerror — extract RTCError.errorDetail, log as warn, emit data_channel_error event
