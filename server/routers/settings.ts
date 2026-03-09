@@ -18,7 +18,25 @@ export const settingsRouter = router({
    * Load the current user's settings.
    * Returns defaults when no row exists yet — safe to call on first load.
    */
-  get: protectedProcedure.query(async ({ ctx }) => {
+  get: publicProcedure.query(async ({ ctx }) => {
+    // Return defaults when the user is not authenticated — no redirect needed
+    if (!ctx.user) {
+      return {
+        maxTxAmountUsd: DEFAULT_USER_SETTINGS.maxTxAmountUsd,
+        autoConfirm: DEFAULT_USER_SETTINGS.autoConfirm,
+        slippagePct: DEFAULT_USER_SETTINGS.slippagePct,
+        preferredRoute: DEFAULT_USER_SETTINGS.preferredRoute,
+        theme: DEFAULT_USER_SETTINGS.theme,
+        autoAcceptRfq: DEFAULT_USER_SETTINGS.autoAcceptRfq,
+        autoAcceptMaxUsd: DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
+        notifyReactions: DEFAULT_USER_SETTINGS.notifyReactions,
+        notifyIncomingDm: DEFAULT_USER_SETTINGS.notifyIncomingDm,
+        notifyUnreadBadge: DEFAULT_USER_SETTINGS.notifyUnreadBadge,
+        notifyTradeInquiry: DEFAULT_USER_SETTINGS.notifyTradeInquiry,
+        showReadReceipts: DEFAULT_USER_SETTINGS.showReadReceipts,
+        showTypingIndicator: DEFAULT_USER_SETTINGS.showTypingIndicator,
+      };
+    }
     const settings = await getUserSettings(ctx.user.openId);
     return {
       maxTxAmountUsd: settings.maxTxAmountUsd ?? DEFAULT_USER_SETTINGS.maxTxAmountUsd,

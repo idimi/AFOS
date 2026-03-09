@@ -298,10 +298,9 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   });
 
   // ── Remote state ──────────────────────────────────────────────────────────────
-  const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(
-    undefined,
-    { enabled: isAuthenticated },
-  );
+  // settings.get is now a publicProcedure — returns defaults for unauthenticated users,
+  // DB values for authenticated users. Always enabled so the form is pre-populated.
+  const { data: remoteSettings, isLoading: settingsLoading } = trpc.settings.get.useQuery(undefined);
 
   const utils = trpc.useUtils();
   const saveMutation = trpc.settings.save.useMutation({
@@ -400,7 +399,33 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   // Message preferences
   const [showReadReceipts, setShowReadReceipts] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
-
+  // Load localStorage settings on first mount for unauthenticated users
+  useEffect(() => {
+    if (isAuthenticated) return; // DB settings will be loaded by the remoteSettings effect
+    try {
+      const raw = localStorage.getItem('afos_settings_local');
+      if (!raw) return;
+      const local = JSON.parse(raw) as Record<string, unknown>;
+      if (local.maxTxAmountUsd) setMaxTxAmount(String(local.maxTxAmountUsd));
+      if (typeof local.autoConfirm === 'boolean') setAutoConfirm(local.autoConfirm);
+      if (local.slippagePct) {
+        const isPreset = SLIPPAGE_PRESETS.includes(local.slippagePct as string);
+        if (isPreset) setSlippage(local.slippagePct as string);
+        else { setSlippage('custom'); setCustomSlippage(local.slippagePct as string); }
+      }
+      if (local.preferredRoute) setPreferredRoute(local.preferredRoute as typeof preferredRoute);
+      if (local.theme) setTheme(local.theme as typeof theme);
+      if (typeof local.autoAcceptRfq === 'boolean') setAutoAcceptRfq(local.autoAcceptRfq);
+      if (local.autoAcceptMaxUsd !== undefined) setAutoAcceptMaxUsd(String(local.autoAcceptMaxUsd));
+      if (typeof local.notifyReactions === 'boolean') setNotifyReactions(local.notifyReactions);
+      if (typeof local.notifyIncomingDm === 'boolean') setNotifyIncomingDm(local.notifyIncomingDm);
+      if (typeof local.notifyUnreadBadge === 'boolean') setNotifyUnreadBadge(local.notifyUnreadBadge);
+      if (typeof local.notifyTradeInquiry === 'boolean') setNotifyTradeInquiry(local.notifyTradeInquiry);
+      if (typeof local.showReadReceipts === 'boolean') setShowReadReceipts(local.showReadReceipts);
+      if (typeof local.showTypingIndicator === 'boolean') setShowTypingIndicator(local.showTypingIndicator);
+    } catch { /* malformed JSON — ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
   // Populate local draft when remote data arrives
   useEffect(() => {
     if (!remoteSettings) return;
@@ -504,7 +529,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       return;
     }
     const parsedAutoAcceptMax = parseInt(autoAcceptMaxUsd, 10);
-    saveMutation.mutate({
+    const patch = {
       maxTxAmountUsd: parsedMax,
       autoConfirm,
       slippagePct: effectiveSlippage,
@@ -518,7 +543,20 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       notifyTradeInquiry,
       showReadReceipts,
       showTypingIndicator,
-    });
+    };
+    // If not authenticated, persist to localStorage only — avoids OAuth redirect
+    if (!isAuthenticated) {
+      try {
+        localStorage.setItem('afos_settings_local', JSON.stringify(patch));
+      } catch { /* storage unavailable */ }
+      toast.success('Settings saved locally', {
+        description: 'Connect a wallet to sync across devices.',
+      });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+      return;
+    }
+    saveMutation.mutate(patch);
   };
 
   // Show skeleton only while loading remote settings for authenticated users
