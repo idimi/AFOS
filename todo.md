@@ -2224,3 +2224,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Tap Wallet Toast — Combined Toast Fix (Round 3)
 - [x] CONNECT toast: must show BOTH Bitcoin address + Trac Network address in ONE toast (currently only shows TNK)
 - [x] DISCONNECT toast: must fire ONE combined toast showing both Bitcoin + Trac Network chains (currently fires 2 separate toasts)
+
+## Bug Fixes — Round 4 (3 bugs)
+- [x] Bug 1: Agent A not notified when Agent B accepts the quote — added rfq_accepted peer message + custom event listener in ChatPage + MiniChatWidget
+- [x] Bug 2: Swap UI shows "Please connect your Solana wallet" even though wallet IS connected — fixed to also check phantomMultiChain.solanaAddress
+- [x] Bug 3: HTLC Atomic Swap modal shows all 4 steps as complete (trade complete) prematurely — changed all fallback catch blocks from step:settled to step:failed, made trade counter conditional on actual settlement
+
+## Bug Fixes — Round 5
+- [x] Bug 4: Swap page shows SOL balance as 0 even when wallet is connected with real SOL balance — fixed liveBalances to also read from phantomMultiChain.solanaBalances when Phantom multi-chain is connected

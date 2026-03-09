@@ -689,6 +689,33 @@ export default function ChatPage() {
     return () => window.removeEventListener("afos:agent-rfq", handler);
   }, [addMessage]);
 
+  // Listen for rfq_accepted events — counterparty accepted our swap request
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as {
+        rfqId?: string;
+        acceptorAlias?: string;
+        acceptorPeerId?: string;
+        fromToken?: string;
+        toToken?: string;
+        amount?: number;
+        outAmount?: number;
+      };
+      if (!data?.rfqId) return;
+      const alias = data.acceptorAlias ?? data.acceptorPeerId?.slice(0, 8) ?? "Peer";
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\u2705 **@${alias}** accepted your swap! **${data.amount?.toFixed(4) ?? "?"} ${data.fromToken ?? "?"}** \u2192 **${data.outAmount?.toFixed(4) ?? "?"} ${data.toToken ?? "?"}**. HTLC atomic settlement is in progress\u2026`,
+      });
+      toast.success(`Swap accepted by @${alias}`, {
+        description: `${data.amount?.toFixed(4)} ${data.fromToken} \u2192 ${data.outAmount?.toFixed(4)} ${data.toToken}`,
+      });
+    };
+    window.addEventListener("afos:rfq-accepted", handler);
+    return () => window.removeEventListener("afos:rfq-accepted", handler);
+  }, [addMessage]);
+
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
     if (!messageText || isTyping) return;

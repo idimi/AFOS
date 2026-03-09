@@ -342,6 +342,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       } else if (msg?.type === "chat") {
         // Peer chat message
         window.dispatchEvent(new CustomEvent("afos:peer-chat", { detail: { fromPeerId, ...payload as object } }));
+      } else if (msg?.type === "rfq_accepted") {
+        // Counterparty accepted our RFQ — notify the chat UI
+        window.dispatchEvent(new CustomEvent("afos:rfq-accepted", { detail: { fromPeerId, ...payload as object } }));
       }
     }));
 
@@ -706,6 +709,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Step 1: Submit quote to AFOS agent
     await submitQuote(rfq);
 
+    // Step 1b: Notify the requester (Agent A) that we accepted their RFQ
+    if (rfq.requestorPeer && signalingRef.current) {
+      signalingRef.current.sendToPeer(rfq.requestorPeer, {
+        type: "rfq_accepted",
+        rfqId: rfq.rfqId,
+        acceptorAlias: peerAlias,
+        acceptorPeerId: peerId,
+        fromToken: rfq.fromToken,
+        toToken: rfq.toToken,
+        amount: rfq.amount,
+        outAmount: rfq.suggestedOutAmount,
+      });
+    }
+
     // Step 2: In-browser HTLC lock signing
     setHtlcSigning({ rfqId, step: "signing" });
 
@@ -833,9 +850,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("rejected")) {
             setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
           } else {
-            // Wallet may not support direct tx — fall back gracefully
-            setHtlcSigning({ rfqId, step: "settled" });
-            toast.success("Quote accepted", { description: "HTLC will be coordinated by AFOS agent." });
+            // Wallet signing failed — do NOT mark as settled
+            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            toast.error("ETH HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else if ((chain === "bitcoin" || chain === "btc") && bitcoin?.connected) {
@@ -884,11 +901,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             setHtlcSigning({ rfqId, step: "failed", error: msg });
             toast.error("Insufficient Bitcoin balance", { description: msg });
           } else {
-            // Fallback: Oracle VM coordinates HTLC
-            setHtlcSigning({ rfqId, step: "settled" });
-            toast.success("Quote accepted", {
-              description: `Bitcoin HTLC will be coordinated by AFOS agent. (${msg.slice(0, 60)})`,
-            });
+            // Wallet signing failed — do NOT mark as settled
+            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            toast.error("BTC HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else if ((chain === "trac_network" || rfq.fromToken === "TNK") && (window as any).tracnetwork) {
@@ -916,21 +931,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
             setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
           } else {
-            setHtlcSigning({ rfqId, step: "settled" });
-            toast.success("Quote accepted", {
-              description: `TNK HTLC will be coordinated by AFOS agent. (${msg.slice(0, 60)})`,
-            });
+            // Wallet signing failed — do NOT mark as settled
+            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            toast.error("TNK HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else {
-        // No wallet signing available — AFOS agent will coordinate HTLC
-        setHtlcSigning({ rfqId, step: "locking" });
-        await new Promise(r => setTimeout(r, 1000));
-        setHtlcSigning({ rfqId, step: "settled" });
-        toast.success(
-          `Quote accepted — ${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.suggestedOutAmount.toFixed(4)} ${rfq.toToken}`,
-          { description: "HTLC escrow coordinated via AFOS agent." }
-        );
+        // No wallet connected for this chain — cannot sign HTLC
+        setHtlcSigning({ rfqId, step: "failed", error: `No ${chain} wallet connected to sign HTLC` });
+        toast.error("Wallet not connected", {
+          description: `Connect a ${chain} wallet to sign the HTLC lock transaction.`,
+        });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -938,9 +949,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       toast.error("HTLC signing failed", { description: msg });
     }
 
-    setTradesCompleted(t => t + 1);
-    const fromPrice = pricesRef.current[rfq.fromToken.toUpperCase()] ?? 0;
-    setTotalVolumeUsd(v => v + rfq.amount * fromPrice);
+    // Only count as a completed trade if HTLC actually settled (not failed)
+    setHtlcSigning(prev => {
+      if (prev?.step === "settled") {
+        setTradesCompleted(t => t + 1);
+        const fromPrice = pricesRef.current[rfq.fromToken.toUpperCase()] ?? 0;
+        setTotalVolumeUsd(v => v + rfq.amount * fromPrice);
+      }
+      return prev;
+    });
   }, [incomingRfqs, submitQuote, solConnected, signTransaction, ethereum]);
 
   // ── Reject RFQ ────────────────────────────────────────────────────────────

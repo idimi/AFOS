@@ -2448,19 +2448,32 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
   const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
-  const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances } = useMultiChainWallet();
+  const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances, phantomMultiChain } = useMultiChainWallet();
    const { theme: currentTheme } = useTheme();
   const lightPeer = useLightPeer();
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
   // Derived from connected wallets; falls back to TOKENS static values when disconnected.
   const liveBalances = useMemo<Record<string, number>>(() => {
     const map: Record<string, number> = {};
-    // Solana balances from WalletContext
+    // Solana balances from WalletContext (standard adapter)
     for (const b of solBalances) {
       if (b.symbol === 'SOL') map['SOL'] = parseFloat(b.amount) || 0;
       if (b.symbol === 'USDT') map['USDT'] = parseFloat(b.amount) || 0;
       if (b.symbol === 'USDC') map['USDC'] = parseFloat(b.amount) || 0;
       if (b.symbol === 'USDC') map['USDC-SOL'] = parseFloat(b.amount) || 0;
+    }
+    // Solana balances from Phantom multi-chain (when connected via multi-chain modal)
+    // These take precedence only if the standard adapter has no balance for the symbol
+    if (phantomMultiChain?.solanaBalances) {
+      for (const b of phantomMultiChain.solanaBalances) {
+        const sym = b.symbol.toUpperCase();
+        const val = parseFloat(b.amount) || 0;
+        // Only override if the adapter didn't already provide a non-zero value
+        if (map[sym] === undefined || map[sym] === 0) {
+          map[sym] = val;
+          if (sym === 'USDC') map['USDC-SOL'] = val;
+        }
+      }
     }
     // Ethereum balances from MultiChainWalletContext
     if (ethWallet?.connected) {
@@ -2476,7 +2489,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     }
     // TNK balance is fetched asynchronously — see tnkBalance state below
     return map;
-  }, [solBalances, ethWallet, btcWallet, erc20Balances]);
+  }, [solBalances, ethWallet, btcWallet, erc20Balances, phantomMultiChain]);
 
   // TNK balance: fetched asynchronously from Tap Wallet (window.tracnetwork)
   const [tnkBalance, setTnkBalance] = useState<number>(0);

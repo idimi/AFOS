@@ -404,15 +404,16 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
     }
 
     // Solana swap via Jupiter + Phantom
-    if (!publicKey) {
+    const solPubKeyStr = publicKey?.toString() ?? phantomMultiChain?.solanaAddress ?? null;
+    if (!solPubKeyStr) {
       addMessage({ role: "assistant", content: "Please connect your Solana wallet first to execute swaps.", type: "error" });
       return;
     }
-    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}…`, type: "text" });
+    addMessage({ role: "assistant", content: `Building swap transaction for ${quoteData.fromAmount} ${quoteData.fromToken} \u2192 ${quoteData.toToken}\u2026`, type: "text" });
     try {
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
-        userPublicKey: publicKey.toString(),
+        userPublicKey: solPubKeyStr,
         fromToken:     quoteData.fromToken,
         toToken:       quoteData.toToken,
         fromChain:     (quoteData.fromChain as SupportedChain) ?? "solana",
@@ -489,6 +490,33 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
       setIsTyping(false);
     }
   }, [input, isTyping, messages, sendMessage, addMessage, publicKey, balances]);
+
+  // Listen for rfq_accepted events — counterparty accepted our swap request
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as {
+        rfqId?: string;
+        acceptorAlias?: string;
+        acceptorPeerId?: string;
+        fromToken?: string;
+        toToken?: string;
+        amount?: number;
+        outAmount?: number;
+      };
+      if (!data?.rfqId) return;
+      const alias = data.acceptorAlias ?? data.acceptorPeerId?.slice(0, 8) ?? "Peer";
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\u2705 **@${alias}** accepted your swap! **${data.amount?.toFixed(4) ?? "?"} ${data.fromToken ?? "?"}** \u2192 **${data.outAmount?.toFixed(4) ?? "?"} ${data.toToken ?? "?"}**. HTLC atomic settlement is in progress\u2026`,
+      });
+      toast.success(`Swap accepted by @${alias}`, {
+        description: `${data.amount?.toFixed(4)} ${data.fromToken} \u2192 ${data.outAmount?.toFixed(4)} ${data.toToken}`,
+      });
+    };
+    window.addEventListener("afos:rfq-accepted", handler);
+    return () => window.removeEventListener("afos:rfq-accepted", handler);
+  }, [addMessage]);
 
   const QUICK_CHIPS = [
     "swap 1 USDT to SOL",
