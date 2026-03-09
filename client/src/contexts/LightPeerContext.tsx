@@ -288,7 +288,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
   // ── Seed claimedRfqIds + refundedRfqIds from DB on mount ─────────────────
   useEffect(() => {
-    void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A200%7D%7D%7D", {
+    void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A100%7D%7D%7D", {
       credentials: "include",
     })
       .then(r => r.json())

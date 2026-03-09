@@ -801,7 +801,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
   const onlineCount = livePeers.filter(p => p.online).length;
   const tnkPeerCount = livePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length;
   // Count settled HTLCs for the History tab badge — uses the same query as SettledHtlcsPanel
-  const { data: settledForBadge } = trpc.chat.getSettledHtlcs.useQuery({ limit: 200 }, {
+  const { data: settledForBadge } = trpc.chat.getSettledHtlcs.useQuery({ limit: 100 }, {
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });
