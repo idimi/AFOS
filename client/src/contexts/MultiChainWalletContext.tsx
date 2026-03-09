@@ -902,11 +902,10 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       saveWalletSession({ btc: "tap" });
-      // Single Phantom-style toast showing all connected chains
-      const toastChains: { chain: "bitcoin" | "trac_network"; address: string }[] = [];
-      if (connectedBtcAddress) toastChains.push({ chain: "bitcoin", address: shortAddr(connectedBtcAddress) });
-      toastChains.push({ chain: "trac_network", address: shortAddr(tnkAddress) });
-      showWalletConnectedToast("Tap Wallet", toastChains);
+      // Toast is handled by ConnectWalletModal's prevTnkRef watcher:
+      //   - modal open  → showSuccessAndClose (overlay + toast)
+      //   - modal closed → showWalletConnectedToast (standalone toast)
+      // This avoids the duplicate toast that was firing when the modal was open.
 
       // ── accountsChanged: update TNK address when user switches accounts ─────────────
       window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {

@@ -326,13 +326,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     }
   }, [bitcoin?.connected, open]);
 
-  // Watch for Tap Wallet connection — fires success overlay with both Bitcoin + Trac Network
+  // Watch for Tap Wallet connection — fires success overlay (modal open) or standalone toast (modal closed)
   const prevTnkRef = useRef(tracNetwork?.connected ?? false);
   useEffect(() => {
     const wasConnected = prevTnkRef.current;
     const isNowConnected = tracNetwork?.connected ?? false;
     prevTnkRef.current = isNowConnected;
-    if (!wasConnected && isNowConnected && open && !successState) {
+    if (!wasConnected && isNowConnected) {
       const chainAddresses: { chain: ChainTab; address: string }[] = [];
       if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress) {
         chainAddresses.push({ chain: "bitcoin", address: bitcoin.shortAddress });
@@ -340,8 +340,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
       if (tracNetwork?.shortAddress) {
         chainAddresses.push({ chain: "trac_network", address: tracNetwork.shortAddress });
       }
-      if (chainAddresses.length > 0) {
+      if (chainAddresses.length === 0) return;
+      if (open && !successState) {
+        // Modal is open — show the animated success overlay (which also fires the toast)
         showSuccessAndClose("Tap Wallet", chainAddresses, "#F97316");
+      } else {
+        // Modal is closed — fire standalone toast only
+        showWalletConnectedToast("Tap Wallet", chainAddresses);
       }
     }
   }, [tracNetwork?.connected, open]);

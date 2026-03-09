@@ -2207,3 +2207,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Tap Wallet Banner — Show Address
 
 - [x] Show truncated BTC address on Tap Wallet connected banner in modal (matching Phantom banner)
+
+## Tap Wallet — Remove Duplicate Toast
+
+- [x] Remove the Trac-Network-only toast so only the combined Bitcoin + Trac Network toast fires on connection
