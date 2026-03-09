@@ -18,7 +18,7 @@ import {
   Shield, Clock, RefreshCw, ChevronRight, X,
   GitBranch, Plus, Minus, Mail, Link2, AlertCircle, Wifi, WifiOff, Loader2,
   ArrowUpDown, SlidersHorizontal, Star, Check, MessageSquare, Volume2, VolumeX, Trophy,
-  BellOff, Bell, Flag
+  BellOff, Bell, Flag, Send, SmilePlus, ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLightPeer } from "@/contexts/LightPeerContext";
@@ -550,35 +550,30 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
     const el = inputRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, [draft]);
 
   const { data: thread = [], refetch } = trpc.peerMessages.getThread.useQuery(
     { myPeerId, otherPeerId, limit: 50 },
-    { enabled: open, refetchInterval: open ? 5000 : false }
+    { enabled: open, refetchInterval: open ? 4000 : false }
   );
 
   const sendMsg = trpc.peerMessages.send.useMutation({
     onSuccess: () => {
       setDraft('');
-      // Collapse textarea back to single row after send
-      if (inputRef.current) {
-        inputRef.current.style.height = 'auto';
-      }
+      if (inputRef.current) inputRef.current.style.height = 'auto';
       refetch();
     },
   });
 
   const markRead = trpc.peerMessages.markRead.useMutation();
 
-  // When a pair badge is clicked, the parent updates initialDraft + autoOpen.
-  // Sync those changes into local state so the chat opens and pre-fills.
+  // When a pair badge is clicked, sync draft + open
   useEffect(() => {
     if (initialDraft !== undefined && initialDraft !== '') {
       setDraft(initialDraft);
       setOpen(true);
-      // Focus the input after the panel opens
-      setTimeout(() => inputRef.current?.focus(), 50);
+      setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [initialDraft]);
 
@@ -610,95 +605,161 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
     }
   };
 
+  // Derive initials for avatar
+  const peerInitials = otherAlias.slice(0, 2).toUpperCase();
+  const myInitials = 'ME';
+
   return (
-    <div className="mt-3 pt-3 border-t border-border">
+    <div className="mt-3 border-t border-white/10">
+      {/* ── Section header ── */}
       <button
         onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between text-[9px] text-muted-foreground uppercase tracking-widest hover:text-foreground/70 transition-colors"
+        className="w-full flex items-center justify-between px-0 py-3 group"
       >
-        <span className="flex items-center gap-1">
-          <MessageSquare className="w-3 h-3" />
+        <span className="flex items-center gap-2 text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
+          <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
           Direct Message
+          {thread.length > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+              {thread.length}
+            </span>
+          )}
         </span>
-        <span className="text-[8px]">{open ? '▲' : '▼'}</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
       </button>
 
-      {open && (
-        <div className="mt-2 flex flex-col gap-1">
-          {/* Message thread */}
-          <div
-            ref={scrollRef}
-            className="flex flex-col gap-1 max-h-40 overflow-y-auto pr-1"
-            style={{ scrollbarWidth: 'thin' }}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="chat-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            className="overflow-hidden"
           >
-            {thread.length === 0 ? (
-              <p className="text-[9px] text-muted-foreground text-center py-2">
-                No messages yet. Say hi!
-              </p>
-            ) : (
-              thread.map((msg) => {
-                const isMine = msg.fromPeerId === myPeerId;
-                return (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
-                  >
-                    <div
-                      className="px-2 py-1 rounded-lg text-[10px] max-w-[90%] break-words"
-                      style={{
-                        background: isMine ? 'rgba(6,182,212,0.15)' : 'rgba(100,116,139,0.12)',
-                        border: `1px solid ${isMine ? 'rgba(6,182,212,0.25)' : 'rgba(100,116,139,0.2)'}`,
-                        color: isMine ? '#06b6d4' : 'var(--foreground)',
-                      }}
-                    >
-                      {msg.body}
-                    </div>
-                    <RelativeTime
-                      ts={msg.createdAt}
-                      className="text-[8px] text-muted-foreground/50 mt-0.5"
-                    />
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Input — auto-resizing textarea */}
-          <div className="flex flex-col gap-1 mt-1">
-            <textarea
-              ref={inputRef}
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={`Message ${otherAlias}… (Enter to send, Shift+Enter for newline)`}
-              maxLength={500}
-              rows={1}
-              className="w-full px-2 py-1.5 rounded-md text-[10px] bg-transparent outline-none resize-none leading-relaxed"
+            <div className="flex flex-col rounded-xl overflow-hidden"
               style={{
-                border: '1px solid var(--border)',
-                color: 'var(--foreground)',
-                minHeight: '28px',
-                maxHeight: '120px',
-                overflowY: 'auto',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
               }}
-            />
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[8px] text-muted-foreground/40">{draft.length}/500</span>
-                {/* Emoji picker button */}
-                <div className="relative" ref={emojiPickerRef}>
+            >
+              {/* ── Chat header ── */}
+              <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/8"
+                style={{ background: 'rgba(6,182,212,0.05)' }}
+              >
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                  style={{ background: 'rgba(6,182,212,0.2)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)' }}
+                >
+                  {peerInitials}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-white truncate">{otherAlias}</p>
+                  <p className="text-[10px] text-slate-500">P2P encrypted · {thread.length} messages</p>
+                </div>
+              </div>
+
+              {/* ── Message thread ── */}
+              <div
+                ref={scrollRef}
+                className="flex flex-col gap-2 p-3 overflow-y-auto"
+                style={{
+                  minHeight: '120px',
+                  maxHeight: '220px',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'rgba(255,255,255,0.1) transparent',
+                }}
+              >
+                {thread.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-20 gap-2">
+                    <MessageSquare className="w-5 h-5 text-slate-600" />
+                    <p className="text-xs text-slate-500">No messages yet</p>
+                    <p className="text-[10px] text-slate-600">Say hi to {otherAlias}!</p>
+                  </div>
+                ) : (
+                  thread.map((msg) => {
+                    const isMine = msg.fromPeerId === myPeerId;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex gap-2 ${
+                          isMine ? 'flex-row-reverse' : 'flex-row'
+                        }`}
+                      >
+                        {/* Avatar */}
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 mt-0.5"
+                          style={{
+                            background: isMine
+                              ? 'rgba(139,92,246,0.25)'
+                              : 'rgba(6,182,212,0.15)',
+                            color: isMine ? '#a78bfa' : '#06b6d4',
+                            border: `1px solid ${isMine ? 'rgba(139,92,246,0.3)' : 'rgba(6,182,212,0.25)'}`,
+                          }}
+                        >
+                          {isMine ? myInitials : peerInitials}
+                        </div>
+
+                        {/* Bubble */}
+                        <div className={`flex flex-col gap-0.5 max-w-[78%] ${
+                          isMine ? 'items-end' : 'items-start'
+                        }`}>
+                          <div
+                            className="px-3 py-2 rounded-2xl text-xs leading-relaxed break-words"
+                            style={{
+                              background: isMine
+                                ? 'rgba(139,92,246,0.18)'
+                                : 'rgba(255,255,255,0.07)',
+                              border: `1px solid ${
+                                isMine ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.1)'
+                              }`,
+                              color: isMine ? '#e2d9f3' : '#e2e8f0',
+                              borderRadius: isMine
+                                ? '16px 4px 16px 16px'
+                                : '4px 16px 16px 16px',
+                            }}
+                          >
+                            {msg.body}
+                          </div>
+                          <RelativeTime
+                            ts={msg.createdAt}
+                            className="text-[9px] text-slate-600 px-1"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* ── Input bar ── */}
+              <div
+                className="flex items-end gap-2 px-3 py-2.5 border-t border-white/8"
+                style={{ background: 'rgba(0,0,0,0.2)' }}
+              >
+                {/* Emoji button */}
+                <div className="relative shrink-0" ref={emojiPickerRef}>
                   <button
                     type="button"
                     onClick={() => setShowEmoji(v => !v)}
-                    className="text-[12px] leading-none opacity-60 hover:opacity-100 transition-opacity"
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
+                      showEmoji
+                        ? 'bg-cyan-500/20 text-cyan-400'
+                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/8'
+                    }`}
                     title="Add emoji"
                   >
-                    😊
+                    <SmilePlus className="w-4 h-4" />
                   </button>
                   {showEmoji && (
                     <div
-                      className="absolute bottom-6 left-0 z-50"
-                      style={{ filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.5))' }}
+                      className="absolute bottom-9 left-0 z-50"
+                      style={{ filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.6))' }}
                     >
                       <Picker
                         data={data}
@@ -715,23 +776,74 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
                     </div>
                   )}
                 </div>
+
+                {/* Textarea */}
+                <div className="flex-1 relative">
+                  <textarea
+                    ref={inputRef}
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={`Message ${otherAlias}…`}
+                    maxLength={500}
+                    rows={1}
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-transparent outline-none resize-none leading-relaxed placeholder:text-slate-600"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#e2e8f0',
+                      minHeight: '36px',
+                      maxHeight: '96px',
+                      overflowY: 'auto',
+                    }}
+                    onFocus={e => {
+                      e.currentTarget.style.borderColor = 'rgba(6,182,212,0.4)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                    }}
+                    onBlur={e => {
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                    }}
+                  />
+                  {/* Char counter — only visible when typing */}
+                  {draft.length > 400 && (
+                    <span
+                      className="absolute bottom-1.5 right-2 text-[9px] pointer-events-none"
+                      style={{ color: draft.length > 480 ? '#ef4444' : '#64748b' }}
+                    >
+                      {500 - draft.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Send button */}
+                <button
+                  onClick={handleSend}
+                  disabled={!draft.trim() || sendMsg.isPending}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all disabled:opacity-30"
+                  style={{
+                    background: draft.trim()
+                      ? 'linear-gradient(135deg, rgba(6,182,212,0.8), rgba(139,92,246,0.8))'
+                      : 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                  }}
+                  title="Send (Enter)"
+                >
+                  {sendMsg.isPending
+                    ? <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+                    : <Send className="w-3.5 h-3.5 text-white" />
+                  }
+                </button>
               </div>
-              <button
-                onClick={handleSend}
-                disabled={!draft.trim() || sendMsg.isPending}
-                className="shrink-0 px-2.5 py-1 rounded-md text-[9px] font-semibold transition-all disabled:opacity-40"
-                style={{
-                  background: 'rgba(6,182,212,0.15)',
-                  border: '1px solid rgba(6,182,212,0.3)',
-                  color: '#06b6d4',
-                }}
-              >
-                {sendMsg.isPending ? '…' : 'Send'}
-              </button>
+
+              {/* Hint */}
+              <p className="text-center text-[9px] text-slate-700 pb-2">
+                Enter to send · Shift+Enter for newline
+              </p>
             </div>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -828,7 +940,7 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="absolute top-4 right-4 w-64 rounded-2xl z-20 flex flex-col"
+      className="absolute top-4 right-4 w-80 rounded-2xl z-20 flex flex-col"
       style={{
         background: "var(--card)",
         border: "1px solid var(--border)",
