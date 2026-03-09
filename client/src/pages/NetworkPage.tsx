@@ -519,16 +519,21 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
  * Collapsible direct-message panel shown inside the PeerDetail popup.
  * Messages are stored in the DB via the peerMessages tRPC router.
  */
-function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }: {
+function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, sendPeerMessage }: {
   myPeerId: string;
   otherPeerId: string;
   otherAlias: string;
   initialDraft?: string;
   autoOpen?: boolean;
+  sendPeerMessage?: (targetPeerId: string, payload: unknown) => void;
 }) {
   const [open, setOpen] = useState(autoOpen ?? false);
   const [draft, setDraft] = useState(initialDraft ?? '');
   const [showEmoji, setShowEmoji] = useState(false);
+  const [hoveredMsgId, setHoveredMsgId] = useState<number | null>(null);
+  const [peerIsTyping, setPeerIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingThrottleRef = useRef<number>(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -553,10 +558,38 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
     el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, [draft]);
 
+  // Listen for typing events from the other peer
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { fromPeerId: string };
+      if (detail.fromPeerId !== otherPeerId) return;
+      setPeerIsTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setPeerIsTyping(false), 3000);
+    };
+    window.addEventListener('afos:peer-typing', handler);
+    return () => {
+      window.removeEventListener('afos:peer-typing', handler);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, [open, otherPeerId]);
+
   const { data: thread = [], refetch } = trpc.peerMessages.getThread.useQuery(
     { myPeerId, otherPeerId, limit: 50 },
     { enabled: open, refetchInterval: open ? 4000 : false }
   );
+
+  // Fetch reactions for visible messages
+  const messageIds = useMemo(() => thread.map(m => m.id), [thread]);
+  const { data: reactionsMap = {}, refetch: refetchReactions } = trpc.peerMessages.getReactions.useQuery(
+    { messageIds },
+    { enabled: open && messageIds.length > 0, refetchInterval: open ? 8000 : false }
+  );
+
+  const reactMutation = trpc.peerMessages.react.useMutation({
+    onSuccess: () => refetchReactions(),
+  });
 
   const sendMsg = trpc.peerMessages.send.useMutation({
     onSuccess: () => {
@@ -604,6 +637,19 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
       handleSend();
     }
   };
+
+  // Send typing signal (throttled to once every 2s)
+  const handleDraftChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setDraft(e.target.value);
+    const now = Date.now();
+    if (sendPeerMessage && now - typingThrottleRef.current > 2000) {
+      typingThrottleRef.current = now;
+      sendPeerMessage(otherPeerId, { type: 'typing', fromPeerId: myPeerId });
+    }
+  };
+
+  // Quick-reaction emojis shown on hover
+  const QUICK_REACTIONS = ['👍', '❤️', '🚀', '😂', '🔥'];
 
   // Derive initials for avatar
   const peerInitials = otherAlias.slice(0, 2).toUpperCase();
@@ -684,12 +730,16 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
                 ) : (
                   thread.map((msg) => {
                     const isMine = msg.fromPeerId === myPeerId;
+                    const msgReactions = (reactionsMap as Record<number, Record<string, string[]>>)[msg.id] ?? {};
+                    const hasReactions = Object.keys(msgReactions).length > 0;
                     return (
                       <div
                         key={msg.id}
-                        className={`flex gap-2 ${
+                        className={`flex gap-2 group/msg ${
                           isMine ? 'flex-row-reverse' : 'flex-row'
                         }`}
+                        onMouseEnter={() => setHoveredMsgId(msg.id)}
+                        onMouseLeave={() => setHoveredMsgId(null)}
                       >
                         {/* Avatar */}
                         <div
@@ -705,35 +755,134 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
                           {isMine ? myInitials : peerInitials}
                         </div>
 
-                        {/* Bubble */}
+                        {/* Bubble + reactions */}
                         <div className={`flex flex-col gap-0.5 max-w-[78%] ${
                           isMine ? 'items-end' : 'items-start'
                         }`}>
-                          <div
-                            className="px-3 py-2 rounded-2xl text-xs leading-relaxed break-words"
-                            style={{
-                              background: isMine
-                                ? 'rgba(139,92,246,0.18)'
-                                : 'rgba(255,255,255,0.07)',
-                              border: `1px solid ${
-                                isMine ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.1)'
-                              }`,
-                              color: isMine ? '#e2d9f3' : '#e2e8f0',
-                              borderRadius: isMine
-                                ? '16px 4px 16px 16px'
-                                : '4px 16px 16px 16px',
-                            }}
-                          >
-                            {msg.body}
+                          {/* Bubble */}
+                          <div className="relative">
+                            <div
+                              className="px-3 py-2 rounded-2xl text-xs leading-relaxed break-words"
+                              style={{
+                                background: isMine
+                                  ? 'rgba(139,92,246,0.18)'
+                                  : 'rgba(255,255,255,0.07)',
+                                border: `1px solid ${
+                                  isMine ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.1)'
+                                }`,
+                                color: isMine ? '#e2d9f3' : '#e2e8f0',
+                                borderRadius: isMine
+                                  ? '16px 4px 16px 16px'
+                                  : '4px 16px 16px 16px',
+                              }}
+                            >
+                              {msg.body}
+                            </div>
+                            {/* Quick reaction row — appears on hover */}
+                            {hoveredMsgId === msg.id && (
+                              <div
+                                className={`absolute -bottom-6 flex items-center gap-0.5 z-10 ${
+                                  isMine ? 'right-0' : 'left-0'
+                                }`}
+                                style={{
+                                  background: 'rgba(15,23,42,0.92)',
+                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  borderRadius: '20px',
+                                  padding: '2px 6px',
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                }}
+                              >
+                                {QUICK_REACTIONS.map(emoji => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => reactMutation.mutate({ messageId: msg.id, reactorPeerId: myPeerId, emoji })}
+                                    className="text-sm hover:scale-125 transition-transform px-0.5 leading-none"
+                                    title={`React with ${emoji}`}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
+
+                          {/* Existing reactions summary */}
+                          {hasReactions && (
+                            <div className={`flex flex-wrap gap-1 mt-5 ${
+                              isMine ? 'justify-end' : 'justify-start'
+                            }`}>
+                              {Object.entries(msgReactions).map(([emoji, reactors]) => {
+                                const iReacted = reactors.includes(myPeerId);
+                                return (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={() => reactMutation.mutate({ messageId: msg.id, reactorPeerId: myPeerId, emoji })}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] transition-all"
+                                    style={{
+                                      background: iReacted
+                                        ? 'rgba(6,182,212,0.2)'
+                                        : 'rgba(255,255,255,0.06)',
+                                      border: `1px solid ${
+                                        iReacted ? 'rgba(6,182,212,0.4)' : 'rgba(255,255,255,0.1)'
+                                      }`,
+                                      color: iReacted ? '#06b6d4' : '#94a3b8',
+                                    }}
+                                    title={`${reactors.length} reaction${reactors.length !== 1 ? 's' : ''}`}
+                                  >
+                                    <span>{emoji}</span>
+                                    <span>{reactors.length}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
                           <RelativeTime
                             ts={msg.createdAt}
-                            className="text-[9px] text-slate-600 px-1"
+                            className={`text-[9px] text-slate-600 px-1 ${
+                              hasReactions ? 'mt-1' : ''
+                            }`}
                           />
                         </div>
                       </div>
                     );
                   })
+                )}
+
+                {/* Typing indicator */}
+                {peerIsTyping && (
+                  <div className="flex gap-2 items-end">
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0"
+                      style={{
+                        background: 'rgba(6,182,212,0.15)',
+                        color: '#06b6d4',
+                        border: '1px solid rgba(6,182,212,0.25)',
+                      }}
+                    >
+                      {peerInitials}
+                    </div>
+                    <div
+                      className="px-3 py-2.5 rounded-2xl"
+                      style={{
+                        background: 'rgba(255,255,255,0.07)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '4px 16px 16px 16px',
+                      }}
+                    >
+                      <div className="flex items-center gap-1">
+                        {[0, 1, 2].map(i => (
+                          <span
+                            key={i}
+                            className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"
+                            style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.9s' }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -782,7 +931,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
                   <textarea
                     ref={inputRef}
                     value={draft}
-                    onChange={e => setDraft(e.target.value)}
+                    onChange={handleDraftChange}
                     onKeyDown={handleKeyDown}
                     placeholder={`Message ${otherAlias}…`}
                     maxLength={500}
@@ -857,12 +1006,13 @@ function trustLevel(score: number): { label: string; color: string } {
   return { label: 'Risky', color: '#ef4444' };
 }
 
-function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }: {
+function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory, sendPeerMessage }: {
   peer: Peer;
   onClose: () => void;
   selfPeerId?: string | null;
   reputationScores?: Record<string, { score: number; successfulSwaps: number; avgLatencyMs: number | null }>;
   pingHistory?: number[];
+  sendPeerMessage?: (targetPeerId: string, payload: unknown) => void;
 }) {
   const color = latencyColor(peer.latency);
   // Use DB-persisted reputation score if available, fall back to in-memory value
@@ -1092,6 +1242,7 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory }
             otherAlias={peer.alias}
             initialDraft={pairDraft}
             autoOpen={pairDraft !== ''}
+            sendPeerMessage={sendPeerMessage}
           />
         )}
         {/* Copy Invite Link — only for remote peers with a fullKey */}
@@ -3315,6 +3466,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
                 selfPeerId={lightPeer.peerId}
                 reputationScores={reputationData}
                 pingHistory={selectedPeer ? pingResults[selectedPeer.id]?.history : undefined}
+                sendPeerMessage={lightPeer.sendPeerMessage}
               />
             )}
           </AnimatePresence>

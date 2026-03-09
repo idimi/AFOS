@@ -50,6 +50,13 @@
       "when": 1773037067226,
       "tag": "0006_first_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1773089987374,
+      "tag": "0007_free_queen_noir",
+      "breakpoints": true
     }
   ]
 }

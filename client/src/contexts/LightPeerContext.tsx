@@ -463,6 +463,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       } else if (msg?.type === "rfq_accepted") {
         // Counterparty accepted our RFQ — notify the chat UI
         window.dispatchEvent(new CustomEvent("afos:rfq-accepted", { detail: { fromPeerId, ...payload as object } }));
+      } else if (msg?.type === "typing") {
+        // Peer typing indicator — dispatch so PeerChat can show animated dots
+        window.dispatchEvent(new CustomEvent("afos:peer-typing", { detail: { fromPeerId, ...payload as object } }));
       }
     }));
 

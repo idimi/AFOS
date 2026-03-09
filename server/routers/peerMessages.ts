@@ -210,4 +210,84 @@ export const peerMessagesRouter = router({
         );
       return { ok: true };
     }),
+
+  /**
+   * Toggle an emoji reaction on a message.
+   * If the (messageId, reactorPeerId, emoji) triple already exists, remove it (toggle off).
+   * Otherwise insert it (toggle on).
+   */
+  react: publicProcedure
+    .input(
+      z.object({
+        messageId: z.number().int().positive(),
+        reactorPeerId: z.string().min(1).max(128),
+        emoji: z.string().min(1).max(8),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { getDb } = await import("../db");
+      const { peerMessageReactions } = await import("../../drizzle/schema");
+      const { and, eq } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return { ok: false, action: 'noop' as const };
+      const existing = await db
+        .select()
+        .from(peerMessageReactions)
+        .where(
+          and(
+            eq(peerMessageReactions.messageId, input.messageId),
+            eq(peerMessageReactions.reactorPeerId, input.reactorPeerId),
+            eq(peerMessageReactions.emoji, input.emoji)
+          )
+        )
+        .limit(1);
+      if (existing.length > 0) {
+        await db
+          .delete(peerMessageReactions)
+          .where(
+            and(
+              eq(peerMessageReactions.messageId, input.messageId),
+              eq(peerMessageReactions.reactorPeerId, input.reactorPeerId),
+              eq(peerMessageReactions.emoji, input.emoji)
+            )
+          );
+        return { ok: true, action: 'removed' as const };
+      }
+      await db.insert(peerMessageReactions).values({
+        messageId: input.messageId,
+        reactorPeerId: input.reactorPeerId,
+        emoji: input.emoji,
+      });
+      return { ok: true, action: 'added' as const };
+    }),
+
+  /**
+   * Get all reactions for a batch of message IDs.
+   * Returns a map of messageId -> Record<emoji, reactorPeerId[]>.
+   */
+  getReactions: publicProcedure
+    .input(
+      z.object({
+        messageIds: z.array(z.number().int().positive()).max(100),
+      })
+    )
+    .query(async ({ input }) => {
+      if (input.messageIds.length === 0) return {} as Record<number, Record<string, string[]>>;
+      const { getDb } = await import("../db");
+      const { peerMessageReactions } = await import("../../drizzle/schema");
+      const { inArray } = await import("drizzle-orm");
+      const db = await getDb();
+      if (!db) return {} as Record<number, Record<string, string[]>>;
+      const rows = await db
+        .select()
+        .from(peerMessageReactions)
+        .where(inArray(peerMessageReactions.messageId, input.messageIds));
+      const result: Record<number, Record<string, string[]>> = {};
+      for (const row of rows) {
+        if (!result[row.messageId]) result[row.messageId] = {};
+        if (!result[row.messageId][row.emoji]) result[row.messageId][row.emoji] = [];
+        result[row.messageId][row.emoji].push(row.reactorPeerId);
+      }
+      return result;
+    }),
 });

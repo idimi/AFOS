@@ -402,3 +402,19 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
 });
 export type HtlcSecret = typeof htlcSecrets.$inferSelect;
 export type InsertHtlcSecret = typeof htlcSecrets.$inferInsert;
+
+// ─── Peer Message Reactions ───────────────────────────────────────────────────
+// Stores emoji reactions on peer-to-peer direct messages.
+// Each row is one (messageId, reactorPeerId, emoji) triple — unique per combo.
+export const peerMessageReactions = mysqlTable("peer_message_reactions", {
+  id:            int("id").autoincrement().primaryKey(),
+  /** The message being reacted to */
+  messageId:     int("messageId").notNull(),
+  /** Peer ID of the person who reacted */
+  reactorPeerId: varchar("reactorPeerId", { length: 128 }).notNull(),
+  /** The emoji character, e.g. "👍" */
+  emoji:         varchar("emoji", { length: 8 }).notNull(),
+  createdAt:     timestamp("createdAt").defaultNow().notNull(),
+});
+export type PeerMessageReaction = typeof peerMessageReactions.$inferSelect;
+export type InsertPeerMessageReaction = typeof peerMessageReactions.$inferInsert;
