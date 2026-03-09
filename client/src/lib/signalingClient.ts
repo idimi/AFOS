@@ -45,6 +45,8 @@ export type SignalingEvent =
   | "agent_rfq"
   | "htlc_locked"
   | "htlc_secret"
+  | "htlc_secret_reminder"
+  | "htlc_expired"
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
@@ -516,6 +518,27 @@ export class SignalingClient {
           fromPeerId: msg.fromPeerId,
           rfqId: msg.rfqId,
           secretHex: msg.secretHex,
+        });
+        break;
+
+      case "htlc_secret_reminder":
+        // Server re-broadcasts the secret for Agent B who may have missed the original
+        this.emit("htlc_secret_reminder", {
+          rfqId: msg.rfqId,
+          secretHex: msg.secretHex,
+          expiresAt: msg.expiresAt,
+          message: msg.message,
+        });
+        break;
+
+      case "htlc_expired":
+        // Server notifies that the HTLC swap window has expired
+        this.emit("htlc_expired", {
+          rfqId: msg.rfqId,
+          fromChain: msg.fromChain,
+          toChain: msg.toChain,
+          reason: msg.reason,
+          message: msg.message,
         });
         break;
 

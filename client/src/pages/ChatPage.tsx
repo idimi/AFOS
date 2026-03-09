@@ -430,6 +430,8 @@ function MessageBubble({
   onRequestConnect,
   onAcceptRfq,
   onDeclineRfq,
+  onClaimHtlc,
+  htlcRevealedSecrets,
   tnkPeerCount,
 }: {
   msg: ChatMessage;
@@ -439,6 +441,8 @@ function MessageBubble({
   onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
   onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number) => void;
   onDeclineRfq?: (rfqId: string) => void;
+  onClaimHtlc?: (rfqId: string) => void;
+  htlcRevealedSecrets?: Record<string, string>;
   tnkPeerCount?: number;
 }) {
   const isUser = msg.role === "user";
@@ -578,6 +582,16 @@ function MessageBubble({
                 Decline
               </button>
             </div>
+            {/* Claim Funds — shown when Agent A has revealed the secret */}
+            {htlcRevealedSecrets?.[msg.incomingRfqData.rfqId] && onClaimHtlc && (
+              <button
+                onClick={() => onClaimHtlc(msg.incomingRfqData!.rfqId)}
+                className="w-full py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.35)" }}
+              >
+                🔓 Claim Funds (Secret Revealed)
+              </button>
+            )}
           </div>
         )}
         {/* Tx success */}
@@ -619,7 +633,8 @@ export default function ChatPage() {
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
-  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers, initiateHtlcLock } = useLightPeer();
+  const lightPeer = useLightPeer();
+  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers, initiateHtlcLock } = lightPeer;
 
   const [input, setInput] = useState("");
   const [executingId, setExecutingId] = useState<string | null>(null);
@@ -1253,6 +1268,8 @@ export default function ChatPage() {
               onDeclineRfq={(rfqId) => {
                 handleSend(`decline swap rfq:${rfqId}`);
               }}
+              onClaimHtlc={lightPeer.claimHtlcFunds}
+              htlcRevealedSecrets={lightPeer.htlcRevealedSecrets}
             />
           ) : null
         ))}

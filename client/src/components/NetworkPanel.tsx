@@ -46,11 +46,14 @@ function timeLeft(ms: number): string {
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onClaim?: (id: string) => void;
+  hasSecret?: boolean;
 }) {
+  const [claiming, setClaiming] = useState(false);
   const isExpired = rfq.status === "expired" || rfq.expiresAt < Date.now();
   const isPending = rfq.status === "pending" && !isExpired;
 
@@ -111,6 +114,22 @@ function RfqCard({ rfq, onAccept, onReject }: {
             className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs font-medium transition-colors"
           >
             <XCircle className="w-3 h-3" /> Reject
+          </button>
+        </div>
+      )}
+      {/* Claim Funds button — shown when Agent A has revealed the secret */}
+      {hasSecret && onClaim && rfq.status === "accepted" && (
+        <div className="pt-1">
+          <button
+            onClick={async () => {
+              setClaiming(true);
+              try { await onClaim(rfq.rfqId); } finally { setClaiming(false); }
+            }}
+            disabled={claiming}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            {claiming ? "Claiming…" : "Claim Funds (Secret Revealed)"}
           </button>
         </div>
       )}
@@ -370,7 +389,14 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
               <AnimatePresence initial={false}>
                 {recentRfqs.map(rfq => (
-                  <RfqCard key={rfq.rfqId} rfq={rfq} onAccept={peer.acceptRfq} onReject={peer.rejectRfq} />
+                  <RfqCard
+                    key={rfq.rfqId}
+                    rfq={rfq}
+                    onAccept={peer.acceptRfq}
+                    onReject={peer.rejectRfq}
+                    onClaim={peer.claimHtlcFunds}
+                    hasSecret={!!peer.htlcRevealedSecrets[rfq.rfqId]}
+                  />
                 ))}
               </AnimatePresence>
             </div>

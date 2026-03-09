@@ -2256,3 +2256,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Wire reveal step: Agent B sends htlc_locked via signaling after lock tx broadcast (SOL/ETH/BTC/TNK). Agent A receives htlc_locked, calls revealHtlcSecret tRPC procedure, then sends secretHex to Agent B via htlc_secret signaling message. Agent B receives htlc_secret, stores in htlcRevealedSecrets state, shows "Copy Secret" toast.
 - [x] Add on-chain lock confirmation signal: signalingClient.sendHtlcLocked() and sendHtlcSecret() methods added. signaling.ts relays htlc_locked and htlc_secret messages to target peer. LightPeerContext listens for both events and dispatches afos:htlc-locked and afos:htlc-secret-received window events.
 - [x] SwapPage.tsx TNK type errors: already resolved — tracNetwork exists in MultiChainWalletContextValue and trac_network is in SupportedChain union. Stale TSC watch was reporting false positives.
+
+## Claim Funds Button + HTLC Secrets Expiry Monitor
+
+- [x] Add `claimHtlcFunds(rfqId)` to LightPeerContext — handles SOL/ETH/BTC/TNK on-chain claim with revealed secret
+- [x] Add `htlc_secret_reminder` and `htlc_expired` event handlers to LightPeerContext
+- [x] Add `htlc_secret_reminder` and `htlc_expired` to `SignalingEvent` type and message dispatcher in signalingClient.ts
+- [x] Add Claim Funds button to NetworkPanel RfqCard (amber, shown when `htlcRevealedSecrets[rfqId]` is set and status=accepted)
+- [x] Add Claim Funds button to LightPeerPanel RfqCard (same logic)
+- [x] Add Claim Funds button to ChatPage incoming_rfq message card
+- [x] Create `server/jobs/htlcSecretsMonitor.ts` — polls `htlc_secrets` table every 60s, marks expired locked rows, sends `htlc_expired` signaling message to counterparty, sends `htlc_secret_reminder` for revealed-but-unclaimed rows, notifies project owner on expiry
+- [x] Register `startHtlcSecretsMonitor()` in `server/_core/index.ts`

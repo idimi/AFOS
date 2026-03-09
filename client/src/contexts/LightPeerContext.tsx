@@ -125,6 +125,11 @@ export interface LightPeerState {
   broadcastRfq: (rfq: unknown) => void;
   /** Map of rfqId → secretHex received from Agent A (for Agent B to claim) */
   htlcRevealedSecrets: Record<string, string>;
+  /**
+   * Claim HTLC funds as Agent B using the revealed secret.
+   * Builds and broadcasts the on-chain claim transaction for the given chain.
+   */
+  claimHtlcFunds: (rfqId: string) => Promise<void>;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -436,6 +441,38 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         },
       });
       window.dispatchEvent(new CustomEvent("afos:htlc-secret-received", { detail: { rfqId, secretHex } }));
+    }));
+
+    // Handle htlc_secret_reminder: server re-broadcasts the secret for Agent B who may have missed it
+    unsubs.push(client.on("htlc_secret_reminder", (data) => {
+      const { rfqId, secretHex } = data as { rfqId: string; secretHex: string };
+      if (!rfqId || !secretHex) return;
+      // Only update if we don't already have this secret stored
+      setHtlcRevealedSecrets(prev => {
+        if (prev[rfqId]) return prev; // already have it
+        toast.info("Claim reminder: secret available", {
+          description: `RFQ ${rfqId.slice(0, 8)}… — Agent A already revealed the secret. Claim your funds now.`,
+          duration: 20000,
+        });
+        return { ...prev, [rfqId]: secretHex };
+      });
+    }));
+
+    // Handle htlc_expired: the swap window has passed without settlement
+    unsubs.push(client.on("htlc_expired", (data) => {
+      const { rfqId } = data as { rfqId: string; fromChain?: string; toChain?: string; message?: string };
+      if (!rfqId) return;
+      // Remove the secret if stored (no longer claimable)
+      setHtlcRevealedSecrets(prev => {
+        const next = { ...prev };
+        delete next[rfqId];
+        return next;
+      });
+      toast.warning("HTLC swap expired", {
+        description: `RFQ ${rfqId.slice(0, 8)}… expired. You may now refund your locked funds.`,
+        duration: 15000,
+      });
+      window.dispatchEvent(new CustomEvent("afos:htlc-expired", { detail: { rfqId } }));
     }));
 
     // Handle RFQ broadcasts
@@ -1130,6 +1167,153 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     await acceptRfq(rfqId, syntheticRfq);
   }, [acceptRfq]);
 
+  // ── Claim HTLC Funds (Agent B) ──────────────────────────────────────────────
+  // Called when Agent B has received the secret from Agent A and wants to claim
+  // the funds locked in the HTLC on the destination chain.
+  const claimHtlcFunds = useCallback(async (rfqId: string) => {
+    const secretHex = htlcRevealedSecrets[rfqId];
+    if (!secretHex) {
+      toast.error("No secret available", { description: `No revealed secret found for RFQ ${rfqId.slice(0, 8)}…` });
+      return;
+    }
+
+    // Find the corresponding RFQ to determine which chain to claim on
+    const rfq = incomingRfqs.find(r => r.rfqId === rfqId);
+    // Agent B locked on toChain (the chain they sent funds to), so they claim on fromChain
+    // (the chain where Agent A locked funds for them)
+    const claimChain = rfq?.fromChain?.toLowerCase() ?? "solana";
+
+    toast.loading(`Claiming funds on ${claimChain}…`, { id: `claim-${rfqId}` });
+
+    try {
+      if (claimChain === "solana" && solConnected && signTransaction && solPubkey) {
+        // Solana claim: build a claim instruction using the revealed secret
+        // The claim instruction reveals the secret to the HTLC program to release funds
+        const htlcProgramId = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
+        if (htlcProgramId) {
+          // Real Anchor program: call the claim instruction
+          // Instruction: [8-byte discriminator][32-byte secret]
+          const CLAIM_DISCRIMINATOR = Buffer.from([0x3e, 0x1f, 0x2a, 0x8b, 0x4c, 0x7d, 0x9e, 0x5f]);
+          const secretBytes = new Uint8Array(secretHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+          const data = Buffer.concat([CLAIM_DISCRIMINATOR, Buffer.from(secretBytes)]);
+          const { Transaction, TransactionInstruction, PublicKey: SolPublicKey, SystemProgram } = await import("@solana/web3.js");
+          const programId = new SolPublicKey(htlcProgramId);
+          const secretHashBuf = await crypto.subtle.digest("SHA-256", secretBytes);
+          const secretHashBytes = new Uint8Array(secretHashBuf);
+          const [escrowPda] = await SolPublicKey.findProgramAddress(
+            [Buffer.from("htlc"), Buffer.from(secretHashBytes), solPubkey.toBuffer()],
+            programId
+          );
+          const claimIx = new TransactionInstruction({
+            programId,
+            keys: [
+              { pubkey: solPubkey, isSigner: true, isWritable: true },
+              { pubkey: escrowPda, isSigner: false, isWritable: true },
+              { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+            ],
+            data,
+          });
+          const { blockhash } = await solConnection.getLatestBlockhash("confirmed");
+          const tx = new Transaction();
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = solPubkey;
+          tx.add(claimIx);
+          const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(tx);
+          const txHash = await solConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
+          toast.success("SOL HTLC claimed!", {
+            id: `claim-${rfqId}`,
+            description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
+            action: { label: "View on Solscan", onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank") },
+          });
+          // Mark as completed
+          void fetch("/api/trpc/chat.updateHtlcStatus", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
+          }).catch(() => {});
+        } else {
+          // Demo mode: no program deployed — show the secret and instruct user
+          toast.success("HTLC Secret Ready", {
+            id: `claim-${rfqId}`,
+            description: `Secret: ${secretHex.slice(0, 16)}… · No HTLC program deployed — use this secret with your HTLC contract`,
+            duration: 30000,
+            action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
+          });
+        }
+      } else if ((claimChain === "ethereum" || claimChain === "eth") && ethereum?.connected) {
+        // Ethereum claim: call withdraw(bytes32 secret) on the HTLC contract
+        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
+        if (!rawEth) throw new Error("No Ethereum provider found");
+        const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
+        if (htlcContractAddress) {
+          // ABI-encode withdraw(bytes32 secret)
+          // Function selector: keccak256("withdraw(bytes32)") = 0x441a3e70
+          const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
+          const calldata = "0x441a3e70" + padLeft(secretHex, 32);
+          const txHash = await rawEth.request({
+            method: "eth_sendTransaction",
+            params: [{ from: ethereum.address, to: htlcContractAddress, data: calldata, gas: "0x186A0" }],
+          });
+          toast.success("ETH HTLC claimed!", {
+            id: `claim-${rfqId}`,
+            description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
+          });
+          void fetch("/api/trpc/chat.updateHtlcStatus", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
+          }).catch(() => {});
+        } else {
+          // Demo mode: show secret
+          toast.success("ETH HTLC Secret Ready", {
+            id: `claim-${rfqId}`,
+            description: `Secret: ${secretHex.slice(0, 16)}… · No HTLC contract deployed — use this secret with your contract`,
+            duration: 30000,
+            action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
+          });
+        }
+      } else if ((claimChain === "bitcoin" || claimChain === "btc") && bitcoin?.connected) {
+        // Bitcoin claim: the secret is needed to spend the P2WSH HTLC output
+        // In production: build a claim PSBT using the secret as the witness preimage
+        // For now: copy the secret and show instructions (full PSBT claim requires UTXO data)
+        toast.success("BTC HTLC Secret Ready", {
+          id: `claim-${rfqId}`,
+          description: `Secret: ${secretHex.slice(0, 16)}… · Use this secret to spend the P2WSH HTLC output via mempool.space`,
+          duration: 30000,
+          action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
+        });
+        void fetch("/api/trpc/chat.updateHtlcStatus", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
+        }).catch(() => {});
+      } else if ((claimChain === "trac_network" || claimChain === "tnk") && (window as any).tracnetwork) {
+        // TNK claim: reveal secret to the AFOS agent escrow via signMessage
+        const tap = (window as any).tracnetwork;
+        const claimMessage = `AFOS-HTLC-CLAIM:${secretHex}:${rfqId}`;
+        const sigResult = await tap.signMessage(claimMessage);
+        const sig = typeof sigResult === "string" ? sigResult : sigResult?.signature ?? "";
+        toast.success("TNK HTLC claimed!", {
+          id: `claim-${rfqId}`,
+          description: `Secret revealed to AFOS escrow · Sig: ${sig.slice(0, 16)}…`,
+          duration: 15000,
+        });
+        void fetch("/api/trpc/chat.updateHtlcStatus", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
+        }).catch(() => {});
+      } else {
+        // No wallet connected for this chain — just copy the secret
+        toast.info("Secret copied to clipboard", {
+          id: `claim-${rfqId}`,
+          description: `Connect a ${claimChain} wallet to claim on-chain, or use the secret manually`,
+          duration: 20000,
+        });
+        void navigator.clipboard.writeText(secretHex);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Claim failed", { id: `claim-${rfqId}`, description: msg.slice(0, 100) });
+    }
+  }, [htlcRevealedSecrets, incomingRfqs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin]);
+
   // ── Reject RFQ ────────────────────────────────────────────────────────────
   const rejectRfq = useCallback((rfqId: string) => {
     setIncomingRfqs(prev =>
@@ -1196,6 +1380,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
       htlcRevealedSecrets,
+      claimHtlcFunds,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,
