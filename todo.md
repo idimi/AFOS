@@ -2307,3 +2307,20 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update HtlcCountdown + HtlcCountdownInline to accept chain + lockTxId props
 - [x] Show "View on-chain ↗" deep-link in countdown when timer reaches zero (Solscan/Etherscan/Mempool.space/explorer.trac.network)
 - [x] Pass chain prop to all HtlcCountdown call sites in NetworkPanel, LightPeerPanel, and ChatPage
+
+## Graph Density Slider
+
+- [x] Add `graph_density` column to DB schema (drizzle)
+- [x] Add `graphDensity` to DEFAULT_USER_SETTINGS and UserSettingsResult
+- [x] Expose `graphDensity` in settings.get and settings.save tRPC procedures
+- [x] Add `graphDensity` state to AgentSettings.tsx draft state
+- [x] Wire graphDensity to localStorage migration (unauthenticated → DB sync on login)
+- [x] Wire graphDensity to localStorage load useEffect (unauthenticated users)
+- [x] Wire graphDensity to remoteSettings useEffect (authenticated users)
+- [x] Add graphDensity to handleReset and handleSave functions
+- [x] Add slider UI in Display tab (range 0.5–2.0, Sparse/Balanced/Dense labels, live badge)
+- [x] Extract graphDensity from userSettings in NetworkPage
+- [x] Pass graphDensity prop to NodeGraph component
+- [x] Add graphDensity parameter to peerPosition() function (radius /= density)
+- [x] Pass graphDensity to all three peerPosition() call sites in NetworkPage
+- [x] Add graphDensity to convertOraclePeers and fetchLiveData useCallback deps

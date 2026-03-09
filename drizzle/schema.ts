@@ -243,6 +243,8 @@ export const DEFAULT_USER_SETTINGS = {
   // Message prefs
   showReadReceipts: true,
   showTypingIndicator: true,
+  // Display prefs
+  graphDensity: 1.0,
 };
 
 // ─── Peer Reports ─────────────────────────────────────────────────────────────

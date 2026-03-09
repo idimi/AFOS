@@ -158,12 +158,15 @@ function nodeRadius(peer: Peer): number {
   return base + extra;
 }
 
-/** Deterministic position from public key hash — spreads peers evenly around the canvas */
-function peerPosition(pubkey: string, index: number, total: number): { lat: number; lng: number } {
+/** Deterministic position from public key hash — spreads peers evenly around the canvas.
+ * density: multiplier for the radius (0.5 = sparse, 1.0 = balanced, 2.0 = dense) */
+function peerPosition(pubkey: string, index: number, total: number, density = 1.0): { lat: number; lng: number } {
   // Use golden angle distribution for even spacing
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
   const angle = index * goldenAngle;
-  const radius = 0.15 + (index / Math.max(total, 1)) * 0.25;
+  // density > 1 packs nodes closer (smaller radius), density < 1 spreads them further
+  const baseRadius = 0.15 + (index / Math.max(total, 1)) * 0.25;
+  const radius = baseRadius / density;
   return {
     lat: 0.5 + radius * Math.cos(angle) * 1.4,
     lng: 0.5 + radius * Math.sin(angle) * 1.2,
@@ -172,7 +175,7 @@ function peerPosition(pubkey: string, index: number, total: number): { lat: numb
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds, mutedPeerIds }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds, mutedPeerIds, graphDensity = 1.0 }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
@@ -182,6 +185,7 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
   blockedPeerIds?: Set<string>;
   mutedPeerIds?: Set<string>;
+  graphDensity?: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState({ w: 800, h: 480 });
@@ -2321,6 +2325,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
   const notifyIncomingDm   = userSettings ? (userSettings as Record<string, unknown>).notifyIncomingDm  !== false : true;
   const notifyUnreadBadge  = userSettings ? (userSettings as Record<string, unknown>).notifyUnreadBadge !== false : true;
   const notifyTradeInquiry = userSettings ? (userSettings as Record<string, unknown>).notifyTradeInquiry !== false : true;
+  const graphDensity = userSettings ? (typeof (userSettings as Record<string, unknown>).graphDensity === 'number' ? (userSettings as Record<string, unknown>).graphDensity as number : 1.0) : 1.0;
 
   // The matched peer from the invite link (if any)
   const invitedPeer = useMemo(() => {
@@ -2467,7 +2472,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
   /** Convert Oracle VM peers to our Peer type */
   const convertOraclePeers = useCallback((oraclePeers: OraclePeer[]): Peer[] => {
     return oraclePeers.map((op, index) => {
-      const pos = peerPosition(op.publicKey, index, oraclePeers.length);
+      const pos = peerPosition(op.publicKey, index, oraclePeers.length, graphDensity);
       return {
         id: op.publicKey.slice(0, 16),
         alias: `Node-${op.shortKey.slice(0, 8)}`,
@@ -2482,12 +2487,11 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
         channels: op.quotesReceived > 0 ? 1 : 0,
         liquidity: 0,
         version: "1.x",
-        fullKey: op.publicKey,
+         fullKey: op.publicKey,
         origin: 'hyperswarm' as const,
       };
     });
-  }, []);
-
+  }, [graphDensity]);
   /** Build channels from connected peers (each remote peer gets a channel to self) */
   const buildChannels = useCallback((remotePeers: Peer[]): Channel[] => {
     return remotePeers.filter(p => p.online).map(p => ({
@@ -2523,7 +2527,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
               return true;
             })
             .map((rp, index) => {
-              const pos = peerPosition(rp.peerId, remotePeers.length + index, remotePeers.length + (relayData.hyperswarmPeers.length + relayData.lightPeers.length));
+              const pos = peerPosition(rp.peerId, remotePeers.length + index, remotePeers.length + (relayData.hyperswarmPeers.length + relayData.lightPeers.length), graphDensity);
               return {
                 id: rp.peerId.slice(0, 16),
                 alias: rp.alias || `lp-${rp.peerId.slice(0, 8)}`,
@@ -2554,7 +2558,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
         })
         .map((sp, index) => {
           const totalSig = lightPeer.remotePeers.length;
-          const pos = peerPosition(sp.peerId, remotePeers.length + lightPeers.length + index, remotePeers.length + lightPeers.length + totalSig);
+          const pos = peerPosition(sp.peerId, remotePeers.length + lightPeers.length + index, remotePeers.length + lightPeers.length + totalSig, graphDensity);
           return {
             id: sp.peerId.slice(0, 16),
             alias: sp.alias || `lp-${sp.peerId.slice(0, 8)}`,
@@ -2607,8 +2611,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
       setLiveChannels([]);
       setLoading(false);
     }
-  }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId, lightPeer.remotePeers]);
-
+   }, [buildSelfPeer, convertOraclePeers, buildChannels, lightPeer.peerId, lightPeer.remotePeers, graphDensity]);
   /** Ping a remote peer, update latency display, and persist result to reputation DB */
   const handlePing = useCallback(async (peerId: string, fullKey: string, silent = false) => {
     setPingResults(prev => ({ ...prev, [peerId]: { latencyMs: null, loading: true, history: prev[peerId]?.history ?? [] } }));
@@ -3519,6 +3522,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
               unreadByPeer={unreadByPeer}
               blockedPeerIds={blockedPeerIds}
               mutedPeerIds={mutedPeerIds}
+              graphDensity={graphDensity}
             />
           ) : (
             /* Single node (just "You") — show scanning state inside graph area */

@@ -399,6 +399,8 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   // Message preferences
   const [showReadReceipts, setShowReadReceipts] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
+  // Display preferences
+  const [graphDensity, setGraphDensity] = useState(1.0);
   // ── Migrate localStorage → DB when user logs in ────────────────────────────
   // When isAuthenticated transitions to true and a local settings snapshot exists,
   // push it to the DB and then clear the local copy so there's no drift.
@@ -414,8 +416,8 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         maxTxAmountUsd: typeof local.maxTxAmountUsd === 'number' ? local.maxTxAmountUsd : 500,
         autoConfirm: Boolean(local.autoConfirm),
         slippagePct: typeof local.slippagePct === 'string' ? local.slippagePct : '0.5',
-        preferredRoute: (local.preferredRoute as string) ?? 'best',
-        theme: (local.theme as string) ?? 'dark',
+        preferredRoute: (local.preferredRoute as "intercomswap" | "jupiter" | "zerox" | "oneinch" | "best") ?? 'best',
+        theme: (local.theme as "dark" | "light" | "system") ?? 'dark',
         autoAcceptRfq: Boolean(local.autoAcceptRfq),
         autoAcceptMaxUsd: typeof local.autoAcceptMaxUsd === 'number' ? local.autoAcceptMaxUsd : 0,
         notifyReactions: Boolean(local.notifyReactions),
@@ -424,6 +426,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         notifyTradeInquiry: local.notifyTradeInquiry !== false,
         showReadReceipts: local.showReadReceipts !== false,
         showTypingIndicator: local.showTypingIndicator !== false,
+        graphDensity: typeof local.graphDensity === 'number' ? local.graphDensity : 1.0,
       }, {
         onSuccess: () => {
           localStorage.removeItem('afos_settings_local');
@@ -462,6 +465,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       if (typeof local.notifyTradeInquiry === 'boolean') setNotifyTradeInquiry(local.notifyTradeInquiry);
       if (typeof local.showReadReceipts === 'boolean') setShowReadReceipts(local.showReadReceipts);
       if (typeof local.showTypingIndicator === 'boolean') setShowTypingIndicator(local.showTypingIndicator);
+      if (typeof local.graphDensity === 'number') setGraphDensity(local.graphDensity);
     } catch { /* malformed JSON — ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
@@ -509,6 +513,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     if ('notifyTradeInquiry' in remoteSettings) setNotifyTradeInquiry(rs.notifyTradeInquiry !== false);
     if ('showReadReceipts' in remoteSettings) setShowReadReceipts(rs.showReadReceipts !== false);
     if ('showTypingIndicator' in remoteSettings) setShowTypingIndicator(rs.showTypingIndicator !== false);
+    if ('graphDensity' in remoteSettings && typeof rs.graphDensity === 'number') setGraphDensity(rs.graphDensity);
     // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
     // uses the user's configured tolerance when auto-accepting RFQs
     if ('slippagePct' in remoteSettings) {
@@ -538,6 +543,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     setNotifyTradeInquiry(true);
     setShowReadReceipts(true);
     setShowTypingIndicator(true);
+    setGraphDensity(1.0);
     saveMutation.mutate({
       maxTxAmountUsd: 500,
       autoConfirm: false,
@@ -552,6 +558,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       notifyTradeInquiry: true,
       showReadReceipts: true,
       showTypingIndicator: true,
+      graphDensity: 1.0,
     });
     toast.success("Settings reset to defaults");
   };
@@ -582,6 +589,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       notifyTradeInquiry,
       showReadReceipts,
       showTypingIndicator,
+      graphDensity,
     };
     // If not authenticated, persist to localStorage only — avoids OAuth redirect
     if (!isAuthenticated) {
@@ -1257,6 +1265,43 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                 <ThemeSelector value={theme} onChange={setTheme} />
                 <p className="text-[11px] text-muted-foreground mt-2">
                   System follows your OS dark/light preference automatically.
+                </p>
+              </div>
+
+              {/* ── Graph Density ─────────────────────────────────────────── */}
+              <div className="pt-4 border-t border-white/5">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-xs font-medium text-foreground/70">
+                    Network Graph Density
+                  </label>
+                  <span className="text-xs font-mono px-2 py-0.5 rounded-md"
+                    style={{ background: 'rgba(6,182,212,0.1)', color: 'rgb(6,182,212)', border: '1px solid rgba(6,182,212,0.2)' }}
+                  >
+                    {graphDensity === 0.5 ? 'Sparse' : graphDensity <= 0.9 ? 'Sparse' : graphDensity <= 1.1 ? 'Balanced' : graphDensity <= 1.5 ? 'Dense' : 'Very Dense'}
+                    {' '}{graphDensity.toFixed(1)}×
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    value={graphDensity}
+                    onChange={e => setGraphDensity(parseFloat(e.target.value))}
+                    className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, rgb(6,182,212) 0%, rgb(6,182,212) ${((graphDensity - 0.5) / 1.5) * 100}%, rgba(255,255,255,0.1) ${((graphDensity - 0.5) / 1.5) * 100}%, rgba(255,255,255,0.1) 100%)`,
+                    }}
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-[10px] text-muted-foreground">Sparse</span>
+                    <span className="text-[10px] text-muted-foreground">Balanced</span>
+                    <span className="text-[10px] text-muted-foreground">Dense</span>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  Controls how far apart peer nodes are spaced in the network graph.
                 </p>
               </div>
             </SectionCard>

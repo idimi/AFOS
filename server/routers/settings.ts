@@ -33,8 +33,11 @@ export const settingsRouter = router({
         notifyIncomingDm: DEFAULT_USER_SETTINGS.notifyIncomingDm,
         notifyUnreadBadge: DEFAULT_USER_SETTINGS.notifyUnreadBadge,
         notifyTradeInquiry: DEFAULT_USER_SETTINGS.notifyTradeInquiry,
+        // Message prefs
         showReadReceipts: DEFAULT_USER_SETTINGS.showReadReceipts,
         showTypingIndicator: DEFAULT_USER_SETTINGS.showTypingIndicator,
+        // Display prefs
+        graphDensity: DEFAULT_USER_SETTINGS.graphDensity,
       };
     }
     const settings = await getUserSettings(ctx.user.openId);
@@ -54,6 +57,8 @@ export const settingsRouter = router({
       // Message prefs
       showReadReceipts: settings.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts,
       showTypingIndicator: settings.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator,
+      // Display prefs
+      graphDensity: settings.graphDensity ?? DEFAULT_USER_SETTINGS.graphDensity,
     };
   }),
 
@@ -142,6 +147,8 @@ export const settingsRouter = router({
         // Message prefs
         showReadReceipts: z.boolean().optional(),
         showTypingIndicator: z.boolean().optional(),
+        // Display prefs
+        graphDensity: z.number().min(0.3).max(3.0).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
