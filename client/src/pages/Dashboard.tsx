@@ -277,8 +277,9 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
   const { bitcoin, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
   const solConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress;
 
-  // ── Shared chat state from ChatContext ──────────────────────────────────────
+  // ── Shared chat state from ChatContext ────────────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping, welcomeShownRef } = useChat();
+  const { peerId: myPeerId, peerAlias: myPeerAlias } = useLightPeer();
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -477,6 +478,10 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         history,
         walletAddress: publicKey?.toString(),
         walletBalances: balances.map(b => ({ symbol: b.symbol, amount: b.amount })),
+        // Pass sender's peer identity so the server can exclude them from peer
+        // matching and attribute the agent_rfq notification correctly.
+        senderPeerId: myPeerId ?? undefined,
+        senderAlias:  myPeerAlias ?? undefined,
       });
       addMessage({
         role: "assistant",

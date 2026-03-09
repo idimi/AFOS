@@ -101,6 +101,22 @@ export interface LightPeerState {
   setPrefs: (prefs: Partial<LightPeerPrefs>) => void;
   acceptRfq: (rfqId: string) => Promise<void>;
   rejectRfq: (rfqId: string) => void;
+  /**
+   * Initiate HTLC lock as the REQUESTER (Agent A).
+   * Called after buildSwapTx returns P2P route — triggers wallet signing.
+   */
+  initiateHtlcLock: (params: {
+    rfqId: string;
+    fromToken: string;
+    toToken: string;
+    fromChain: string;
+    toChain: string;
+    amount: number;
+    outAmount: number;
+    rate: number;
+    counterpartyPeerId?: string;
+    counterpartyWallet?: string;
+  }) => Promise<void>;
   toggleEnabled: () => void;
   dismissHtlc: () => void;
   /** Send a message to a specific peer via WebRTC or signaling relay */
@@ -265,9 +281,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // ── WebSocket Signaling — primary peer discovery & WebRTC ─────────────────
+  // Bug 6 fix: Always connect to the signaling WebSocket so this peer can RECEIVE
+  // agent_rfq messages even when Peer Mode (prefs.enabled) is OFF. We only
+  // advertise our pairs / register as a liquidity provider when enabled=true.
   useEffect(() => {
-    if (!peerId || !prefs.enabled) {
-      // Disconnect signaling if no wallet or disabled
+    if (!peerId) {
+      // No stable peer ID yet — cannot connect
       if (signalingRef.current) {
         signalingRef.current.deregister();
         signalingRef.current.disconnect();
@@ -281,6 +300,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         setIsOnline(false);
       }
       return;
+    }
+    // If peer mode was just disabled, deregister (stop advertising) but keep the
+    // WebSocket open so we can still receive incoming agent_rfq messages.
+    if (!prefs.enabled && signalingRef.current) {
+      signalingRef.current.deregister();
+      setIsRegistered(false);
+      setIsOnline(false);
+      // Keep signalingRef.current alive — do NOT disconnect or return early.
     }
 
     const client = getSignalingClient();
@@ -482,18 +509,25 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
     }));
 
-    // Connect and register (include maxTradeUsd for liquidity depth aggregation)
+    // Always connect to the signaling WebSocket (needed to receive agent_rfq).
+    // Register with the server in all cases so sendToPeer can deliver messages to
+    // this peer. When Peer Mode is OFF, register with empty pairs so we are NOT
+    // matched as a liquidity provider by findSignalingPeer.
     client.connect();
-    client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses, prefs.maxTradeUsd);
-
-    // Also do legacy HTTP announce (best-effort fallback)
-    announce(peerId, peerAlias);
-
-    // Legacy heartbeat (best-effort fallback)
-    heartbeatRef.current = setInterval(() => {
+    if (prefs.enabled) {
+      // Full LP registration: advertise pairs and start heartbeat
+      client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses, prefs.maxTradeUsd);
+      // Also do legacy HTTP announce (best-effort fallback)
       announce(peerId, peerAlias);
-      setLastHeartbeat(Date.now());
-    }, HEARTBEAT_INTERVAL_MS);
+      // Legacy heartbeat (best-effort fallback)
+      heartbeatRef.current = setInterval(() => {
+        announce(peerId, peerAlias);
+        setLastHeartbeat(Date.now());
+      }, HEARTBEAT_INTERVAL_MS);
+    } else {
+      // Listener-only registration: empty pairs — won't be matched as LP but CAN receive agent_rfq
+      client.register(peerId, peerAlias, [], walletAddresses, 0);
+    }
 
     return () => {
       unsubs.forEach(u => u());
@@ -698,14 +732,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   }, [peerId, peerAlias]);
 
   // ── Accept RFQ with in-browser HTLC signing ───────────────────────────────
-  const acceptRfq = useCallback(async (rfqId: string) => {
-    const rfq = incomingRfqs.find(r => r.rfqId === rfqId);
+  // Accepts an optional `rfqOverride` so initiateHtlcLock can pass the synthetic
+  // RFQ directly without waiting for React state to update.
+  const acceptRfq = useCallback(async (rfqId: string, rfqOverride?: IncomingRfq) => {
+    const rfq = rfqOverride ?? incomingRfqs.find(r => r.rfqId === rfqId);
     if (!rfq || rfq.status !== "pending") return;
-
     setIncomingRfqs(prev =>
       prev.map(r => r.rfqId === rfqId ? { ...r, status: "accepted" } : r)
     );
-
     // Step 1: Submit quote to AFOS agent
     await submitQuote(rfq);
 
@@ -960,6 +994,50 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     });
   }, [incomingRfqs, submitQuote, solConnected, signTransaction, ethereum]);
 
+  // ── Initiate HTLC Lock (Agent A / Requester side) ──────────────────────────
+  // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
+  // Reuses the same HTLC signing logic as acceptRfq by creating a synthetic IncomingRfq.
+  const initiateHtlcLock = useCallback(async (params: {
+    rfqId: string;
+    fromToken: string;
+    toToken: string;
+    fromChain: string;
+    toChain: string;
+    amount: number;
+    outAmount: number;
+    rate: number;
+    counterpartyPeerId?: string;
+    counterpartyWallet?: string;
+  }) => {
+    const { rfqId, fromToken, toToken, fromChain, toChain, amount, outAmount, rate, counterpartyPeerId, counterpartyWallet } = params;
+    // Build a synthetic IncomingRfq for Agent A (the requester)
+    // The counterpartyAddress field is used by the HTLC signing logic to know
+    // who to lock funds for (the LP / Agent B).
+    const syntheticRfq: IncomingRfq = {
+      rfqId,
+      fromToken,
+      toToken,
+      amount,
+      fromChain,
+      toChain,
+      ...({ counterpartyAddress: counterpartyWallet } as object),
+      requestorPeer: counterpartyPeerId ?? counterpartyWallet ?? "peer",
+      expiresAt: Date.now() + 60_000,
+      suggestedRate: rate,
+      suggestedOutAmount: outAmount,
+      status: "pending",
+      receivedAt: Date.now(),
+    };
+    // Add to incomingRfqs so the HTLC signing panel shows up
+    setIncomingRfqs(prev => {
+      if (prev.some(r => r.rfqId === rfqId)) return prev;
+      return [syntheticRfq, ...prev];
+    });
+    // Bug 5 fix: pass the synthetic RFQ directly to acceptRfq via rfqOverride
+    // so it doesn't need to look it up from (stale) React state.
+    await acceptRfq(rfqId, syntheticRfq);
+  }, [acceptRfq]);
+
   // ── Reject RFQ ────────────────────────────────────────────────────────────
   const rejectRfq = useCallback((rfqId: string) => {
     setIncomingRfqs(prev =>
@@ -1020,6 +1098,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       setPrefs,
       acceptRfq,
       rejectRfq,
+      initiateHtlcLock,
       toggleEnabled,
       dismissHtlc,
       sendPeerMessage,

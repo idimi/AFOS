@@ -2235,3 +2235,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## TypeScript Cleanup
 - [x] Fix all 13 pre-existing SwapPage.tsx TS errors: confirmed tsc --noEmit exits with code 0 (zero errors). The 13 errors in the management UI health check were a stale LSP snapshot from before previous fixes were applied. tracNetwork is properly declared in MultiChainWalletContextValue (line 75) and trac_network is in SupportedChain type.
+
+## Bug Fixes — Round 6
+- [x] Bug 5: Agent A HTLC wallet signing popup never appears after peer match — fixed: added initiateHtlcLock() to LightPeerContext that creates a synthetic IncomingRfq and passes it directly to acceptRfq(rfqId, rfqOverride) to trigger wallet signing (Phantom/MetaMask). ChatPage now calls initiateHtlcLock after buildSwapTx returns P2P route.
+- [x] Bug 6: Agent B never receives the RFQ in Incoming RFQs panel or Live Order Book — fixed: LightPeerContext now always connects to signaling WebSocket (even when Peer Mode is OFF) and registers with empty pairs (listener-only mode) so sendToPeer can deliver agent_rfq messages. Also passes senderPeerId/senderAlias to buildSwapTx so the server excludes Agent A from peer matching. Updated NetworkPanel + LightPeerPanel to show Incoming RFQs even when Peer Mode is off.

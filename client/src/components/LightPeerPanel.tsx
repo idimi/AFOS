@@ -429,8 +429,8 @@ export default function LightPeerPanel() {
                 </div>
               )}
 
-              {/* ── Incoming RFQs ── */}
-              {isWalletConnected && peer.prefs.enabled && (
+              {/* ── Incoming RFQs — shown whenever there are RFQs (even when Peer Mode is off) ── */}
+              {isWalletConnected && (peer.prefs.enabled || recentRfqs.length > 0) && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-white flex items-center gap-1.5">
@@ -443,14 +443,16 @@ export default function LightPeerPanel() {
                       )}
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      {peer.lastHeartbeat ? `Heartbeat ${timeAgo(peer.lastHeartbeat)}` : "Connecting…"}
+                      {peer.prefs.enabled
+                        ? (peer.lastHeartbeat ? `Heartbeat ${timeAgo(peer.lastHeartbeat)}` : "Connecting…")
+                        : "Peer Mode off — receiving only"}
                     </span>
                   </div>
 
                   {recentRfqs.length === 0 ? (
                     <div className="text-center py-4 text-slate-500 text-xs">
                       <Radio className="w-5 h-5 mx-auto mb-1 opacity-30" />
-                      Listening for RFQs on accepted pairs…
+                      {peer.prefs.enabled ? "Listening for RFQs on accepted pairs…" : "Enable Peer Mode to quote on the P2P network"}
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">

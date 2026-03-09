@@ -619,7 +619,7 @@ export default function ChatPage() {
 
   // ── Shared chat state from ChatContext ──────────────────────────────────────
   const { messages, setMessages, addMessage, clearMessages, isTyping, setIsTyping } = useChat();
-  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers } = useLightPeer();
+  const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers, initiateHtlcLock } = useLightPeer();
 
   const [input, setInput] = useState("");
   const [executingId, setExecutingId] = useState<string | null>(null);
@@ -1043,7 +1043,7 @@ export default function ChatPage() {
         return;
       }
 
-      // ── Solana swaps: AFOS P2P primary + Jupiter fallback ──────────────
+      // ── Solana swaps: AFOS P2P primary + Jupiter fallback ──────────────────
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: effectivePublicKey!.toString(),
@@ -1053,25 +1053,45 @@ export default function ChatPage() {
         toChain:       (quoteData.toChain   as SupportedChain) ?? "solana",
         amount:        quoteData.fromAmount,
         openId,
+        // Pass sender's peer identity so the server can: (1) exclude them from peer
+        // matching, and (2) attribute the agent_rfq notification correctly.
+        senderPeerId: myPeerId ?? undefined,
+        senderAlias:  myPeerAlias ?? undefined,
       });
 
-      // P2P route matched: HTLC coordinated by agent via signaling server
+      // P2P route matched: trigger HTLC lock signing for Agent A (the requester)
       if (solResult.route === "AFOS P2P") {
-        const peerLabel = solResult.p2pQuote?.peerAlias ?? solResult.p2pQuote?.peerId?.slice(0, 8) ?? "peer";
-        toast.success("P2P peer matched!", { description: `Peer: @${peerLabel}` });
+        const p2p = solResult.p2pQuote;
+        const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
+        toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} — signing HTLC lock…` });
+        // Update the quote card to tx_success state
         setMessages(prev => prev.map(m =>
-          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: solResult.p2pQuote?.rfqId ?? "p2p" } : m
+          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p" } : m
         ));
         addMessage({
           role: "assistant",
-          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Agent coordinating HTLC — please sign the transaction in your wallet.`,
+          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Please sign the HTLC lock transaction in your wallet.`,
           type: "text",
         });
         setExecutingId(null);
+        // Bug 5 fix: trigger HTLC lock signing for Agent A via LightPeerContext
+        // This opens the wallet signing popup (Phantom / MetaMask / etc.)
+        if (p2p?.rfqId) {
+          void initiateHtlcLock({
+            rfqId:             p2p.rfqId,
+            fromToken:         quoteData.fromToken,
+            toToken:           quoteData.toToken,
+            fromChain:         (quoteData.fromChain as string) ?? "solana",
+            toChain:           (quoteData.toChain   as string) ?? "solana",
+            amount:            quoteData.fromAmount,
+            outAmount:         p2p.outAmount ?? quoteData.toAmount,
+            rate:              p2p.rate ?? quoteData.rate,
+            counterpartyPeerId: p2p.peerId ?? undefined,
+            counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+          });
+        }
         return;
-      }
-
-      // Jupiter route: deserialize and send via Solana wallet
+      }    // Jupiter route: deserialize and send via Solana wallet
       const swapTransaction = solResult.swapTransaction;
       if (!swapTransaction) {
         throw new Error("No swap transaction returned from Jupiter. Please try again.");

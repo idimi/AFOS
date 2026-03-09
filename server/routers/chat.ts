@@ -1149,10 +1149,14 @@ export const chatRouter = router({
         skipP2P:        z.boolean().optional().default(false),
         /** Manus OAuth openId — used to enforce per-user settings */
         openId:         z.string().optional(),
+        /** Sender's signaling peerId — used to exclude them from peer matching */
+        senderPeerId:   z.string().optional(),
+        /** Sender's peer alias — shown to the counterparty in the incoming RFQ card */
+        senderAlias:    z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1194,13 +1198,32 @@ export const chatRouter = router({
           toChain:    toChain   ?? "solana",
           amount,
           prices:     p2pPrices,
+          senderPeerId,
           senderWallet: userPublicKey,
         });
       }
 
-      // ── Step 2: If P2P peer matched, return P2P route ─────────────────────
+      // ── Step 2: If P2P peer matched, send agent_rfq to peer and return P2P route ─────────────────────
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
-      if (p2pQuote) {
+      if (p2pQuote && p2pQuote.peerId && p2pQuote.rfqId) {
+        const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
+        // Push agent_rfq to the matched peer's browser via signaling WebSocket
+        const delivered = sendAgentRfqToPeer({
+          rfqId:           p2pQuote.rfqId,
+          targetPeerId:    p2pQuote.peerId,
+          fromToken:       (fromToken ?? "SOL").toUpperCase(),
+          toToken:         (toToken ?? "USDT").toUpperCase(),
+          fromChain:       fromChain ?? "solana",
+          toChain:         toChain   ?? "solana",
+          amount:          amount ?? 0,
+          outAmount:       p2pQuote.outAmount ?? 0,
+          rate:            p2pQuote.rate ?? 0,
+          requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
+          requesterPeerId: senderPeerId,
+          requesterWallet: userPublicKey,
+          expiresAt,
+        });
+        console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
           fromChain:  (fromChain ?? "solana") as SupportedChain,
@@ -1215,7 +1238,7 @@ export const chatRouter = router({
         }).catch(() => {/* non-fatal */});
         return {
           route:          "AFOS P2P" as const,
-          p2pQuote,
+          p2pQuote:       { ...p2pQuote, expiresAt, delivered },
           swapTransaction: null,
           message:
             `P2P peer matched: @${p2pQuote.peerAlias ?? p2pQuote.peerId?.slice(0, 8) ?? "peer"}. ` +
