@@ -16,6 +16,7 @@ import {
 import { useLightPeer, type IncomingRfq, type HtlcStep } from "../contexts/LightPeerContext";
 import { useWallet } from "../contexts/WalletContext";
 import { useMultiChainWallet } from "../contexts/MultiChainWalletContext";
+import { trpc } from "../lib/trpc";
 
 // ─── Types (mirrored from Swaps.tsx) ─────────────────────────────────────────
 
@@ -46,14 +47,18 @@ function timeLeft(ms: number): string {
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   onClaim?: (id: string) => void;
   hasSecret?: boolean;
+  isClaimed?: boolean;
+  onRefund?: (id: string) => void;
+  isRefundable?: boolean;
 }) {
   const [claiming, setClaiming] = useState(false);
+  const [refunding, setRefunding] = useState(false);
   const isExpired = rfq.status === "expired" || rfq.expiresAt < Date.now();
   const isPending = rfq.status === "pending" && !isExpired;
 
@@ -117,8 +122,8 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
           </button>
         </div>
       )}
-      {/* Claim Funds button — shown when Agent A has revealed the secret */}
-      {hasSecret && onClaim && rfq.status === "accepted" && (
+      {/* Claim Funds button — shown when Agent A has revealed the secret and not yet claimed */}
+      {hasSecret && !isClaimed && onClaim && rfq.status === "accepted" && (
         <div className="pt-1">
           <button
             onClick={async () => {
@@ -130,6 +135,29 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
           >
             <Lock className="w-3.5 h-3.5" />
             {claiming ? "Claiming…" : "Claim Funds (Secret Revealed)"}
+          </button>
+        </div>
+      )}
+      {/* Claimed badge — shown after successful claim */}
+      {isClaimed && (
+        <div className="pt-1 flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Funds claimed successfully
+        </div>
+      )}
+      {/* Refund button — shown for Agent A when HTLC has expired */}
+      {isRefundable && onRefund && (
+        <div className="pt-1">
+          <button
+            onClick={async () => {
+              setRefunding(true);
+              try { await onRefund(rfq.rfqId); } finally { setRefunding(false); }
+            }}
+            disabled={refunding}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <AlertCircle className="w-3.5 h-3.5" />
+            {refunding ? "Refunding…" : "Refund Locked Funds (Expired)"}
           </button>
         </div>
       )}
@@ -396,6 +424,9 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
                     onReject={peer.rejectRfq}
                     onClaim={peer.claimHtlcFunds}
                     hasSecret={!!peer.htlcRevealedSecrets[rfq.rfqId]}
+                    isClaimed={peer.claimedRfqIds.has(rfq.rfqId)}
+                    onRefund={peer.refundHtlcFunds}
+                    isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                   />
                 ))}
               </AnimatePresence>
@@ -476,6 +507,113 @@ function LivePeersTab({ fromToken, toToken, livePeers, activePeerCount }: {
   );
 }
 
+// ─── Settled HTLCs Panel ─────────────────────────────────────────────────────
+
+function SettledHtlcsPanel() {
+  const { data: settled, isLoading } = trpc.chat.getSettledHtlcs.useQuery({ limit: 20 }, {
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const explorerUrl = (chain: string, txId: string | null): string | null => {
+    if (!txId) return null;
+    switch (chain.toLowerCase()) {
+      case "solana": return `https://solscan.io/tx/${txId}`;
+      case "ethereum": return `https://etherscan.io/tx/${txId}`;
+      case "bitcoin": return `https://mempool.space/tx/${txId}`;
+      case "trac_network": return null;
+      default: return null;
+    }
+  };
+
+  const statusColor: Record<string, string> = {
+    completed: "text-emerald-400",
+    expired:   "text-slate-500",
+    refunded:  "text-amber-400",
+  };
+
+  const statusIcon: Record<string, string> = {
+    completed: "✓",
+    expired:   "✗",
+    refunded:  "↩",
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-14 rounded-lg bg-white/5 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!settled || settled.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-2">
+        <Shield className="w-5 h-5 text-slate-500" />
+        <p className="text-xs text-slate-400 font-medium">No settled swaps yet</p>
+        <p className="text-[10px] text-slate-600">Completed, refunded, and expired HTLCs appear here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+      {settled.map(row => {
+        const claimUrl = explorerUrl(row.toChain, row.revealTxId);
+        const lockUrl  = explorerUrl(row.fromChain, row.lockTxId);
+        return (
+          <div
+            key={row.rfqId}
+            className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1.5"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono text-slate-400">{row.rfqId.slice(0, 8)}…</span>
+                <span className={`text-[10px] font-semibold ${statusColor[row.status] ?? "text-slate-400"}`}>
+                  {statusIcon[row.status] ?? "?"} {row.status}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500">
+                {new Date(row.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+            <div className="text-[10px] text-slate-400">
+              {row.fromChain} → {row.toChain}
+            </div>
+            <div className="flex gap-2">
+              {lockUrl && (
+                <a
+                  href={lockUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                >
+                  Lock tx ↗
+                </a>
+              )}
+              {claimUrl && (
+                <a
+                  href={claimUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+                >
+                  Claim tx ↗
+                </a>
+              )}
+              {!lockUrl && !claimUrl && (
+                <span className="text-[10px] text-slate-600">No on-chain tx recorded</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main NetworkPanel ────────────────────────────────────────────────────────
 
 export default function NetworkPanel({ fromToken, toToken, livePeers, activePeerCount }: {
@@ -489,8 +627,8 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
   const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
   const isWalletConnected = solAdapterConnected || !!phantomMultiChain?.solanaAddress || !!ethereum?.address || !!bitcoin?.address;
 
-  const [activeTab, setActiveTab] = useState<"mynode" | "livepeers">(() => {
-    try { return (localStorage.getItem("afos_network_tab") as "mynode" | "livepeers") || "mynode"; }
+  const [activeTab, setActiveTab] = useState<"mynode" | "livepeers" | "history">(() => {
+    try { return (localStorage.getItem("afos_network_tab") as "mynode" | "livepeers" | "history") || "mynode"; }
     catch { return "mynode"; }
   });
 
@@ -557,7 +695,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
 
           {/* Tab bar */}
           <div className="flex gap-1 border-b border-white/10 -mx-4 px-4">
-            {(["mynode", "livepeers"] as const).map(tab => (
+            {(["mynode", "livepeers", "history"] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -567,7 +705,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
                     : "border-transparent text-slate-500 hover:text-slate-300"
                 }`}
               >
-                {tab === "mynode" ? "My Node" : "Live Peers"}
+                {tab === "mynode" ? "My Node" : tab === "livepeers" ? "Live Peers" : "History"}
               </button>
             ))}
           </div>
@@ -580,7 +718,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
               <motion.div key="mynode" initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
                 <MyNodeTab tnkPeerCount={tnkPeerCount} />
               </motion.div>
-            ) : (
+            ) : activeTab === "livepeers" ? (
               <motion.div key="livepeers" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
                 <LivePeersTab
                   fromToken={fromToken}
@@ -588,6 +726,10 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
                   livePeers={livePeers}
                   activePeerCount={activePeerCount}
                 />
+              </motion.div>
+            ) : (
+              <motion.div key="history" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} transition={{ duration: 0.15 }}>
+                <SettledHtlcsPanel />
               </motion.div>
             )}
           </AnimatePresence>

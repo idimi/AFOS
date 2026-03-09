@@ -32,7 +32,7 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
-import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus } from "../db";
+import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
 
@@ -2445,6 +2445,27 @@ export const chatRouter = router({
    * Each peer includes their peerId, alias, accepted pairs, wallet addresses,
    * connection time, and last heartbeat. No WebSocket refs are exposed.
    */
+  /**
+   * Return recently settled (completed/expired/refunded) HTLC secrets for the history panel.
+   */
+  getSettledHtlcs: publicProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(50) }).optional())
+    .query(async ({ input }) => {
+      const rows = await getSettledHtlcSecrets(input?.limit ?? 50);
+      return rows.map(r => ({
+        rfqId:              r.rfqId,
+        fromChain:          r.fromChain,
+        toChain:            r.toChain,
+        status:             r.status,
+        lockTxId:           r.lockTxId ?? null,
+        revealTxId:         r.revealTxId ?? null,
+        counterpartyPeerId: r.counterpartyPeerId ?? null,
+        expiresAt:          Number(r.expiresAt),
+        updatedAt:          r.updatedAt,
+        createdAt:          r.createdAt,
+      }));
+    }),
+
   getPeerList: publicProcedure.query(() => {
     const peerList = getSignalingPeerList();
     return peerList.map(p => ({

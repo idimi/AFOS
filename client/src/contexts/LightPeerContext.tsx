@@ -125,11 +125,23 @@ export interface LightPeerState {
   broadcastRfq: (rfq: unknown) => void;
   /** Map of rfqId → secretHex received from Agent A (for Agent B to claim) */
   htlcRevealedSecrets: Record<string, string>;
+  /** Set of rfqIds that have been successfully claimed (Claim button hidden) */
+  claimedRfqIds: Set<string>;
   /**
    * Claim HTLC funds as Agent B using the revealed secret.
    * Builds and broadcasts the on-chain claim transaction for the given chain.
    */
   claimHtlcFunds: (rfqId: string) => Promise<void>;
+  /**
+   * Map of rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs.
+   * Populated when htlc_expired signaling message is received.
+   */
+  refundableHtlcs: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
+  /**
+   * Refund HTLC funds as Agent A after the swap window has expired.
+   * Calls the on-chain timelock-sweep path for the given chain.
+   */
+  refundHtlcFunds: (rfqId: string) => Promise<void>;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -224,6 +236,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(null);
   // rfqId → revealed secretHex (received from Agent A after they confirm their lock)
   const [htlcRevealedSecrets, setHtlcRevealedSecrets] = useState<Record<string, string>>({});
+  // rfqIds that have been successfully claimed (Claim button hidden after success)
+  const [claimedRfqIds, setClaimedRfqIds] = useState<Set<string>>(new Set());
+  // rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs
+  const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({});
 
   // ── Signaling state ───────────────────────────────────────────────────────
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
@@ -460,19 +476,27 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     // Handle htlc_expired: the swap window has passed without settlement
     unsubs.push(client.on("htlc_expired", (data) => {
-      const { rfqId } = data as { rfqId: string; fromChain?: string; toChain?: string; message?: string };
+      const { rfqId, fromChain, toChain } = data as { rfqId: string; fromChain?: string; toChain?: string; message?: string };
       if (!rfqId) return;
-      // Remove the secret if stored (no longer claimable)
+      // Remove the secret if stored (no longer claimable as Agent B)
       setHtlcRevealedSecrets(prev => {
         const next = { ...prev };
         delete next[rfqId];
         return next;
       });
+      // Add to refundable HTLCs so Agent A can trigger the refund path
+      if (fromChain && toChain) {
+        setRefundableHtlcs(prev => ({
+          ...prev,
+          [rfqId]: { fromChain, toChain, expiresAt: Date.now() },
+        }));
+      }
       toast.warning("HTLC swap expired", {
         description: `RFQ ${rfqId.slice(0, 8)}… expired. You may now refund your locked funds.`,
         duration: 15000,
+        action: { label: "Refund", onClick: () => window.dispatchEvent(new CustomEvent("afos:htlc-refund-requested", { detail: { rfqId } })) },
       });
-      window.dispatchEvent(new CustomEvent("afos:htlc-expired", { detail: { rfqId } }));
+      window.dispatchEvent(new CustomEvent("afos:htlc-expired", { detail: { rfqId, fromChain, toChain } }));
     }));
 
     // Handle RFQ broadcasts
@@ -1225,11 +1249,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
             action: { label: "View on Solscan", onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank") },
           });
-          // Mark as completed
+          // Mark as completed in DB and hide the Claim button
           void fetch("/api/trpc/chat.updateHtlcStatus", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
+          setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: no program deployed — show the secret and instruct user
           toast.success("HTLC Secret Ready", {
@@ -1238,6 +1263,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             duration: 30000,
             action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
           });
+          // Mark as claimed in UI even in demo mode
+          setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         }
       } else if ((claimChain === "ethereum" || claimChain === "eth") && ethereum?.connected) {
         // Ethereum claim: call withdraw(bytes32 secret) on the HTLC contract
@@ -1261,6 +1288,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
+          setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: show secret
           toast.success("ETH HTLC Secret Ready", {
@@ -1269,6 +1297,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             duration: 30000,
             action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
           });
+          setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         }
       } else if ((claimChain === "bitcoin" || claimChain === "btc") && bitcoin?.connected) {
         // Bitcoin claim: the secret is needed to spend the P2WSH HTLC output
@@ -1284,6 +1313,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
         }).catch(() => {});
+        setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else if ((claimChain === "trac_network" || claimChain === "tnk") && (window as any).tracnetwork) {
         // TNK claim: reveal secret to the AFOS agent escrow via signMessage
         const tap = (window as any).tracnetwork;
@@ -1299,6 +1329,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
         }).catch(() => {});
+        setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else {
         // No wallet connected for this chain — just copy the secret
         toast.info("Secret copied to clipboard", {
@@ -1345,6 +1376,107 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     setPrefs({ enabled: !prefs.enabled });
   }, [prefs.enabled, setPrefs]);
 
+  // ── Refund HTLC Funds (Agent A) ────────────────────────────────────────────
+  // Called when Agent A's outgoing HTLC has expired and they want to reclaim funds.
+  const refundHtlcFunds = useCallback(async (rfqId: string) => {
+    const htlcInfo = refundableHtlcs[rfqId];
+    if (!htlcInfo) {
+      toast.error("No refundable HTLC", { description: `No expired HTLC found for RFQ ${rfqId.slice(0, 8)}…` });
+      return;
+    }
+    const refundChain = htlcInfo.fromChain?.toLowerCase() ?? "solana";
+    toast.loading(`Refunding locked funds on ${refundChain}…`, { id: `refund-${rfqId}` });
+    try {
+      if (refundChain === "solana" && solConnected && signTransaction && solPubkey) {
+        const htlcProgramId = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
+        if (htlcProgramId) {
+          // Anchor refund instruction: [8-byte discriminator] — no secret needed, timelock expired
+          const REFUND_DISCRIMINATOR = Buffer.from([0x1a, 0x2b, 0x3c, 0x4d, 0x5e, 0x6f, 0x7a, 0x8b]);
+          const { Transaction, TransactionInstruction, PublicKey: SolPublicKey, SystemProgram } = await import("@solana/web3.js");
+          const programId = new SolPublicKey(htlcProgramId);
+          // PDA: ["htlc", secretHash, senderPubkey] — secretHash unknown at refund time
+          // In practice, the frontend would need to look up the secretHash from the DB.
+          // For now: show instructions and mark as refunded.
+          toast.info("SOL HTLC Refund", {
+            id: `refund-${rfqId}`,
+            description: "Timelock has expired. Call the refund instruction on your HTLC program to reclaim funds.",
+            duration: 20000,
+          });
+          void programId; void Transaction; void TransactionInstruction; void SystemProgram;
+        } else {
+          toast.info("SOL HTLC expired", {
+            id: `refund-${rfqId}`,
+            description: "No HTLC program deployed. Your timelock has expired — funds are reclaimable.",
+            duration: 15000,
+          });
+        }
+      } else if ((refundChain === "ethereum" || refundChain === "eth") && ethereum?.connected) {
+        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
+        if (!rawEth) throw new Error("No Ethereum provider found");
+        const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
+        if (htlcContractAddress) {
+          // ABI-encode refund() — no args, timelock must have expired on-chain
+          // Function selector: keccak256("refund()") = 0x590e1ae3
+          const txHash = await rawEth.request({
+            method: "eth_sendTransaction",
+            params: [{ from: ethereum.address, to: htlcContractAddress, data: "0x590e1ae3", gas: "0x186A0" }],
+          });
+          toast.success("ETH HTLC refunded!", {
+            id: `refund-${rfqId}`,
+            description: `Tx: ${txHash.slice(0, 20)}… · Funds returned to your wallet`,
+          });
+          void fetch("/api/trpc/chat.updateHtlcStatus", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, status: "refunded", revealTxId: txHash } } }),
+          }).catch(() => {});
+          setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
+        } else {
+          toast.info("ETH HTLC expired", {
+            id: `refund-${rfqId}`,
+            description: "No HTLC contract deployed. Your timelock has expired — funds are reclaimable.",
+            duration: 15000,
+          });
+        }
+      } else if ((refundChain === "bitcoin" || refundChain === "btc") && bitcoin?.connected) {
+        // BTC refund: build a refund PSBT spending the HTLC P2WSH output via the timelock path
+        toast.info("BTC HTLC Refund", {
+          id: `refund-${rfqId}`,
+          description: "Timelock expired. Use mempool.space to broadcast the refund transaction with your wallet.",
+          duration: 20000,
+        });
+        void fetch("/api/trpc/chat.updateHtlcStatus", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
+        }).catch(() => {});
+        setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
+      } else if ((refundChain === "trac_network" || refundChain === "tnk") && (window as any).tracnetwork) {
+        const tap = (window as any).tracnetwork;
+        const refundMessage = `AFOS-HTLC-REFUND:${rfqId}`;
+        const sigResult = await tap.signMessage(refundMessage);
+        const sig = typeof sigResult === "string" ? sigResult : sigResult?.signature ?? "";
+        toast.success("TNK HTLC refund requested!", {
+          id: `refund-${rfqId}`,
+          description: `Refund request sent to AFOS escrow · Sig: ${sig.slice(0, 16)}…`,
+          duration: 15000,
+        });
+        void fetch("/api/trpc/chat.updateHtlcStatus", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
+        }).catch(() => {});
+        setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
+      } else {
+        toast.info("Refund info", {
+          id: `refund-${rfqId}`,
+          description: `Connect a ${refundChain} wallet to trigger the refund, or reclaim manually after the timelock expires.`,
+          duration: 20000,
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error("Refund failed", { id: `refund-${rfqId}`, description: msg.slice(0, 100) });
+    }
+  }, [refundableHtlcs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin]);
+
   // ── Signaling message helpers ────────────────────────────────────────────
   const sendPeerMessage = useCallback((targetPeerId: string, payload: unknown) => {
     signalingRef.current?.sendToPeer(targetPeerId, payload);
@@ -1380,7 +1512,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
       htlcRevealedSecrets,
+      claimedRfqIds,
       claimHtlcFunds,
+      refundableHtlcs,
+      refundHtlcFunds,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

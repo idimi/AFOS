@@ -432,6 +432,9 @@ function MessageBubble({
   onDeclineRfq,
   onClaimHtlc,
   htlcRevealedSecrets,
+  claimedRfqIds,
+  onRefundHtlc,
+  refundableHtlcs,
   tnkPeerCount,
 }: {
   msg: ChatMessage;
@@ -443,6 +446,9 @@ function MessageBubble({
   onDeclineRfq?: (rfqId: string) => void;
   onClaimHtlc?: (rfqId: string) => void;
   htlcRevealedSecrets?: Record<string, string>;
+  claimedRfqIds?: Set<string>;
+  onRefundHtlc?: (rfqId: string) => void;
+  refundableHtlcs?: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
   tnkPeerCount?: number;
 }) {
   const isUser = msg.role === "user";
@@ -582,14 +588,30 @@ function MessageBubble({
                 Decline
               </button>
             </div>
-            {/* Claim Funds — shown when Agent A has revealed the secret */}
-            {htlcRevealedSecrets?.[msg.incomingRfqData.rfqId] && onClaimHtlc && (
+            {/* Claim Funds — shown when Agent A has revealed the secret and not yet claimed */}
+            {htlcRevealedSecrets?.[msg.incomingRfqData.rfqId] && !claimedRfqIds?.has(msg.incomingRfqData.rfqId) && onClaimHtlc && (
               <button
                 onClick={() => onClaimHtlc(msg.incomingRfqData!.rfqId)}
                 className="w-full py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
                 style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.35)" }}
               >
                 🔓 Claim Funds (Secret Revealed)
+              </button>
+            )}
+            {/* Claimed badge — shown after successful claim */}
+            {claimedRfqIds?.has(msg.incomingRfqData.rfqId) && (
+              <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-medium py-1">
+                ✅ Funds claimed successfully
+              </div>
+            )}
+            {/* Refund button — shown for Agent A when HTLC has expired */}
+            {refundableHtlcs?.[msg.incomingRfqData.rfqId] && onRefundHtlc && (
+              <button
+                onClick={() => onRefundHtlc(msg.incomingRfqData!.rfqId)}
+                className="w-full py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                style={{ background: "rgba(239,68,68,0.12)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}
+              >
+                ⚠️ Refund Locked Funds (Expired)
               </button>
             )}
           </div>
@@ -1270,6 +1292,9 @@ export default function ChatPage() {
               }}
               onClaimHtlc={lightPeer.claimHtlcFunds}
               htlcRevealedSecrets={lightPeer.htlcRevealedSecrets}
+              claimedRfqIds={lightPeer.claimedRfqIds}
+              onRefundHtlc={lightPeer.refundHtlcFunds}
+              refundableHtlcs={lightPeer.refundableHtlcs}
             />
           ) : null
         ))}

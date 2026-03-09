@@ -36,14 +36,18 @@ function timeLeft(ms: number): string {
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   onClaim?: (id: string) => void;
   hasSecret?: boolean;
+  isClaimed?: boolean;
+  onRefund?: (id: string) => void;
+  isRefundable?: boolean;
 }) {
   const [claiming, setClaiming] = useState(false);
+  const [refunding, setRefunding] = useState(false);
   const isExpired = rfq.status === "expired" || rfq.expiresAt < Date.now();
   const isPending = rfq.status === "pending" && !isExpired;
 
@@ -119,8 +123,8 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
           </button>
         </div>
       )}
-      {/* Claim Funds button — shown when Agent A has revealed the secret */}
-      {hasSecret && onClaim && rfq.status === "accepted" && (
+      {/* Claim Funds button — shown when Agent A has revealed the secret and not yet claimed */}
+      {hasSecret && !isClaimed && onClaim && rfq.status === "accepted" && (
         <div className="pt-1">
           <button
             onClick={async () => {
@@ -132,6 +136,29 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret }: {
           >
             <Lock className="w-3.5 h-3.5" />
             {claiming ? "Claiming…" : "Claim Funds (Secret Revealed)"}
+          </button>
+        </div>
+      )}
+      {/* Claimed badge — shown after successful claim */}
+      {isClaimed && (
+        <div className="pt-1 flex items-center gap-1.5 text-emerald-400 text-xs font-medium">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Funds claimed successfully
+        </div>
+      )}
+      {/* Refund button — shown for Agent A when HTLC has expired */}
+      {isRefundable && onRefund && (
+        <div className="pt-1">
+          <button
+            onClick={async () => {
+              setRefunding(true);
+              try { await onRefund(rfq.rfqId); } finally { setRefunding(false); }
+            }}
+            disabled={refunding}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-md bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 text-xs font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <AlertCircle className="w-3.5 h-3.5" />
+            {refunding ? "Refunding…" : "Refund Locked Funds (Expired)"}
           </button>
         </div>
       )}
@@ -484,6 +511,9 @@ export default function LightPeerPanel() {
                             onReject={peer.rejectRfq}
                             onClaim={peer.claimHtlcFunds}
                             hasSecret={!!peer.htlcRevealedSecrets[rfq.rfqId]}
+                            isClaimed={peer.claimedRfqIds.has(rfq.rfqId)}
+                            onRefund={peer.refundHtlcFunds}
+                            isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                           />
                         ))}
                       </AnimatePresence>

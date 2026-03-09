@@ -325,3 +325,13 @@ export async function getActiveHtlcSecrets(): Promise<HtlcSecret[]> {
   return db.select().from(htlcSecrets)
     .where(sql`${htlcSecrets.status} IN ('locked', 'revealed')`);
 }
+
+/** Get recently settled (completed/expired/refunded) HTLC secrets for the history panel */
+export async function getSettledHtlcSecrets(limit = 50): Promise<HtlcSecret[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(htlcSecrets)
+    .where(sql`${htlcSecrets.status} IN ('completed', 'expired', 'refunded')`)
+    .orderBy(sql`${htlcSecrets.updatedAt} DESC`)
+    .limit(limit);
+}

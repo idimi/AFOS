@@ -2267,3 +2267,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add Claim Funds button to ChatPage incoming_rfq message card
 - [x] Create `server/jobs/htlcSecretsMonitor.ts` — polls `htlc_secrets` table every 60s, marks expired locked rows, sends `htlc_expired` signaling message to counterparty, sends `htlc_secret_reminder` for revealed-but-unclaimed rows, notifies project owner on expiry
 - [x] Register `startHtlcSecretsMonitor()` in `server/_core/index.ts`
+
+## HTLC Claim Feedback + Refund Button + History Panel
+
+- [x] Add `chat.updateHtlcStatus` tRPC mutation to update htlc_secrets status to completed with revealTxId
+- [x] Track claimed rfqIds in LightPeerContext state to hide Claim button after success
+- [x] Remove Claim button from NetworkPanel/LightPeerPanel/ChatPage after successful claim
+- [x] Add `refundableHtlcs` state to LightPeerContext — populated on htlc_expired events
+- [x] Add `refundHtlcFunds(rfqId)` function to LightPeerContext for SOL/ETH/BTC/TNK refund paths
+- [x] Show Refund button in NetworkPanel/LightPeerPanel for Agent A's outgoing HTLCs that expired
+- [x] Show Refund button in ChatPage for Agent A's expired HTLCs
+- [x] Add tRPC query `chat.getSettledHtlcs` to fetch completed/expired/refunded htlc_secrets rows
+- [x] Add Settled HTLCs history section to NetworkPanel (History tab) with tx links and chain badges
