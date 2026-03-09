@@ -28,6 +28,14 @@ export const settingsRouter = router({
       theme: settings.theme ?? DEFAULT_USER_SETTINGS.theme,
       autoAcceptRfq: settings.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq,
       autoAcceptMaxUsd: settings.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd,
+      // Notification prefs
+      notifyReactions: settings.notifyReactions ?? DEFAULT_USER_SETTINGS.notifyReactions,
+      notifyIncomingDm: settings.notifyIncomingDm ?? DEFAULT_USER_SETTINGS.notifyIncomingDm,
+      notifyUnreadBadge: settings.notifyUnreadBadge ?? DEFAULT_USER_SETTINGS.notifyUnreadBadge,
+      notifyTradeInquiry: settings.notifyTradeInquiry ?? DEFAULT_USER_SETTINGS.notifyTradeInquiry,
+      // Message prefs
+      showReadReceipts: settings.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts,
+      showTypingIndicator: settings.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator,
     };
   }),
 
@@ -108,6 +116,14 @@ export const settingsRouter = router({
         theme: themeEnum.optional(),
         autoAcceptRfq: z.boolean().optional(),
         autoAcceptMaxUsd: z.number().int().min(0).max(1_000_000).optional(),
+        // Notification prefs
+        notifyReactions: z.boolean().optional(),
+        notifyIncomingDm: z.boolean().optional(),
+        notifyUnreadBadge: z.boolean().optional(),
+        notifyTradeInquiry: z.boolean().optional(),
+        // Message prefs
+        showReadReceipts: z.boolean().optional(),
+        showTypingIndicator: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {

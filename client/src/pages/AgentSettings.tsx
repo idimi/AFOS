@@ -36,6 +36,10 @@ import {
   Lock,
   Palette,
   TrendingUp,
+  MessageSquare,
+  Cog,
+  CheckCheck,
+  Keyboard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -89,12 +93,14 @@ const ROUTES = [
 ];
 
 // ─── Tab definitions ───────────────────────────────────────────────────────────
-type TabId = "trading" | "network" | "privacy" | "appearance";
+type TabId = "trading" | "network" | "notifications" | "privacy" | "display" | "advanced";
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-  { id: "trading",    label: "Trading",    icon: TrendingUp },
-  { id: "network",    label: "Network",    icon: Network },
-  { id: "privacy",    label: "Privacy",    icon: Lock },
-  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "trading",       label: "Trading",       icon: TrendingUp },
+  { id: "network",       label: "Network",       icon: Network },
+  { id: "notifications", label: "Notifs",        icon: Bell },
+  { id: "privacy",       label: "Privacy",       icon: Lock },
+  { id: "display",       label: "Display",       icon: Palette },
+  { id: "advanced",      label: "Advanced",      icon: Cog },
 ];
 
 // ─── Loading skeleton ──────────────────────────────────────────────────────────
@@ -386,6 +392,14 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
   const [autoAcceptRfq, setAutoAcceptRfq] = useState(false);
   const [autoAcceptMaxUsd, setAutoAcceptMaxUsd] = useState("0");
+  // Notification preferences
+  const [notifyReactions, setNotifyReactions] = useState(false);
+  const [notifyIncomingDm, setNotifyIncomingDm] = useState(true);
+  const [notifyUnreadBadge, setNotifyUnreadBadge] = useState(true);
+  const [notifyTradeInquiry, setNotifyTradeInquiry] = useState(true);
+  // Message preferences
+  const [showReadReceipts, setShowReadReceipts] = useState(true);
+  const [showTypingIndicator, setShowTypingIndicator] = useState(true);
 
   // Populate local draft when remote data arrives
   useEffect(() => {
@@ -423,6 +437,14 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         localStorage.setItem("afos_light_peer_prefs", JSON.stringify(parsed));
       } catch { /* best-effort */ }
     }
+    // Notification & message prefs
+    const rs = remoteSettings as Record<string, unknown>;
+    if ('notifyReactions' in remoteSettings) setNotifyReactions(Boolean(rs.notifyReactions));
+    if ('notifyIncomingDm' in remoteSettings) setNotifyIncomingDm(rs.notifyIncomingDm !== false);
+    if ('notifyUnreadBadge' in remoteSettings) setNotifyUnreadBadge(rs.notifyUnreadBadge !== false);
+    if ('notifyTradeInquiry' in remoteSettings) setNotifyTradeInquiry(rs.notifyTradeInquiry !== false);
+    if ('showReadReceipts' in remoteSettings) setShowReadReceipts(rs.showReadReceipts !== false);
+    if ('showTypingIndicator' in remoteSettings) setShowTypingIndicator(rs.showTypingIndicator !== false);
     // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
     // uses the user's configured tolerance when auto-accepting RFQs
     if ('slippagePct' in remoteSettings) {
@@ -446,8 +468,12 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     setTheme("dark");
     setAutoAcceptRfq(false);
     setAutoAcceptMaxUsd("0");
-    // Also apply the theme to next-themes via ThemeSelector's onChange
-    // ThemeSelector handles next-themes internally; we trigger it via the state change
+    setNotifyReactions(false);
+    setNotifyIncomingDm(true);
+    setNotifyUnreadBadge(true);
+    setNotifyTradeInquiry(true);
+    setShowReadReceipts(true);
+    setShowTypingIndicator(true);
     saveMutation.mutate({
       maxTxAmountUsd: 500,
       autoConfirm: false,
@@ -456,6 +482,12 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       theme: "dark",
       autoAcceptRfq: false,
       autoAcceptMaxUsd: 0,
+      notifyReactions: false,
+      notifyIncomingDm: true,
+      notifyUnreadBadge: true,
+      notifyTradeInquiry: true,
+      showReadReceipts: true,
+      showTypingIndicator: true,
     });
     toast.success("Settings reset to defaults");
   };
@@ -480,6 +512,12 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       theme,
       autoAcceptRfq,
       autoAcceptMaxUsd: isNaN(parsedAutoAcceptMax) ? 0 : parsedAutoAcceptMax,
+      notifyReactions,
+      notifyIncomingDm,
+      notifyUnreadBadge,
+      notifyTradeInquiry,
+      showReadReceipts,
+      showTypingIndicator,
     });
   };
 
@@ -910,6 +948,97 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
+            NOTIFICATIONS TAB
+            Sections: Alert Preferences, Message Preferences
+           ════════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "notifications" && (
+          <motion.div
+            key="notifications"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 8 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-4"
+          >
+            {/* ── Alert Preferences ─────────────────────────────────────────────── */}
+            <SectionCard
+              icon={Bell}
+              title="Alert Preferences"
+              color="text-cyan-400"
+              border="rgba(6,182,212,0.2)"
+              bg="rgba(6,182,212,0.04)"
+              delay={0}
+            >
+              <p className="text-[11px] text-muted-foreground">
+                Control which events trigger toast notifications. Changes are saved immediately.
+              </p>
+              <div className="space-y-4 pt-1">
+                <ToggleRow
+                  label="Reaction toasts"
+                  description="Show a toast when someone reacts to one of your messages."
+                  value={notifyReactions}
+                  onChange={setNotifyReactions}
+                />
+                <ToggleRow
+                  label="Incoming DM toasts"
+                  description="Show a toast when you receive a new direct message from a peer."
+                  value={notifyIncomingDm}
+                  onChange={setNotifyIncomingDm}
+                />
+                <ToggleRow
+                  label="Unread badge on graph"
+                  description="Show a pulsing badge on peer nodes in the network graph when they have unread messages."
+                  value={notifyUnreadBadge}
+                  onChange={setNotifyUnreadBadge}
+                />
+                <ToggleRow
+                  label="Trade inquiry toasts"
+                  description="Show a toast when a peer clicks a pair badge to start an RFQ with you."
+                  value={notifyTradeInquiry}
+                  onChange={setNotifyTradeInquiry}
+                />
+              </div>
+            </SectionCard>
+
+            {/* ── Message Preferences ───────────────────────────────────────────── */}
+            <SectionCard
+              icon={MessageSquare}
+              title="Message Preferences"
+              color="text-violet-400"
+              border="rgba(139,92,246,0.2)"
+              bg="rgba(139,92,246,0.04)"
+              delay={0.07}
+            >
+              <p className="text-[11px] text-muted-foreground">
+                Control how your messaging behaviour appears to other peers.
+              </p>
+              <div className="space-y-4 pt-1">
+                <ToggleRow
+                  label="Show read receipts"
+                  description="Let peers see a ✓✓ indicator when you have read their messages."
+                  value={showReadReceipts}
+                  onChange={setShowReadReceipts}
+                />
+                <ToggleRow
+                  label="Send typing indicator"
+                  description="Broadcast a typing signal to peers while you are composing a message."
+                  value={showTypingIndicator}
+                  onChange={setShowTypingIndicator}
+                />
+              </div>
+            </SectionCard>
+
+            <SaveBar
+              isWalletConnected={isWalletConnected}
+              isPending={saveMutation.isPending}
+              savedFlash={savedFlash}
+              onSave={handleSave}
+              onConnectWallet={() => setShowWalletModal(true)}
+            />
+          </motion.div>
+        )}
+
+        {/* ════════════════════════════════════════════════════════════════════════
             PRIVACY TAB
             Sections: Blocked Peers, Muted Peers
            ════════════════════════════════════════════════════════════════════════ */}
@@ -1024,22 +1153,21 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         )}
 
         {/* ════════════════════════════════════════════════════════════════════════
-            APPEARANCE TAB
-            Sections: Theme, Danger Zone
+            DISPLAY TAB
+            Sections: Theme
            ════════════════════════════════════════════════════════════════════════ */}
-        {activeTab === "appearance" && (
+        {activeTab === "display" && (
           <motion.div
-            key="appearance"
+            key="display"
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 8 }}
             transition={{ duration: 0.15 }}
             className="space-y-4"
           >
-            {/* ── Appearance ────────────────────────────────────────────────────── */}
             <SectionCard
               icon={Sun}
-              title="Appearance"
+              title="Display"
               color="text-amber-400"
               border="rgba(245,158,11,0.2)"
               bg="rgba(245,158,11,0.04)"
@@ -1050,10 +1178,44 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                   Theme
                 </label>
                 <ThemeSelector value={theme} onChange={setTheme} />
+                <p className="text-[11px] text-muted-foreground mt-2">
+                  System follows your OS dark/light preference automatically.
+                </p>
               </div>
             </SectionCard>
+            <SaveBar
+              isWalletConnected={isWalletConnected}
+              isPending={saveMutation.isPending}
+              savedFlash={savedFlash}
+              onSave={handleSave}
+              onConnectWallet={() => setShowWalletModal(true)}
+            />
+          </motion.div>
+        )}
 
-            {/* ── Danger Zone ─────────────────────────────────────────────────────── */}
+        {/* ════════════════════════════════════════════════════════════════════════
+            ADVANCED TAB
+            Sections: Danger Zone (irreversible actions)
+           ════════════════════════════════════════════════════════════════════════ */}
+        {activeTab === "advanced" && (
+          <motion.div
+            key="advanced"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 8 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-4"
+          >
+            {/* Intro callout */}
+            <div className="flex items-start gap-3 p-4 rounded-2xl"
+              style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)' }}>
+              <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+              <p className="text-xs text-muted-foreground">
+                These actions are <span className="font-semibold text-red-400">irreversible</span>. Proceed with caution — there is no undo.
+              </p>
+            </div>
+
+            {/* ── Danger Zone ─────────────────────────────────────────────── */}
             <motion.div
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1076,7 +1238,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                 <div className="flex items-center justify-between gap-4 py-3 px-4 rounded-xl" style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.12)' }}>
                   <div>
                     <p className="text-sm font-medium text-foreground">Reset all settings</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Restore all trading preferences to factory defaults</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Restore all preferences (trading, notifications, display) to factory defaults</p>
                   </div>
                   {!showResetConfirm ? (
                     <button
@@ -1189,15 +1351,6 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                 </div>
               </div>
             </motion.div>
-
-            {/* Save button (theme persists to DB) */}
-            <SaveBar
-              isWalletConnected={isWalletConnected}
-              isPending={saveMutation.isPending}
-              savedFlash={savedFlash}
-              onSave={handleSave}
-              onConnectWallet={() => setShowWalletModal(true)}
-            />
           </motion.div>
         )}
       </AnimatePresence>

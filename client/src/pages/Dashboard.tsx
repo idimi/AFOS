@@ -3038,10 +3038,10 @@ export default function Dashboard() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
-  const [settingsDefaultTab, setSettingsDefaultTab] = useState<"trading" | "network" | "privacy" | "appearance" | undefined>(undefined);
+  const [settingsDefaultTab, setSettingsDefaultTab] = useState<"trading" | "network" | "notifications" | "privacy" | "display" | "advanced" | undefined>(undefined);
 
   // Navigate to Settings and optionally jump to a specific tab
-  const navigateToSettings = (tab?: "trading" | "network" | "privacy" | "appearance") => {
+  const navigateToSettings = (tab?: "trading" | "network" | "notifications" | "privacy" | "display" | "advanced") => {
     setSettingsDefaultTab(tab);
     setActivePage("settings");
   };

@@ -104,6 +104,14 @@ export type UserSettingsResult = {
   theme: "dark" | "light" | "system";
   autoAcceptRfq: boolean;
   autoAcceptMaxUsd: number;
+  // Notification prefs
+  notifyReactions: boolean;
+  notifyIncomingDm: boolean;
+  notifyUnreadBadge: boolean;
+  notifyTradeInquiry: boolean;
+  // Message prefs
+  showReadReceipts: boolean;
+  showTypingIndicator: boolean;
 };
 
 export async function getUserSettings(openId: string): Promise<UserSettingsResult> {
@@ -124,6 +132,14 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
       theme: row.theme,
       autoAcceptRfq: r.autoAcceptRfq === 1,
       autoAcceptMaxUsd: (r.autoAcceptMaxUsd as number) ?? 0,
+      // Notification prefs (stored as 0/1 int in DB)
+      notifyReactions: r.notifyReactions === 1,
+      notifyIncomingDm: (r.notifyIncomingDm as number) !== 0,
+      notifyUnreadBadge: (r.notifyUnreadBadge as number) !== 0,
+      notifyTradeInquiry: (r.notifyTradeInquiry as number) !== 0,
+      // Message prefs
+      showReadReceipts: (r.showReadReceipts as number) !== 0,
+      showTypingIndicator: (r.showTypingIndicator as number) !== 0,
     };
   } catch (err) {
     console.warn("[DB] getUserSettings failed, returning defaults:", err);
@@ -144,6 +160,14 @@ export async function upsertUserSettings(
     theme?: UserSettings["theme"];
     autoAcceptRfq?: boolean;
     autoAcceptMaxUsd?: number;
+    // Notification prefs
+    notifyReactions?: boolean;
+    notifyIncomingDm?: boolean;
+    notifyUnreadBadge?: boolean;
+    notifyTradeInquiry?: boolean;
+    // Message prefs
+    showReadReceipts?: boolean;
+    showTypingIndicator?: boolean;
   },
 ): Promise<void> {
   const db = await getDb();
@@ -162,6 +186,12 @@ export async function upsertUserSettings(
     // Cast to number since Drizzle schema uses int for these boolean-like columns
     autoAcceptRfq: ((patch.autoAcceptRfq ?? DEFAULT_USER_SETTINGS.autoAcceptRfq) ? 1 : 0) as number,
     autoAcceptMaxUsd: (patch.autoAcceptMaxUsd ?? DEFAULT_USER_SETTINGS.autoAcceptMaxUsd) as number,
+    notifyReactions: ((patch.notifyReactions ?? DEFAULT_USER_SETTINGS.notifyReactions) ? 1 : 0) as number,
+    notifyIncomingDm: ((patch.notifyIncomingDm ?? DEFAULT_USER_SETTINGS.notifyIncomingDm) ? 1 : 0) as number,
+    notifyUnreadBadge: ((patch.notifyUnreadBadge ?? DEFAULT_USER_SETTINGS.notifyUnreadBadge) ? 1 : 0) as number,
+    notifyTradeInquiry: ((patch.notifyTradeInquiry ?? DEFAULT_USER_SETTINGS.notifyTradeInquiry) ? 1 : 0) as number,
+    showReadReceipts: ((patch.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts) ? 1 : 0) as number,
+    showTypingIndicator: ((patch.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator) ? 1 : 0) as number,
   };
 
   const updateSet: Record<string, unknown> = {};
@@ -172,6 +202,12 @@ export async function upsertUserSettings(
   if (patch.theme !== undefined) updateSet.theme = patch.theme;
   if (patch.autoAcceptRfq !== undefined) updateSet.autoAcceptRfq = patch.autoAcceptRfq ? 1 : 0;
   if (patch.autoAcceptMaxUsd !== undefined) updateSet.autoAcceptMaxUsd = patch.autoAcceptMaxUsd;
+  if (patch.notifyReactions !== undefined) updateSet.notifyReactions = patch.notifyReactions ? 1 : 0;
+  if (patch.notifyIncomingDm !== undefined) updateSet.notifyIncomingDm = patch.notifyIncomingDm ? 1 : 0;
+  if (patch.notifyUnreadBadge !== undefined) updateSet.notifyUnreadBadge = patch.notifyUnreadBadge ? 1 : 0;
+  if (patch.notifyTradeInquiry !== undefined) updateSet.notifyTradeInquiry = patch.notifyTradeInquiry ? 1 : 0;
+  if (patch.showReadReceipts !== undefined) updateSet.showReadReceipts = patch.showReadReceipts ? 1 : 0;
+  if (patch.showTypingIndicator !== undefined) updateSet.showTypingIndicator = patch.showTypingIndicator ? 1 : 0;
 
   await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });
 }

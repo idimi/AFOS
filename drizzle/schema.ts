@@ -170,6 +170,20 @@ export const userSettings = mysqlTable("user_settings", {
   autoAcceptRfq:    int("autoAcceptRfq").default(0).notNull(), // 0 = false, 1 = true
   /** Maximum USD value of a single RFQ the agent will auto-accept (0 = use maxTxAmountUsd) */
   autoAcceptMaxUsd: int("autoAcceptMaxUsd").default(0).notNull(),
+  // ── Notification preferences ──────────────────────────────────────────────
+  /** Fire a toast when someone reacts to your message (0 = off, 1 = on) */
+  notifyReactions:      int("notifyReactions").default(0).notNull(),
+  /** Fire a toast when an incoming DM arrives (0 = off, 1 = on) */
+  notifyIncomingDm:     int("notifyIncomingDm").default(1).notNull(),
+  /** Show pulsing unread badge on peer graph nodes (0 = off, 1 = on) */
+  notifyUnreadBadge:    int("notifyUnreadBadge").default(1).notNull(),
+  /** Fire a toast when a peer clicks a pair badge to start an RFQ (0 = off, 1 = on) */
+  notifyTradeInquiry:   int("notifyTradeInquiry").default(1).notNull(),
+  // ── Message preferences ───────────────────────────────────────────────────
+  /** Let peers see read receipts when you read their messages (0 = off, 1 = on) */
+  showReadReceipts:     int("showReadReceipts").default(1).notNull(),
+  /** Send typing indicator signal to peers while you type (0 = off, 1 = on) */
+  showTypingIndicator:  int("showTypingIndicator").default(1).notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -221,6 +235,14 @@ export const DEFAULT_USER_SETTINGS = {
   theme: "dark" as const,
   autoAcceptRfq: false,
   autoAcceptMaxUsd: 0,
+  // Notification prefs (stored as 0/1 in DB, exposed as boolean)
+  notifyReactions: false,
+  notifyIncomingDm: true,
+  notifyUnreadBadge: true,
+  notifyTradeInquiry: true,
+  // Message prefs
+  showReadReceipts: true,
+  showTypingIndicator: true,
 };
 
 // ─── Peer Reports ─────────────────────────────────────────────────────────────
