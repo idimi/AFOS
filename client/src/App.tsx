@@ -5,6 +5,7 @@ import { Route, Switch, useLocation } from "wouter";
 import { useEffect } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider as NextThemesProvider } from "next-themes";
 import { AgentLogProvider } from "./contexts/AgentLogContext";
 import { WalletProvider } from "./contexts/WalletContext";
 import { MultiChainWalletProvider } from "./contexts/MultiChainWalletContext";
@@ -53,6 +54,10 @@ export { Swaps };
 function App() {
   return (
     <ErrorBoundary>
+      {/* next-themes ThemeProvider makes resolvedTheme available to useTheme() from 'next-themes'
+          throughout the app. It reads/writes the "theme" key in localStorage and toggles the
+          "dark" class on <html>, staying in sync with our custom ThemeContext. */}
+      <NextThemesProvider attribute="class" defaultTheme="dark" enableSystem storageKey="theme">
       <ThemeProvider defaultTheme="dark" switchable>
         <AgentLogProvider>
           <WalletProvider>
@@ -75,6 +80,7 @@ function App() {
           </WalletProvider>
         </AgentLogProvider>
       </ThemeProvider>
+      </NextThemesProvider>
     </ErrorBoundary>
   );
 }

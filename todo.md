@@ -2324,3 +2324,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add graphDensity parameter to peerPosition() function (radius /= density)
 - [x] Pass graphDensity to all three peerPosition() call sites in NetworkPage
 - [x] Add graphDensity to convertOraclePeers and fetchLiveData useCallback deps
+
+## DM Panel Emoji Picker + Visual Polish
+
+- [ ] Fix emoji picker clipped by Direct Message panel header — open downward so all rows are visible
+- [ ] Improve DM panel visual design for dark and light mode — better contrast, header, message bubbles, input area
+
+## DM Panel Emoji Picker & Visual Fix
+
+- [x] Fix emoji picker clipped by Direct Message panel header — rendered via portal at document.body level so it escapes all overflow containers
+- [x] Improve DM panel visual design for dark and light mode — all hardcoded rgba values replaced with theme-aware tokens (isDark conditional)

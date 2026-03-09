@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import data from '@emoji-mart/data';
 import Picker from '@emoji-mart/react';
 import { useTheme } from "next-themes";
@@ -540,6 +541,8 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingThrottleRef = useRef<number>(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiPickerBtnRef = useRef<HTMLButtonElement>(null);
+  const [emojiPickerPos, setEmojiPickerPos] = useState<{ top: number; left: number } | null>(null);
   const reactionPickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -669,32 +672,103 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
   // Quick-reaction emojis shown on hover
   const QUICK_REACTIONS = ['👍', '❤️', '🚀', '😂', '🔥'];
 
+  // Theme awareness for light/dark mode
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme
+    ? resolvedTheme === 'dark'
+    : typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
+  const emojiTheme = isDark ? 'dark' : 'light';
+
   // Derive initials for avatar
   const peerInitials = otherAlias.slice(0, 2).toUpperCase();
   const myInitials = 'ME';
 
+  // Derived theme-aware style tokens
+  const panelBg = isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.04)';
+  const panelBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.12)';
+  const headerBg = isDark ? 'rgba(6,182,212,0.05)' : 'rgba(6,182,212,0.08)';
+  const headerBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.1)';
+  const peerAvatarBg = 'rgba(6,182,212,0.2)';
+  const peerNameColor = isDark ? '#f1f5f9' : '#0f172a';
+  const subtitleColor = isDark ? '#64748b' : '#475569';
+  const scrollbarColor = isDark ? 'rgba(255,255,255,0.1) transparent' : 'rgba(15,23,42,0.15) transparent';
+  const myBubbleBg = isDark ? 'rgba(139,92,246,0.18)' : 'rgba(139,92,246,0.12)';
+  const myBubbleBorder = isDark ? 'rgba(139,92,246,0.25)' : 'rgba(139,92,246,0.3)';
+  const myBubbleText = isDark ? '#e2d9f3' : '#3b0764';
+  const peerBubbleBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(15,23,42,0.06)';
+  const peerBubbleBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)';
+  const peerBubbleText = isDark ? '#e2e8f0' : '#1e293b';
+  const reactionBarBg = isDark ? 'rgba(15,23,42,0.92)' : 'rgba(248,250,252,0.96)';
+  const reactionBarBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.15)';
+  const inputBarBg = isDark ? 'rgba(0,0,0,0.2)' : 'rgba(15,23,42,0.04)';
+  const inputBarBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.1)';
+  const textareaBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.05)';
+  const textareaBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.15)';
+  const textareaColor = isDark ? '#e2e8f0' : '#1e293b';
+  const textareaFocusBorder = 'rgba(6,182,212,0.4)';
+  const textareaFocusBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(6,182,212,0.04)';
+  const sendBtnIdleBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.08)';
+  const sendBtnIdleBorder = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.15)';
+  const hintColor = isDark ? '#475569' : '#94a3b8';
+  const sectionHeaderText = isDark ? 'text-slate-300 group-hover:text-white' : 'text-slate-600 group-hover:text-slate-900';
+  const chevronColor = isDark ? 'text-slate-500' : 'text-slate-400';
+  const emptyIconColor = isDark ? 'text-slate-600' : 'text-slate-400';
+  const emptyTextColor = isDark ? 'text-slate-500' : 'text-slate-500';
+  const emptySubColor = isDark ? 'text-slate-600' : 'text-slate-400';
+  const emojiButtonIdle = isDark ? 'text-slate-500 hover:text-slate-300 hover:bg-white/8' : 'text-slate-400 hover:text-slate-700 hover:bg-black/5';
+  const typingDotColor = isDark ? 'bg-slate-400' : 'bg-slate-500';
+
   return (
-    <div className="mt-3 border-t border-white/10">
+    <div className="mt-3 border-t" style={{ borderColor: panelBorder }}>
       {/* ── Section header ── */}
       <button
         onClick={() => setOpen(v => !v)}
         className="w-full flex items-center justify-between px-0 py-3 group"
       >
-        <span className="flex items-center gap-2 text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">
-          <MessageSquare className="w-3.5 h-3.5 text-cyan-400" />
+        <span className={`flex items-center gap-2 text-xs font-semibold transition-colors ${sectionHeaderText}`}>
+          <MessageSquare className="w-3.5 h-3.5 text-cyan-500" />
           Direct Message
           {thread.length > 0 && (
-            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+            <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-cyan-500/20 text-cyan-500 border border-cyan-500/30">
               {thread.length}
             </span>
           )}
         </span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${chevronColor} ${
             open ? 'rotate-180' : ''
           }`}
         />
       </button>
+
+      {/* Portal: emoji picker rendered at document.body level to escape overflow clipping */}
+      {showEmoji && emojiPickerPos && createPortal(
+        <div
+          ref={emojiPickerRef}
+          style={{
+            position: 'fixed',
+            top: emojiPickerPos.top,
+            left: emojiPickerPos.left,
+            zIndex: 9999,
+            filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.6))',
+          }}
+        >
+          <Picker
+            data={data}
+            theme={emojiTheme}
+            previewPosition="none"
+            skinTonePosition="none"
+            set="native"
+            onEmojiSelect={(emoji: { native: string }) => {
+              setDraft(d => d + emoji.native);
+              setShowEmoji(false);
+              setEmojiPickerPos(null);
+              inputRef.current?.focus();
+            }}
+          />
+        </div>,
+        document.body
+      )}
 
       <AnimatePresence initial={false}>
         {open && (
@@ -708,23 +782,23 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
           >
             <div className="flex flex-col rounded-xl overflow-hidden"
               style={{
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                background: panelBg,
+                border: `1px solid ${panelBorder}`,
               }}
             >
               {/* ── Chat header ── */}
-              <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-white/8"
-                style={{ background: 'rgba(6,182,212,0.05)' }}
+              <div className="flex items-center gap-2.5 px-3 py-2.5 border-b"
+                style={{ background: headerBg, borderColor: headerBorder }}
               >
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                  style={{ background: 'rgba(6,182,212,0.2)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)' }}
+                  style={{ background: peerAvatarBg, color: '#06b6d4', border: '1px solid rgba(6,182,212,0.3)' }}
                 >
                   {peerInitials}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-white truncate">{otherAlias}</p>
-                  <p className="text-[10px] text-slate-500">P2P encrypted · {thread.length} messages</p>
+                  <p className="text-xs font-semibold truncate" style={{ color: peerNameColor }}>{otherAlias}</p>
+                  <p className="text-[10px]" style={{ color: subtitleColor }}>P2P encrypted · {thread.length} messages</p>
                 </div>
               </div>
 
@@ -736,14 +810,14 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                   minHeight: '120px',
                   maxHeight: '220px',
                   scrollbarWidth: 'thin',
-                  scrollbarColor: 'rgba(255,255,255,0.1) transparent',
+                  scrollbarColor,
                 }}
               >
                 {thread.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-20 gap-2">
-                    <MessageSquare className="w-5 h-5 text-slate-600" />
-                    <p className="text-xs text-slate-500">No messages yet</p>
-                    <p className="text-[10px] text-slate-600">Say hi to {otherAlias}!</p>
+                    <MessageSquare className={`w-5 h-5 ${emptyIconColor}`} />
+                    <p className={`text-xs ${emptyTextColor}`}>No messages yet</p>
+                    <p className={`text-[10px] ${emptySubColor}`}>Say hi to {otherAlias}!</p>
                   </div>
                 ) : (
                   thread.map((msg) => {
@@ -782,13 +856,9 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                             <div
                               className="px-3 py-2 rounded-2xl text-xs leading-relaxed break-words"
                               style={{
-                                background: isMine
-                                  ? 'rgba(139,92,246,0.18)'
-                                  : 'rgba(255,255,255,0.07)',
-                                border: `1px solid ${
-                                  isMine ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.1)'
-                                }`,
-                                color: isMine ? '#e2d9f3' : '#e2e8f0',
+                                background: isMine ? myBubbleBg : peerBubbleBg,
+                                border: `1px solid ${isMine ? myBubbleBorder : peerBubbleBorder}`,
+                                color: isMine ? myBubbleText : peerBubbleText,
                                 borderRadius: isMine
                                   ? '16px 4px 16px 16px'
                                   : '4px 16px 16px 16px',
@@ -803,11 +873,11 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                                   isMine ? 'right-0' : 'left-0'
                                 }`}
                                 style={{
-                                  background: 'rgba(15,23,42,0.92)',
-                                  border: '1px solid rgba(255,255,255,0.12)',
+                                  background: reactionBarBg,
+                                  border: `1px solid ${reactionBarBorder}`,
                                   borderRadius: '20px',
                                   padding: '2px 6px',
-                                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                                  boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.5)' : '0 4px 12px rgba(0,0,0,0.12)',
                                 }}
                               >
                                 {QUICK_REACTIONS.map(emoji => (
@@ -831,9 +901,9 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                                     onClick={() => setReactionPickerMsgId(id => id === msg.id ? null : msg.id)}
                                     className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold transition-all"
                                     style={{
-                                      background: reactionPickerMsgId === msg.id ? 'rgba(6,182,212,0.25)' : 'rgba(255,255,255,0.1)',
+                                      background: reactionPickerMsgId === msg.id ? 'rgba(6,182,212,0.25)' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)'),
                                       color: reactionPickerMsgId === msg.id ? '#06b6d4' : '#94a3b8',
-                                      border: '1px solid rgba(255,255,255,0.15)',
+                                      border: `1px solid ${isDark ? 'rgba(255,255,255,0.15)' : 'rgba(15,23,42,0.15)'}`,
                                     }}
                                     title="More reactions"
                                   >
@@ -851,7 +921,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                                     >
                                       <Picker
                                         data={data}
-                                        theme="dark"
+                                        theme={emojiTheme}
                                         previewPosition="none"
                                         skinTonePosition="none"
                                         set="native"
@@ -886,9 +956,9 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                                         ? 'rgba(6,182,212,0.2)'
                                         : 'rgba(255,255,255,0.06)',
                                       border: `1px solid ${
-                                        iReacted ? 'rgba(6,182,212,0.4)' : 'rgba(255,255,255,0.1)'
+                                        iReacted ? 'rgba(6,182,212,0.4)' : (isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.12)')
                                       }`,
-                                      color: iReacted ? '#06b6d4' : '#94a3b8',
+                                      color: iReacted ? '#06b6d4' : (isDark ? '#94a3b8' : '#64748b'),
                                     }}
                                     title={`${reactors.length} reaction${reactors.length !== 1 ? 's' : ''}`}
                                   >
@@ -941,8 +1011,8 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                     <div
                       className="px-3 py-2.5 rounded-2xl"
                       style={{
-                        background: 'rgba(255,255,255,0.07)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: peerBubbleBg,
+                        border: `1px solid ${peerBubbleBorder}`,
                         borderRadius: '4px 16px 16px 16px',
                       }}
                     >
@@ -950,7 +1020,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                         {[0, 1, 2].map(i => (
                           <span
                             key={i}
-                            className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce"
+                            className={`w-1.5 h-1.5 rounded-full animate-bounce ${typingDotColor}`}
                             style={{ animationDelay: `${i * 0.15}s`, animationDuration: '0.9s' }}
                           />
                         ))}
@@ -962,42 +1032,38 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
 
               {/* ── Input bar ── */}
               <div
-                className="flex items-end gap-2 px-3 py-2.5 border-t border-white/8"
-                style={{ background: 'rgba(0,0,0,0.2)' }}
+                className="flex items-end gap-2 px-3 py-2.5 border-t"
+                style={{ background: inputBarBg, borderColor: inputBarBorder }}
               >
-                {/* Emoji button */}
-                <div className="relative shrink-0" ref={emojiPickerRef}>
+                {/* Emoji button — picker is rendered via portal at document.body */}
+                <div className="relative shrink-0">
                   <button
+                    ref={emojiPickerBtnRef}
                     type="button"
-                    onClick={() => setShowEmoji(v => !v)}
+                    onClick={() => {
+                      if (showEmoji) {
+                        setShowEmoji(false);
+                        setEmojiPickerPos(null);
+                      } else {
+                        const rect = emojiPickerBtnRef.current?.getBoundingClientRect();
+                        if (rect) {
+                          // Position picker above the button; picker is ~435px tall
+                          const pickerH = 435;
+                          const top = Math.max(8, rect.top - pickerH - 8);
+                          setEmojiPickerPos({ top, left: rect.left });
+                        }
+                        setShowEmoji(true);
+                      }
+                    }}
                     className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all ${
                       showEmoji
-                        ? 'bg-cyan-500/20 text-cyan-400'
-                        : 'text-slate-500 hover:text-slate-300 hover:bg-white/8'
+                        ? 'bg-cyan-500/20 text-cyan-500'
+                        : emojiButtonIdle
                     }`}
                     title="Add emoji"
                   >
                     <SmilePlus className="w-4 h-4" />
                   </button>
-                  {showEmoji && (
-                    <div
-                      className="absolute bottom-9 left-0 z-50"
-                      style={{ filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.6))' }}
-                    >
-                      <Picker
-                        data={data}
-                        theme="dark"
-                        previewPosition="none"
-                        skinTonePosition="none"
-                        set="native"
-                        onEmojiSelect={(emoji: { native: string }) => {
-                          setDraft(d => d + emoji.native);
-                          setShowEmoji(false);
-                          inputRef.current?.focus();
-                        }}
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Textarea */}
@@ -1010,22 +1076,22 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                     placeholder={`Message ${otherAlias}…`}
                     maxLength={500}
                     rows={1}
-                    className="w-full px-3 py-2 rounded-xl text-xs bg-transparent outline-none resize-none leading-relaxed placeholder:text-slate-600"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-transparent outline-none resize-none leading-relaxed placeholder:text-slate-400"
                     style={{
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      color: '#e2e8f0',
+                      background: textareaBg,
+                      border: `1px solid ${textareaBorder}`,
+                      color: textareaColor,
                       minHeight: '36px',
                       maxHeight: '96px',
                       overflowY: 'auto',
                     }}
                     onFocus={e => {
-                      e.currentTarget.style.borderColor = 'rgba(6,182,212,0.4)';
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                      e.currentTarget.style.borderColor = textareaFocusBorder;
+                      e.currentTarget.style.background = textareaFocusBg;
                     }}
                     onBlur={e => {
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                      e.currentTarget.style.borderColor = textareaBorder;
+                      e.currentTarget.style.background = textareaBg;
                     }}
                   />
                   {/* Char counter — only visible when typing */}
@@ -1047,8 +1113,8 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                   style={{
                     background: draft.trim()
                       ? 'linear-gradient(135deg, rgba(6,182,212,0.8), rgba(139,92,246,0.8))'
-                      : 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                      : sendBtnIdleBg,
+                    border: `1px solid ${sendBtnIdleBorder}`,
                   }}
                   title="Send (Enter)"
                 >
@@ -1060,7 +1126,7 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
               </div>
 
               {/* Hint */}
-              <p className="text-center text-[9px] text-slate-700 pb-2">
+              <p className="text-center text-[9px] pb-2" style={{ color: hintColor }}>
                 Enter to send · Shift+Enter for newline
               </p>
             </div>
