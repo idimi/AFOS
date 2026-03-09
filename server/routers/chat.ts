@@ -449,6 +449,8 @@ function sendAgentRfqToPeer(params: {
   requesterPeerId?: string;
   requesterWallet?: string;
   expiresAt: number;
+  /** SHA-256 hash of the HTLC secret (hex). Agent B MUST lock to this hash so the swap is atomic. */
+  secretHashHex?: string;
 }): boolean {
   return sendToPeer(params.targetPeerId, {
     type:            "agent_rfq",
@@ -464,6 +466,8 @@ function sendAgentRfqToPeer(params: {
     requesterPeerId: params.requesterPeerId,
     requesterWallet: params.requesterWallet,
     expiresAt:       params.expiresAt,
+    // Critical for atomicity: Agent B must lock to this exact hash
+    secretHashHex:   params.secretHashHex,
     timestamp:       Date.now(),
   });
 }
@@ -1039,11 +1043,29 @@ export const chatRouter = router({
         });
       }
 
-      // ── Step 2a: P2P peer found — notify counterparty and return P2P quote ─────────
+       // ── Step 2a: P2P peer found — notify counterparty and return P2P quote ─────────
       if (p2pMatch && p2pMatch.peerId && p2pMatch.rfqId) {
         const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
-
+        // Generate the HTLC secret here (server-side) so both Agent A and Agent B
+        // lock to the SAME hash — this is what makes the swap atomic.
+        const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
+        const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+        const htlcHashBuf     = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
+        const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        // Persist HTLC secret to DB so reveal survives page refresh
+        void saveHtlcSecret({
+          rfqId:              p2pMatch.rfqId,
+          secretHex:          htlcSecretHex,
+          secretHashHex:      htlcSecretHash,
+          fromChain:          from.chain as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          toChain:            to.chain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          requesterAddress:   senderWalletAddress ?? undefined,
+          counterpartyPeerId: p2pMatch.peerId ?? undefined,
+          expiresAt:          BigInt(expiresAt),
+          status:             "locked",
+        }).catch(() => {/* non-fatal */});
         // Push agent_rfq to the matched peer's browser via signaling WebSocket
+        // Include secretHashHex so Agent B locks to the same hash (atomicity)
         const delivered = sendAgentRfqToPeer({
           rfqId:           p2pMatch.rfqId,
           targetPeerId:    p2pMatch.peerId,
@@ -1058,11 +1080,10 @@ export const chatRouter = router({
           requesterPeerId: senderPeerId,
           requesterWallet: senderWalletAddress,
           expiresAt,
+          secretHashHex:   htlcSecretHash,
         });
-
         const peerLabel = p2pMatch.peerAlias ?? p2pMatch.peerId?.slice(0, 8) ?? "peer";
         const routeLabel = `AFOS P2P — matched @${peerLabel}`;
-
         return {
           type: "quote_card" as const,
           content: delivered
@@ -1070,12 +1091,13 @@ export const chatRouter = router({
             : `P2P peer found (@${peerLabel}) but they may be offline. You can still proceed — the swap will route via DEX if they don't respond.`,
           limitWarning: nearLimitWarning,
           p2pPeer: {
-            peerId:   p2pMatch.peerId,
-            alias:    p2pMatch.peerAlias,
-            rfqId:    p2pMatch.rfqId,
-            wallets:  p2pMatch.counterpartyWallets,
+            peerId:        p2pMatch.peerId,
+            alias:         p2pMatch.peerAlias,
+            rfqId:         p2pMatch.rfqId,
+            wallets:       p2pMatch.counterpartyWallets,
             delivered,
             expiresAt,
+            secretHashHex: htlcSecretHash, // Agent A uses this to lock their side
           },
           quoteData: {
             fromToken:      from.symbol,
@@ -1223,6 +1245,23 @@ export const chatRouter = router({
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
       if (p2pQuote && p2pQuote.peerId && p2pQuote.rfqId) {
         const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
+        // Generate HTLC secret BEFORE sending agent_rfq so the hash can be included
+        const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
+        const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+        const htlcHashBytes   = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
+        const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
+        // Persist to DB so reveal survives page refresh
+        void saveHtlcSecret({
+          rfqId:              p2pQuote.rfqId,
+          secretHex:          htlcSecretHex,
+          secretHashHex:      htlcSecretHash,
+          fromChain:          (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          requesterAddress:   userPublicKey ?? undefined,
+          counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          expiresAt:          BigInt(expiresAt),
+          status:             "locked",
+        }).catch(() => {/* non-fatal */});
         // Push agent_rfq to the matched peer's browser via signaling WebSocket
         const delivered = sendAgentRfqToPeer({
           rfqId:           p2pQuote.rfqId,
@@ -1238,24 +1277,9 @@ export const chatRouter = router({
           requesterPeerId: senderPeerId,
           requesterWallet: userPublicKey,
           expiresAt,
+          secretHashHex:   htlcSecretHash,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
-        // Generate and persist HTLC secret for this P2P swap (so reveal can survive page refresh)
-        const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
-        const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
-        const htlcHashBytes   = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
-        const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
-        void saveHtlcSecret({
-          rfqId:              p2pQuote.rfqId,
-          secretHex:          htlcSecretHex,
-          secretHashHex:      htlcSecretHash,
-          fromChain:          (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          requesterAddress:   userPublicKey ?? undefined,
-          counterpartyPeerId: p2pQuote.peerId ?? undefined,
-          expiresAt:          BigInt(expiresAt),
-          status:             "locked",
-        }).catch(() => {/* non-fatal */});
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
           fromChain:  (fromChain ?? "solana") as SupportedChain,
@@ -1270,7 +1294,7 @@ export const chatRouter = router({
         }).catch(() => {/* non-fatal */});
         return {
           route:          "AFOS P2P" as const,
-          p2pQuote:       { ...p2pQuote, expiresAt, delivered },
+          p2pQuote:       { ...p2pQuote, expiresAt, delivered, secretHashHex: htlcSecretHash },
           swapTransaction: null,
           message:
             `P2P peer matched: @${p2pQuote.peerAlias ?? p2pQuote.peerId?.slice(0, 8) ?? "peer"}. ` +
@@ -1464,13 +1488,31 @@ export const chatRouter = router({
             senderAddress: fromAddress,
           }).catch(() => {/* non-fatal */});
         }
+        // Notify Agent B with the secretHashHex so they lock to the same hash
+        if (p2pQuote.peerId && p2pQuote.rfqId) {
+          sendAgentRfqToPeer({
+            rfqId:           p2pQuote.rfqId,
+            targetPeerId:    p2pQuote.peerId,
+            fromToken:       fromSymbol,
+            toToken:         toSymbol,
+            fromChain,
+            toChain,
+            amount,
+            outAmount:       p2pQuote.outAmount ?? 0,
+            rate:            p2pQuote.rate ?? 0,
+            requesterWallet: fromAddress ?? undefined,
+            expiresAt:       Date.now() + 60_000,
+            secretHashHex:   secretHash,
+          });
+        }
         return {
           success:  true,
           route:    "IntercomSwap P2P" as const,
-          p2pQuote,
+          p2pQuote: { ...p2pQuote, secretHashHex: secretHash },
           // htlcLockTx is non-null when ETH_HTLC_ADDRESS is set (contract deployed)
           tx:       htlcLockTx,
           secretHash: htlcLockTx ? secretHash : undefined,
+          secretHashHex: secretHash, // Always include for Agent A's HTLC lock
           message:
             `IntercomSwap P2P peer matched (${p2pQuote.peerId ?? "peer"}). ` +
             `Rate: ${p2pQuote.rate ?? "N/A"}. ` +
@@ -1701,6 +1743,23 @@ export const chatRouter = router({
           status:             "locked",
         }).catch(() => {/* non-fatal */});
       }
+      // Notify Agent B with the secretHashHex so they lock to the same hash (atomicity)
+      if (p2pQuote?.peerId && p2pQuote?.rfqId) {
+        sendAgentRfqToPeer({
+          rfqId:           p2pQuote.rfqId,
+          targetPeerId:    p2pQuote.peerId,
+          fromToken:       "BTC",
+          toToken:         input.toToken   ?? "BTC",
+          fromChain:       "bitcoin",
+          toChain:         input.toChain   ?? "bitcoin",
+          amount:          input.amountBtc ?? 0,
+          outAmount:       p2pQuote.outAmount ?? 0,
+          rate:            p2pQuote.rate ?? 0,
+          requesterWallet: input.senderAddress ?? undefined,
+          expiresAt:       Date.now() + 60_000,
+          secretHashHex:   secretHash,
+        });
+      }
       // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibilityy
       const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
       const p2pRoute = p2pQuote ? "IntercomSwap P2P" : "Direct HTLC (no P2P peer)";
@@ -1860,9 +1919,35 @@ export const chatRouter = router({
           message:      btcResult.message,
         };
       }
-
-      // ── Trac Network (TNK) path ─────────────────────────────────────────────
+      // ── Trac Network (TNK) path ──────────────────────────────────────────────
       if (chain === "trac_network") {
+        // Generate HTLC secret BEFORE executing so Agent B can lock to the same hash
+        const tnkSecretBytes = crypto.getRandomValues(new Uint8Array(32));
+        const tnkSecretHex   = Array.from(tnkSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+        const tnkHashBuf     = await crypto.subtle.digest("SHA-256", tnkSecretBytes);
+        const tnkSecretHash  = Array.from(new Uint8Array(tnkHashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+        const tnkRfqId       = `rfq_tnk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        // Persist to DB
+        void saveHtlcSecret({
+          rfqId:         tnkRfqId,
+          secretHex:     tnkSecretHex,
+          secretHashHex: tnkSecretHash,
+          fromChain:     "trac_network",
+          toChain:       (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          expiresAt:     BigInt(Date.now() + btcExpiryHours * 3_600_000),
+          status:        "locked",
+        }).catch(() => {/* non-fatal */});
+        // Broadcast to all peers so they can see the TNK RFQ
+        broadcastRfqToAll(undefined, {
+          rfqId:     tnkRfqId,
+          fromToken: fromToken.toUpperCase(),
+          toToken:   toToken.toUpperCase(),
+          fromChain: "trac_network",
+          toChain:   toChain ?? "bitcoin",
+          amount,
+          secretHashHex: tnkSecretHash,
+          expiresAt:     Date.now() + 60_000,
+        });
         const tnkResult = await executeTnkAgentSwap({
           fromToken,
           toToken,
@@ -1871,22 +1956,23 @@ export const chatRouter = router({
           expiryHours: btcExpiryHours,
         });
         return {
-          success:      tnkResult.success,
-          demo:         tnkResult.demo,
-          txHash:       tnkResult.txHash,
-          outAmount:    tnkResult.outAmount,
-          route:        tnkResult.route,
-          agentAddress: null,
-          solscanUrl:   tnkResult.txHash ? `https://explorer.trac.network/tx/${tnkResult.txHash}` : null,
-          feeBps:       tnkResult.feeBps,
-          feeAmountOut: tnkResult.feeAmountOut,
-          chain:        "trac_network" as const,
-          nextStep:     tnkResult.nextStep,
-          message:      tnkResult.message,
+          success:       tnkResult.success,
+          demo:          tnkResult.demo,
+          txHash:        tnkResult.txHash,
+          outAmount:     tnkResult.outAmount,
+          route:         tnkResult.route,
+          agentAddress:  null,
+          solscanUrl:    tnkResult.txHash ? `https://explorer.trac.network/tx/${tnkResult.txHash}` : null,
+          feeBps:        tnkResult.feeBps,
+          feeAmountOut:  tnkResult.feeAmountOut,
+          chain:         "trac_network" as const,
+          nextStep:      tnkResult.nextStep,
+          message:       tnkResult.message,
+          secretHashHex: tnkSecretHash, // For Agent A's HTLC lock on Trac Network
+          rfqId:         tnkRfqId,
         };
       }
-
-      // ── Solana path (default) ─────────────────────────────────────────────
+      // ── Solana path (default) ─────────────────────────────────────────────────────
       const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
       // SOL_HTLC_KEY is the dedicated HTLC escrow key; fall back to SOL_AGENT_KEY for backwards compatibility
       const agentKeyRaw = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY;

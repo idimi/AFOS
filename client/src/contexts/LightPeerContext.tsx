@@ -767,8 +767,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // Solana HTLC: build PDA lock transaction and sign with wallet
         setHtlcSigning({ rfqId, step: "locking" });
         try {
-          // Generate secret + secretHash
-          const { secretHex, secretHashHex } = await generateHtlcSecret();
+          // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
+          const existingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
+          const { secretHex, secretHashHex } = existingHash
+            ? { secretHex: "", secretHashHex: existingHash }  // Agent B locks to Agent A's hash
+            : await generateHtlcSecret();                     // fallback: generate own secret
           void secretHex; // store securely in production — needed to reveal later
 
           // Timelock: 1 hour from now
@@ -834,10 +837,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // HTLC contract address (set after deploying HTLC.sol to Sepolia/mainnet)
           const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
 
-          // Generate secret + secretHash (SHA-256 of random 32 bytes)
-          const secretBytes   = crypto.getRandomValues(new Uint8Array(32));
-          const secretHashBuf = await crypto.subtle.digest("SHA-256", secretBytes);
-          const secretHashHex = Array.from(new Uint8Array(secretHashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
+          // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
+          const existingEthHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
+          const secretHashHex = existingEthHash ?? (() => {
+            const secretBytes   = crypto.getRandomValues(new Uint8Array(32));
+            return crypto.subtle.digest("SHA-256", secretBytes).then(buf =>
+              Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("")
+            );
+          })();
+          const resolvedSecretHashHex = typeof secretHashHex === "string" ? secretHashHex : await secretHashHex;
 
           // Timelock: 1 hour from now (Unix timestamp in seconds)
           const timelock = Math.floor(Date.now() / 1000) + 3600;
@@ -853,7 +861,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Function selector: keccak256("lockETH(bytes32,address,uint256)") = 0x1d4e5e8c
           const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
           const calldata = "0x1d4e5e8c"
-            + padLeft(secretHashHex, 32)
+            + padLeft(resolvedSecretHashHex, 32)
             + padLeft(recipient.replace(/^0x/, "").toLowerCase(), 32)
             + padLeft(timelock.toString(16), 32);
 
@@ -908,6 +916,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const senderPubKey = bitcoin.address
             ? `03${bitcoin.address.replace(/[^0-9a-f]/gi, "").slice(0, 62).padEnd(62, "0")}`
             : "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+          // Pass Agent A's secretHashHex so both sides lock to the same hash (atomicity)
+          const btcExistingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
           const result = await executeBtcHtlcLock(
             bitcoin.address,
             counterpartyPubKey,
@@ -916,6 +926,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             24, // 24-hour locktime
             btcProvider,
             "mainnet",
+            btcExistingHash,
           );
           setHtlcSigning({ rfqId, step: "revealing", txHash: result.txid });
           await new Promise(r => setTimeout(r, 800));
@@ -944,7 +955,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // TNK (Trac Network) HTLC: agent-escrow model using window.tracnetwork.sendTNK()
         setHtlcSigning({ rfqId, step: "locking" });
         try {
-          const { secretHashHex: secretHash } = await generateHtlcSecret();
+          // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
+          const existingTnkHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
+          const secretHash = existingTnkHash ?? (await generateHtlcSecret()).secretHashHex;
           const result = await executeTnkHtlcLock({
             amount: rfq.amount.toFixed(8),
             secretHash,

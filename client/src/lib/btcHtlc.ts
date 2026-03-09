@@ -616,12 +616,16 @@ export async function executeBtcHtlcLock(
   locktimeHours = 24,
   provider: BtcWalletProvider = "unknown",
   network: "mainnet" | "testnet" = "mainnet",
+  /** Optional: use Agent A's secretHash to ensure both sides lock to the same hash (atomicity) */
+  existingSecretHash?: string,
 ): Promise<HtlcLockFlowResult> {
   // Auto-detect provider if not specified
   const detectedProvider = provider === "unknown" ? detectBtcProvider() : provider;
 
-  // 1. Generate secret
-  const { secret, secretHash } = generateHtlcSecret();
+  // 1. Generate secret (or use Agent A's hash for atomicity)
+  const generated = generateHtlcSecret();
+  const secret     = generated.secret;
+  const secretHash = existingSecretHash ?? generated.secretHash;
 
   // 2. Fetch UTXOs
   const utxos = await fetchUtxos(senderAddress, network);

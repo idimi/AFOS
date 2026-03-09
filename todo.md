@@ -2243,3 +2243,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Bug Fixes + Features — Round 7
 - [x] Bug 7: Swap RFQs don't appear in the Live Order Book for all peers — fixed: sendMessage now calls broadcastRfqToAll() in signaling.ts so all connected peers receive an rfq_broadcast WebSocket message. Swaps.tsx Live Order Book now listens to afos:signaling-rfq window events and renders incoming RFQs from other users.
 - [x] HTLC secret persistence: store secretHex + secretHashHex + rfqId in DB so the reveal step can complete after page refresh — added htlc_secrets table (schema + migration), saveHtlcSecret/getHtlcSecret/updateHtlcSecretStatus helpers in db.ts, called saveHtlcSecret in all three P2P paths (SOL, ETH, BTC), added getHtlcSecretHash/revealHtlcSecret/updateHtlcStatus tRPC procedures.
+
+## Bug Fixes + Features — Round 8
+- [ ] secretHashHex atomicity fix: pass server-generated secretHashHex in agent_rfq to Agent B for all chains (SOL, ETH, BTC, TNK) so both sides lock to the same hash
+- [ ] TNK chain HTLC lock: add Trac Network HTLC lock path in acceptRfq (currently missing)
+- [ ] Agent A uses same secretHashHex: initiateHtlcLock receives secretHashHex from buildSwapTx response and passes it through to the HTLC signing
+
+## Bug Fixes + Features — Round 8
+- [x] secretHashHex atomicity fix: server generates secretHashHex BEFORE calling sendAgentRfqToPeer and includes it in the agent_rfq message for all four chains (SOL, ETH, BTC, TNK). Agent B's acceptRfq now uses rfq.secretHashHex if present instead of generating a new one, ensuring both sides lock to the same hash. executeBtcHtlcLock updated to accept optional existingSecretHash parameter.
