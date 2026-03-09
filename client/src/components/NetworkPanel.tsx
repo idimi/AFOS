@@ -45,9 +45,34 @@ function timeLeft(ms: number): string {
   return `${Math.floor(diff / 60_000)}m`;
 }
 
+// ─── HTLC Countdown Timer ────────────────────────────────────────────────────
+
+function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const expiresAt = lockedAt + timelockMs;
+  const diff = expiresAt - now;
+  if (diff <= 0) {
+    return <span className="text-[10px] text-red-400 font-medium">⏰ Refundable now</span>;
+  }
+  const totalSecs = Math.floor(diff / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const label = h > 0
+    ? `${h}h ${m.toString().padStart(2, "0")}m`
+    : m > 0
+    ? `${m}m ${s.toString().padStart(2, "0")}s`
+    : `${s}s`;
+  return <span className="text-[10px] text-slate-400 font-medium">⏳ Refundable in {label}</span>;
+}
+
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -57,6 +82,8 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   onRefund?: (id: string) => void;
   isRefundable?: boolean;
   isRefunded?: boolean;
+  /** Unix ms when HTLC was locked — used to show countdown to refund window */
+  htlcLockedAt?: number;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -107,6 +134,12 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         Rate: 1 {rfq.fromToken} = {rfq.suggestedRate.toFixed(6)} {rfq.toToken}
         &nbsp;·&nbsp;{rfq.fromChain} → {rfq.toChain}
       </div>
+      {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
+      {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
+        <div className="pt-0.5">
+          <HtlcCountdown lockedAt={htlcLockedAt} />
+        </div>
+      )}
       {isPending && (
         <div className="flex gap-2 pt-1">
           <button
@@ -436,6 +469,7 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
                     onRefund={peer.refundHtlcFunds}
                     isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                     isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
+                    htlcLockedAt={peer.htlcLockedAt[rfq.rfqId]}
                   />
                 ))}
               </AnimatePresence>
@@ -518,11 +552,22 @@ function LivePeersTab({ fromToken, toToken, livePeers, activePeerCount }: {
 
 // ─── Settled HTLCs Panel ─────────────────────────────────────────────────────
 
+// Chain label helper
+const CHAIN_LABEL: Record<string, string> = {
+  solana: "SOL",
+  ethereum: "ETH",
+  bitcoin: "BTC",
+  trac_network: "TNK",
+};
+
 function SettledHtlcsPanel() {
-  const { data: settled, isLoading } = trpc.chat.getSettledHtlcs.useQuery({ limit: 20 }, {
+  const { data: settled, isLoading } = trpc.chat.getSettledHtlcs.useQuery({ limit: 100 }, {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
+
+  const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "refunded" | "expired">("all");
+  const [chainFilter, setChainFilter] = useState<"all" | "solana" | "ethereum" | "bitcoin" | "trac_network">("all");
 
   const explorerUrl = (chain: string, txId: string | null): string | null => {
     if (!txId) return null;
@@ -540,7 +585,11 @@ function SettledHtlcsPanel() {
     expired:   "text-slate-500",
     refunded:  "text-amber-400",
   };
-
+  const statusBg: Record<string, string> = {
+    completed: "bg-emerald-500/10 border-emerald-500/20",
+    expired:   "bg-slate-500/10 border-slate-500/20",
+    refunded:  "bg-amber-500/10 border-amber-500/20",
+  };
   const statusIcon: Record<string, string> = {
     completed: "✓",
     expired:   "✗",
@@ -557,68 +606,121 @@ function SettledHtlcsPanel() {
     );
   }
 
-  if (!settled || settled.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-8 gap-2">
-        <Shield className="w-5 h-5 text-slate-500" />
-        <p className="text-xs text-slate-400 font-medium">No settled swaps yet</p>
-        <p className="text-[10px] text-slate-600">Completed, refunded, and expired HTLCs appear here</p>
-      </div>
-    );
-  }
+  const filtered = (settled ?? []).filter(row => {
+    const matchStatus = statusFilter === "all" || row.status === statusFilter;
+    const matchChain  = chainFilter === "all" || row.fromChain === chainFilter || row.toChain === chainFilter;
+    return matchStatus && matchChain;
+  });
 
   return (
-    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-      {settled.map(row => {
-        const claimUrl = explorerUrl(row.toChain, row.revealTxId);
-        const lockUrl  = explorerUrl(row.fromChain, row.lockTxId);
-        return (
-          <div
-            key={row.rfqId}
-            className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1.5"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono text-slate-400">{row.rfqId.slice(0, 8)}…</span>
-                <span className={`text-[10px] font-semibold ${statusColor[row.status] ?? "text-slate-400"}`}>
-                  {statusIcon[row.status] ?? "?"} {row.status}
-                </span>
+    <div className="space-y-3">
+      {/* ── Filter bar ── */}
+      <div className="space-y-1.5">
+        {/* Status filters */}
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "completed", "refunded", "expired"] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
+                statusFilter === s
+                  ? s === "all"
+                    ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+                    : `${statusBg[s] ?? "bg-white/10 border-white/10"} ${statusColor[s] ?? "text-slate-400"}`
+                  : "bg-white/5 text-slate-500 border-white/10 hover:text-slate-300"
+              }`}
+            >
+              {s === "all" ? "All" : `${statusIcon[s]} ${s}`}
+            </button>
+          ))}
+        </div>
+        {/* Chain filters */}
+        <div className="flex gap-1 flex-wrap">
+          {(["all", "solana", "ethereum", "bitcoin", "trac_network"] as const).map(c => (
+            <button
+              key={c}
+              onClick={() => setChainFilter(c)}
+              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${
+                chainFilter === c
+                  ? "bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+                  : "bg-white/5 text-slate-500 border-white/10 hover:text-slate-300"
+              }`}
+            >
+              {c === "all" ? "All chains" : CHAIN_LABEL[c] ?? c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Results ── */}
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-6 gap-2">
+          <Shield className="w-5 h-5 text-slate-500" />
+          {(settled ?? []).length === 0 ? (
+            <>
+              <p className="text-xs text-slate-400 font-medium">No settled swaps yet</p>
+              <p className="text-[10px] text-slate-600">Completed, refunded, and expired HTLCs appear here</p>
+            </>
+          ) : (
+            <p className="text-xs text-slate-400 font-medium">No results match the current filters</p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+          {filtered.map(row => {
+            const claimUrl = explorerUrl(row.toChain, row.revealTxId);
+            const lockUrl  = explorerUrl(row.fromChain, row.lockTxId);
+            return (
+              <div
+                key={row.rfqId}
+                className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1.5"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-slate-400">{row.rfqId.slice(0, 8)}…</span>
+                    <span className={`text-[10px] font-semibold ${statusColor[row.status] ?? "text-slate-400"}`}>
+                      {statusIcon[row.status] ?? "?"} {row.status}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-500">
+                    {new Date(row.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                  <span className="px-1 py-0.5 rounded bg-white/5 font-mono">{CHAIN_LABEL[row.fromChain] ?? row.fromChain}</span>
+                  <span>→</span>
+                  <span className="px-1 py-0.5 rounded bg-white/5 font-mono">{CHAIN_LABEL[row.toChain] ?? row.toChain}</span>
+                </div>
+                <div className="flex gap-2">
+                  {lockUrl && (
+                    <a
+                      href={lockUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                    >
+                      Lock tx ↗
+                    </a>
+                  )}
+                  {claimUrl && (
+                    <a
+                      href={claimUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
+                    >
+                      Claim tx ↗
+                    </a>
+                  )}
+                  {!lockUrl && !claimUrl && (
+                    <span className="text-[10px] text-slate-600">No on-chain tx recorded</span>
+                  )}
+                </div>
               </div>
-              <span className="text-[10px] text-slate-500">
-                {new Date(row.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </div>
-            <div className="text-[10px] text-slate-400">
-              {row.fromChain} → {row.toChain}
-            </div>
-            <div className="flex gap-2">
-              {lockUrl && (
-                <a
-                  href={lockUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
-                >
-                  Lock tx ↗
-                </a>
-              )}
-              {claimUrl && (
-                <a
-                  href={claimUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
-                >
-                  Claim tx ↗
-                </a>
-              )}
-              {!lockUrl && !claimUrl && (
-                <span className="text-[10px] text-slate-600">No on-chain tx recorded</span>
-              )}
-            </div>
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

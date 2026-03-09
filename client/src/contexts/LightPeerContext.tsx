@@ -140,6 +140,12 @@ export interface LightPeerState {
    */
   refundableHtlcs: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
   /**
+   * Map of rfqId → Unix ms timestamp when the HTLC lock was initiated.
+   * Used to compute the countdown timer on accepted RFQ cards.
+   * The HTLC timelock is always 1 hour from lockedAt.
+   */
+  htlcLockedAt: Record<string, number>;
+  /**
    * Refund HTLC funds as Agent A after the swap window has expired.
    * Calls the on-chain timelock-sweep path for the given chain.
    */
@@ -256,7 +262,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     return new Set();
   });
   // rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs
-  const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({});
+  const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({})
+  // rfqId → Unix ms when the HTLC lock was initiated (for countdown timer)
+  const [htlcLockedAt, setHtlcLockedAt] = useState<Record<string, number>>({});
 
   // ── Persist claimedRfqIds + refundedRfqIds to localStorage ─────────────────
   useEffect(() => {
@@ -981,6 +989,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash });
+          setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", rfq.amount);
@@ -1059,6 +1068,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash });
+          setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "ethereum", rfq.amount);
@@ -1110,6 +1120,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash: result.txid });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash: result.txid });
+          setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, result.txid, "bitcoin", rfq.amount);
@@ -1149,6 +1160,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash: result.txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash: result.txHash });
+          setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, result.txHash, "trac_network", rfq.amount);
@@ -1301,6 +1313,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
+          void fetch("/api/trpc/chat.notifySwapCompletion", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "solana", txHash } } }),
+          }).catch(() => {});
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: no program deployed — show the secret and instruct user
@@ -1335,6 +1351,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
+          void fetch("/api/trpc/chat.notifySwapCompletion", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "ethereum", txHash } } }),
+          }).catch(() => {});
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: show secret
@@ -1360,6 +1380,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
         }).catch(() => {});
+        void fetch("/api/trpc/chat.notifySwapCompletion", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "bitcoin" } } }),
+        }).catch(() => {});
         setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else if ((claimChain === "trac_network" || claimChain === "tnk") && (window as any).tracnetwork) {
         // TNK claim: reveal secret to the AFOS agent escrow via signMessage
@@ -1375,6 +1399,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         void fetch("/api/trpc/chat.updateHtlcStatus", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
+        }).catch(() => {});
+        void fetch("/api/trpc/chat.notifySwapCompletion", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "trac_network" } } }),
         }).catch(() => {});
         setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else {
@@ -1476,6 +1504,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "refunded", revealTxId: txHash } } }),
           }).catch(() => {});
+          void fetch("/api/trpc/chat.notifySwapCompletion", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "ethereum", txHash } } }),
+          }).catch(() => {});
           setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
           setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
         } else {
@@ -1496,6 +1528,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
         }).catch(() => {});
+        void fetch("/api/trpc/chat.notifySwapCompletion", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "bitcoin" } } }),
+        }).catch(() => {});
         setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
         setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
       } else if ((refundChain === "trac_network" || refundChain === "tnk") && (window as any).tracnetwork) {
@@ -1511,6 +1547,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         void fetch("/api/trpc/chat.updateHtlcStatus", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
+        }).catch(() => {});
+        void fetch("/api/trpc/chat.notifySwapCompletion", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "trac_network" } } }),
         }).catch(() => {});
         setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
         setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
@@ -1567,6 +1607,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       claimHtlcFunds,
       refundableHtlcs,
       refundHtlcFunds,
+      htlcLockedAt,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

@@ -35,6 +35,7 @@ import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
+import { notifyOwner } from "../_core/notification";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -2464,6 +2465,26 @@ export const chatRouter = router({
         updatedAt:          r.updatedAt,
         createdAt:          r.createdAt,
       }));
+    }),
+
+  // ── Notify owner of swap completion (claim or refund) ──────────────────────
+  notifySwapCompletion: publicProcedure
+    .input(z.object({
+      rfqId:  z.string().min(1),
+      type:   z.enum(["claimed", "refunded"]),
+      chain:  z.string().min(1),
+      txHash: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { rfqId, type, chain, txHash } = input;
+      const title = type === "claimed"
+        ? `✅ HTLC Claimed — ${chain.toUpperCase()}`
+        : `↩ HTLC Refunded — ${chain.toUpperCase()}`;
+      const content = type === "claimed"
+        ? `Agent B successfully claimed funds on ${chain} for RFQ ${rfqId.slice(0, 8)}…${txHash ? `\nTx: ${txHash}` : ""}`
+        : `Agent A refunded locked funds on ${chain} for RFQ ${rfqId.slice(0, 8)}…${txHash ? `\nTx: ${txHash}` : ""}`;
+      const delivered = await notifyOwner({ title, content });
+      return { delivered };
     }),
 
   getPeerList: publicProcedure.query(() => {

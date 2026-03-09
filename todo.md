@@ -2286,3 +2286,16 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add refundedRfqIds to localStorage and seed from DB on mount
 - [x] Add refund status feedback: updateHtlcStatus after refundHtlcFunds, show amber badge in all 3 panels
 - [x] Add History tab count badge to NetworkPanel tab bar (cyan pill, capped at 99+)
+
+## HTLC UX — Notifications, History Filters, Countdown Timer
+
+- [x] Add notifySwapCompletion tRPC procedure (protectedProcedure) that calls notifyOwner server-side
+- [x] Fire notifySwapCompletion after each successful claim path in claimHtlcFunds (SOL/ETH/BTC/TNK)
+- [x] Fire notifySwapCompletion after each successful refund path in refundHtlcFunds (SOL/ETH/BTC/TNK)
+- [x] Add status filter (All / Completed / Refunded / Expired) to SettledHtlcsPanel in NetworkPanel
+- [x] Add chain filter (All / SOL / ETH / BTC / TNK) to SettledHtlcsPanel in NetworkPanel
+- [x] Add HtlcCountdown component to NetworkPanel (1s interval, h/m/s display, "Refundable now" when expired)
+- [x] Add HtlcCountdown component to LightPeerPanel (same logic)
+- [x] Add HtlcCountdownInline component to ChatPage (inline variant for chat bubbles)
+- [x] Track htlcLockedAt in LightPeerContext (set at each HTLC settled step for SOL/ETH/BTC/TNK)
+- [x] Pass htlcLockedAt to RfqCard in NetworkPanel, LightPeerPanel, and MessageBubble in ChatPage

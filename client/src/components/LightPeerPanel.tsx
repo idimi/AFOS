@@ -34,9 +34,34 @@ function timeLeft(ms: number): string {
   return `${Math.floor(diff / 60_000)}m`;
 }
 
+// ─── HTLC Countdown Timer ────────────────────────────────────────────────────
+
+function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const expiresAt = lockedAt + timelockMs;
+  const diff = expiresAt - now;
+  if (diff <= 0) {
+    return <span className="text-[10px] text-red-400 font-medium">⏰ Refundable now</span>;
+  }
+  const totalSecs = Math.floor(diff / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const label = h > 0
+    ? `${h}h ${m.toString().padStart(2, "0")}m`
+    : m > 0
+    ? `${m}m ${s.toString().padStart(2, "0")}s`
+    : `${s}s`;
+  return <span className="text-[10px] text-slate-400 font-medium">⏳ Refundable in {label}</span>;
+}
+
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -46,6 +71,8 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   onRefund?: (id: string) => void;
   isRefundable?: boolean;
   isRefunded?: boolean;
+  /** Unix ms when HTLC was locked — used to show countdown to refund window */
+  htlcLockedAt?: number;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -104,6 +131,12 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         &nbsp;·&nbsp;
         {rfq.fromChain} → {rfq.toChain}
       </div>
+      {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
+      {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
+        <div className="pt-0.5">
+          <HtlcCountdown lockedAt={htlcLockedAt} />
+        </div>
+      )}
 
       {/* Actions */}
       {isPending && (
@@ -523,6 +556,7 @@ export default function LightPeerPanel() {
                             onRefund={peer.refundHtlcFunds}
                             isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                             isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
+                            htlcLockedAt={peer.htlcLockedAt[rfq.rfqId]}
                           />
                         ))}
                       </AnimatePresence>

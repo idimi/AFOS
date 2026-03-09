@@ -422,6 +422,38 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
 }
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
+// ─── HTLC Countdown (inline variant for chat bubbles) ───────────────────────
+function HtlcCountdownInline({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const expiresAt = lockedAt + timelockMs;
+  const diff = expiresAt - now;
+  if (diff <= 0) {
+    return (
+      <div className="text-xs font-medium py-1" style={{ color: "#f87171" }}>
+        ⏰ HTLC refundable now
+      </div>
+    );
+  }
+  const totalSecs = Math.floor(diff / 1000);
+  const h = Math.floor(totalSecs / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const label = h > 0
+    ? `${h}h ${m.toString().padStart(2, "0")}m`
+    : m > 0
+    ? `${m}m ${s.toString().padStart(2, "0")}s`
+    : `${s}s`;
+  return (
+    <div className="text-xs font-medium py-1" style={{ color: "var(--muted-foreground)" }}>
+      ⏳ Refundable in {label}
+    </div>
+  );
+}
+
 function MessageBubble({
   msg,
   onConfirmSwap,
@@ -436,6 +468,7 @@ function MessageBubble({
   onRefundHtlc,
   refundableHtlcs,
   refundedRfqIds,
+  htlcLockedAt,
   tnkPeerCount,
 }: {
   msg: ChatMessage;
@@ -451,6 +484,8 @@ function MessageBubble({
   onRefundHtlc?: (rfqId: string) => void;
   refundableHtlcs?: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
   refundedRfqIds?: Set<string>;
+  /** Map of rfqId → Unix ms when HTLC was locked (for countdown timer) */
+  htlcLockedAt?: Record<string, number>;
   tnkPeerCount?: number;
 }) {
   const isUser = msg.role === "user";
@@ -568,6 +603,10 @@ function MessageBubble({
                 <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.fromChain}</p>
               </div>
             </div>
+            {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
+            {htlcLockedAt?.[msg.incomingRfqData.rfqId] && !claimedRfqIds?.has(msg.incomingRfqData.rfqId) && !refundedRfqIds?.has(msg.incomingRfqData.rfqId) && (
+              <HtlcCountdownInline lockedAt={htlcLockedAt[msg.incomingRfqData.rfqId]} />
+            )}
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -1304,6 +1343,7 @@ export default function ChatPage() {
               onRefundHtlc={lightPeer.refundHtlcFunds}
               refundableHtlcs={lightPeer.refundableHtlcs}
               refundedRfqIds={lightPeer.refundedRfqIds}
+              htlcLockedAt={lightPeer.htlcLockedAt}
             />
           ) : null
         ))}
