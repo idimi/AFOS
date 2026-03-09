@@ -531,10 +531,12 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
   const [draft, setDraft] = useState(initialDraft ?? '');
   const [showEmoji, setShowEmoji] = useState(false);
   const [hoveredMsgId, setHoveredMsgId] = useState<number | null>(null);
+  const [reactionPickerMsgId, setReactionPickerMsgId] = useState<number | null>(null);
   const [peerIsTyping, setPeerIsTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingThrottleRef = useRef<number>(0);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -549,6 +551,18 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [showEmoji]);
+
+  // Close reaction picker when clicking outside
+  useEffect(() => {
+    if (reactionPickerMsgId === null) return;
+    const handler = (e: MouseEvent) => {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(e.target as Node)) {
+        setReactionPickerMsgId(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [reactionPickerMsgId]);
 
   // Auto-resize textarea whenever draft changes
   useEffect(() => {
@@ -796,13 +810,56 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                                   <button
                                     key={emoji}
                                     type="button"
-                                    onClick={() => reactMutation.mutate({ messageId: msg.id, reactorPeerId: myPeerId, emoji })}
+                                    onClick={() => {
+                                      reactMutation.mutate({ messageId: msg.id, reactorPeerId: myPeerId, emoji });
+                                      setHoveredMsgId(null);
+                                    }}
                                     className="text-sm hover:scale-125 transition-transform px-0.5 leading-none"
                                     title={`React with ${emoji}`}
                                   >
                                     {emoji}
                                   </button>
                                 ))}
+                                {/* + button opens full emoji picker for this message */}
+                                <div className="relative" ref={reactionPickerMsgId === msg.id ? reactionPickerRef : undefined}>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReactionPickerMsgId(id => id === msg.id ? null : msg.id)}
+                                    className="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold transition-all"
+                                    style={{
+                                      background: reactionPickerMsgId === msg.id ? 'rgba(6,182,212,0.25)' : 'rgba(255,255,255,0.1)',
+                                      color: reactionPickerMsgId === msg.id ? '#06b6d4' : '#94a3b8',
+                                      border: '1px solid rgba(255,255,255,0.15)',
+                                    }}
+                                    title="More reactions"
+                                  >
+                                    +
+                                  </button>
+                                  {reactionPickerMsgId === msg.id && (
+                                    <div
+                                      className={`absolute z-50 ${
+                                        isMine ? 'right-0' : 'left-0'
+                                      }`}
+                                      style={{
+                                        bottom: '28px',
+                                        filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.7))',
+                                      }}
+                                    >
+                                      <Picker
+                                        data={data}
+                                        theme="dark"
+                                        previewPosition="none"
+                                        skinTonePosition="none"
+                                        set="native"
+                                        onEmojiSelect={(emoji: { native: string }) => {
+                                          reactMutation.mutate({ messageId: msg.id, reactorPeerId: myPeerId, emoji: emoji.native });
+                                          setReactionPickerMsgId(null);
+                                          setHoveredMsgId(null);
+                                        }}
+                                      />
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -839,12 +896,25 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                             </div>
                           )}
 
-                          <RelativeTime
-                            ts={msg.createdAt}
-                            className={`text-[9px] text-slate-600 px-1 ${
-                              hasReactions ? 'mt-1' : ''
-                            }`}
-                          />
+                          {/* Timestamp + read receipt row */}
+                          <div className={`flex items-center gap-1 px-1 ${
+                            isMine ? 'flex-row-reverse' : 'flex-row'
+                          } ${hasReactions ? 'mt-1' : ''}`}>
+                            <RelativeTime
+                              ts={msg.createdAt}
+                              className="text-[9px] text-slate-600"
+                            />
+                            {/* Read receipt — only shown on messages I sent */}
+                            {isMine && (
+                              <span
+                                title={msg.readAt ? `Read ${new Date(msg.readAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Delivered'}
+                                className="text-[9px] leading-none"
+                                style={{ color: msg.readAt ? '#06b6d4' : '#475569' }}
+                              >
+                                {msg.readAt ? '✓✓' : '✓'}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
