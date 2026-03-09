@@ -566,7 +566,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     </div>
                   </div>
                   <button
-                    onClick={() => { disconnectTracNetwork(); disconnectBitcoin(); }}
+                    onClick={() => { disconnectTracNetwork(); }}
                     className="text-[10px] text-red-400 hover:text-red-300 font-semibold px-2 py-1 rounded-lg transition-colors"
                     style={{ background: "rgba(239,68,68,0.08)" }}>
                     Disconnect

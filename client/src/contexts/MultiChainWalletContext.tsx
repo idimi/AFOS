@@ -902,10 +902,16 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       saveWalletSession({ btc: "tap" });
-      // Toast is handled by ConnectWalletModal's prevTnkRef watcher:
-      //   - modal open  → showSuccessAndClose (overlay + toast)
-      //   - modal closed → showWalletConnectedToast (standalone toast)
-      // This avoids the duplicate toast that was firing when the modal was open.
+
+      // Fire ONE combined toast with both BTC + TNK addresses.
+      // This runs AFTER both setTracNetwork() and setBitcoin() have been called,
+      // so both addresses are guaranteed to be available.
+      const tapAddrs: { chain: "solana" | "ethereum" | "bitcoin" | "trac_network"; address: string }[] = [];
+      if (connectedBtcAddress) {
+        tapAddrs.push({ chain: "bitcoin", address: shortAddr(connectedBtcAddress) });
+      }
+      tapAddrs.push({ chain: "trac_network", address: shortAddr(tnkAddress) });
+      showWalletConnectedToast("Tap Wallet", tapAddrs);
 
       // ── accountsChanged: update TNK address when user switches accounts ─────────────
       window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {
@@ -1077,23 +1083,31 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     } else {
       // If Tap Wallet was used, both BTC (tapprotocol) and TNK (tracnetwork) were connected
       // together — disconnect both so the UI is fully clean.
-      if (bitcoin?.walletName === "Tap Wallet") {
+      const isTap = bitcoin?.walletName === "Tap Wallet";
+      if (isTap) {
         setTracNetwork(null);
       }
       setBitcoin(null);
       clearWalletSession();
-      showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
+      // For Tap Wallet: show ONE combined toast with both chains.
+      // For other BTC wallets (Xverse): show BTC-only toast.
+      if (isTap) {
+        showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
+      } else {
+        showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
+      }
     }
   }, [bitcoin, disconnectPhantom]);
-
   const disconnectTracNetwork = useCallback(() => {
+    const isTap = bitcoin?.walletName === "Tap Wallet";
     setTracNetwork(null);
     // Also clear BTC if it was connected via Tap Wallet simultaneously
-    if (bitcoin?.walletName === "Tap Wallet") {
+    if (isTap) {
       setBitcoin(null);
     }
     clearWalletSession();
-    showWalletDisconnectedToast("Tap Wallet", ["trac_network"]);
+    // For Tap Wallet: show ONE combined toast with both chains.
+    showWalletDisconnectedToast("Tap Wallet", isTap ? ["bitcoin", "trac_network"] : ["trac_network"]);
   }, [bitcoin]);
 
   // ── Assign connect refs (updated every render so they always point to latest callbacks) ──

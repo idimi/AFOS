@@ -2220,3 +2220,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Move all wallet toast logic to WalletToastManager (App.tsx, mounted once) to prevent duplicate toasts from multiple ConnectWalletModal instances (Dashboard + ChatPage/Swaps/AgentSettings all mount their own modal)
 - [x] ConnectWalletModal watchers now only trigger in-modal success overlay (no toast calls)
 - [x] WalletToastManager fires exactly ONE combined BTC + Trac Network toast on Tap Wallet connect (with 150ms delay to let both state updates flush before reading addresses)
+
+## Tap Wallet Toast — Combined Toast Fix (Round 3)
+- [x] CONNECT toast: must show BOTH Bitcoin address + Trac Network address in ONE toast (currently only shows TNK)
+- [x] DISCONNECT toast: must fire ONE combined toast showing both Bitcoin + Trac Network chains (currently fires 2 separate toasts)
