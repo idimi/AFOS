@@ -176,13 +176,14 @@ function peerPosition(pubkey: string, index: number, total: number, density = 1.
 
 // ─── SVG Node Graph ───────────────────────────────────────────────────────────
 
-function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, unreadByPeer, blockedPeerIds, mutedPeerIds, graphDensity = 1.0 }: {
+function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds, pingResults, unreadByPeer, blockedPeerIds, mutedPeerIds, graphDensity = 1.0 }: {
   peers: Peer[];
   channels: Channel[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   pulseIds: Set<string>;
   pingingIds?: Set<string>;
+  pingResults?: Record<string, { latencyMs: number | null; loading: boolean }>;
   unreadByPeer?: Record<string, { count: number; snippet: string }>;
   blockedPeerIds?: Set<string>;
   mutedPeerIds?: Set<string>;
@@ -349,7 +350,17 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
         const x = px(peer.lat);
         const y = py(peer.lng);
         const r = nodeRadius(peer);
-        const color = latencyColor(peer.latency);
+        // Prefer live ping result over the static latency field (which defaults to 0 for new peers)
+        const liveLatency = pingResults?.[peer.id]?.latencyMs ?? (peer.latency > 0 ? peer.latency : null);
+        const isPinging = pingResults?.[peer.id]?.loading ?? false;
+        const color = liveLatency !== null ? latencyColor(liveLatency) : "#06b6d4";
+        const latencyLabel = isPinging ? '…' : liveLatency !== null ? `${liveLatency}ms` : '—';
+        // Reputation ring: 0-100 → arc length
+        const repScore = peer.reputation ?? 0;
+        const repColor = repScore >= 80 ? '#10b981' : repScore >= 60 ? '#06b6d4' : repScore >= 40 ? '#f59e0b' : repScore >= 20 ? '#f97316' : '#ef4444';
+        // Origin badge text
+        const originLabel = peer.origin === 'hyperswarm' ? 'HW' : peer.origin === 'intercomswap' ? 'IS' : null;
+        const originColor = peer.origin === 'hyperswarm' ? '#10b981' : '#06b6d4';
         const isSelected = selectedId === peer.id;
         const isPulsing = pulseIds.has(peer.id);
         const isSelf = peer.id === "self";
@@ -426,16 +437,61 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
             </text>
 
             {peer.id !== "self" && peer.online && (
-              <text
-                x={x} y={y + r + 24}
-                textAnchor="middle"
-                fontSize={8}
-                fill={color}
-                fontFamily="monospace"
-                opacity={0.7}
-              >
-                {peer.latency > 0 ? `${peer.latency}ms` : 'N/A'}
-              </text>
+              <g>
+                {/* Latency label — uses live ping result, falls back to peer.latency, shows — if unknown */}
+                <text
+                  x={x} y={y + r + 24}
+                  textAnchor="middle"
+                  fontSize={8}
+                  fill={color}
+                  fontFamily="monospace"
+                  opacity={isPinging ? 0.5 : 0.85}
+                >
+                  {latencyLabel}
+                </text>
+                {/* Origin badge: HW = Hyperswarm, IS = Intercomswap/Light Peer */}
+                {originLabel && (
+                  <>
+                    <rect
+                      x={x + r + 3} y={y - r - 14}
+                      width={18} height={10}
+                      rx={3}
+                      fill={`${originColor}22`}
+                      stroke={`${originColor}66`}
+                      strokeWidth={0.8}
+                    />
+                    <text
+                      x={x + r + 12} y={y - r - 6}
+                      textAnchor="middle"
+                      fontSize={6}
+                      fill={originColor}
+                      fontFamily="monospace"
+                      fontWeight="600"
+                    >
+                      {originLabel}
+                    </text>
+                  </>
+                )}
+                {/* Reputation arc ring — drawn outside the node circle */}
+                {repScore > 0 && (() => {
+                  const ringR = r + 5;
+                  const circumference = 2 * Math.PI * ringR;
+                  const dashLen = (repScore / 100) * circumference;
+                  return (
+                    <circle
+                      cx={x} cy={y}
+                      r={ringR}
+                      fill="none"
+                      stroke={repColor}
+                      strokeWidth={1.5}
+                      strokeDasharray={`${dashLen} ${circumference - dashLen}`}
+                      strokeDashoffset={circumference * 0.25} /* start from top */
+                      strokeLinecap="round"
+                      opacity={0.5}
+                    />
+                  );
+                })()}
+              </g>
             )}
 
             {/* Blocked peer indicator — red tint overlay + lock icon */}
@@ -3585,6 +3641,7 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
               onSelect={id => setSelectedId(prev => prev === id ? null : id)}
               pulseIds={pulseIds}
               pingingIds={new Set(Object.entries(pingResults).filter(([, v]) => v.loading).map(([k]) => k))}
+              pingResults={pingResults}
               unreadByPeer={unreadByPeer}
               blockedPeerIds={blockedPeerIds}
               mutedPeerIds={mutedPeerIds}

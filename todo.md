@@ -2334,3 +2334,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix emoji picker clipped by Direct Message panel header — rendered via portal at document.body level so it escapes all overflow containers
 - [x] Improve DM panel visual design for dark and light mode — all hardcoded rgba values replaced with theme-aware tokens (isDark conditional)
+
+## NodeGraph Label Enhancement
+
+- [x] Fix N/A latency on peer nodes — NodeGraph now receives pingResults prop and uses liveLatency (pingResults[id].latencyMs ?? peer.latency), shows — instead of N/A when no ping yet
+- [x] Add origin badge (HW/IS) to peer nodes in graph
+- [x] Add reputation arc ring around peer nodes (green/cyan/amber/orange/red based on score)
+- [x] Latency label color now reflects live RTT color coding
