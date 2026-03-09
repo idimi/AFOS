@@ -2215,3 +2215,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## SignalingClient — RTCErrorEvent Data Channel Error
 
 - [x] Fix unhandled RTCErrorEvent in signalingClient.ts dc.onerror — extract RTCError.errorDetail, log as warn, emit data_channel_error event
+
+## Tap Wallet Toast — Single Combined Toast Fix (Round 2)
+- [x] Move all wallet toast logic to WalletToastManager (App.tsx, mounted once) to prevent duplicate toasts from multiple ConnectWalletModal instances (Dashboard + ChatPage/Swaps/AgentSettings all mount their own modal)
+- [x] ConnectWalletModal watchers now only trigger in-modal success overlay (no toast calls)
+- [x] WalletToastManager fires exactly ONE combined BTC + Trac Network toast on Tap Wallet connect (with 150ms delay to let both state updates flush before reading addresses)

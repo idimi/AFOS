@@ -13,6 +13,7 @@ import { ChatProvider } from "./contexts/ChatContext";
 import { PriceProvider } from "./contexts/PriceContext";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { WalletChatBridge } from "./components/WalletChatBridge";
+import { WalletToastManager } from "./components/WalletToastManager";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
 import AdminPanel from "./pages/AdminPanel";
@@ -62,6 +63,7 @@ function App() {
             <PriceProvider>
             <TooltipProvider>
               <WalletChatBridge />
+              <WalletToastManager />
               <Toaster />
               <Router />
             </TooltipProvider>

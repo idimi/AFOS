@@ -209,7 +209,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     };
   }, []);
 
-  /** Show the success overlay then auto-close the modal */
+  /**
+   * Show the in-modal success overlay and auto-close.
+   * NOTE: Toast is intentionally NOT fired here.
+   * WalletToastManager (App.tsx) is mounted once globally and handles all toasts.
+   * This prevents duplicate toasts when multiple ConnectWalletModal instances are
+   * mounted simultaneously (Dashboard + ChatPage / Swaps / AgentSettings).
+   */
   const showSuccessAndClose = (
     walletName: string,
     chainAddresses: { chain: ChainTab; address: string }[],
@@ -218,7 +224,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     const chains = chainAddresses.map(ca => ca.chain);
     const address = chainAddresses[0]?.address ?? "";
     setSuccessState({ walletName, chains, address, accentColor });
-    showWalletConnectedToast(walletName, chainAddresses);
     dismissTimerRef.current = setTimeout(() => {
       setSuccessState(null);
       onClose();
@@ -268,7 +273,13 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     ? totalUsd
     : phantomMultiChain?.solanaTotalUsd ?? 0;
 
-  // Watch for Phantom multi-chain connection completing and trigger success overlay
+  // ── In-modal success overlay watchers ──────────────────────────────────────
+  // These watchers ONLY trigger the visual success overlay inside the modal.
+  // Toasts are handled exclusively by WalletToastManager in App.tsx (mounted once)
+  // to prevent duplicate toasts when multiple ConnectWalletModal instances are
+  // mounted simultaneously (Dashboard + ChatPage / Swaps / AgentSettings).
+
+  // Phantom multi-chain → overlay when modal is open
   const prevPhantomRef = useRef(phantomMultiChain?.connected ?? false);
   useEffect(() => {
     const wasConnected = prevPhantomRef.current;
@@ -292,13 +303,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     }
   }, [phantomMultiChain?.connected, open]);
 
-  // Watch for Ethereum connection
+  // Ethereum → overlay when modal is open (non-Phantom)
   const prevEthRef = useRef(ethereum?.connected ?? false);
   useEffect(() => {
     const wasConnected = prevEthRef.current;
     const isNowConnected = ethereum?.connected ?? false;
     prevEthRef.current = isNowConnected;
-    // Skip standalone ETH toast if this is a Phantom multi-chain connection (toast already shown by Phantom handler)
     if (!wasConnected && isNowConnected && open && !successState && !ethereum?.isPhantom) {
       showSuccessAndClose(
         ethereum?.walletName ?? "Ethereum Wallet",
@@ -308,14 +318,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     }
   }, [ethereum?.connected, open]);
 
-  // Watch for Bitcoin connection
+  // Bitcoin → overlay when modal is open (non-Phantom, non-Tap Wallet)
   const prevBtcRef = useRef(bitcoin?.connected ?? false);
   useEffect(() => {
     const wasConnected = prevBtcRef.current;
     const isNowConnected = bitcoin?.connected ?? false;
     prevBtcRef.current = isNowConnected;
-    // Skip standalone BTC toast if this is a Phantom multi-chain OR Tap Wallet connection
-    // (both fire their own combined multi-chain toast)
     const isTapWalletBtc = bitcoin?.walletName === "Tap Wallet";
     if (!wasConnected && isNowConnected && open && !successState && !bitcoin?.isPhantom && !isTapWalletBtc) {
       showSuccessAndClose(
@@ -326,28 +334,28 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
     }
   }, [bitcoin?.connected, open]);
 
-  // Watch for Tap Wallet connection — fires success overlay (modal open) or standalone toast (modal closed)
+  // Tap Wallet (BTC + TNK) → overlay when modal is open
+  // Uses 150ms delay so both bitcoin and tracNetwork state have flushed
+  // (TNK connects first, BTC connects ~50ms later in connectTapWallet).
   const prevTnkRef = useRef(tracNetwork?.connected ?? false);
   useEffect(() => {
     const wasConnected = prevTnkRef.current;
     const isNowConnected = tracNetwork?.connected ?? false;
     prevTnkRef.current = isNowConnected;
-    if (!wasConnected && isNowConnected) {
-      const chainAddresses: { chain: ChainTab; address: string }[] = [];
-      if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress) {
-        chainAddresses.push({ chain: "bitcoin", address: bitcoin.shortAddress });
-      }
-      if (tracNetwork?.shortAddress) {
-        chainAddresses.push({ chain: "trac_network", address: tracNetwork.shortAddress });
-      }
-      if (chainAddresses.length === 0) return;
-      if (open && !successState) {
-        // Modal is open — show the animated success overlay (which also fires the toast)
-        showSuccessAndClose("Tap Wallet", chainAddresses, "#F97316");
-      } else {
-        // Modal is closed — fire standalone toast only
-        showWalletConnectedToast("Tap Wallet", chainAddresses);
-      }
+    if (!wasConnected && isNowConnected && open && !successState) {
+      const id = setTimeout(() => {
+        const chainAddresses: { chain: ChainTab; address: string }[] = [];
+        if (bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress) {
+          chainAddresses.push({ chain: "bitcoin", address: bitcoin.shortAddress });
+        }
+        if (tracNetwork?.shortAddress) {
+          chainAddresses.push({ chain: "trac_network", address: tracNetwork.shortAddress });
+        }
+        if (chainAddresses.length > 0) {
+          showSuccessAndClose("Tap Wallet", chainAddresses, "#F97316");
+        }
+      }, 150);
+      return () => clearTimeout(id);
     }
   }, [tracNetwork?.connected, open]);
 
