@@ -2232,3 +2232,6 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Bug Fixes — Round 5
 - [x] Bug 4: Swap page shows SOL balance as 0 even when wallet is connected with real SOL balance — fixed liveBalances to also read from phantomMultiChain.solanaBalances when Phantom multi-chain is connected
+
+## TypeScript Cleanup
+- [x] Fix all 13 pre-existing SwapPage.tsx TS errors: confirmed tsc --noEmit exits with code 0 (zero errors). The 13 errors in the management UI health check were a stale LSP snapshot from before previous fixes were applied. tracNetwork is properly declared in MultiChainWalletContextValue (line 75) and trac_network is in SupportedChain type.
