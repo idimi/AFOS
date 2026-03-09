@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS } from "../drizzle/schema";
+import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS, htlcSecrets, HtlcSecret, InsertHtlcSecret } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -283,4 +283,45 @@ export async function getAllPeerReputations(): Promise<PeerReputation[]> {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(peerReputation).orderBy(sql`score DESC`);
+}
+
+// ─── HTLC Secret Helpers ───────────────────────────────────────────────────────────────────────────────
+// These helpers persist HTLC preimage secrets server-side so the reveal step
+// can complete even after a page refresh. secretHex is NEVER sent to clients.
+
+/** Persist a new HTLC secret when Agent A locks their funds */
+export async function saveHtlcSecret(data: InsertHtlcSecret): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(htlcSecrets).values(data)
+    .onDuplicateKeyUpdate({ set: { updatedAt: new Date() } });
+}
+
+/** Retrieve the HTLC secret for a given rfqId (server-side only) */
+export async function getHtlcSecret(rfqId: string): Promise<HtlcSecret | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(htlcSecrets).where(eq(htlcSecrets.rfqId, rfqId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** Update the status of an HTLC secret (e.g. after reveal or completion) */
+export async function updateHtlcSecretStatus(
+  rfqId: string,
+  status: HtlcSecret["status"],
+  extra?: { lockTxId?: string; revealTxId?: string },
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(htlcSecrets)
+    .set({ status, ...extra, updatedAt: new Date() })
+    .where(eq(htlcSecrets.rfqId, rfqId));
+}
+
+/** Get all active (locked/revealed) HTLC secrets for the monitor */
+export async function getActiveHtlcSecrets(): Promise<HtlcSecret[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(htlcSecrets)
+    .where(sql`${htlcSecrets.status} IN ('locked', 'revealed')`);
 }

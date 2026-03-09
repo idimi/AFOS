@@ -113,6 +113,24 @@ export function broadcastAll(message: object) {
   });
 }
 
+/**
+ * Broadcast an RFQ to all peers EXCEPT the sender.
+ * Called by the chat agent so any connected peer can see and accept the open RFQ.
+ */
+export function broadcastRfqToAll(senderPeerId: string | undefined, rfq: object) {
+  const message = JSON.stringify({
+    type: "rfq_broadcast",
+    fromPeerId: senderPeerId ?? "agent",
+    rfq,
+  });
+  Array.from(peers.entries()).forEach(([id, peer]) => {
+    if (id !== senderPeerId && peer.ws.readyState === WebSocket.OPEN) {
+      peer.ws.send(message);
+    }
+  });
+  console.log(`[Signaling] RFQ broadcast from ${senderPeerId ?? "agent"} to ${peers.size} peer(s)`);
+}
+
 /** Send to a specific peer by ID — exported for server-side use (e.g. agent RFQ dispatch) */
 export function sendToPeer(peerId: string, message: object): boolean {
   const peer = peers.get(peerId);

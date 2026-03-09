@@ -1427,6 +1427,63 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       });
     });
     return unsub;
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromToken.symbol, toToken.symbol, baseRate]);
+
+  // ── Listen to rfq_broadcast events from other users (chat agent broadcasts) ──
+  // When Agent A types "swap X SOL to USDC" in the chat, the server broadcasts
+  // an rfq_broadcast to all connected peers via WebSocket. LightPeerContext
+  // dispatches it as an "afos:signaling-rfq" window event. We listen here so
+  // any user on the Swaps page can see and accept the open RFQ.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const rfq = (e as CustomEvent).detail as {
+        rfqId?: string;
+        fromToken?: string;
+        toToken?: string;
+        fromChain?: string;
+        toChain?: string;
+        amount?: number;
+        requestorPeer?: string;
+        requesterAlias?: string;
+        fromPeerId?: string;
+        timestamp?: number;
+      };
+      if (!rfq.fromToken || !rfq.toToken) return;
+      const rfqFrom = rfq.fromToken.toUpperCase();
+      const rfqTo   = rfq.toToken.toUpperCase();
+      const curFrom = fromToken.symbol.toUpperCase();
+      const curTo   = toToken.symbol.toUpperCase();
+      // Show RFQs for the current pair (either direction)
+      if ((rfqFrom !== curFrom || rfqTo !== curTo) && (rfqFrom !== curTo || rfqTo !== curFrom)) return;
+      const amount = rfq.amount ?? 0.001;
+      const estRate = baseRate > 0 ? baseRate : 1;
+      const entry: OrderBookEntry = {
+        id:         rfq.rfqId ?? `bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        rfqId:      rfq.rfqId,
+        peer:       rfq.requesterAlias ?? rfq.requestorPeer ?? rfq.fromPeerId ?? "Peer",
+        fromSymbol: rfqFrom,
+        toSymbol:   rfqTo,
+        fromAmount: amount,
+        toAmount:   parseFloat((amount * estRate).toFixed(6)),
+        rate:       estRate,
+        usdValue:   amount * (fromToken.usdPrice || estRate),
+        expiresIn:  60,
+        latency:    0,
+        reputation: 95,
+        timedOut:   false,
+        rfqSentAt:  rfq.timestamp ?? Date.now(),
+      };
+      setOrders(prev => {
+        if (prev.some(o => o.id === entry.id)) return prev;
+        const next = [entry, ...prev].slice(0, 10);
+        return next.sort((a, b) => b.rate - a.rate);
+      });
+      setFlash(entry.id);
+      setTimeout(() => setFlash(null), 800);
+    };
+    window.addEventListener("afos:signaling-rfq", handler);
+    return () => window.removeEventListener("afos:signaling-rfq", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromToken.symbol, toToken.symbol, baseRate]);
 

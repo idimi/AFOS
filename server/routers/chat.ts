@@ -32,9 +32,9 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
-import { getUserSettings } from "../db";
+import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
-import { getSignalingPeerList, sendToPeer } from "../signaling";
+import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -1006,8 +1006,24 @@ export const chatRouter = router({
         ? `This swap (~$${estimatedUsd.toFixed(2)}) is close to your $${userPrefs.maxTxAmountUsd} transaction limit.`
         : undefined;
 
-      // ── Step 1: Try P2P peer matching via signaling server (no Oracle VM) ───────────────
+      // ── Step 0+1: Broadcast RFQ to ALL peers + try direct P2P match ────────────────────
       const skipP2P = userPrefs.preferredRoute === "jupiter" || userPrefs.preferredRoute === "zerox";
+      // Broadcast the open RFQ to ALL connected peers so it appears in the Live Order Book.
+      // This runs even when a direct peer match is found (so other peers see the intent too).
+      if (!skipP2P) {
+        const rfqBroadcastId = `rfq_${Date.now()}_${senderPeerId?.slice(0, 8) ?? "anon"}`;
+        broadcastRfqToAll(senderPeerId, {
+          rfqId:          rfqBroadcastId,
+          fromToken:      from.symbol,
+          toToken:        to.symbol,
+          fromChain:      from.chain,
+          toChain:        to.chain,
+          amount:         swapAmount,
+          requestorPeer:  senderPeerId ?? "anonymous",
+          requesterAlias: senderAlias ?? senderWalletAddress?.slice(0, 8) ?? "Anonymous",
+          timestamp:      Date.now(),
+        });
+      }
       let p2pMatch: P2PQuoteResult | null = null;
 
       if (!skipP2P) {
@@ -1224,6 +1240,22 @@ export const chatRouter = router({
           expiresAt,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
+        // Generate and persist HTLC secret for this P2P swap (so reveal can survive page refresh)
+        const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
+        const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+        const htlcHashBytes   = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
+        const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
+        void saveHtlcSecret({
+          rfqId:              p2pQuote.rfqId,
+          secretHex:          htlcSecretHex,
+          secretHashHex:      htlcSecretHash,
+          fromChain:          (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          requesterAddress:   userPublicKey ?? undefined,
+          counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          expiresAt:          BigInt(expiresAt),
+          status:             "locked",
+        }).catch(() => {/* non-fatal */});
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
           fromChain:  (fromChain ?? "solana") as SupportedChain,
@@ -1393,6 +1425,20 @@ export const chatRouter = router({
         const secretHex    = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
         const secretHashBytes = await crypto.subtle.digest("SHA-256", secretBytes);
         const secretHash   = Array.from(new Uint8Array(secretHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
+        // Persist HTLC secret to DB so reveal can survive page refresh
+        if (p2pQuote.rfqId) {
+          void saveHtlcSecret({
+            rfqId:              p2pQuote.rfqId,
+            secretHex,
+            secretHashHex:      secretHash,
+            fromChain:          fromChain as "bitcoin" | "ethereum" | "solana" | "trac_network",
+            toChain:            toChain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
+            requesterAddress:   fromAddress ?? undefined,
+            counterpartyPeerId: p2pQuote.peerId ?? undefined,
+            expiresAt:          BigInt(Date.now() + 3600_000),
+            status:             "locked",
+          }).catch(() => {/* non-fatal */});
+        }
         const amountWei    = BigInt(Math.floor(amount * 1e18));
         const htlcLockTx   = buildHtlcLockTx({
           secretHash,
@@ -1641,8 +1687,21 @@ export const chatRouter = router({
       const secret = Array.from(secretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
       const hashBuffer = await crypto.subtle.digest("SHA-256", secretBytes);
       const secretHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
-
-      // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
+      // Persist HTLC secret to DB so reveal can survive page refresh
+      if (p2pQuote?.rfqId) {
+        void saveHtlcSecret({
+          rfqId:              p2pQuote.rfqId,
+          secretHex:          secret,
+          secretHashHex:      secretHash,
+          fromChain:          "bitcoin",
+          toChain:            (input.toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          requesterAddress:   input.senderAddress ?? undefined,
+          counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          expiresAt:          BigInt(Date.now() + expiryHours * 3_600_000),
+          status:             "locked",
+        }).catch(() => {/* non-fatal */});
+      }
+      // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibilityy
       const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
       const p2pRoute = p2pQuote ? "IntercomSwap P2P" : "Direct HTLC (no P2P peer)";
 
@@ -2237,6 +2296,64 @@ export const chatRouter = router({
       return { ok: true };
     }),
 
+  /**
+   * Retrieve the HTLC secret hash for a given rfqId.
+   * Returns only the secretHashHex (public) and status — never the plaintext secretHex.
+   * Used by the frontend to verify the counterparty locked against the correct hash.
+   */
+  getHtlcSecretHash: publicProcedure
+    .input(z.object({ rfqId: z.string() }))
+    .query(async ({ input }) => {
+      const row = await getHtlcSecret(input.rfqId);
+      if (!row) return null;
+      return {
+        rfqId:         row.rfqId,
+        secretHashHex: row.secretHashHex,
+        fromChain:     row.fromChain,
+        toChain:       row.toChain,
+        status:        row.status,
+        expiresAt:     Number(row.expiresAt),
+        lockTxId:      row.lockTxId,
+        revealTxId:    row.revealTxId,
+      };
+    }),
+  /**
+   * Reveal the HTLC secret for a given rfqId (called after counterparty locks).
+   * Returns the plaintext secretHex so the requester can claim on the destination chain.
+   * Only the requester (matched by walletAddress) may retrieve the secret.
+   */
+  revealHtlcSecret: publicProcedure
+    .input(z.object({ rfqId: z.string(), requesterAddress: z.string() }))
+    .mutation(async ({ input }) => {
+      const row = await getHtlcSecret(input.rfqId);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "HTLC secret not found for this RFQ" });
+      if (row.requesterAddress && row.requesterAddress.toLowerCase() !== input.requesterAddress.toLowerCase()) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the requester may reveal the HTLC secret" });
+      }
+      if (row.status === "expired" || row.status === "refunded") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: `HTLC is ${row.status} — cannot reveal` });
+      }
+      // Mark as revealed
+      await updateHtlcSecretStatus(input.rfqId, "revealed");
+      return { secretHex: row.secretHex, secretHashHex: row.secretHashHex };
+    }),
+  /**
+   * Mark an HTLC swap as completed or refunded (called after on-chain confirmation).
+   */
+  updateHtlcStatus: publicProcedure
+    .input(z.object({
+      rfqId:      z.string(),
+      status:     z.enum(["completed", "refunded", "expired"]),
+      lockTxId:   z.string().optional(),
+      revealTxId: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      await updateHtlcSecretStatus(input.rfqId, input.status, {
+        lockTxId:   input.lockTxId,
+        revealTxId: input.revealTxId,
+      });
+      return { ok: true };
+    }),
   /**
    * Return the current live signaling peer list for the Order Book.
    * Each peer includes their peerId, alias, accepted pairs, wallet addresses,

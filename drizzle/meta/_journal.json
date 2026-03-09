@@ -43,6 +43,13 @@
       "when": 1772901765429,
       "tag": "0005_nifty_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1773037067226,
+      "tag": "0006_first_living_lightning",
+      "breakpoints": true
     }
   ]
 }

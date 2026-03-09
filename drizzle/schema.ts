@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -380,3 +380,25 @@ export const adminAuditLog = mysqlTable("admin_audit_log", {
 
 export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLog.$inferInsert;
+
+// ─── HTLC Secrets ─────────────────────────────────────────────────────────────
+// Stores the plaintext HTLC preimage secret so the reveal step can complete
+// even after a page refresh. secretHex is NEVER sent to the client.
+export const htlcSecrets = mysqlTable("htlc_secrets", {
+  id:                  int("id").autoincrement().primaryKey(),
+  rfqId:               varchar("rfqId", { length: 128 }).notNull().unique(),
+  secretHex:           varchar("secretHex", { length: 64 }).notNull(),
+  secretHashHex:       varchar("secretHashHex", { length: 64 }).notNull(),
+  fromChain:           mysqlEnum("fromChain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
+  toChain:             mysqlEnum("toChain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
+  requesterAddress:    varchar("requesterAddress", { length: 128 }),
+  counterpartyPeerId:  varchar("counterpartyPeerId", { length: 128 }),
+  expiresAt:           bigint("expiresAt", { mode: "bigint" }).notNull(),
+  status:              mysqlEnum("status", ["locked", "revealed", "completed", "expired", "refunded"]).default("locked").notNull(),
+  lockTxId:            varchar("lockTxId", { length: 128 }),
+  revealTxId:          varchar("revealTxId", { length: 128 }),
+  createdAt:           timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:           timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type HtlcSecret = typeof htlcSecrets.$inferSelect;
+export type InsertHtlcSecret = typeof htlcSecrets.$inferInsert;
