@@ -8,10 +8,10 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Radio, Settings2, ChevronDown, ChevronUp,
+  Radio, Settings2, ChevronDown, ChevronUp, ChevronRight,
   CheckCircle2, XCircle, Clock, Zap, TrendingUp,
   Users, Shield, AlertCircle, Network,
-  ToggleLeft, ToggleRight, Info, Lock,
+  ToggleLeft, ToggleRight, Info, Lock, ExternalLink,
 } from "lucide-react";
 import { useLightPeer, type IncomingRfq, type HtlcStep } from "../contexts/LightPeerContext";
 import { useWallet } from "../contexts/WalletContext";
@@ -112,7 +112,7 @@ function HtlcCountdown({
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt, htlcExpiresAt, lockTxId }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -124,6 +124,10 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   isRefunded?: boolean;
   /** Unix ms when HTLC was locked — used to show countdown to refund window */
   htlcLockedAt?: number;
+  /** Actual on-chain expiry (Unix ms) from refundableHtlcs — overrides default 1h timelock */
+  htlcExpiresAt?: number;
+  /** Lock tx hash — used to build explorer deep-link on expiry */
+  lockTxId?: string;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -179,7 +183,9 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         <div className="pt-0.5">
           <HtlcCountdown
             lockedAt={htlcLockedAt}
+            timelockMs={htlcExpiresAt ? htlcExpiresAt - htlcLockedAt : 3_600_000}
             chain={rfq.fromChain}
+            lockTxId={lockTxId}
           />
         </div>
       )}
@@ -513,6 +519,8 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
                     isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                     isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
                     htlcLockedAt={peer.htlcLockedAt[rfq.rfqId]}
+                    htlcExpiresAt={peer.refundableHtlcs[rfq.rfqId]?.expiresAt}
+                    lockTxId={peer.refundableHtlcs[rfq.rfqId]?.lockTxId}
                   />
                 ))}
               </AnimatePresence>
@@ -604,13 +612,17 @@ const CHAIN_LABEL: Record<string, string> = {
 };
 
 function SettledHtlcsPanel() {
-  const { data: settled, isLoading } = trpc.chat.getSettledHtlcs.useQuery({ limit: 100 }, {
+  const [offset, setOffset] = useState(0);
+  const PAGE_SIZE = 50;
+
+  const { data: settled, isLoading } = trpc.chat.getSettledHtlcs.useQuery({ limit: PAGE_SIZE + offset }, {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
 
   const [statusFilter, setStatusFilter] = useState<"all" | "completed" | "refunded" | "expired">("all");
   const [chainFilter, setChainFilter] = useState<"all" | "solana" | "ethereum" | "bitcoin" | "trac_network">("all");
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const explorerUrl = (chain: string, txId: string | null): string | null => {
     if (!txId) return null;
@@ -654,6 +666,8 @@ function SettledHtlcsPanel() {
     const matchChain  = chainFilter === "all" || row.fromChain === chainFilter || row.toChain === chainFilter;
     return matchStatus && matchChain;
   });
+
+  const hasMore = (settled ?? []).length >= PAGE_SIZE + offset;
 
   return (
     <div className="space-y-3">
@@ -709,59 +723,132 @@ function SettledHtlcsPanel() {
           )}
         </div>
       ) : (
-        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
           {filtered.map(row => {
             const claimUrl = explorerUrl(row.toChain, row.revealTxId);
             const lockUrl  = explorerUrl(row.fromChain, row.lockTxId);
+            const isExpanded = expandedRow === row.rfqId;
             return (
               <div
                 key={row.rfqId}
-                className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-1.5"
+                className="rounded-lg border border-white/10 bg-white/5 overflow-hidden"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-slate-400">{row.rfqId.slice(0, 8)}…</span>
-                    <span className={`text-[10px] font-semibold ${statusColor[row.status] ?? "text-slate-400"}`}>
+                {/* ── Collapsed header row (always visible, click to expand) ── */}
+                <button
+                  onClick={() => setExpandedRow(isExpanded ? null : row.rfqId)}
+                  className="w-full flex items-center justify-between p-3 text-left hover:bg-white/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-mono text-slate-400 shrink-0">{row.rfqId.slice(0, 8)}…</span>
+                    <span className={`text-[10px] font-semibold shrink-0 ${statusColor[row.status] ?? "text-slate-400"}`}>
                       {statusIcon[row.status] ?? "?"} {row.status}
                     </span>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 min-w-0">
+                      <span className="truncate">{CHAIN_LABEL[row.fromChain] ?? row.fromChain}</span>
+                      <span>→</span>
+                      <span className="truncate">{CHAIN_LABEL[row.toChain] ?? row.toChain}</span>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-slate-500">
-                    {new Date(row.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
-                  <span className="px-1 py-0.5 rounded bg-white/5 font-mono">{CHAIN_LABEL[row.fromChain] ?? row.fromChain}</span>
-                  <span>→</span>
-                  <span className="px-1 py-0.5 rounded bg-white/5 font-mono">{CHAIN_LABEL[row.toChain] ?? row.toChain}</span>
-                </div>
-                <div className="flex gap-2">
-                  {lockUrl && (
-                    <a
-                      href={lockUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-cyan-400 hover:text-cyan-300 underline underline-offset-2"
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] text-slate-500">
+                      {new Date(row.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <ChevronRight
+                      className={`w-3 h-3 text-slate-500 transition-transform duration-200 ${
+                        isExpanded ? "rotate-90" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {/* ── Expanded detail panel ── */}
+                <AnimatePresence initial={false}>
+                  {isExpanded && (
+                    <motion.div
+                      key="detail"
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.18, ease: "easeInOut" }}
+                      className="overflow-hidden"
                     >
-                      Lock tx ↗
-                    </a>
+                      <div className="px-3 pb-3 pt-1 border-t border-white/10 space-y-2">
+                        {/* Full RFQ ID */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-500 shrink-0">RFQ ID:</span>
+                          <span className="text-[10px] font-mono text-slate-300 break-all">{row.rfqId}</span>
+                        </div>
+
+                        {/* Tx audit trail */}
+                        <div className="grid grid-cols-2 gap-2">
+                          {/* Lock tx */}
+                          <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-1">
+                            <p className="text-[10px] text-slate-500 font-medium">Lock Transaction</p>
+                            <p className="text-[10px] text-slate-400">
+                              {CHAIN_LABEL[row.fromChain] ?? row.fromChain}
+                            </p>
+                            {lockUrl ? (
+                              <a
+                                href={lockUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 font-mono break-all"
+                              >
+                                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                                {row.lockTxId ? `${row.lockTxId.slice(0, 12)}…` : "View"}
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-slate-600">No tx recorded</span>
+                            )}
+                          </div>
+
+                          {/* Claim / Refund tx */}
+                          <div className="rounded-md border border-white/10 bg-white/5 p-2 space-y-1">
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              {row.status === "refunded" ? "Refund Transaction" : "Claim Transaction"}
+                            </p>
+                            <p className="text-[10px] text-slate-400">
+                              {CHAIN_LABEL[row.toChain] ?? row.toChain}
+                            </p>
+                            {claimUrl ? (
+                              <a
+                                href={claimUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-1 text-[10px] font-mono break-all ${
+                                  row.status === "refunded" ? "text-amber-400 hover:text-amber-300" : "text-emerald-400 hover:text-emerald-300"
+                                }`}
+                              >
+                                <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                                {row.revealTxId ? `${row.revealTxId.slice(0, 12)}…` : "View"}
+                              </a>
+                            ) : (
+                              <span className="text-[10px] text-slate-600">No tx recorded</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Settled at */}
+                        <p className="text-[10px] text-slate-600">
+                          Settled {new Date(row.updatedAt).toLocaleString()}
+                        </p>
+                      </div>
+                    </motion.div>
                   )}
-                  {claimUrl && (
-                    <a
-                      href={claimUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] text-emerald-400 hover:text-emerald-300 underline underline-offset-2"
-                    >
-                      Claim tx ↗
-                    </a>
-                  )}
-                  {!lockUrl && !claimUrl && (
-                    <span className="text-[10px] text-slate-600">No on-chain tx recorded</span>
-                  )}
-                </div>
+                </AnimatePresence>
               </div>
             );
           })}
+
+          {/* ── Load more button ── */}
+          {hasMore && (
+            <button
+              onClick={() => setOffset(prev => prev + PAGE_SIZE)}
+              className="w-full py-2 rounded-lg text-[10px] font-medium text-slate-400 hover:text-slate-200 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            >
+              Load more
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -801,7 +888,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
   const onlineCount = livePeers.filter(p => p.online).length;
   const tnkPeerCount = livePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length;
   // Count settled HTLCs for the History tab badge — uses the same query as SettledHtlcsPanel
-  const { data: settledForBadge } = trpc.chat.getSettledHtlcs.useQuery({ limit: 100 }, {
+  const { data: settledForBadge } = trpc.chat.getSettledHtlcs.useQuery({ limit: 500 }, {
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
   });

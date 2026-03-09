@@ -2450,7 +2450,7 @@ export const chatRouter = router({
    * Return recently settled (completed/expired/refunded) HTLC secrets for the history panel.
    */
   getSettledHtlcs: publicProcedure
-    .input(z.object({ limit: z.number().int().min(1).max(100).default(50) }).optional())
+    .input(z.object({ limit: z.number().int().min(1).max(500).default(50) }).optional())
     .query(async ({ input }) => {
       const rows = await getSettledHtlcSecrets(input?.limit ?? 50);
       return rows.map(r => ({

@@ -5,6 +5,8 @@
  */
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Wallet, ArrowLeftRight, CheckCircle2,
@@ -515,7 +517,7 @@ function MessageBubble({
   htlcRevealedSecrets?: Record<string, string>;
   claimedRfqIds?: Set<string>;
   onRefundHtlc?: (rfqId: string) => void;
-  refundableHtlcs?: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
+  refundableHtlcs?: Record<string, { fromChain: string; toChain: string; expiresAt: number; lockTxId?: string }>;
   refundedRfqIds?: Set<string>;
   /** Map of rfqId → Unix ms when HTLC was locked (for countdown timer) */
   htlcLockedAt?: Record<string, number>;
@@ -640,7 +642,11 @@ function MessageBubble({
             {htlcLockedAt?.[msg.incomingRfqData.rfqId] && !claimedRfqIds?.has(msg.incomingRfqData.rfqId) && !refundedRfqIds?.has(msg.incomingRfqData.rfqId) && (
               <HtlcCountdownInline
                 lockedAt={htlcLockedAt[msg.incomingRfqData.rfqId]}
+                timelockMs={refundableHtlcs?.[msg.incomingRfqData.rfqId]?.expiresAt
+                  ? refundableHtlcs[msg.incomingRfqData.rfqId].expiresAt - htlcLockedAt[msg.incomingRfqData.rfqId]
+                  : 3_600_000}
                 chain={msg.incomingRfqData.fromChain}
+                lockTxId={refundableHtlcs?.[msg.incomingRfqData.rfqId]?.lockTxId}
               />
             )}
             <div className="flex gap-2">
@@ -742,10 +748,24 @@ export default function ChatPage() {
   const { peerId: myPeerId, peerAlias: myPeerAlias, remotePeers, initiateHtlcLock } = lightPeer;
 
   const [input, setInput] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    if (!showEmoji) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmoji(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showEmoji]);
 
   const sendMessage = trpc.chat.sendMessage.useMutation();
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
@@ -1442,6 +1462,37 @@ export default function ChatPage() {
                 disabled={isTyping}
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 outline-none"
               />
+              {/* Emoji picker */}
+              <div className="relative shrink-0" ref={emojiPickerRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowEmoji(v => !v)}
+                  className="text-[16px] leading-none opacity-50 hover:opacity-90 transition-opacity"
+                  title="Add emoji"
+                  tabIndex={-1}
+                >
+                  😊
+                </button>
+                {showEmoji && (
+                  <div
+                    className="absolute bottom-8 right-0 z-50"
+                    style={{ filter: 'drop-shadow(0 4px 24px rgba(0,0,0,0.6))' }}
+                  >
+                    <Picker
+                      data={data}
+                      theme="dark"
+                      previewPosition="none"
+                      skinTonePosition="none"
+                      set="native"
+                      onEmojiSelect={(emoji: { native: string }) => {
+                        setInput(v => v + emoji.native);
+                        setShowEmoji(false);
+                        inputRef.current?.focus();
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <button
               onClick={() => handleSend()}

@@ -52,6 +52,8 @@ async function runHtlcSecretsCheck(): Promise<void> {
           rfqId: row.rfqId,
           fromChain: row.fromChain,
           toChain: row.toChain,
+          expiresAt: Number(expiresAt),
+          lockTxId: row.lockTxId ?? undefined,
           reason: "swap_window_expired",
           message: "The HTLC swap window has expired. Both parties may now refund their locked funds.",
         };

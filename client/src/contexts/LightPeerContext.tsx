@@ -135,10 +135,10 @@ export interface LightPeerState {
    */
   claimHtlcFunds: (rfqId: string) => Promise<void>;
   /**
-   * Map of rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs.
+   * Map of rfqId → { fromChain, toChain, expiresAt, lockTxId? } for Agent A's expired outgoing HTLCs.
    * Populated when htlc_expired signaling message is received.
    */
-  refundableHtlcs: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
+  refundableHtlcs: Record<string, { fromChain: string; toChain: string; expiresAt: number; lockTxId?: string }>;
   /**
    * Map of rfqId → Unix ms timestamp when the HTLC lock was initiated.
    * Used to compute the countdown timer on accepted RFQ cards.
@@ -288,7 +288,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
   // ── Seed claimedRfqIds + refundedRfqIds from DB on mount ─────────────────
   useEffect(() => {
-    void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A100%7D%7D%7D", {
+    void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A500%7D%7D%7D", {
       credentials: "include",
     })
       .then(r => r.json())
@@ -542,7 +542,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     // Handle htlc_expired: the swap window has passed without settlement
     unsubs.push(client.on("htlc_expired", (data) => {
-      const { rfqId, fromChain, toChain } = data as { rfqId: string; fromChain?: string; toChain?: string; message?: string };
+      const { rfqId, fromChain, toChain, expiresAt: expAt, lockTxId } = data as {
+        rfqId: string;
+        fromChain?: string;
+        toChain?: string;
+        expiresAt?: number;
+        lockTxId?: string;
+        message?: string;
+      };
       if (!rfqId) return;
       // Remove the secret if stored (no longer claimable as Agent B)
       setHtlcRevealedSecrets(prev => {
@@ -554,7 +561,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       if (fromChain && toChain) {
         setRefundableHtlcs(prev => ({
           ...prev,
-          [rfqId]: { fromChain, toChain, expiresAt: Date.now() },
+          [rfqId]: {
+            fromChain,
+            toChain,
+            expiresAt: expAt ?? Date.now(),
+            lockTxId: lockTxId ?? undefined,
+          },
         }));
       }
       toast.warning("HTLC swap expired", {

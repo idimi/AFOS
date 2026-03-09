@@ -8,6 +8,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import data from '@emoji-mart/data';
+import Picker from '@emoji-mart/react';
 import { useTheme } from "next-themes";
 import { trpc } from "@/lib/trpc";
 import { motion, AnimatePresence } from "framer-motion";
@@ -526,8 +528,22 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
 }) {
   const [open, setOpen] = useState(autoOpen ?? false);
   const [draft, setDraft] = useState(initialDraft ?? '');
+  const [showEmoji, setShowEmoji] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    if (!showEmoji) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmoji(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showEmoji]);
 
   // Auto-resize textarea whenever draft changes
   useEffect(() => {
@@ -667,7 +683,39 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen }:
               }}
             />
             <div className="flex items-center justify-between">
-              <span className="text-[8px] text-muted-foreground/40">{draft.length}/500</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[8px] text-muted-foreground/40">{draft.length}/500</span>
+                {/* Emoji picker button */}
+                <div className="relative" ref={emojiPickerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmoji(v => !v)}
+                    className="text-[12px] leading-none opacity-60 hover:opacity-100 transition-opacity"
+                    title="Add emoji"
+                  >
+                    😊
+                  </button>
+                  {showEmoji && (
+                    <div
+                      className="absolute bottom-6 left-0 z-50"
+                      style={{ filter: 'drop-shadow(0 4px 16px rgba(0,0,0,0.5))' }}
+                    >
+                      <Picker
+                        data={data}
+                        theme="dark"
+                        previewPosition="none"
+                        skinTonePosition="none"
+                        set="native"
+                        onEmojiSelect={(emoji: { native: string }) => {
+                          setDraft(d => d + emoji.native);
+                          setShowEmoji(false);
+                          inputRef.current?.focus();
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
               <button
                 onClick={handleSend}
                 disabled={!draft.trim() || sendMsg.isPending}

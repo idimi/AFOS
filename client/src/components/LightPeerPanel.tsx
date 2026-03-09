@@ -98,7 +98,7 @@ function HtlcCountdown({
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt, htlcExpiresAt, lockTxId }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -110,6 +110,10 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   isRefunded?: boolean;
   /** Unix ms when HTLC was locked — used to show countdown to refund window */
   htlcLockedAt?: number;
+  /** Actual on-chain expiry (Unix ms) from refundableHtlcs — overrides default 1h timelock */
+  htlcExpiresAt?: number;
+  /** Lock tx hash — used to build explorer deep-link on expiry */
+  lockTxId?: string;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -173,7 +177,9 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         <div className="pt-0.5">
           <HtlcCountdown
             lockedAt={htlcLockedAt}
+            timelockMs={htlcExpiresAt ? htlcExpiresAt - htlcLockedAt : 3_600_000}
             chain={rfq.fromChain}
+            lockTxId={lockTxId}
           />
         </div>
       )}
@@ -597,6 +603,8 @@ export default function LightPeerPanel() {
                             isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
                             isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
                             htlcLockedAt={peer.htlcLockedAt[rfq.rfqId]}
+                            htlcExpiresAt={peer.refundableHtlcs[rfq.rfqId]?.expiresAt}
+                            lockTxId={peer.refundableHtlcs[rfq.rfqId]?.lockTxId}
                           />
                         ))}
                       </AnimatePresence>
