@@ -123,6 +123,8 @@ export interface LightPeerState {
   sendPeerMessage: (targetPeerId: string, payload: unknown) => void;
   /** Broadcast an RFQ to all connected peers */
   broadcastRfq: (rfq: unknown) => void;
+  /** Map of rfqId → secretHex received from Agent A (for Agent B to claim) */
+  htlcRevealedSecrets: Record<string, string>;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -215,6 +217,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [tradesCompleted, setTradesCompleted] = useState(0);
   const [totalVolumeUsd, setTotalVolumeUsd] = useState(0);
   const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(null);
+  // rfqId → revealed secretHex (received from Agent A after they confirm their lock)
+  const [htlcRevealedSecrets, setHtlcRevealedSecrets] = useState<Record<string, string>>({});
 
   // ── Signaling state ───────────────────────────────────────────────────────
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
@@ -373,6 +377,65 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // Counterparty accepted our RFQ — notify the chat UI
         window.dispatchEvent(new CustomEvent("afos:rfq-accepted", { detail: { fromPeerId, ...payload as object } }));
       }
+    }));
+
+    // Handle htlc_locked: Agent B notified Agent A that their lock is on-chain.
+    // Agent A calls revealHtlcSecret, then sends the secret to Agent B.
+    unsubs.push(client.on("htlc_locked", (data) => {
+      const { fromPeerId, rfqId, txHash, chain, amountLocked } = data as {
+        fromPeerId: string; rfqId: string; txHash?: string; chain?: string; amountLocked?: number;
+      };
+      if (!rfqId) return;
+      // Show toast so Agent A knows Agent B locked
+      toast.info(`Counterparty locked their ${chain ?? ""} HTLC`, {
+        description: `RFQ ${rfqId.slice(0, 8)}… · ${amountLocked?.toFixed(4) ?? ""} locked · Tx: ${(txHash ?? "").slice(0, 12)}…`,
+        duration: 12000,
+      });
+      // Dispatch window event so ChatPage / other UI can react
+      window.dispatchEvent(new CustomEvent("afos:htlc-locked", { detail: { fromPeerId, rfqId, txHash, chain, amountLocked } }));
+      // Retrieve the plaintext secret from the server and send it to Agent B
+      void (async () => {
+        try {
+          const res = await fetch("/api/trpc/chat.revealHtlcSecret", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ "0": { json: { rfqId, requesterAddress: peerId ?? "" } } }),
+          });
+          if (!res.ok) {
+            console.warn("[HTLC] revealHtlcSecret failed:", res.status);
+            return;
+          }
+          const json = await res.json() as { result?: { data?: { json?: { secretHex?: string } } } };
+          const secretHex = json?.result?.data?.json?.secretHex;
+          if (!secretHex) { console.warn("[HTLC] No secretHex in revealHtlcSecret response"); return; }
+          // Send the secret to Agent B so they can claim
+          signalingRef.current?.sendHtlcSecret(fromPeerId, rfqId, secretHex);
+          toast.success("HTLC secret revealed to counterparty", {
+            description: `Agent B can now claim their funds for RFQ ${rfqId.slice(0, 8)}…`,
+            duration: 10000,
+          });
+          window.dispatchEvent(new CustomEvent("afos:htlc-secret-sent", { detail: { rfqId, secretHex } }));
+        } catch (e) {
+          console.error("[HTLC] Error revealing secret:", e);
+        }
+      })();
+    }));
+
+    // Handle htlc_secret: Agent A sent us (Agent B) the plaintext secret so we can claim.
+    unsubs.push(client.on("htlc_secret", (data) => {
+      const { rfqId, secretHex } = data as { rfqId: string; secretHex: string };
+      if (!rfqId || !secretHex) return;
+      setHtlcRevealedSecrets(prev => ({ ...prev, [rfqId]: secretHex }));
+      toast.success("HTLC secret received — you can now claim your funds!", {
+        description: `Secret for RFQ ${rfqId.slice(0, 8)}… · Use this to call the claim function on-chain`,
+        duration: 30000,
+        action: {
+          label: "Copy Secret",
+          onClick: () => { void navigator.clipboard.writeText(secretHex); },
+        },
+      });
+      window.dispatchEvent(new CustomEvent("afos:htlc-secret-received", { detail: { rfqId, secretHex } }));
     }));
 
     // Handle RFQ broadcasts
@@ -810,6 +873,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash });
+          // Notify Agent A that we (Agent B) have locked our side
+          if (rfq.requestorPeer && signalingRef.current) {
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", rfq.amount);
+          }
           toast.success("Solana HTLC locked", {
             description: `Tx: ${txHash.slice(0, 20)}… · ${rfq.amount} SOL locked in PDA escrow (${escrowAddress.slice(0, 8)}…)`,
             action: {
@@ -884,6 +951,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash });
+          // Notify Agent A that we (Agent B) have locked our side
+          if (rfq.requestorPeer && signalingRef.current) {
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "ethereum", rfq.amount);
+          }
           toast.success(htlcContractAddress ? "ETH HTLC locked" : "HTLC settled on Ethereum", {
             description: `Tx: ${txHash.slice(0, 20)}… · Funds locked atomically`,
           });
@@ -931,6 +1002,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash: result.txid });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash: result.txid });
+          // Notify Agent A that we (Agent B) have locked our side
+          if (rfq.requestorPeer && signalingRef.current) {
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, result.txid, "bitcoin", rfq.amount);
+          }
           toast.success("Bitcoin HTLC locked", {
             description: `Tx: ${result.txid.slice(0, 16)}… · ${amountSats.toLocaleString()} sats locked in P2WSH escrow`,
             action: {
@@ -966,6 +1041,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcSigning({ rfqId, step: "revealing", txHash: result.txHash });
           await new Promise(r => setTimeout(r, 800));
           setHtlcSigning({ rfqId, step: "settled", txHash: result.txHash });
+          // Notify Agent A that we (Agent B) have locked our side
+          if (rfq.requestorPeer && signalingRef.current) {
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, result.txHash, "trac_network", rfq.amount);
+          }
           toast.success("TNK escrowed", {
             description: `${rfq.amount.toFixed(4)} TNK locked in AFOS escrow · Tx: ${result.txHash.slice(0, 16)}…`,
             action: {
@@ -1116,6 +1195,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       dismissHtlc,
       sendPeerMessage,
       broadcastRfq: broadcastRfqFn,
+      htlcRevealedSecrets,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

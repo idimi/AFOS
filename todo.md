@@ -2251,3 +2251,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Bug Fixes + Features — Round 8
 - [x] secretHashHex atomicity fix: server generates secretHashHex BEFORE calling sendAgentRfqToPeer and includes it in the agent_rfq message for all four chains (SOL, ETH, BTC, TNK). Agent B's acceptRfq now uses rfq.secretHashHex if present instead of generating a new one, ensuring both sides lock to the same hash. executeBtcHtlcLock updated to accept optional existingSecretHash parameter.
+
+## Bug Fixes + Features — Round 9
+- [x] Wire reveal step: Agent B sends htlc_locked via signaling after lock tx broadcast (SOL/ETH/BTC/TNK). Agent A receives htlc_locked, calls revealHtlcSecret tRPC procedure, then sends secretHex to Agent B via htlc_secret signaling message. Agent B receives htlc_secret, stores in htlcRevealedSecrets state, shows "Copy Secret" toast.
+- [x] Add on-chain lock confirmation signal: signalingClient.sendHtlcLocked() and sendHtlcSecret() methods added. signaling.ts relays htlc_locked and htlc_secret messages to target peer. LightPeerContext listens for both events and dispatches afos:htlc-locked and afos:htlc-secret-received window events.
+- [x] SwapPage.tsx TNK type errors: already resolved — tracNetwork exists in MultiChainWalletContextValue and trac_network is in SupportedChain union. Stale TSC watch was reporting false positives.

@@ -20,6 +20,8 @@
  *   { type: "rtc_ice", targetPeerId, candidate }
  *   { type: "peer_message", targetPeerId, payload }
  *   { type: "rfq_broadcast", rfq }
+ *   { type: "htlc_locked", targetPeerId, rfqId, txHash?, chain?, amountLocked? }
+ *   { type: "htlc_secret", targetPeerId, rfqId, secretHex }
  *
  * Message types (server → client):
  *   { type: "registered", peerId, peerCount }
@@ -31,6 +33,8 @@
  *   { type: "rtc_ice", fromPeerId, candidate }
  *   { type: "peer_message", fromPeerId, payload }
  *   { type: "rfq_broadcast", fromPeerId, rfq }
+ *   { type: "htlc_locked", fromPeerId, rfqId, txHash, chain, amountLocked }
+ *   { type: "htlc_secret", fromPeerId, rfqId, secretHex }
  *   { type: "error", message }
  */
 
@@ -73,6 +77,13 @@ interface ClientMessage {
   rfq?: unknown;
   /** Advertised max trade size in USD for liquidity depth aggregation */
   maxTradeUsd?: number;
+  /** HTLC lock notification fields */
+  rfqId?: string;
+  txHash?: string;
+  chain?: string;
+  amountLocked?: number;
+  /** HTLC secret reveal fields */
+  secretHex?: string;
 }
 
 // ─── Peer Registry ───────────────────────────────────────────────────────────
@@ -390,6 +401,52 @@ export function attachSignalingServer(httpServer: HttpServer) {
           break;
         }
 
+        // ── HTLC Lock Notification (Agent B → Agent A) ──────────────────
+        // Agent B sends this after broadcasting their lock tx so Agent A knows
+        // it's safe to sign and broadcast their own HTLC lock.
+        case "htlc_locked": {
+          if (!msg.targetPeerId || !msg.rfqId) {
+            ws.send(JSON.stringify({ type: "error", message: "targetPeerId and rfqId required" }));
+            return;
+          }
+          const fromHtlc = msg.peerId || registeredPeerId;
+          if (!fromHtlc) {
+            ws.send(JSON.stringify({ type: "error", message: "Not registered" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "htlc_locked",
+            fromPeerId: fromHtlc,
+            rfqId: msg.rfqId,
+            txHash: msg.txHash ?? null,
+            chain: msg.chain ?? null,
+            amountLocked: msg.amountLocked ?? null,
+          });
+          console.log(`[Signaling] htlc_locked: ${fromHtlc.slice(0,8)}→${msg.targetPeerId.slice(0,8)} rfq=${msg.rfqId.slice(0,8)}`);
+          break;
+        }
+        // ── HTLC Secret Reveal (Agent A → Agent B) ───────────────────────
+        // Agent A sends the plaintext secret after both sides have locked so
+        // Agent B can use it to claim their funds from the HTLC contract.
+        case "htlc_secret": {
+          if (!msg.targetPeerId || !msg.rfqId || !msg.secretHex) {
+            ws.send(JSON.stringify({ type: "error", message: "targetPeerId, rfqId, and secretHex required" }));
+            return;
+          }
+          const fromSecret = msg.peerId || registeredPeerId;
+          if (!fromSecret) {
+            ws.send(JSON.stringify({ type: "error", message: "Not registered" }));
+            return;
+          }
+          sendToPeer(msg.targetPeerId, {
+            type: "htlc_secret",
+            fromPeerId: fromSecret,
+            rfqId: msg.rfqId,
+            secretHex: msg.secretHex,
+          });
+          console.log(`[Signaling] htlc_secret: ${fromSecret.slice(0,8)}→${msg.targetPeerId.slice(0,8)} rfq=${msg.rfqId.slice(0,8)}`);
+          break;
+        }
         // ── RFQ Broadcast (sent to all peers) ─────────────────────────────
         case "rfq_broadcast": {
           const fromId5 = msg.peerId || registeredPeerId;

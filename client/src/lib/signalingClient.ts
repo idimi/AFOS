@@ -43,6 +43,8 @@ export type SignalingEvent =
   | "peer_message"
   | "rfq_broadcast"
   | "agent_rfq"
+  | "htlc_locked"
+  | "htlc_secret"
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
@@ -348,6 +350,34 @@ export class SignalingClient {
     });
   }
 
+  /**
+   * Notify Agent A that Agent B has locked their HTLC on-chain.
+   * Agent A listens for this to know it's safe to sign their own lock.
+   */
+  sendHtlcLocked(targetPeerId: string, rfqId: string, txHash?: string, chain?: string, amountLocked?: number) {
+    this.sendMessage({
+      type: "htlc_locked",
+      targetPeerId,
+      rfqId,
+      txHash: txHash ?? null,
+      chain: chain ?? null,
+      amountLocked: amountLocked ?? null,
+    });
+  }
+
+  /**
+   * Send the plaintext HTLC secret from Agent A to Agent B so B can claim.
+   * Called after Agent A has confirmed their own lock tx is on-chain.
+   */
+  sendHtlcSecret(targetPeerId: string, rfqId: string, secretHex: string) {
+    this.sendMessage({
+      type: "htlc_secret",
+      targetPeerId,
+      rfqId,
+      secretHex,
+    });
+  }
+
   /** Broadcast an RFQ to all peers */
   broadcastRfq(rfq: unknown) {
     // Send via signaling server (reaches all peers)
@@ -467,6 +497,26 @@ export class SignalingClient {
       case "agent_rfq":
         // Agent-dispatched RFQ — server pushes this directly to the matched peer
         this.emit("agent_rfq", msg);
+        break;
+
+      case "htlc_locked":
+        // Agent B notifies Agent A that their HTLC lock tx is on-chain
+        this.emit("htlc_locked", {
+          fromPeerId: msg.fromPeerId,
+          rfqId: msg.rfqId,
+          txHash: msg.txHash,
+          chain: msg.chain,
+          amountLocked: msg.amountLocked,
+        });
+        break;
+
+      case "htlc_secret":
+        // Agent A reveals the plaintext secret so Agent B can claim
+        this.emit("htlc_secret", {
+          fromPeerId: msg.fromPeerId,
+          rfqId: msg.rfqId,
+          secretHex: msg.secretHex,
+        });
         break;
 
       case "error":
