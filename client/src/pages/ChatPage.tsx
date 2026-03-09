@@ -423,7 +423,28 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 // ─── HTLC Countdown (inline variant for chat bubbles) ───────────────────────
-function HtlcCountdownInline({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+function htlcInlineExplorerUrl(chain: string, txId?: string): string | null {
+  if (!txId) return null;
+  switch (chain.toLowerCase()) {
+    case "solana":       return `https://solscan.io/tx/${txId}`;
+    case "ethereum":     return `https://etherscan.io/tx/${txId}`;
+    case "bitcoin":      return `https://mempool.space/tx/${txId}`;
+    case "trac_network": return `https://explorer.trac.network/tx/${txId}`;
+    default:             return null;
+  }
+}
+
+function HtlcCountdownInline({
+  lockedAt,
+  timelockMs = 3_600_000,
+  chain,
+  lockTxId,
+}: {
+  lockedAt: number;
+  timelockMs?: number;
+  chain?: string;
+  lockTxId?: string;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -432,9 +453,21 @@ function HtlcCountdownInline({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: n
   const expiresAt = lockedAt + timelockMs;
   const diff = expiresAt - now;
   if (diff <= 0) {
+    const explorerHref = chain ? htlcInlineExplorerUrl(chain, lockTxId) : null;
     return (
-      <div className="text-xs font-medium py-1" style={{ color: "#f87171" }}>
+      <div className="text-xs font-medium py-1 flex items-center gap-1.5" style={{ color: "#f87171" }}>
         ⏰ HTLC refundable now
+        {explorerHref && (
+          <a
+            href={explorerHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:opacity-80 transition-opacity"
+            onClick={e => e.stopPropagation()}
+          >
+            View on-chain ↗
+          </a>
+        )}
       </div>
     );
   }
@@ -605,7 +638,10 @@ function MessageBubble({
             </div>
             {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
             {htlcLockedAt?.[msg.incomingRfqData.rfqId] && !claimedRfqIds?.has(msg.incomingRfqData.rfqId) && !refundedRfqIds?.has(msg.incomingRfqData.rfqId) && (
-              <HtlcCountdownInline lockedAt={htlcLockedAt[msg.incomingRfqData.rfqId]} />
+              <HtlcCountdownInline
+                lockedAt={htlcLockedAt[msg.incomingRfqData.rfqId]}
+                chain={msg.incomingRfqData.fromChain}
+              />
             )}
             <div className="flex gap-2">
               <button

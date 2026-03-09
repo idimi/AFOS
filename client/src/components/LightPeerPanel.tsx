@@ -36,7 +36,28 @@ function timeLeft(ms: number): string {
 
 // ─── HTLC Countdown Timer ────────────────────────────────────────────────────
 
-function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+function htlcExplorerUrl(chain: string, txId?: string): string | null {
+  if (!txId) return null;
+  switch (chain.toLowerCase()) {
+    case "solana":       return `https://solscan.io/tx/${txId}`;
+    case "ethereum":     return `https://etherscan.io/tx/${txId}`;
+    case "bitcoin":      return `https://mempool.space/tx/${txId}`;
+    case "trac_network": return `https://explorer.trac.network/tx/${txId}`;
+    default:             return null;
+  }
+}
+
+function HtlcCountdown({
+  lockedAt,
+  timelockMs = 3_600_000,
+  chain,
+  lockTxId,
+}: {
+  lockedAt: number;
+  timelockMs?: number;
+  chain?: string;
+  lockTxId?: string;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -45,7 +66,23 @@ function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number;
   const expiresAt = lockedAt + timelockMs;
   const diff = expiresAt - now;
   if (diff <= 0) {
-    return <span className="text-[10px] text-red-400 font-medium">⏰ Refundable now</span>;
+    const explorerHref = chain ? htlcExplorerUrl(chain, lockTxId) : null;
+    return (
+      <span className="text-[10px] text-red-400 font-medium flex items-center gap-1">
+        ⏰ Refundable now
+        {explorerHref && (
+          <a
+            href={explorerHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-red-300 transition-colors"
+            onClick={e => e.stopPropagation()}
+          >
+            View on-chain ↗
+          </a>
+        )}
+      </span>
+    );
   }
   const totalSecs = Math.floor(diff / 1000);
   const h = Math.floor(totalSecs / 3600);
@@ -134,7 +171,10 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
       {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
       {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
         <div className="pt-0.5">
-          <HtlcCountdown lockedAt={htlcLockedAt} />
+          <HtlcCountdown
+            lockedAt={htlcLockedAt}
+            chain={rfq.fromChain}
+          />
         </div>
       )}
 

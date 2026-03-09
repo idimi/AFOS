@@ -264,9 +264,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs
   const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({})
   // rfqId → Unix ms when the HTLC lock was initiated (for countdown timer)
-  const [htlcLockedAt, setHtlcLockedAt] = useState<Record<string, number>>({});
+  // Persisted to localStorage so the countdown survives page reloads
+  const [htlcLockedAt, setHtlcLockedAt] = useState<Record<string, number>>(() => {
+    try {
+      const stored = localStorage.getItem("afos_htlc_locked_at");
+      if (stored) return JSON.parse(stored) as Record<string, number>;
+    } catch { /* ignore */ }
+    return {};
+  });
 
-  // ── Persist claimedRfqIds + refundedRfqIds to localStorage ─────────────────
+  // ── Persist claimedRfqIds + refundedRfqIds + htlcLockedAt to localStorage ───────
   useEffect(() => {
     try { localStorage.setItem("afos_claimed_rfq_ids", JSON.stringify(Array.from(claimedRfqIds))); } catch { /* ignore */ }
   }, [claimedRfqIds]);
@@ -274,6 +281,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try { localStorage.setItem("afos_refunded_rfq_ids", JSON.stringify(Array.from(refundedRfqIds))); } catch { /* ignore */ }
   }, [refundedRfqIds]);
+
+  useEffect(() => {
+    try { localStorage.setItem("afos_htlc_locked_at", JSON.stringify(htlcLockedAt)); } catch { /* ignore */ }
+  }, [htlcLockedAt]);
 
   // ── Seed claimedRfqIds + refundedRfqIds from DB on mount ─────────────────
   useEffect(() => {

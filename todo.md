@@ -2299,3 +2299,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add HtlcCountdownInline component to ChatPage (inline variant for chat bubbles)
 - [x] Track htlcLockedAt in LightPeerContext (set at each HTLC settled step for SOL/ETH/BTC/TNK)
 - [x] Pass htlcLockedAt to RfqCard in NetworkPanel, LightPeerPanel, and MessageBubble in ChatPage
+
+## HTLC UX — Persist Countdown + Explorer Deep-Links
+
+- [x] Persist htlcLockedAt to localStorage in LightPeerContext (same pattern as claimedRfqIds)
+- [x] Add htlcExplorerUrl helpers in NetworkPanel, LightPeerPanel, ChatPage for SOL/ETH/BTC/TNK
+- [x] Update HtlcCountdown + HtlcCountdownInline to accept chain + lockTxId props
+- [x] Show "View on-chain ↗" deep-link in countdown when timer reaches zero (Solscan/Etherscan/Mempool.space/explorer.trac.network)
+- [x] Pass chain prop to all HtlcCountdown call sites in NetworkPanel, LightPeerPanel, and ChatPage

@@ -45,9 +45,33 @@ function timeLeft(ms: number): string {
   return `${Math.floor(diff / 60_000)}m`;
 }
 
-// ─── HTLC Countdown Timer ────────────────────────────────────────────────────
+// ─── HTLC Countdown Timer ─────────────────────────────────────────────────────────────────────────────────────────
 
-function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number; timelockMs?: number }) {
+/** Returns a block-explorer URL for the given chain + txId, or null if unknown. */
+function htlcExplorerUrl(chain: string, txId?: string): string | null {
+  if (!txId) return null;
+  switch (chain.toLowerCase()) {
+    case "solana":       return `https://solscan.io/tx/${txId}`;
+    case "ethereum":     return `https://etherscan.io/tx/${txId}`;
+    case "bitcoin":      return `https://mempool.space/tx/${txId}`;
+    case "trac_network": return `https://explorer.trac.network/tx/${txId}`;
+    default:             return null;
+  }
+}
+
+function HtlcCountdown({
+  lockedAt,
+  timelockMs = 3_600_000,
+  chain,
+  lockTxId,
+}: {
+  lockedAt: number;
+  timelockMs?: number;
+  /** Chain of the locked HTLC — used to build explorer deep-link on expiry */
+  chain?: string;
+  /** Lock tx hash — used to build explorer deep-link on expiry */
+  lockTxId?: string;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -56,7 +80,23 @@ function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number;
   const expiresAt = lockedAt + timelockMs;
   const diff = expiresAt - now;
   if (diff <= 0) {
-    return <span className="text-[10px] text-red-400 font-medium">⏰ Refundable now</span>;
+    const explorerHref = chain ? htlcExplorerUrl(chain, lockTxId) : null;
+    return (
+      <span className="text-[10px] text-red-400 font-medium flex items-center gap-1">
+        ⏰ Refundable now
+        {explorerHref && (
+          <a
+            href={explorerHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:text-red-300 transition-colors"
+            onClick={e => e.stopPropagation()}
+          >
+            View on-chain ↗
+          </a>
+        )}
+      </span>
+    );
   }
   const totalSecs = Math.floor(diff / 1000);
   const h = Math.floor(totalSecs / 3600);
@@ -70,7 +110,7 @@ function HtlcCountdown({ lockedAt, timelockMs = 3_600_000 }: { lockedAt: number;
   return <span className="text-[10px] text-slate-400 font-medium">⏳ Refundable in {label}</span>;
 }
 
-// ─── RFQ Card ─────────────────────────────────────────────────────────────────
+// ─── RFQ Card ─────────────────────────────────────────────────────────────────────────────
 
 function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded, htlcLockedAt }: {
   rfq: IncomingRfq;
@@ -137,7 +177,10 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
       {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
       {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
         <div className="pt-0.5">
-          <HtlcCountdown lockedAt={htlcLockedAt} />
+          <HtlcCountdown
+            lockedAt={htlcLockedAt}
+            chain={rfq.fromChain}
+          />
         </div>
       )}
       {isPending && (
@@ -575,7 +618,7 @@ function SettledHtlcsPanel() {
       case "solana": return `https://solscan.io/tx/${txId}`;
       case "ethereum": return `https://etherscan.io/tx/${txId}`;
       case "bitcoin": return `https://mempool.space/tx/${txId}`;
-      case "trac_network": return null;
+      case "trac_network": return txId ? `https://explorer.trac.network/tx/${txId}` : null;
       default: return null;
     }
   };
