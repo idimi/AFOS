@@ -36,7 +36,7 @@ function timeLeft(ms: number): string {
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -45,6 +45,7 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   isClaimed?: boolean;
   onRefund?: (id: string) => void;
   isRefundable?: boolean;
+  isRefunded?: boolean;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -147,7 +148,7 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         </div>
       )}
       {/* Refund button — shown for Agent A when HTLC has expired */}
-      {isRefundable && onRefund && (
+      {isRefundable && !isRefunded && onRefund && (
         <div className="pt-1">
           <button
             onClick={async () => {
@@ -160,6 +161,13 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
             <AlertCircle className="w-3.5 h-3.5" />
             {refunding ? "Refunding…" : "Refund Locked Funds (Expired)"}
           </button>
+        </div>
+      )}
+      {/* Refunded badge — shown after successful refund */}
+      {isRefunded && (
+        <div className="pt-1 flex items-center gap-1.5 text-amber-400 text-xs font-medium">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Funds refunded successfully
         </div>
       )}
     </motion.div>
@@ -514,6 +522,7 @@ export default function LightPeerPanel() {
                             isClaimed={peer.claimedRfqIds.has(rfq.rfqId)}
                             onRefund={peer.refundHtlcFunds}
                             isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
+                            isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
                           />
                         ))}
                       </AnimatePresence>

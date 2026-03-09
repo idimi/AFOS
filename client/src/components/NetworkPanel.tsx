@@ -47,7 +47,7 @@ function timeLeft(ms: number): string {
 
 // ─── RFQ Card ─────────────────────────────────────────────────────────────────
 
-function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable }: {
+function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRefund, isRefundable, isRefunded }: {
   rfq: IncomingRfq;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
@@ -56,6 +56,7 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
   isClaimed?: boolean;
   onRefund?: (id: string) => void;
   isRefundable?: boolean;
+  isRefunded?: boolean;
 }) {
   const [claiming, setClaiming] = useState(false);
   const [refunding, setRefunding] = useState(false);
@@ -146,7 +147,7 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         </div>
       )}
       {/* Refund button — shown for Agent A when HTLC has expired */}
-      {isRefundable && onRefund && (
+      {isRefundable && !isRefunded && onRefund && (
         <div className="pt-1">
           <button
             onClick={async () => {
@@ -159,6 +160,13 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
             <AlertCircle className="w-3.5 h-3.5" />
             {refunding ? "Refunding…" : "Refund Locked Funds (Expired)"}
           </button>
+        </div>
+      )}
+      {/* Refunded badge — shown after successful refund */}
+      {isRefunded && (
+        <div className="pt-1 flex items-center gap-1.5 text-amber-400 text-xs font-medium">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Funds refunded successfully
         </div>
       )}
     </motion.div>
@@ -427,6 +435,7 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
                     isClaimed={peer.claimedRfqIds.has(rfq.rfqId)}
                     onRefund={peer.refundHtlcFunds}
                     isRefundable={!!peer.refundableHtlcs[rfq.rfqId]}
+                    isRefunded={peer.refundedRfqIds.has(rfq.rfqId)}
                   />
                 ))}
               </AnimatePresence>
@@ -646,6 +655,12 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
   const pendingRfqs = peer.incomingRfqs.filter(r => r.status === "pending" && r.expiresAt > Date.now());
   const onlineCount = livePeers.filter(p => p.online).length;
   const tnkPeerCount = livePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length;
+  // Count settled HTLCs for the History tab badge — uses the same query as SettledHtlcsPanel
+  const { data: settledForBadge } = trpc.chat.getSettledHtlcs.useQuery({ limit: 200 }, {
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+  const settledCount = settledForBadge?.length ?? 0;
 
   return (
     <>
@@ -703,9 +718,15 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
                   activeTab === tab
                     ? "border-cyan-400 text-cyan-400"
                     : "border-transparent text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                {tab === "mynode" ? "My Node" : tab === "livepeers" ? "Live Peers" : "History"}
+                }`}>
+                <span className="flex items-center gap-1.5">
+                  {tab === "mynode" ? "My Node" : tab === "livepeers" ? "Live Peers" : "History"}
+                  {tab === "history" && settledCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                      {settledCount > 99 ? "99+" : settledCount}
+                    </span>
+                  )}
+                </span>
               </button>
             ))}
           </div>

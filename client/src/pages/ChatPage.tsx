@@ -435,6 +435,7 @@ function MessageBubble({
   claimedRfqIds,
   onRefundHtlc,
   refundableHtlcs,
+  refundedRfqIds,
   tnkPeerCount,
 }: {
   msg: ChatMessage;
@@ -449,6 +450,7 @@ function MessageBubble({
   claimedRfqIds?: Set<string>;
   onRefundHtlc?: (rfqId: string) => void;
   refundableHtlcs?: Record<string, { fromChain: string; toChain: string; expiresAt: number }>;
+  refundedRfqIds?: Set<string>;
   tnkPeerCount?: number;
 }) {
   const isUser = msg.role === "user";
@@ -604,8 +606,8 @@ function MessageBubble({
                 ✅ Funds claimed successfully
               </div>
             )}
-            {/* Refund button — shown for Agent A when HTLC has expired */}
-            {refundableHtlcs?.[msg.incomingRfqData.rfqId] && onRefundHtlc && (
+            {/* Refund button — shown for Agent A when HTLC has expired and not yet refunded */}
+            {refundableHtlcs?.[msg.incomingRfqData.rfqId] && !refundedRfqIds?.has(msg.incomingRfqData.rfqId) && onRefundHtlc && (
               <button
                 onClick={() => onRefundHtlc(msg.incomingRfqData!.rfqId)}
                 className="w-full py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
@@ -613,6 +615,12 @@ function MessageBubble({
               >
                 ⚠️ Refund Locked Funds (Expired)
               </button>
+            )}
+            {/* Refunded badge — shown after successful refund */}
+            {refundedRfqIds?.has(msg.incomingRfqData.rfqId) && (
+              <div className="flex items-center gap-1.5 text-amber-400 text-xs font-medium py-1">
+                ↩ Funds refunded successfully
+              </div>
             )}
           </div>
         )}
@@ -1295,6 +1303,7 @@ export default function ChatPage() {
               claimedRfqIds={lightPeer.claimedRfqIds}
               onRefundHtlc={lightPeer.refundHtlcFunds}
               refundableHtlcs={lightPeer.refundableHtlcs}
+              refundedRfqIds={lightPeer.refundedRfqIds}
             />
           ) : null
         ))}

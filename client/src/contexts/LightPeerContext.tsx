@@ -127,6 +127,8 @@ export interface LightPeerState {
   htlcRevealedSecrets: Record<string, string>;
   /** Set of rfqIds that have been successfully claimed (Claim button hidden) */
   claimedRfqIds: Set<string>;
+  /** Set of rfqIds where refund has been successfully executed (Refund button replaced with badge) */
+  refundedRfqIds: Set<string>;
   /**
    * Claim HTLC funds as Agent B using the revealed secret.
    * Builds and broadcasts the on-chain claim transaction for the given chain.
@@ -237,9 +239,54 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // rfqId → revealed secretHex (received from Agent A after they confirm their lock)
   const [htlcRevealedSecrets, setHtlcRevealedSecrets] = useState<Record<string, string>>({});
   // rfqIds that have been successfully claimed (Claim button hidden after success)
-  const [claimedRfqIds, setClaimedRfqIds] = useState<Set<string>>(new Set());
+  // Seeded from localStorage on mount, then synced with DB via getSettledHtlcs
+  const [claimedRfqIds, setClaimedRfqIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("afos_claimed_rfq_ids");
+      if (stored) return new Set(JSON.parse(stored) as string[]);
+    } catch { /* ignore */ }
+    return new Set();
+  });
+  // rfqIds that have been successfully refunded (Refund button replaced with badge)
+  const [refundedRfqIds, setRefundedRfqIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("afos_refunded_rfq_ids");
+      if (stored) return new Set(JSON.parse(stored) as string[]);
+    } catch { /* ignore */ }
+    return new Set();
+  });
   // rfqId → { fromChain, toChain, expiresAt } for Agent A's expired outgoing HTLCs
   const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({});
+
+  // ── Persist claimedRfqIds + refundedRfqIds to localStorage ─────────────────
+  useEffect(() => {
+    try { localStorage.setItem("afos_claimed_rfq_ids", JSON.stringify(Array.from(claimedRfqIds))); } catch { /* ignore */ }
+  }, [claimedRfqIds]);
+
+  useEffect(() => {
+    try { localStorage.setItem("afos_refunded_rfq_ids", JSON.stringify(Array.from(refundedRfqIds))); } catch { /* ignore */ }
+  }, [refundedRfqIds]);
+
+  // ── Seed claimedRfqIds + refundedRfqIds from DB on mount ─────────────────
+  useEffect(() => {
+    void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A200%7D%7D%7D", {
+      credentials: "include",
+    })
+      .then(r => r.json())
+      .then((data: unknown) => {
+        const rows = (data as { result?: { data?: { json?: Array<{ rfqId: string; status: string }> } } }[])?.[0]?.result?.data?.json;
+        if (!Array.isArray(rows)) return;
+        const claimed = new Set<string>();
+        const refunded = new Set<string>();
+        for (const row of rows) {
+          if (row.status === "completed") claimed.add(row.rfqId);
+          if (row.status === "refunded") refunded.add(row.rfqId);
+        }
+        if (claimed.size > 0) setClaimedRfqIds(prev => new Set([...Array.from(prev), ...Array.from(claimed)]));
+        if (refunded.size > 0) setRefundedRfqIds(prev => new Set([...Array.from(prev), ...Array.from(refunded)]));
+      })
+      .catch(() => { /* DB not available yet — localStorage values remain */ });
+  }, []);
 
   // ── Signaling state ───────────────────────────────────────────────────────
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
@@ -1429,6 +1476,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "refunded", revealTxId: txHash } } }),
           }).catch(() => {});
+          setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
           setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
         } else {
           toast.info("ETH HTLC expired", {
@@ -1448,6 +1496,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
         }).catch(() => {});
+        setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
         setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
       } else if ((refundChain === "trac_network" || refundChain === "tnk") && (window as any).tracnetwork) {
         const tap = (window as any).tracnetwork;
@@ -1463,6 +1512,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
         }).catch(() => {});
+        setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
         setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
       } else {
         toast.info("Refund info", {
@@ -1513,6 +1563,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       broadcastRfq: broadcastRfqFn,
       htlcRevealedSecrets,
       claimedRfqIds,
+      refundedRfqIds,
       claimHtlcFunds,
       refundableHtlcs,
       refundHtlcFunds,

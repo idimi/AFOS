@@ -2279,3 +2279,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show Refund button in ChatPage for Agent A's expired HTLCs
 - [x] Add tRPC query `chat.getSettledHtlcs` to fetch completed/expired/refunded htlc_secrets rows
 - [x] Add Settled HTLCs history section to NetworkPanel (History tab) with tx links and chain badges
+
+## HTLC UX Polish — Persist State + Refund Badge + History Count
+
+- [x] Persist claimedRfqIds to localStorage and seed from chat.getSettledHtlcs on mount
+- [x] Add refundedRfqIds to localStorage and seed from DB on mount
+- [x] Add refund status feedback: updateHtlcStatus after refundHtlcFunds, show amber badge in all 3 panels
+- [x] Add History tab count badge to NetworkPanel tab bar (cyan pill, capped at 99+)
