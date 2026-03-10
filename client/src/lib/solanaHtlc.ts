@@ -1,17 +1,19 @@
 /**
- * solanaHtlc.ts — Solana HTLC PDA Lock Transaction Builder
+ * solanaHtlc.ts — Solana HTLC Lock Transaction Builder
  *
- * Builds a Solana transaction that locks SOL (or SPL tokens) in a
- * Program-Derived Account (PDA) using a hashlock + timelock pattern.
+ * Builds a Solana transaction that locks SOL into an HTLC escrow.
  *
- * Architecture:
- *   - If VITE_SOL_HTLC_PROGRAM_ID is set: sends a real instruction to the
- *     deployed HTLC Anchor program (lock instruction with secretHash + timelock).
- *   - Otherwise: falls back to a SystemProgram.transfer to a PDA-derived
- *     escrow address (deterministic, verifiable on-chain, but no program logic).
+ * Architecture (priority order):
+ *   1. If VITE_SOL_HTLC_PROGRAM_ID is set: sends a real instruction to the
+ *      deployed HTLC Anchor program (lock instruction with secretHash + timelock).
+ *   2. If an escrowAddress is provided (agent escrow wallet from SOL_HTLC_KEY):
+ *      builds a SystemProgram.transfer to the agent's escrow wallet.
+ *      The server monitors the deposit and handles claim/refund using SOL_HTLC_KEY.
+ *   3. Fallback: derives a PDA from the secretHash (demo/testnet only).
  *
- * The PDA seed is: ["htlc", secretHash, senderPubkey] so each HTLC has a
- * unique, deterministic escrow address that can be verified by both parties.
+ * The agent escrow model (option 2) is the recommended production path when
+ * no custom Anchor program is deployed. The server records the HTLC in the
+ * htlc_swaps table and the HTLC monitor handles refunds on expiry.
  */
 
 import {
@@ -38,12 +40,16 @@ export interface SolanaHtlcLockParams {
   timelock: number;
   /** Solana connection for fetching recent blockhash */
   connection: Connection;
+  /** Optional: agent escrow wallet address (from SOL_HTLC_KEY).
+   *  When provided and no Anchor program is deployed, funds are sent here
+   *  instead of a PDA. The server manages claim/refund. */
+  escrowAddress?: string;
 }
 
 export interface SolanaHtlcLockResult {
   /** The built transaction (unsigned) */
   transaction: Transaction;
-  /** The PDA escrow address where funds will be locked */
+  /** The escrow address where funds will be locked */
   escrowAddress: string;
   /** The secret hash used (hex) */
   secretHash: string;
@@ -57,7 +63,6 @@ export interface SolanaHtlcLockResult {
 const HTLC_PROGRAM_ID_STR = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
 
 /** Anchor instruction discriminator for "lock" (first 8 bytes of sha256("global:lock")) */
-// keccak256/sha256("global:lock") first 8 bytes — standard Anchor discriminator
 const LOCK_DISCRIMINATOR = Buffer.from([0xf7, 0x23, 0x4c, 0x5e, 0x8a, 0x1b, 0x3d, 0x9f]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -88,8 +93,10 @@ function encodeU64LE(value: number): Uint8Array {
 /**
  * Build a Solana HTLC lock transaction.
  *
- * If VITE_SOL_HTLC_PROGRAM_ID is set, builds a real Anchor program instruction.
- * Otherwise, builds a SystemProgram.transfer to a PDA-derived escrow address.
+ * Priority:
+ *   1. Anchor program (if VITE_SOL_HTLC_PROGRAM_ID is set)
+ *   2. Agent escrow wallet (if escrowAddress is provided)
+ *   3. PDA fallback (demo only)
  *
  * The returned transaction must be signed by the sender before submission.
  */
@@ -103,41 +110,34 @@ export async function buildSolanaHtlcLockTx(
     secretHash,
     timelock,
     connection,
+    escrowAddress: agentEscrowAddress,
   } = params;
 
   const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
   const secretHashBytes = hexToBytes(secretHash);
 
-  // ── Derive PDA escrow address ──────────────────────────────────────────────
-  // Seeds: ["htlc", secretHash (32 bytes), sender pubkey (32 bytes)]
-  // This gives a unique, deterministic address for each HTLC
-  const htlcProgramId = HTLC_PROGRAM_ID_STR
-    ? new PublicKey(HTLC_PROGRAM_ID_STR)
-    : SystemProgram.programId;
-
-  const [escrowPda] = await PublicKey.findProgramAddress(
-    [
-      Buffer.from("htlc"),
-      Buffer.from(secretHashBytes),
-      senderPubkey.toBuffer(),
-    ],
-    htlcProgramId
-  );
-
   // ── Fetch recent blockhash ─────────────────────────────────────────────────
   const { blockhash, lastValidBlockHeight } =
     await connection.getLatestBlockhash("confirmed");
+  void lastValidBlockHeight;
 
   const tx = new Transaction();
   tx.recentBlockhash = blockhash;
   tx.feePayer = senderPubkey;
-  // lastValidBlockHeight is informational — not a Transaction field in web3.js v1
-  void lastValidBlockHeight;
 
   if (HTLC_PROGRAM_ID_STR) {
-    // ── Real Anchor program instruction ─────────────────────────────────────
-    // Instruction layout (Anchor borsh encoding):
-    //   [8 bytes discriminator][32 bytes secretHash][8 bytes timelock u64 LE][8 bytes lamports u64 LE]
+    // ── Path 1: Real Anchor program instruction ─────────────────────────────
+    const htlcProgramId = new PublicKey(HTLC_PROGRAM_ID_STR);
+
+    const [escrowPda] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("htlc"),
+        Buffer.from(secretHashBytes),
+        senderPubkey.toBuffer(),
+      ],
+      htlcProgramId
+    );
+
     const timelockBytes = encodeU64LE(timelock);
     const lamportsBytes = encodeU64LE(lamports);
 
@@ -160,15 +160,57 @@ export async function buildSolanaHtlcLockTx(
     });
 
     tx.add(lockIx);
+
+    return {
+      transaction: tx,
+      escrowAddress: escrowPda.toBase58(),
+      secretHash,
+      timelock,
+    };
+  } else if (agentEscrowAddress) {
+    // ── Path 2: Agent escrow wallet (recommended production path) ────────────
+    // Transfer SOL to the agent's HTLC escrow wallet (derived from SOL_HTLC_KEY).
+    // The server records the HTLC in htlc_swaps and manages claim/refund.
+    const escrowPubkey = new PublicKey(agentEscrowAddress);
+
+    // Add a memo instruction with HTLC metadata so the server can identify the deposit
+    // Format: "htlc:<secretHash>:<timelock>:<recipientPubkey>"
+    const memoData = `htlc:${secretHash}:${timelock}:${recipientPubkey.toBase58()}`;
+    const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+    const memoIx = new TransactionInstruction({
+      programId: MEMO_PROGRAM_ID,
+      keys: [{ pubkey: senderPubkey, isSigner: true, isWritable: false }],
+      data: Buffer.from(memoData, "utf-8"),
+    });
+
+    tx.add(memoIx);
+    tx.add(
+      SystemProgram.transfer({
+        fromPubkey: senderPubkey,
+        toPubkey:   escrowPubkey,
+        lamports,
+      })
+    );
+
+    return {
+      transaction: tx,
+      escrowAddress: agentEscrowAddress,
+      secretHash,
+      timelock,
+    };
   } else {
-    // ── Fallback: SystemProgram.transfer to PDA-derived escrow ───────────────
-    // No deployed program — transfer SOL to the deterministic PDA address.
-    // The PDA is derived from the secretHash so the counterparty can verify
-    // the escrow address before revealing the secret.
-    //
-    // NOTE: Without a program, refund requires the sender to sign a transfer
-    // back from the PDA (which is not possible without a program). This is
-    // a demo/testnet fallback — deploy the Anchor program for production.
+    // ── Path 3: PDA fallback (demo/testnet only) ────────────────────────────
+    // Derive a PDA from SystemProgram.programId — this is a demo path only.
+    // The PDA cannot be refunded without a deployed program.
+    const [escrowPda] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from("htlc"),
+        Buffer.from(secretHashBytes),
+        senderPubkey.toBuffer(),
+      ],
+      SystemProgram.programId
+    );
+
     tx.add(
       SystemProgram.transfer({
         fromPubkey: senderPubkey,
@@ -176,14 +218,14 @@ export async function buildSolanaHtlcLockTx(
         lamports,
       })
     );
-  }
 
-  return {
-    transaction: tx,
-    escrowAddress: escrowPda.toBase58(),
-    secretHash,
-    timelock,
-  };
+    return {
+      transaction: tx,
+      escrowAddress: escrowPda.toBase58(),
+      secretHash,
+      timelock,
+    };
+  }
 }
 
 /**
@@ -230,11 +272,9 @@ export interface SolanaHtlcRefundResult {
  * If VITE_SOL_HTLC_PROGRAM_ID is set, builds a real Anchor program "refund"
  * instruction that verifies the timelock has expired and returns funds to sender.
  *
- * Without a deployed program, builds a SystemProgram.transfer from the PDA back
- * to the sender. Note: this only works if the PDA has no program authority
- * (i.e. the fallback escrow path). For production, deploy the Anchor program.
- *
- * The returned transaction must be signed by the sender before submission.
+ * Without a deployed program, the server handles refunds automatically via
+ * the HTLC monitor (using SOL_HTLC_KEY to sign the refund transaction).
+ * This function is only needed for the Anchor program path.
  */
 export async function buildSolanaHtlcRefundTx(
   params: SolanaHtlcRefundParams
@@ -268,7 +308,6 @@ export async function buildSolanaHtlcRefundTx(
 
   if (HTLC_PROGRAM_ID_STR) {
     // ── Real Anchor program "refund" instruction ─────────────────────────────
-    // Anchor discriminator for "refund": first 8 bytes of sha256("global:refund")
     const REFUND_DISCRIMINATOR = Buffer.from([0xa3, 0x1c, 0x7e, 0x4f, 0x2b, 0x8d, 0x5a, 0x06]);
 
     const data = Buffer.concat([
@@ -288,9 +327,10 @@ export async function buildSolanaHtlcRefundTx(
 
     tx.add(refundIx);
   } else {
-    // ── Fallback: transfer from PDA back to sender ───────────────────────────
-    // This works only for the no-program fallback path where the PDA has no
-    // program authority. In production, use the Anchor program refund instruction.
+    // ── Agent escrow model: refund is handled server-side ────────────────────
+    // The HTLC monitor detects expired HTLCs and uses SOL_HTLC_KEY to send
+    // funds back to the original sender. No client-side refund tx needed.
+    // This transaction is a no-op placeholder for the UI flow.
     tx.add(
       SystemProgram.transfer({
         fromPubkey: escrowPda,

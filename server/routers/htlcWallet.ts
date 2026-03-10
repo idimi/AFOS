@@ -460,6 +460,95 @@ async function getSolHtlcWalletLegacy() {
 
 export const htlcWalletRouter = router({
   /**
+   * Returns the HTLC escrow wallet address for a given chain.
+   * Used by the frontend to know where to send funds during HTLC lock.
+   * Does NOT expose private keys — only the derived public address.
+   */
+  getEscrowAddress: publicProcedure
+    .input(z.object({ chain: z.enum(["solana", "ethereum", "bitcoin", "trac_network"]) }))
+    .query(async ({ input }) => {
+      const { chain } = input;
+      try {
+        if (chain === "solana") {
+          const rawKey = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY;
+          if (!rawKey) return { address: null, configured: false };
+          let keypair: import("@solana/web3.js").Keypair;
+          if (rawKey.startsWith("[")) {
+            keypair = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(rawKey) as number[]));
+          } else {
+            keypair = Keypair.fromSecretKey(bs58.decode(rawKey));
+          }
+          return { address: keypair.publicKey.toBase58(), configured: true };
+        } else if (chain === "ethereum") {
+          let rawKey = process.env.ETH_HTLC_KEY ?? process.env.ETH_AGENT_KEY ?? "";
+          if (!rawKey) return { address: null, configured: false };
+          if (!rawKey.startsWith("0x")) rawKey = "0x" + rawKey;
+          const wallet = new ethers.Wallet(rawKey);
+          return { address: wallet.address, configured: true };
+        } else if (chain === "bitcoin") {
+          const wif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
+          if (!wif) return { address: null, configured: false };
+          const keyPair = ECPair.fromWIF(wif, bitcoin.networks.bitcoin);
+          const { address } = bitcoin.payments.p2wpkh({
+            pubkey: Buffer.from(keyPair.publicKey),
+            network: bitcoin.networks.bitcoin,
+          });
+          return { address: address ?? null, configured: true };
+        } else if (chain === "trac_network") {
+          const address = process.env.TNK_ESCROW_ADDRESS ?? null;
+          return { address, configured: !!address };
+        }
+        return { address: null, configured: false };
+      } catch {
+        return { address: null, configured: false };
+      }
+    }),
+
+  /**
+   * Records an HTLC deposit after the user has sent funds to the escrow wallet.
+   * Called by the frontend after a successful lock transaction.
+   */
+  recordHtlcDeposit: publicProcedure
+    .input(z.object({
+      chain: z.enum(["solana", "ethereum", "bitcoin", "trac_network"]),
+      txHash: z.string(),
+      senderAddress: z.string(),
+      recipientAddress: z.string(),
+      escrowAddress: z.string(),
+      amountRaw: z.string(),
+      token: z.string(),
+      secretHash: z.string(),
+      timelock: z.number(),
+      rfqId: z.string().optional(),
+      peerId: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const db = await getDb();
+        if (!db) return { success: false, error: "Database not available" };
+        await db.insert(htlcSwaps).values({
+          chain: input.chain as SupportedChain,
+          lockTxId: input.txHash,
+          senderAddress: input.senderAddress,
+          htlcAddress: input.escrowAddress,
+          amountRaw: input.amountRaw,
+          amountHuman: input.amountRaw,
+          toToken: input.token,
+          secretHash: input.secretHash,
+          locktime: input.timelock,
+          status: "pending",
+          rfqId: input.rfqId ?? null,
+          peerId: input.peerId ?? null,
+        });
+        console.log(`[HTLC] Recorded deposit: ${input.chain} ${input.amountRaw} ${input.token} tx=${input.txHash}`);
+        return { success: true };
+      } catch (err) {
+        console.error("[HTLC] Failed to record deposit:", err);
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }),
+
+  /**
    * Returns recent HTLC transactions from the database with optional chain filter.
    */
   getHtlcHistory: publicProcedure

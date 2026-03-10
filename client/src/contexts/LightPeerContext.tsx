@@ -1027,6 +1027,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             recipientPubkey = senderPubkeyObj;
           }
 
+          // Fetch the agent's HTLC escrow wallet address from the server
+          let agentEscrowAddr: string | undefined;
+          try {
+            const escrowResult = await fetch("/api/trpc/htlcWallet.getEscrowAddress?input=" + encodeURIComponent(JSON.stringify({ chain: "solana" })))
+              .then(r => r.json());
+            const addr = escrowResult?.result?.data?.address;
+            if (addr) agentEscrowAddr = addr;
+          } catch { /* fallback to PDA if server unreachable */ }
+
           // Build the HTLC lock transaction
           const { transaction, escrowAddress } = await buildSolanaHtlcLockTx({
             senderPubkey:    senderPubkeyObj,
@@ -1035,6 +1044,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             secretHash:      secretHashHex,
             timelock,
             connection:      solConnection,
+            escrowAddress:   agentEscrowAddr,
           });
 
           let txHash: string;
@@ -1065,8 +1075,29 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", rfq.amount);
           }
+          // Record the HTLC deposit in the database for server-side monitoring
+          try {
+            await fetch("/api/trpc/htlcWallet.recordHtlcDeposit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                chain: "solana",
+                txHash,
+                senderAddress: senderPubkeyStr,
+                recipientAddress: recipientPubkey.toBase58(),
+                escrowAddress,
+                amountRaw: String(rfq.amount ?? 0),
+                token: rfq.fromToken ?? "SOL",
+                secretHash: secretHashHex,
+                timelock,
+                rfqId,
+                peerId: rfq.requestorPeer ?? undefined,
+              }),
+            });
+          } catch { /* non-critical — server will detect deposit via monitor */ }
+
           toast.success("Solana HTLC locked", {
-            description: `Tx: ${txHash.slice(0, 20)}… · ${rfq.amount} SOL locked in PDA escrow (${escrowAddress.slice(0, 8)}…)`,
+            description: `Tx: ${txHash.slice(0, 20)}… · ${rfq.amount} SOL locked in escrow (${escrowAddress.slice(0, 8)}…)`,
             action: {
               label: "View on Solscan",
               onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank"),
@@ -1081,12 +1112,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             toast.error("Solana HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
-      } else if ((chain === "ethereum" || chain === "eth") && ethereum?.connected) {
+      } else if ((chain === "ethereum" || chain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
         // Ethereum HTLC: ABI-encoded lockETH() / lockToken() via HTLC.sol
+        // Accepts: MetaMask, Coinbase Wallet, Phantom multi-chain ethereum, or any EIP-1193 provider
         setHtlcSigning({ rfqId, step: "locking" });
-        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
+        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum
+          ?? (window as any).phantom?.ethereum;
         try {
-          if (!rawEth) throw new Error("No Ethereum provider found");
+          if (!rawEth) throw new Error("No Ethereum provider found. Please connect MetaMask or Phantom.");
 
           // ── Build ABI-encoded lockETH() calldata ─────────────────────────
           // HTLC contract address (set after deploying HTLC.sol to Sepolia/mainnet)
@@ -1105,9 +1138,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Timelock: 1 hour from now (Unix timestamp in seconds)
           const timelock = Math.floor(Date.now() / 1000) + 3600;
 
+          // Resolve sender address: prefer context, fallback to Phantom multi-chain, then request from provider
+          const senderEthAddr = ethereum?.address ?? phantomMultiChain?.ethereumAddress
+            ?? (await rawEth.request({ method: "eth_accounts" }) as string[])?.[0];
+          if (!senderEthAddr) throw new Error("No Ethereum address available. Please reconnect your wallet.");
+
           // Counterparty address: use peer address from RFQ if available
           const recipient = (rfq as unknown as { counterpartyAddress?: string }).counterpartyAddress
-            ?? ethereum.address;
+            ?? senderEthAddr;
 
           // Amount in wei (rfq.amount is in ETH)
           const amountWei = BigInt(Math.floor((rfq.amount ?? 0) * 1e18));
@@ -1121,7 +1159,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             + padLeft(timelock.toString(16), 32);
 
           // Use real HTLC contract if deployed, otherwise send a marker tx for demo
-          const txTo   = htlcContractAddress ?? ethereum.address;
+          const txTo   = htlcContractAddress ?? senderEthAddr;
           const txData = htlcContractAddress ? calldata : `0x48544c43${rfqId.replace(/-/g, "").slice(0, 32)}`;
           const txValue = htlcContractAddress ? "0x" + amountWei.toString(16) : "0x0";
           const txGas   = htlcContractAddress ? "0x186A0" : "0x5208";
@@ -1129,7 +1167,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const txHash = await rawEth.request({
             method: "eth_sendTransaction",
             params: [{
-              from:  ethereum.address,
+              from:  senderEthAddr,
               to:    txTo,
               value: txValue,
               data:  txData,
@@ -1157,7 +1195,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             toast.error("ETH HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
-      } else if ((chain === "bitcoin" || chain === "btc") && bitcoin?.connected) {
+      } else if ((chain === "bitcoin" || chain === "btc") && (bitcoin?.connected || phantomMultiChain?.bitcoinAddress || !!(window as any).tapprotocol)) {
         // Bitcoin HTLC: build P2WSH PSBT, sign with detected wallet, broadcast via mempool.space
         setHtlcSigning({ rfqId, step: "locking" });
         try {
@@ -1172,14 +1210,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const counterpartyPubKey = rfq.requestorPeer
             ? `02${rfq.requestorPeer.replace(/[^0-9a-f]/gi, "").slice(0, 62).padEnd(62, "0")}`
             : "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"; // fallback: secp256k1 generator
+          // Resolve BTC address: prefer context, fallback to Phantom multi-chain
+          const btcAddr = bitcoin?.address ?? phantomMultiChain?.bitcoinAddress ?? "";
+          if (!btcAddr) throw new Error("No Bitcoin address available. Please reconnect your wallet.");
           // Sender pubkey: derive from connected address (placeholder — real impl uses wallet's getPublicKey)
-          const senderPubKey = bitcoin.address
-            ? `03${bitcoin.address.replace(/[^0-9a-f]/gi, "").slice(0, 62).padEnd(62, "0")}`
+          const senderPubKey = btcAddr
+            ? `03${btcAddr.replace(/[^0-9a-f]/gi, "").slice(0, 62).padEnd(62, "0")}`
             : "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
           // Pass Agent A's secretHashHex so both sides lock to the same hash (atomicity)
           const btcExistingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
           const result = await executeBtcHtlcLock(
-            bitcoin.address,
+            btcAddr,
             counterpartyPubKey,
             senderPubKey,
             amountSats,
@@ -1275,7 +1316,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
       return prev;
     });
-  }, [incomingRfqs, submitQuote, solConnected, signTransaction, phantomSolAddress, ethereum]);
+  }, [incomingRfqs, submitQuote, solConnected, signTransaction, phantomSolAddress, ethereum, bitcoin, phantomMultiChain]);
 
   // ── Initiate HTLC Lock (Agent A / Requester side) ──────────────────────────
   // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
@@ -1411,10 +1452,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Mark as claimed in UI even in demo mode
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         }
-      } else if ((claimChain === "ethereum" || claimChain === "eth") && ethereum?.connected) {
+      } else if ((claimChain === "ethereum" || claimChain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
         // Ethereum claim: call withdraw(bytes32 secret) on the HTLC contract
-        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
-        if (!rawEth) throw new Error("No Ethereum provider found");
+        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum
+          ?? (window as any).phantom?.ethereum;
+        if (!rawEth) throw new Error("No Ethereum provider found. Please connect MetaMask or Phantom.");
+        const claimEthAddr = ethereum?.address ?? phantomMultiChain?.ethereumAddress
+          ?? (await rawEth.request({ method: "eth_accounts" }) as string[])?.[0];
+        if (!claimEthAddr) throw new Error("No Ethereum address available.");
         const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
         if (htlcContractAddress) {
           // ABI-encode withdraw(bytes32 secret)
@@ -1423,7 +1468,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const calldata = "0x441a3e70" + padLeft(secretHex, 32);
           const txHash = await rawEth.request({
             method: "eth_sendTransaction",
-            params: [{ from: ethereum.address, to: htlcContractAddress, data: calldata, gas: "0x186A0" }],
+            params: [{ from: claimEthAddr, to: htlcContractAddress, data: calldata, gas: "0x186A0" }],
           });
           toast.success("ETH HTLC claimed!", {
             id: `claim-${rfqId}`,
@@ -1448,7 +1493,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         }
-      } else if ((claimChain === "bitcoin" || claimChain === "btc") && bitcoin?.connected) {
+      } else if ((claimChain === "bitcoin" || claimChain === "btc") && (bitcoin?.connected || phantomMultiChain?.bitcoinAddress || !!(window as any).tapprotocol)) {
         // Bitcoin claim: the secret is needed to spend the P2WSH HTLC output
         // In production: build a claim PSBT using the secret as the witness preimage
         // For now: copy the secret and show instructions (full PSBT claim requires UTXO data)
@@ -1500,7 +1545,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error("Claim failed", { id: `claim-${rfqId}`, description: msg.slice(0, 100) });
     }
-  }, [htlcRevealedSecrets, incomingRfqs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin]);
+  }, [htlcRevealedSecrets, incomingRfqs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain]);
 
   // ── Reject RFQ ────────────────────────────────────────────────────────────
   const rejectRfq = useCallback((rfqId: string) => {
@@ -1567,16 +1612,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             duration: 15000,
           });
         }
-      } else if ((refundChain === "ethereum" || refundChain === "eth") && ethereum?.connected) {
-        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum;
-        if (!rawEth) throw new Error("No Ethereum provider found");
+      } else if ((refundChain === "ethereum" || refundChain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
+        const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum
+          ?? (window as any).phantom?.ethereum;
+        if (!rawEth) throw new Error("No Ethereum provider found. Please connect MetaMask or Phantom.");
+        const refundEthAddr = ethereum?.address ?? phantomMultiChain?.ethereumAddress
+          ?? (await rawEth.request({ method: "eth_accounts" }) as string[])?.[0];
+        if (!refundEthAddr) throw new Error("No Ethereum address available.");
         const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
         if (htlcContractAddress) {
           // ABI-encode refund() — no args, timelock must have expired on-chain
           // Function selector: keccak256("refund()") = 0x590e1ae3
           const txHash = await rawEth.request({
             method: "eth_sendTransaction",
-            params: [{ from: ethereum.address, to: htlcContractAddress, data: "0x590e1ae3", gas: "0x186A0" }],
+            params: [{ from: refundEthAddr, to: htlcContractAddress, data: "0x590e1ae3", gas: "0x186A0" }],
           });
           toast.success("ETH HTLC refunded!", {
             id: `refund-${rfqId}`,
@@ -1599,7 +1648,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             duration: 15000,
           });
         }
-      } else if ((refundChain === "bitcoin" || refundChain === "btc") && bitcoin?.connected) {
+      } else if ((refundChain === "bitcoin" || refundChain === "btc") && (bitcoin?.connected || phantomMultiChain?.bitcoinAddress || !!(window as any).tapprotocol)) {
         // BTC refund: build a refund PSBT spending the HTLC P2WSH output via the timelock path
         toast.info("BTC HTLC Refund", {
           id: `refund-${rfqId}`,
@@ -1647,7 +1696,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error("Refund failed", { id: `refund-${rfqId}`, description: msg.slice(0, 100) });
     }
-  }, [refundableHtlcs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin]);
+  }, [refundableHtlcs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain]);
 
   // ── Signaling message helpers ────────────────────────────────────────────
   const sendPeerMessage = useCallback((targetPeerId: string, payload: unknown) => {

@@ -2368,3 +2368,26 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] After "P2P peer matched" agent message, no Phantom wallet popup — fixed: initiateHtlcLock → acceptRfq now uses Phantom multi-chain fallback
 - [x] Full flow investigated: RFQ broadcast → agent_rfq delivery → acceptRfq → HTLC lock signing → all now work with Phantom multi-chain
 - [x] Also fixed Jupiter swap path in ChatPage.tsx to use Phantom multi-chain fallback for sendTransaction
+
+## Tap Wallet (BTC) & MetaMask (ETH) Signing Fallbacks
+
+- [ ] Audit BTC HTLC signing paths (lock/claim/refund) for Tap Wallet and Xverse support
+- [ ] Audit ETH HTLC signing paths (lock/claim/refund) for MetaMask support
+- [ ] Add proper signing fallbacks for BTC wallets (Tap Wallet / Xverse)
+- [ ] Add proper signing fallbacks for ETH wallets (MetaMask / window.ethereum)
+
+## HTLC Anchor Program — Real On-Chain Escrow
+
+- [ ] Build Solana HTLC Anchor program (lock, claim, refund instructions)
+- [ ] Deploy HTLC program to Solana mainnet
+- [ ] Update solanaHtlc.ts to use the deployed program ID instead of SystemProgram fallback
+- [ ] Update buildSolanaHtlcLockTx to create proper escrow PDA with hashlock + timelock
+- [ ] Update claimHtlc to call the program's claim instruction with secret
+- [ ] Update refundHtlc to call the program's refund instruction after timelock expires
+
+## Swap Status Notifications
+
+- [ ] Toast notification when a peer accepts your RFQ
+- [ ] Toast notification when a peer locks their side of the HTLC
+- [ ] Push notification (notifyOwner) for swap status changes
+- [ ] Agent chat notification when swap events occur (match, lock, claim, refund)
