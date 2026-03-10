@@ -2422,3 +2422,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix "Connect Wallet to Swap" bug in full chat page QuoteCard — was using Solana-only useWallet hook; now accepts walletConnected prop from multi-chain context
 - [x] Pass anyWalletConnected to MessageBubble and QuoteCard so all chain wallets are recognized
 - [x] Server result.content now says "P2P peer available — click Confirm Swap to proceed" instead of "Swap request sent"
+
+## Bug Fix: HTLC P2P Swap Flow — Atomicity & Secret Auth
+
+- [x] Bug #1 (Critical — breaks atomicity): Add secretHashHex + requesterWallet to IncomingRfq interface so Agent B locks to the same hash as Agent A
+- [x] Bug #1b: Remove all `(rfq as unknown as { secretHashHex? })` casts in SOL/ETH/BTC/TNK HTLC paths — use typed field directly
+- [x] Bug #2 (Critical — secret auth fails): revealHtlcSecret was called with peerId instead of wallet address as requesterAddress — fixed to use solPubkey/phantomSolAddress
+- [x] Bug #3 (Medium — Agent A locks wrong chain): initiateHtlcLock now passes secretHashHex from buildSwapTx result so Agent A and Agent B share the same hash
+- [x] Bug #4 (Medium — auto-accept skips HTLC): auto-accept path now calls acceptRfq() instead of submitQuote() so HTLC lock is triggered
+- [x] Fix feeModel.test.ts: update string-match test to match actual inline fee computation
+- [x] All 256 tests pass, 0 TypeScript errors

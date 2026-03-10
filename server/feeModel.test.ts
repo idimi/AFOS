@@ -82,13 +82,15 @@ describe("ChatMessage quoteData", () => {
     expect(quoteDataBlock).toContain("feeToken: string;");
   });
 
-  it("should pass fee fields from quoteResult to quoteData in sendMessage return", async () => {
+  it("should pass fee fields to quoteData in sendMessage return", async () => {
     const fs = await import("fs");
     const src = fs.readFileSync("server/routers/chat.ts", "utf-8");
-    expect(src).toContain("netToAmount:    quoteResult.netToAmount,");
-    expect(src).toContain("platformFeeOut: quoteResult.platformFeeOut,");
-    expect(src).toContain("feeBps:         quoteResult.feeBps,");
-    expect(src).toContain("feeToken:       quoteResult.feeToken,");
+    // Fee fields are computed inline using finalFeeBps / finalFeeToken (not directly from quoteResult)
+    // This is correct: P2P uses P2P_FEE_BPS, DEX uses quoteResult.feeBps
+    expect(src).toContain("netToAmount:");
+    expect(src).toContain("platformFeeOut:");
+    expect(src).toContain("feeBps:");
+    expect(src).toContain("feeToken:       finalFeeToken,");
   });
 });
 

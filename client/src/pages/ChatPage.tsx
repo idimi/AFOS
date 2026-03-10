@@ -1485,6 +1485,8 @@ export default function ChatPage() {
             rate:              p2p.rate ?? quoteData.rate,
             counterpartyPeerId: p2p.peerId ?? undefined,
             counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+            // Pass the secret hash from buildSwapTx so Agent A locks to the same hash stored in DB
+            secretHashHex:     p2p.secretHashHex ?? undefined,
           });
         }
         return;

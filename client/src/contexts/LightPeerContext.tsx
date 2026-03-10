@@ -62,6 +62,12 @@ export interface IncomingRfq {
   suggestedOutAmount: number;
   status: "pending" | "accepted" | "rejected" | "expired";
   receivedAt: number;
+  /** SHA-256 hash of Agent A's HTLC secret (hex). Agent B MUST lock to this hash for atomicity. */
+  secretHashHex?: string;
+  /** Agent A's wallet address — used to attribute the counterparty lock correctly. */
+  counterpartyAddress?: string;
+  /** Agent A's wallet address (alias for counterpartyAddress, used in HTLC lock logic). */
+  requesterWallet?: string;
 }
 
 export type HtlcStep = "idle" | "signing" | "locking" | "revealing" | "settled" | "failed";
@@ -116,6 +122,8 @@ export interface LightPeerState {
     rate: number;
     counterpartyPeerId?: string;
     counterpartyWallet?: string;
+    /** SHA-256 hash of the HTLC secret from buildSwapTx. Agent A must lock to this hash. */
+    secretHashHex?: string;
   }) => Promise<void>;
   toggleEnabled: () => void;
   dismissHtlc: () => void;
@@ -497,14 +505,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       });
       // Dispatch window event so ChatPage / other UI can react
       window.dispatchEvent(new CustomEvent("afos:htlc-locked", { detail: { fromPeerId, rfqId, txHash, chain, amountLocked } }));
-      // Retrieve the plaintext secret from the server and send it to Agent B
+      // Retrieve the plaintext secret from the server and send it to Agent B.
+      // IMPORTANT: requesterAddress must be the wallet address (not peerId) because that's
+      // what was saved in the DB by buildSwapTx (userPublicKey). Use solPubkey or phantomSolAddress.
       void (async () => {
         try {
+          // Resolve Agent A's wallet address for the auth check
+          const agentAWallet = solPubkey?.toBase58() ?? phantomSolAddress ?? peerId ?? "";
           const res = await fetch("/api/trpc/chat.revealHtlcSecret", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ "0": { json: { rfqId, requesterAddress: peerId ?? "" } } }),
+            body: JSON.stringify({ "0": { json: { rfqId, requesterAddress: agentAWallet } } }),
           });
           if (!res.ok) {
             console.warn("[HTLC] revealHtlcSecret failed:", res.status);
@@ -615,6 +627,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         requesterPeerId?: string;
         requesterWallet?: string;
         expiresAt: number;
+        /** SHA-256 hash of Agent A's HTLC secret — Agent B MUST lock to this hash for atomicity */
+        secretHashHex?: string;
       };
       if (!rfq.rfqId || !rfq.fromToken || !rfq.toToken) return;
       // Echo-filter: if this RFQ was sent by us (Order Book quote request), ignore it.
@@ -623,6 +637,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // Also ignore if the alias is "Order Book" and we have no requesterPeerId (legacy path)
       if (!rfq.requesterPeerId && rfq.requesterAlias === "Order Book") return;
       // Build IncomingRfq from agent_rfq data
+      // IMPORTANT: secretHashHex must be preserved so Agent B locks to the same hash as Agent A (atomicity)
       const incoming: IncomingRfq = {
         rfqId: rfq.rfqId,
         fromToken: rfq.fromToken,
@@ -636,6 +651,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         suggestedOutAmount: rfq.outAmount,
         status: "pending",
         receivedAt: Date.now(),
+        // Critical for atomicity: preserve Agent A's secret hash so both sides lock to the same hash
+        secretHashHex: rfq.secretHashHex,
+        // Agent A's wallet address — used as counterparty in Agent B's HTLC lock
+        counterpartyAddress: rfq.requesterWallet,
+        requesterWallet: rfq.requesterWallet,
       };
       setIncomingRfqs(prev => {
         if (prev.some(r => r.rfqId === rfq.rfqId)) return prev;
@@ -664,7 +684,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // Peer rate must be within slippage tolerance of oracle rate
       const rateOk = oracleRate <= 0 || rfq.rate >= oracleRate * (1 - slippageFrac);
       if (autoAcceptEnabled && tradeUsdEstimate <= autoAcceptCap && rateOk) {
-        submitQuote(incoming);
+        // Bug #4 fix: call acceptRfq (not submitQuote) so the HTLC lock is actually triggered.
+        // submitQuote only sends a quote response without locking funds.
+        // acceptRfq handles the full flow: quote response + HTLC signing + lock.
+        void acceptRfq(rfq.rfqId, incoming);
         setIncomingRfqs(prev =>
           prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
         );
@@ -1008,17 +1031,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const senderPubkeyObj = new PublicKey(senderPubkeyStr);
 
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
-          const existingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
-          const { secretHex, secretHashHex } = existingHash
-            ? { secretHex: "", secretHashHex: existingHash }  // Agent B locks to Agent A's hash
-            : await generateHtlcSecret();                     // fallback: generate own secret
+          const { secretHex, secretHashHex } = rfq.secretHashHex
+            ? { secretHex: "", secretHashHex: rfq.secretHashHex }  // Agent B locks to Agent A's hash
+            : await generateHtlcSecret();                           // fallback: generate own secret
           void secretHex; // store securely in production — needed to reveal later
 
           // Timelock: 1 hour from now
           const timelock = Math.floor(Date.now() / 1000) + 3600;
 
           // Counterparty pubkey: use peer's pubkey from RFQ if available
-          const counterpartyStr = (rfq as unknown as { counterpartyAddress?: string }).counterpartyAddress
+          const counterpartyStr = rfq.counterpartyAddress ?? rfq.requesterWallet
             ?? senderPubkeyStr; // fallback to self for demo
           let recipientPubkey: PublicKey;
           try {
@@ -1126,8 +1148,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const htlcContractAddress = import.meta.env.VITE_ETH_HTLC_ADDRESS as string | undefined;
 
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
-          const existingEthHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
-          const secretHashHex = existingEthHash ?? (() => {
+          const secretHashHex = rfq.secretHashHex ?? (() => {
             const secretBytes   = crypto.getRandomValues(new Uint8Array(32));
             return crypto.subtle.digest("SHA-256", secretBytes).then(buf =>
               Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("")
@@ -1144,8 +1165,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (!senderEthAddr) throw new Error("No Ethereum address available. Please reconnect your wallet.");
 
           // Counterparty address: use peer address from RFQ if available
-          const recipient = (rfq as unknown as { counterpartyAddress?: string }).counterpartyAddress
-            ?? senderEthAddr;
+          const recipient = rfq.counterpartyAddress ?? rfq.requesterWallet ?? senderEthAddr;
 
           // Amount in wei (rfq.amount is in ETH)
           const amountWei = BigInt(Math.floor((rfq.amount ?? 0) * 1e18));
@@ -1218,7 +1238,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             ? `03${btcAddr.replace(/[^0-9a-f]/gi, "").slice(0, 62).padEnd(62, "0")}`
             : "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
           // Pass Agent A's secretHashHex so both sides lock to the same hash (atomicity)
-          const btcExistingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
+          const btcExistingHash = rfq.secretHashHex;
           const result = await executeBtcHtlcLock(
             btcAddr,
             counterpartyPubKey,
@@ -1262,7 +1282,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         setHtlcSigning({ rfqId, step: "locking" });
         try {
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
-          const existingTnkHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
+          const existingTnkHash = rfq.secretHashHex;
           const secretHash = existingTnkHash ?? (await generateHtlcSecret()).secretHashHex;
           const result = await executeTnkHtlcLock({
             amount: rfq.amount.toFixed(8),
@@ -1332,25 +1352,34 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     rate: number;
     counterpartyPeerId?: string;
     counterpartyWallet?: string;
+    /** SHA-256 hash of the HTLC secret generated by buildSwapTx. Must be passed so Agent A locks to the same hash stored in the DB. */
+    secretHashHex?: string;
   }) => {
     const { rfqId, fromToken, toToken, fromChain, toChain, amount, outAmount, rate, counterpartyPeerId, counterpartyWallet } = params;
-    // Build a synthetic IncomingRfq for Agent A (the requester)
-    // The counterpartyAddress field is used by the HTLC signing logic to know
-    // who to lock funds for (the LP / Agent B).
+    // Build a synthetic IncomingRfq for Agent A (the requester).
+    // Agent A locks their SOURCE tokens (fromToken on fromChain).
+    // acceptRfq uses rfq.fromChain to determine which chain to lock on,
+    // so we set fromChain = Agent A's source chain (correct).
+    // counterpartyAddress = Agent B's wallet so the HTLC is locked for them.
+    // secretHashHex from the server's buildSwapTx is passed through so Agent A
+    // locks to the same hash that was saved in the DB (and will be sent to Agent B).
     const syntheticRfq: IncomingRfq = {
       rfqId,
       fromToken,
       toToken,
       amount,
-      fromChain,
+      fromChain,   // Agent A locks on fromChain (their source chain)
       toChain,
-      ...({ counterpartyAddress: counterpartyWallet } as object),
+      counterpartyAddress: counterpartyWallet,
+      requesterWallet: counterpartyWallet,
       requestorPeer: counterpartyPeerId ?? counterpartyWallet ?? "peer",
       expiresAt: Date.now() + 60_000,
       suggestedRate: rate,
       suggestedOutAmount: outAmount,
       status: "pending",
       receivedAt: Date.now(),
+      // secretHashHex from buildSwapTx ensures Agent A locks to the same hash stored in DB
+      secretHashHex: params.secretHashHex,
     };
     // Add to incomingRfqs so the HTLC signing panel shows up
     setIncomingRfqs(prev => {
