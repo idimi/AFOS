@@ -453,7 +453,7 @@ function sendAgentRfqToPeer(params: {
   /** SHA-256 hash of the HTLC secret (hex). Agent B MUST lock to this hash so the swap is atomic. */
   secretHashHex?: string;
 }): boolean {
-  return sendToPeer(params.targetPeerId, {
+  const delivered = sendToPeer(params.targetPeerId, {
     type:            "agent_rfq",
     rfqId:           params.rfqId,
     fromToken:       params.fromToken,
@@ -471,6 +471,12 @@ function sendAgentRfqToPeer(params: {
     secretHashHex:   params.secretHashHex,
     timestamp:       Date.now(),
   });
+  // Push notification for swap activity
+  void notifyOwner({
+    title: `P2P Swap RFQ ${delivered ? "Sent" : "Failed"}`,
+    content: `${params.amount} ${params.fromToken} → ${params.outAmount.toFixed(4)} ${params.toToken} @ rate ${params.rate.toFixed(6)} — ${delivered ? `delivered to @${params.targetPeerId.slice(0, 12)}` : `peer @${params.targetPeerId.slice(0, 12)} offline`}`,
+  }).catch(() => {});
+  return delivered;
 }
 
 // ─── Price fetching ──────────────────────────────────────────────────────────

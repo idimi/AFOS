@@ -2387,7 +2387,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Swap Status Notifications
 
-- [ ] Toast notification when a peer accepts your RFQ
-- [ ] Toast notification when a peer locks their side of the HTLC
-- [ ] Push notification (notifyOwner) for swap status changes
-- [ ] Agent chat notification when swap events occur (match, lock, claim, refund)
+- [x] Toast notification when a peer accepts your RFQ (already existed in LightPeerContext)
+- [x] Toast notification when a peer locks their side of the HTLC (already existed in LightPeerContext)
+- [x] Push notification (notifyOwner) for swap status changes (htlc_locked, htlc_secret, agent_rfq in signaling.ts + chat.ts)
+- [x] Agent chat notification when swap events occur (rfq-accepted, htlc-locked, htlc-secret-sent, htlc-secret-received, htlc-expired in ChatPage.tsx)

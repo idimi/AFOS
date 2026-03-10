@@ -856,6 +856,70 @@ export default function ChatPage() {
     return () => window.removeEventListener("afos:rfq-accepted", handler);
   }, [addMessage]);
 
+  // ── HTLC locked: counterparty locked their side ─────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as {
+        fromPeerId?: string; rfqId?: string; txHash?: string; chain?: string; amountLocked?: number;
+      };
+      if (!data?.rfqId) return;
+      const peerAlias = data.fromPeerId?.slice(0, 12) ?? "Peer";
+      const chainLabel = data.chain ? data.chain.charAt(0).toUpperCase() + data.chain.slice(1) : "";
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\uD83D\uDD12 **Counterparty @${peerAlias}** locked **${data.amountLocked?.toFixed(4) ?? "?"} ${chainLabel}** in HTLC escrow.\n\nTx: \`${(data.txHash ?? "").slice(0, 20)}\u2026\`\n\nRevealing secret to counterparty so they can claim\u2026`,
+      });
+    };
+    window.addEventListener("afos:htlc-locked", handler);
+    return () => window.removeEventListener("afos:htlc-locked", handler);
+  }, [addMessage]);
+
+  // ── HTLC secret sent: we revealed the secret to counterparty ────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as { rfqId?: string; secretHex?: string };
+      if (!data?.rfqId) return;
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\u2705 **HTLC secret revealed** to counterparty for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`\n\nThe counterparty can now claim their funds. Your side of the swap is settling.`,
+      });
+    };
+    window.addEventListener("afos:htlc-secret-sent", handler);
+    return () => window.removeEventListener("afos:htlc-secret-sent", handler);
+  }, [addMessage]);
+
+  // ── HTLC secret received: counterparty revealed the secret to us ────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as { rfqId?: string; secretHex?: string };
+      if (!data?.rfqId) return;
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\uD83D\uDD13 **HTLC secret received** for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`\n\nYou can now claim your funds from the escrow. The agent will attempt to auto-claim.`,
+      });
+    };
+    window.addEventListener("afos:htlc-secret-received", handler);
+    return () => window.removeEventListener("afos:htlc-secret-received", handler);
+  }, [addMessage]);
+
+  // ── HTLC expired: swap window passed without settlement ─────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as { rfqId?: string; chain?: string };
+      if (!data?.rfqId) return;
+      addMessage({
+        role: "assistant",
+        type: "text",
+        content: `\u26A0\uFE0F **HTLC expired** for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`${data.chain ? ` on ${data.chain}` : ""}.\n\nThe swap window has passed. Locked funds will be refunded automatically.`,
+      });
+    };
+    window.addEventListener("afos:htlc-expired", handler);
+    return () => window.removeEventListener("afos:htlc-expired", handler);
+  }, [addMessage]);
+
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
     if (!messageText || isTyping) return;

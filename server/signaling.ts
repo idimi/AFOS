@@ -41,6 +41,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server as HttpServer } from "http";
 import { recordPeerPing } from "./db";
+import { notifyOwner } from "./_core/notification";
 
 // ─── IP Geolocation ──────────────────────────────────────────────────────────
 
@@ -496,6 +497,11 @@ export function attachSignalingServer(httpServer: HttpServer) {
             amountLocked: msg.amountLocked ?? null,
           });
           console.log(`[Signaling] htlc_locked: ${fromHtlc.slice(0,8)}→${msg.targetPeerId.slice(0,8)} rfq=${msg.rfqId.slice(0,8)}`);
+          // Push notification to owner
+          void notifyOwner({
+            title: `HTLC Locked — ${msg.chain ?? "?"} escrow`,
+            content: `Peer @${fromHtlc.slice(0,12)} locked ${msg.amountLocked ?? "?"} ${msg.chain ?? ""} for RFQ ${msg.rfqId.slice(0,8)}… → @${msg.targetPeerId.slice(0,12)}. Tx: ${(msg.txHash ?? "").slice(0,20)}…`,
+          }).catch(() => {});
           break;
         }
         // ── HTLC Secret Reveal (Agent A → Agent B) ───────────────────────
@@ -518,6 +524,11 @@ export function attachSignalingServer(httpServer: HttpServer) {
             secretHex: msg.secretHex,
           });
           console.log(`[Signaling] htlc_secret: ${fromSecret.slice(0,8)}→${msg.targetPeerId.slice(0,8)} rfq=${msg.rfqId.slice(0,8)}`);
+          // Push notification to owner
+          void notifyOwner({
+            title: `HTLC Secret Revealed`,
+            content: `Peer @${fromSecret.slice(0,12)} revealed the HTLC secret for RFQ ${msg.rfqId.slice(0,8)}… to @${msg.targetPeerId.slice(0,12)}. Counterparty can now claim.`,
+          }).catch(() => {});
           break;
         }
         // ── RFQ Broadcast (sent to all peers) ─────────────────────────────
