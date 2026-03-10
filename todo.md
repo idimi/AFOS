@@ -2396,3 +2396,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Remove fake/simulated orders from Live Order Book — removed auto-broadcast logic that seeded phantom "pending" rows for every signaling peer on page load
 - [x] Order book now only shows real quotes from SSE p2p_quote events or rfq_broadcast signals from other users
+
+## Bug Fix: Accept Button Does Nothing
+
+- [x] Fix Accept button in Live Order Book — now immediately triggers handleSwap() with the chosen peer's quote, scrolls to swap card on mobile, and shows wallet modal if not connected

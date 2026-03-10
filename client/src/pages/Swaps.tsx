@@ -2541,6 +2541,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     try { localStorage.setItem('afos_advanced_open', showAdvanced ? 'true' : 'false'); } catch { /* ignore */ }
   }, [showAdvanced]);
   const phaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const swapCardRef = useRef<HTMLDivElement>(null);
   // Live quote from backend
   const [liveQuote, setLiveQuote] = useState<SwapQuote | null>(null);
   const [quoteFetching, setQuoteFetching] = useState(false);
@@ -2852,11 +2853,19 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
 
   const handleAcceptOrder = (order: OrderBookEntry) => {
     haptic.tap();
+
+    // Guard: wallet must be connected to execute a swap
+    if (!(connected || ethWallet?.connected || btcWallet?.connected)) {
+      setShowWalletModal(true);
+      toast.info("Connect a wallet to accept this quote");
+      return;
+    }
+
     // Pre-fill the swap form with the accepted quote
     setFromAmount(order.fromAmount.toString());
+
     // If this is a real P2P quote (has rfqId), set it as the preferred peer
     if (order.rfqId) {
-      // Build a synthetic LivePeer from the order so the Preferred Peer UI shows it
       const syntheticPeer: LivePeer = {
         id: order.rfqId,
         alias: order.peer,
@@ -2866,15 +2875,17 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
         reputation: order.reputation,
       };
       setSelectedPeer(syntheticPeer);
-      // Also add to livePeers if not already present
       setLivePeers(prev => prev.some(p => p.id === order.rfqId) ? prev : [syntheticPeer, ...prev]);
-      setShowAdvanced(true); // open Advanced so user sees the selected peer
     }
-    toast.success(`Quote accepted from ${order.peer}`, {
-      description: `${order.fromAmount} ${order.fromSymbol} → ${order.toAmount} ${order.toSymbol} at rate ${order.rate.toFixed(4)}${
-        order.rfqId ? ` · Targeting peer directly` : ''
-      }`,
-    });
+
+    // Scroll to the swap card on mobile so the user sees the confirmation
+    swapCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    // Immediately trigger the swap with the chosen peer's quote
+    // Use a short delay so state updates (fromAmount, selectedPeer) are flushed first
+    setTimeout(() => {
+      handleSwap();
+    }, 80);
   };
 
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
@@ -2955,7 +2966,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
 
         {/* ═ 1. SWAP CARD — mobile first, desktop col-2 row-1 (sticky) ═ */}
         {/* xl:row-span-6 so the right column spans all left-column rows */}
-        <div className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
+        <div ref={swapCardRef} className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
           <div
             className="rounded-2xl p-4"
             style={{
