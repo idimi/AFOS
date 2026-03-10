@@ -2400,3 +2400,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Bug Fix: Accept Button Does Nothing
 
 - [x] Fix Accept button in Live Order Book — now immediately triggers handleSwap() with the chosen peer's quote, scrolls to swap card on mobile, and shows wallet modal if not connected
+
+## Layout Rewrite: Swap Tab
+
+- [x] Fix overlapping cards in swap tab — removed xl:row-span-6 from swap card, moved SwapProgressTracker out of sticky wrapper into its own grid row
+- [x] Fix sticky swap card causing z-index/overlap issues on mobile — sticky only applies on xl, mobile stacks cleanly
+- [x] Rewrite swap tab grid to use clean single-column mobile layout and proper 2-col desktop layout with xl:items-start
+- [x] Add Confirm-before-swap toggle in Advanced Settings — persisted to localStorage, shows confirmation banner before executing
+- [x] Add swap-in-progress overlay on accepted order book row — shows phase label with spinner over the accepted row

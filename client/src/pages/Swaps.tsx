@@ -1245,15 +1245,17 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings, acceptingOrderId, swapPhase }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
   ownQuote?: OrderBookEntry | null;
-  fromAmount?: number; // current swap input amount for DEX depth comparison
-  walletConnected?: boolean; // when true, broadcast a real RFQ to online peers
-  lpEnabled?: boolean; // whether the user has LP Mode enabled
+  fromAmount?: number;
+  walletConnected?: boolean;
+  lpEnabled?: boolean;
   onNavigateToSettings?: () => void;
+  acceptingOrderId?: string | null; // rfqId of the order currently being swapped
+  swapPhase?: string; // current swap phase for overlay display
 }) {
   const baseRate = toToken.usdPrice > 0 ? fromToken.usdPrice / toToken.usdPrice : 1;
   const { getReputation, recordQuote } = usePeerReputation();
@@ -1704,9 +1706,24 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                 animate={{ opacity: 1, x: 0, background: isFlashing ? "rgba(59,130,246,0.12)" : showBestBadge ? "rgba(16,185,129,0.05)" : "transparent" }}
                 exit={{ opacity: 0, x: 10 }}
                 transition={{ delay: i * 0.04 }}
-                className="hover:bg-muted/50 transition-colors"
+                className="hover:bg-muted/50 transition-colors relative"
                 style={showBestBadge ? { borderLeft: "2px solid rgba(16,185,129,0.6)" } : {}}
               >
+                {/* Swap-in-progress overlay for the accepted row */}
+                {acceptingOrderId && order.rfqId === acceptingOrderId && swapPhase && swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error" && (
+                  <div
+                    className="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-sm"
+                    style={{ background: 'rgba(15,23,42,0.82)', backdropFilter: 'blur(2px)' }}
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                    <span className="text-[11px] font-mono text-blue-300 font-semibold capitalize">
+                      {swapPhase === 'rfq' ? 'Broadcasting RFQ…' :
+                       swapPhase === 'negotiating' ? 'Negotiating…' :
+                       swapPhase === 'locking' ? 'Locking HTLC…' :
+                       swapPhase === 'settling' ? 'Settling…' : swapPhase}
+                    </span>
+                  </div>
+                )}
                 {/* ── MOBILE CARD LAYOUT (hidden on sm+) ── */}
                 <div className="sm:hidden px-4 py-3 flex flex-col gap-2">
                   {/* Row 1: Peer name + badge + rate */}
@@ -2573,6 +2590,14 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   // Last completed RFQ ID and tx hash for progress tracker
   const [lastRfqId, setLastRfqId] = useState<string | undefined>(undefined);
   const [execMode, setExecMode] = useState<'manual' | 'agent'>('manual');
+  const [confirmBeforeSwap, setConfirmBeforeSwap] = useState(() => {
+    try { return localStorage.getItem('afos_confirm_before_swap') === 'true'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('afos_confirm_before_swap', confirmBeforeSwap ? 'true' : 'false'); } catch { /* ignore */ }
+  }, [confirmBeforeSwap]);
+  // When a P2P quote is accepted and confirmBeforeSwap is on, show a confirm dialog
+  const [pendingAcceptOrder, setPendingAcceptOrder] = useState<OrderBookEntry | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | undefined>(undefined);
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
   // Collapsible chart on mobile (hidden by default)
@@ -2881,11 +2906,17 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     // Scroll to the swap card on mobile so the user sees the confirmation
     swapCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-    // Immediately trigger the swap with the chosen peer's quote
-    // Use a short delay so state updates (fromAmount, selectedPeer) are flushed first
-    setTimeout(() => {
-      handleSwap();
-    }, 80);
+    if (confirmBeforeSwap) {
+      // Store the order and let the user confirm via the dialog below the swap button
+      setPendingAcceptOrder(order);
+      toast.info(`Review quote from ${order.peer} — click Confirm to execute`, { duration: 5000 });
+    } else {
+      // Immediately trigger the swap with the chosen peer's quote
+      // Use a short delay so state updates (fromAmount, selectedPeer) are flushed first
+      setTimeout(() => {
+        handleSwap();
+      }, 80);
+    }
   };
 
   const isSwapping = swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error";
@@ -2960,13 +2991,12 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       {activeTab === "swap" && <>
 
       {/* ── Main 2-Column DEX Layout ─────────────────────────────────────── */}
-      {/* Mobile order: Swap(1)→Chart(2)→OrderBook(3)→RecentSwaps(4)→LightPeers(5)→P2PPeers(6)→HTLC(7) */}
-      {/* DOM order = mobile order. On desktop (xl), explicit col/row placement overrides visual position. */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
+      {/* Mobile order: Swap(1)→Progress(2)→Chart(3)→OrderBook(4)→RecentSwaps(5)→Network(6)→HTLC(7) */}
+      {/* Desktop: left col = Chart+OrderBook+HTLC, right col = SwapCard+RecentSwaps+Network (sticky) */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] xl:items-start gap-3">
 
         {/* ═ 1. SWAP CARD — mobile first, desktop col-2 row-1 (sticky) ═ */}
-        {/* xl:row-span-6 so the right column spans all left-column rows */}
-        <div ref={swapCardRef} className="xl:col-start-2 xl:row-start-1 xl:row-span-6 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
+        <div ref={swapCardRef} className="xl:col-start-2 xl:row-start-1 xl:self-start xl:sticky xl:top-20 flex flex-col gap-3">
           <div
             className="rounded-2xl p-4"
             style={{
@@ -3369,10 +3399,65 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
                         ))}
                       </div>
                     </div>
+
+                    {/* Confirm Before Swap toggle */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Confirm Before Swap</div>
+                        <div className="text-[9px] text-slate-600 mt-0.5">Review quote before executing when accepting from order book</div>
+                      </div>
+                      <button
+                        onClick={() => setConfirmBeforeSwap(v => !v)}
+                        className="relative w-9 h-5 rounded-full transition-colors duration-200 flex-shrink-0 ml-3"
+                        style={{ background: confirmBeforeSwap ? 'rgba(59,130,246,0.7)' : 'rgba(100,116,139,0.3)' }}
+                        aria-label="Toggle confirm before swap"
+                      >
+                        <span
+                          className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-200"
+                          style={{ transform: confirmBeforeSwap ? 'translateX(16px)' : 'translateX(0)' }}
+                        />
+                      </button>
+                    </div>
+
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Pending Accept Confirmation Banner — shown when confirmBeforeSwap is on and user clicked Accept */}
+            {pendingAcceptOrder && swapPhase === "idle" && (
+              <div
+                className="mt-3 rounded-xl p-3"
+                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.3)' }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-blue-300">Confirm Quote from {pendingAcceptOrder.peer}</span>
+                  <button onClick={() => setPendingAcceptOrder(null)} className="p-0.5 rounded hover:bg-white/10">
+                    <XIcon className="w-3.5 h-3.5 text-slate-500" />
+                  </button>
+                </div>
+                <div className="text-[11px] font-mono text-slate-300 mb-3">
+                  {pendingAcceptOrder.fromAmount} {pendingAcceptOrder.fromSymbol} → {pendingAcceptOrder.toAmount} {pendingAcceptOrder.toSymbol}
+                  <span className="text-slate-500 ml-2">@ {pendingAcceptOrder.rate.toFixed(4)}</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setPendingAcceptOrder(null); setTimeout(() => handleSwap(), 80); }}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold transition-all"
+                    style={{ background: '#3b82f6', color: 'white', border: '1px solid rgba(59,130,246,0.5)' }}
+                  >
+                    Confirm Swap
+                  </button>
+                  <button
+                    onClick={() => setPendingAcceptOrder(null)}
+                    className="px-4 py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: 'var(--muted)', color: 'var(--muted-foreground)', border: '1px solid var(--border)' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Selected Peer Badge */}
             {selectedPeer && swapPhase === "idle" && (
@@ -3527,8 +3612,11 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
 
           </div>{/* end swap card inner */}
 
-          {/* Swap Progress — stays with swap card */}
-          {swapPhase !== "idle" && (
+        </div>{/* end swap card (col-2 row-1) */}
+
+        {/* ═ 2. SWAP PROGRESS — mobile second (only when active), desktop col-2 row-2 ═ */}
+        {swapPhase !== "idle" && (
+          <div className="xl:col-start-2 xl:row-start-2">
             <SwapProgressTracker
               phase={swapPhase}
               fromToken={fromToken}
@@ -3539,11 +3627,10 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               txHash={lastTxHash}
               txChain={lastTxChain}
             />
-          )}
+          </div>
+        )}
 
-        </div>{/* end swap card + progress (col-2 row-1) */}
-
-        {/* ═ 2. PRICE TICKER + CHART — mobile second, desktop col-1 row-1 ═ */}
+        {/* ═ 3. PRICE TICKER + CHART — mobile third, desktop col-1 row-1 ═ */}
         <div className="xl:col-start-1 xl:row-start-1 space-y-3">
           <ChainStatsBar />
           {/* Chart toggle button — mobile only */}
@@ -3605,20 +3692,22 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             walletConnected={connected || !!(ethWallet?.address) || !!(btcWallet?.address)}
             lpEnabled={lightPeer.prefs?.enabled ?? false}
             onNavigateToSettings={onNavigateToSettings}
+            acceptingOrderId={selectedPeer?.id ?? null}
+            swapPhase={swapPhase}
           />
         </div>
 
-        {/* ═ 4. RECENT SWAPS — mobile fourth, desktop col-2 row-2 ═ */}
-        <div className="xl:col-start-2 xl:row-start-2">
+        {/* ═ 4. RECENT SWAPS — mobile fourth, desktop col-2 row-3 ═ */}
+        <div className="xl:col-start-2 xl:row-start-3">
           <RecentSwaps />
         </div>
 
-        {/* ═ 5. NETWORK PANEL (My Node + Live Peers) — mobile fifth, desktop col-2 row-3 to row-4 ═ */}
-        <div className="xl:col-start-2 xl:row-start-3 xl:row-span-2">
+        {/* ═ 5. NETWORK PANEL (My Node + Live Peers) — mobile fifth, desktop col-2 row-4 ═ */}
+        <div className="xl:col-start-2 xl:row-start-4">
           <NetworkPanel fromToken={fromToken} toToken={toToken} livePeers={livePeers} activePeerCount={activePeerCount} />
         </div>
 
-        {/* ═ 7. HTLC ESCROW — mobile last, desktop col-1 row-3 ═ */}
+        {/* ═ 6. HTLC ESCROW — mobile last, desktop col-1 row-3 ═ */}
         <div className="xl:col-start-1 xl:row-start-3">
           <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <div className="flex items-center gap-2 mb-2">
