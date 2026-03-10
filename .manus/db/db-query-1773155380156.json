@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE user_settings\n  ADD COLUMN ownerNotifyHtlcLocked     TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifySecretRevealed TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifyRfqSent        TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifyMissedLock     TINYINT NOT NULL DEFAULT 1,\n  ADD COLUMN ownerNotifySwapCompleted  TINYINT NOT NULL DEFAULT 1;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nALTER TABLE user_settings\n  ADD COLUMN ownerNotifyHtlcLocked     TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifySecretRevealed TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifyRfqSent        TINYINT NOT NULL DEFAULT 0,\n  ADD COLUMN ownerNotifyMissedLock     TINYINT NOT NULL DEFAULT 1,\n  ADD COLUMN ownerNotifySwapCompleted  TINYINT NOT NULL DEFAULT 1;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 876
+}

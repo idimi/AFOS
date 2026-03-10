@@ -114,6 +114,12 @@ export type UserSettingsResult = {
   showTypingIndicator: boolean;
   // Privacy prefs
   showCountryFlag: boolean;
+  // Owner push notification prefs
+  ownerNotifyHtlcLocked: boolean;
+  ownerNotifySecretRevealed: boolean;
+  ownerNotifyRfqSent: boolean;
+  ownerNotifyMissedLock: boolean;
+  ownerNotifySwapCompleted: boolean;
   // Display prefs
   graphDensity: number;
 };
@@ -146,6 +152,12 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
       showTypingIndicator: (r.showTypingIndicator as number) !== 0,
       // Privacy prefs
       showCountryFlag: r.showCountryFlag === undefined ? DEFAULT_USER_SETTINGS.showCountryFlag : (r.showCountryFlag as number) !== 0,
+      // Owner push notification prefs
+      ownerNotifyHtlcLocked: r.ownerNotifyHtlcLocked === undefined ? DEFAULT_USER_SETTINGS.ownerNotifyHtlcLocked : (r.ownerNotifyHtlcLocked as number) !== 0,
+      ownerNotifySecretRevealed: r.ownerNotifySecretRevealed === undefined ? DEFAULT_USER_SETTINGS.ownerNotifySecretRevealed : (r.ownerNotifySecretRevealed as number) !== 0,
+      ownerNotifyRfqSent: r.ownerNotifyRfqSent === undefined ? DEFAULT_USER_SETTINGS.ownerNotifyRfqSent : (r.ownerNotifyRfqSent as number) !== 0,
+      ownerNotifyMissedLock: r.ownerNotifyMissedLock === undefined ? DEFAULT_USER_SETTINGS.ownerNotifyMissedLock : (r.ownerNotifyMissedLock as number) !== 0,
+      ownerNotifySwapCompleted: r.ownerNotifySwapCompleted === undefined ? DEFAULT_USER_SETTINGS.ownerNotifySwapCompleted : (r.ownerNotifySwapCompleted as number) !== 0,
       // Display prefs
       graphDensity: typeof r.graphDensity === 'number' ? r.graphDensity : DEFAULT_USER_SETTINGS.graphDensity,
     };
@@ -178,6 +190,12 @@ export async function upsertUserSettings(
     showTypingIndicator?: boolean;
     // Privacy prefs
     showCountryFlag?: boolean;
+    // Owner push notification prefs
+    ownerNotifyHtlcLocked?: boolean;
+    ownerNotifySecretRevealed?: boolean;
+    ownerNotifyRfqSent?: boolean;
+    ownerNotifyMissedLock?: boolean;
+    ownerNotifySwapCompleted?: boolean;
     // Display prefs
     graphDensity?: number;
   },
@@ -205,6 +223,11 @@ export async function upsertUserSettings(
     showReadReceipts: ((patch.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts) ? 1 : 0) as number,
     showTypingIndicator: ((patch.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator) ? 1 : 0) as number,
     showCountryFlag: ((patch.showCountryFlag ?? DEFAULT_USER_SETTINGS.showCountryFlag) ? 1 : 0) as number,
+    ownerNotifyHtlcLocked: ((patch.ownerNotifyHtlcLocked ?? DEFAULT_USER_SETTINGS.ownerNotifyHtlcLocked) ? 1 : 0) as number,
+    ownerNotifySecretRevealed: ((patch.ownerNotifySecretRevealed ?? DEFAULT_USER_SETTINGS.ownerNotifySecretRevealed) ? 1 : 0) as number,
+    ownerNotifyRfqSent: ((patch.ownerNotifyRfqSent ?? DEFAULT_USER_SETTINGS.ownerNotifyRfqSent) ? 1 : 0) as number,
+    ownerNotifyMissedLock: ((patch.ownerNotifyMissedLock ?? DEFAULT_USER_SETTINGS.ownerNotifyMissedLock) ? 1 : 0) as number,
+    ownerNotifySwapCompleted: ((patch.ownerNotifySwapCompleted ?? DEFAULT_USER_SETTINGS.ownerNotifySwapCompleted) ? 1 : 0) as number,
     graphDensity: patch.graphDensity ?? DEFAULT_USER_SETTINGS.graphDensity,
   };
 
@@ -222,8 +245,13 @@ export async function upsertUserSettings(
   if (patch.notifyTradeInquiry !== undefined) updateSet.notifyTradeInquiry = patch.notifyTradeInquiry ? 1 : 0;
   if (patch.showReadReceipts !== undefined) updateSet.showReadReceipts = patch.showReadReceipts ? 1 : 0;
   if (patch.showTypingIndicator !== undefined) updateSet.showTypingIndicator = patch.showTypingIndicator ? 1 : 0;
-  if (patch.showCountryFlag !== undefined) updateSet.showCountryFlag = patch.showCountryFlag ? 1 : 0;
-  if (patch.graphDensity !== undefined) updateSet.graphDensity = patch.graphDensity;
+    if (patch.showCountryFlag !== undefined) updateSet.showCountryFlag = patch.showCountryFlag ? 1 : 0;
+    if (patch.ownerNotifyHtlcLocked !== undefined) updateSet.ownerNotifyHtlcLocked = patch.ownerNotifyHtlcLocked ? 1 : 0;
+    if (patch.ownerNotifySecretRevealed !== undefined) updateSet.ownerNotifySecretRevealed = patch.ownerNotifySecretRevealed ? 1 : 0;
+    if (patch.ownerNotifyRfqSent !== undefined) updateSet.ownerNotifyRfqSent = patch.ownerNotifyRfqSent ? 1 : 0;
+    if (patch.ownerNotifyMissedLock !== undefined) updateSet.ownerNotifyMissedLock = patch.ownerNotifyMissedLock ? 1 : 0;
+    if (patch.ownerNotifySwapCompleted !== undefined) updateSet.ownerNotifySwapCompleted = patch.ownerNotifySwapCompleted ? 1 : 0;
+    if (patch.graphDensity !== undefined) updateSet.graphDensity = patch.graphDensity;
 
   await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });
 }

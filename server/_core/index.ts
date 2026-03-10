@@ -207,6 +207,25 @@ async function startServer() {
     startTnkHtlcMonitor();
     // Start HTLC secrets expiry monitor — marks expired locked secrets and notifies both parties
     startHtlcSecretsMonitor();
+    // ── HTLC cleanup job ──────────────────────────────────────────────────────
+    // Deletes htlc_secrets rows older than 7 days with terminal status (expired/refunded).
+    // Runs once on startup (after a 30s warm-up) and then every 24 hours.
+    const runCleanup = async () => {
+      try {
+        const { runHtlcCleanup } = await import("../jobs/htlcCleanup");
+        const result = await runHtlcCleanup();
+        if (result.deleted > 0) {
+          console.log(`[HtlcCleanup] Deleted ${result.deleted} stale HTLC row(s) older than 7 days`);
+        }
+        if (result.error) {
+          console.warn(`[HtlcCleanup] Cleanup skipped: ${result.error}`);
+        }
+      } catch (err) {
+        console.error("[HtlcCleanup] Error running cleanup:", err);
+      }
+    };
+    setTimeout(runCleanup, 30_000);                    // initial run after warm-up
+    setInterval(runCleanup, 24 * 60 * 60 * 1_000);    // repeat every 24 hours
     // ── Hourly fee revenue alert ───────────────────────────────────────────────
     // Run once on startup (after a 10s warm-up delay), then every hour.
     // The job is idempotent — it only fires one notification per calendar day.

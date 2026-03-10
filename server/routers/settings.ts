@@ -38,6 +38,12 @@ export const settingsRouter = router({
         showTypingIndicator: DEFAULT_USER_SETTINGS.showTypingIndicator,
         // Privacy prefs
         showCountryFlag: DEFAULT_USER_SETTINGS.showCountryFlag,
+        // Owner push notification prefs
+        ownerNotifyHtlcLocked: DEFAULT_USER_SETTINGS.ownerNotifyHtlcLocked,
+        ownerNotifySecretRevealed: DEFAULT_USER_SETTINGS.ownerNotifySecretRevealed,
+        ownerNotifyRfqSent: DEFAULT_USER_SETTINGS.ownerNotifyRfqSent,
+        ownerNotifyMissedLock: DEFAULT_USER_SETTINGS.ownerNotifyMissedLock,
+        ownerNotifySwapCompleted: DEFAULT_USER_SETTINGS.ownerNotifySwapCompleted,
         // Display prefs
         graphDensity: DEFAULT_USER_SETTINGS.graphDensity,
       };
@@ -61,6 +67,12 @@ export const settingsRouter = router({
       showTypingIndicator: settings.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator,
       // Privacy prefs
       showCountryFlag: settings.showCountryFlag ?? DEFAULT_USER_SETTINGS.showCountryFlag,
+      // Owner push notification prefs
+      ownerNotifyHtlcLocked: settings.ownerNotifyHtlcLocked ?? DEFAULT_USER_SETTINGS.ownerNotifyHtlcLocked,
+      ownerNotifySecretRevealed: settings.ownerNotifySecretRevealed ?? DEFAULT_USER_SETTINGS.ownerNotifySecretRevealed,
+      ownerNotifyRfqSent: settings.ownerNotifyRfqSent ?? DEFAULT_USER_SETTINGS.ownerNotifyRfqSent,
+      ownerNotifyMissedLock: settings.ownerNotifyMissedLock ?? DEFAULT_USER_SETTINGS.ownerNotifyMissedLock,
+      ownerNotifySwapCompleted: settings.ownerNotifySwapCompleted ?? DEFAULT_USER_SETTINGS.ownerNotifySwapCompleted,
       // Display prefs
       graphDensity: settings.graphDensity ?? DEFAULT_USER_SETTINGS.graphDensity,
     };
@@ -153,6 +165,12 @@ export const settingsRouter = router({
         showTypingIndicator: z.boolean().optional(),
         // Privacy prefs
         showCountryFlag: z.boolean().optional(),
+        // Owner push notification prefs
+        ownerNotifyHtlcLocked: z.boolean().optional(),
+        ownerNotifySecretRevealed: z.boolean().optional(),
+        ownerNotifyRfqSent: z.boolean().optional(),
+        ownerNotifyMissedLock: z.boolean().optional(),
+        ownerNotifySwapCompleted: z.boolean().optional(),
         // Display prefs
         graphDensity: z.number().min(0.3).max(3.0).optional(),
       }),

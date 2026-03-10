@@ -187,6 +187,17 @@ export const userSettings = mysqlTable("user_settings", {
   // ── Privacy preferences ───────────────────────────────────────────────────
   /** Broadcast your country flag emoji to other peers on the network (0 = off, 1 = on) */
   showCountryFlag:      int("showCountryFlag").default(1).notNull(),
+  // ── Owner push notification preferences (server-side notifyOwner calls) ─────────────────────
+  /** Send owner push notification when an HTLC is locked on-chain (0 = off, 1 = on) */
+  ownerNotifyHtlcLocked:     int("ownerNotifyHtlcLocked").default(0).notNull(),
+  /** Send owner push notification when an HTLC secret is revealed (0 = off, 1 = on) */
+  ownerNotifySecretRevealed: int("ownerNotifySecretRevealed").default(0).notNull(),
+  /** Send owner push notification when a P2P RFQ is sent to a peer (0 = off, 1 = on) */
+  ownerNotifyRfqSent:        int("ownerNotifyRfqSent").default(0).notNull(),
+  /** Send owner push notification when a TNK HTLC lock is missed (0 = off, 1 = on) */
+  ownerNotifyMissedLock:     int("ownerNotifyMissedLock").default(1).notNull(),
+  /** Send owner push notification when a swap is completed successfully (0 = off, 1 = on) */
+  ownerNotifySwapCompleted:  int("ownerNotifySwapCompleted").default(1).notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -248,6 +259,12 @@ export const DEFAULT_USER_SETTINGS = {
   showTypingIndicator: true,
   // Privacy prefs
   showCountryFlag: true,
+  // Owner push notification prefs (server-side notifyOwner calls)
+  ownerNotifyHtlcLocked: false,
+  ownerNotifySecretRevealed: false,
+  ownerNotifyRfqSent: false,
+  ownerNotifyMissedLock: true,
+  ownerNotifySwapCompleted: true,
   // Display prefs
   graphDensity: 1.0,
 };

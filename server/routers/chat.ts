@@ -36,6 +36,7 @@ import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus,
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
 import { notifyOwner } from "../_core/notification";
+import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -471,10 +472,14 @@ function sendAgentRfqToPeer(params: {
     secretHashHex:   params.secretHashHex,
     timestamp:       Date.now(),
   });
-  // Push notification for swap activity
-  void notifyOwner({
-    title: `P2P Swap RFQ ${delivered ? "Sent" : "Failed"}`,
-    content: `${params.amount} ${params.fromToken} → ${params.outAmount.toFixed(4)} ${params.toToken} @ rate ${params.rate.toFixed(6)} — ${delivered ? `delivered to @${params.targetPeerId.slice(0, 12)}` : `peer @${params.targetPeerId.slice(0, 12)} offline`}`,
+  // Push notification for swap activity (gated by preference)
+  void getOwnerNotifyPrefs().then(prefs => {
+    if (prefs.ownerNotifyRfqSent) {
+      return notifyOwner({
+        title: `P2P Swap RFQ ${delivered ? "Sent" : "Failed"}`,
+        content: `${params.amount} ${params.fromToken} → ${params.outAmount.toFixed(4)} ${params.toToken} @ rate ${params.rate.toFixed(6)} — ${delivered ? `delivered to @${params.targetPeerId.slice(0, 12)}` : `peer @${params.targetPeerId.slice(0, 12)} offline`}`,
+      });
+    }
   }).catch(() => {});
   return delivered;
 }

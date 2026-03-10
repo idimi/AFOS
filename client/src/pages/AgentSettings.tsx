@@ -397,6 +397,12 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   const [notifyIncomingDm, setNotifyIncomingDm] = useState(true);
   const [notifyUnreadBadge, setNotifyUnreadBadge] = useState(true);
   const [notifyTradeInquiry, setNotifyTradeInquiry] = useState(true);
+  // Owner push notification preferences (server-side notifyOwner calls)
+  const [ownerNotifyHtlcLocked, setOwnerNotifyHtlcLocked] = useState(false);
+  const [ownerNotifySecretRevealed, setOwnerNotifySecretRevealed] = useState(false);
+  const [ownerNotifyRfqSent, setOwnerNotifyRfqSent] = useState(false);
+  const [ownerNotifyMissedLock, setOwnerNotifyMissedLock] = useState(true);
+  const [ownerNotifySwapCompleted, setOwnerNotifySwapCompleted] = useState(true);
   // Message preferences
   const [showReadReceipts, setShowReadReceipts] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
@@ -530,6 +536,12 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       } catch { /* best-effort */ }
     }
     if ('graphDensity' in remoteSettings && typeof rs.graphDensity === 'number') setGraphDensity(rs.graphDensity);
+    // Owner push notification prefs
+    if ('ownerNotifyHtlcLocked' in remoteSettings) setOwnerNotifyHtlcLocked(Boolean(rs.ownerNotifyHtlcLocked));
+    if ('ownerNotifySecretRevealed' in remoteSettings) setOwnerNotifySecretRevealed(Boolean(rs.ownerNotifySecretRevealed));
+    if ('ownerNotifyRfqSent' in remoteSettings) setOwnerNotifyRfqSent(Boolean(rs.ownerNotifyRfqSent));
+    if ('ownerNotifyMissedLock' in remoteSettings) setOwnerNotifyMissedLock(rs.ownerNotifyMissedLock !== false);
+    if ('ownerNotifySwapCompleted' in remoteSettings) setOwnerNotifySwapCompleted(rs.ownerNotifySwapCompleted !== false);
     // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
     // uses the user's configured tolerance when auto-accepting RFQs
     if ('slippagePct' in remoteSettings) {
@@ -561,6 +573,11 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     setShowTypingIndicator(true);
     setShowCountryFlag(true);
     setGraphDensity(1.0);
+    setOwnerNotifyHtlcLocked(false);
+    setOwnerNotifySecretRevealed(false);
+    setOwnerNotifyRfqSent(false);
+    setOwnerNotifyMissedLock(true);
+    setOwnerNotifySwapCompleted(true);
     saveMutation.mutate({
       maxTxAmountUsd: 500,
       autoConfirm: false,
@@ -576,6 +593,11 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       showReadReceipts: true,
       showTypingIndicator: true,
       showCountryFlag: true,
+      ownerNotifyHtlcLocked: false,
+      ownerNotifySecretRevealed: false,
+      ownerNotifyRfqSent: false,
+      ownerNotifyMissedLock: true,
+      ownerNotifySwapCompleted: true,
       graphDensity: 1.0,
     });
     toast.success("Settings reset to defaults");
@@ -608,6 +630,11 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       showReadReceipts,
       showTypingIndicator,
       showCountryFlag,
+      ownerNotifyHtlcLocked,
+      ownerNotifySecretRevealed,
+      ownerNotifyRfqSent,
+      ownerNotifyMissedLock,
+      ownerNotifySwapCompleted,
       graphDensity,
     };
     // If not authenticated, persist to localStorage only — avoids OAuth redirect
@@ -1100,6 +1127,52 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                   description="Show a toast when a peer clicks a pair badge to start an RFQ with you."
                   value={notifyTradeInquiry}
                   onChange={setNotifyTradeInquiry}
+                />
+              </div>
+            </SectionCard>
+
+            {/* ── Owner Push Notifications ──────────────────────────────────────── */}
+            <SectionCard
+              icon={Bell}
+              title="Owner Push Notifications"
+              color="text-amber-400"
+              border="rgba(251,191,36,0.2)"
+              bg="rgba(251,191,36,0.04)"
+              delay={0.05}
+            >
+              <p className="text-[11px] text-muted-foreground">
+                Control which server-side HTLC events send a push notification to you as the platform owner. These are delivered via the Manus notification system.
+              </p>
+              <div className="space-y-4 pt-1">
+                <ToggleRow
+                  label="HTLC Locked"
+                  description="Notify when a peer locks funds into an HTLC escrow contract."
+                  value={ownerNotifyHtlcLocked}
+                  onChange={setOwnerNotifyHtlcLocked}
+                />
+                <ToggleRow
+                  label="Secret Revealed"
+                  description="Notify when the HTLC secret is revealed and the counterparty can claim funds."
+                  value={ownerNotifySecretRevealed}
+                  onChange={setOwnerNotifySecretRevealed}
+                />
+                <ToggleRow
+                  label="RFQ Sent"
+                  description="Notify when an RFQ is broadcast to a peer during a swap."
+                  value={ownerNotifyRfqSent}
+                  onChange={setOwnerNotifyRfqSent}
+                />
+                <ToggleRow
+                  label="Missed TNK Lock"
+                  description="Notify when a TNK HTLC has been pending for over 10 minutes with no detected lock."
+                  value={ownerNotifyMissedLock}
+                  onChange={setOwnerNotifyMissedLock}
+                />
+                <ToggleRow
+                  label="Swap Completed"
+                  description="Notify when a P2P atomic swap is successfully completed."
+                  value={ownerNotifySwapCompleted}
+                  onChange={setOwnerNotifySwapCompleted}
                 />
               </div>
             </SectionCard>

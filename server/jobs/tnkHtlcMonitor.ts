@@ -31,6 +31,7 @@ import { htlcSwaps } from "../../drizzle/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { broadcastAll } from "../signaling";
 import { notifyOwner } from "../_core/notification";
+import { getOwnerNotifyPrefs } from "./ownerNotifyPrefs";
 
 // Threshold: alert if a pending HTLC has been waiting this long without a detected lock
 const MISSED_LOCK_ALERT_MS = 10 * 60 * 1000; // 10 minutes
@@ -189,17 +190,21 @@ export async function pollTnkEscrow(): Promise<{
             `[TNK HTLC Monitor] HTLC ${htlc.id} has been pending ${ageMin}m with no TNK lock detected. ` +
             `SecretHash: ${htlc.secretHash.slice(0, 16)}… · Escrow: ${htlc.htlcAddress}`
           );
-          // Notify the platform owner so they can investigate before the timelock expires
-          void notifyOwner({
-            title: `⚠️ TNK HTLC Missed Lock — ${ageMin}m pending`,
-            content:
-              `HTLC #${htlc.id} has been waiting **${ageMin} minutes** for a TNK lock ` +
-              `but no matching transfer has been detected on the escrow address.\n\n` +
-              `**SecretHash:** \`${htlc.secretHash.slice(0, 32)}…\`\n` +
-              `**Escrow:** \`${htlc.htlcAddress}\`\n` +
-              `**Amount:** ${htlc.amountHuman} TNK\n` +
-              `**Timelock expires at block:** ${htlc.locktime}\n\n` +
-              `Check the Trac Network explorer and contact the counterparty if needed.`,
+          // Notify the platform owner so they can investigate before the timelock expires (gated by preference)
+          void getOwnerNotifyPrefs().then(prefs => {
+            if (prefs.ownerNotifyMissedLock) {
+              return notifyOwner({
+                title: `⚠️ TNK HTLC Missed Lock — ${ageMin}m pending`,
+                content:
+                  `HTLC #${htlc.id} has been waiting **${ageMin} minutes** for a TNK lock ` +
+                  `but no matching transfer has been detected on the escrow address.\n\n` +
+                  `**SecretHash:** \`${htlc.secretHash.slice(0, 32)}…\`\n` +
+                  `**Escrow:** \`${htlc.htlcAddress}\`\n` +
+                  `**Amount:** ${htlc.amountHuman} TNK\n` +
+                  `**Timelock expires at block:** ${htlc.locktime}\n\n` +
+                  `Check the Trac Network explorer and contact the counterparty if needed.`,
+              });
+            }
           }).catch(() => {});
         }
       }

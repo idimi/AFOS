@@ -2441,3 +2441,25 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update htlcSecretsMonitor to also notify Agent A (initiator) on HTLC expiry via sendToPeer(initiatorPeerId)
 - [x] Refund button already implemented in SwapProgressCard — now correctly receives htlc_expired event
 - [x] All 256 tests pass, 0 TypeScript errors
+
+## Feature: Notification Preference System
+
+- [x] Remove "HTLC Swap Expired" push notifications from htlcSecretsMonitor (spam removal)
+- [x] Add 5 owner push notification preference columns to agent_settings table (ownerNotifyHtlcLocked, ownerNotifySecretRevealed, ownerNotifyRfqSent, ownerNotifyMissedLock, ownerNotifySwapCompleted)
+- [x] Add initiatorPeerId column to htlc_secrets table (DB migration applied via SQL)
+- [x] Update DEFAULT_USER_SETTINGS in schema.ts with new notification preference defaults
+- [x] Add new fields to UserSettingsResult type in server/db.ts
+- [x] Add new fields to getUserSettings() and upsertUserSettings() in server/db.ts
+- [x] Update settings router (settings.get and settings.save) to include all 5 new fields
+- [x] Create server/jobs/ownerNotifyPrefs.ts — cached helper that loads owner prefs from DB (5-min TTL)
+- [x] Gate notifyOwner in signaling.ts (htlc_locked → ownerNotifyHtlcLocked, htlc_secret → ownerNotifySecretRevealed)
+- [x] Gate notifyOwner in chat.ts (RFQ sent → ownerNotifyRfqSent)
+- [x] Gate notifyOwner in tnkHtlcMonitor.ts (missed lock → ownerNotifyMissedLock)
+- [x] Add "Owner Push Notifications" section to AgentSettings.tsx Notifications tab with 5 toggle rows
+- [x] Wire owner notification prefs into state init, handleReset, handleSave, and remote settings effect
+
+## Feature: HTLC DB Cleanup Job
+
+- [x] Create server/jobs/htlcCleanup.ts — deletes htlc_secrets rows older than 7 days with terminal status (expired/refunded)
+- [x] Register cleanup job in server/_core/index.ts — runs 30s after startup, then every 24 hours
+- [x] All 256 tests pass, 0 TypeScript errors
