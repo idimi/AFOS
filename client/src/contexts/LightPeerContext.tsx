@@ -992,10 +992,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Accepts an optional `rfqOverride` so initiateHtlcLock can pass the synthetic
   // RFQ directly without waiting for React state to update.
   const acceptRfq = useCallback(async (rfqId: string, rfqOverride?: IncomingRfq) => {
-    console.log("[HTLC-DEBUG] acceptRfq called", { rfqId, hasOverride: !!rfqOverride });
+    console.error("[HTLC-DEBUG] acceptRfq called", { rfqId, hasOverride: !!rfqOverride });
     const rfq = rfqOverride ?? incomingRfqs.find(r => r.rfqId === rfqId);
     if (!rfq || rfq.status !== "pending") {
-      console.log("[HTLC-DEBUG] acceptRfq early return — rfq not found or not pending", { found: !!rfq, status: rfq?.status });
+      console.error("[HTLC-DEBUG] acceptRfq early return — rfq not found or not pending", { found: !!rfq, status: rfq?.status });
+      toast.error("[HTLC-DEBUG] acceptRfq early return", { description: `found=${!!rfq} status=${rfq?.status}` });
       return;
     }
     setIncomingRfqs(prev =>
@@ -1023,17 +1024,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     try {
       const chain = rfq.fromChain?.toLowerCase() ?? "solana";
-      console.log("[HTLC-DEBUG] chain resolved", { chain, solConnected, solAdapterConnected: !!solPubkey, phantomSolAddress, hasSendSolTx: !!sendSolTransaction, hasSignTx: !!signTransaction });
+      console.error("[HTLC-DEBUG] chain resolved", { chain, solConnected, solAdapterConnected: !!solPubkey, phantomSolAddress, hasSendSolTx: !!sendSolTransaction, hasSignTx: !!signTransaction });
+      toast.info(`[HTLC-DEBUG] chain=${chain} solConn=${solConnected} phantomAddr=${phantomSolAddress?.slice(0,8)}`);
 
       if (chain === "solana" && solConnected) {
         // Solana HTLC: build PDA lock transaction and sign with wallet
         // Supports both standard Solana adapter (signTransaction) and Phantom multi-chain (window.solana)
         setHtlcSigning({ rfqId, step: "locking" });
-        console.log("[HTLC-DEBUG] Entering Solana HTLC lock path");
+        console.error("[HTLC-DEBUG] Entering Solana HTLC lock path");
         try {
           // Resolve the sender's Solana pubkey from either adapter or Phantom multi-chain
           const senderPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
-          console.log("[HTLC-DEBUG] senderPubkeyStr", senderPubkeyStr);
+          console.error("[HTLC-DEBUG] senderPubkeyStr", senderPubkeyStr);
           if (!senderPubkeyStr) throw new Error("No Solana wallet address available");
           const senderPubkeyObj = new PublicKey(senderPubkeyStr);
 
@@ -1056,14 +1058,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             recipientPubkey = senderPubkeyObj;
           }
 
-          // Fetch the agent's HTLC escrow wallet address from the server
-          let agentEscrowAddr: string | undefined;
-          try {
-            const escrowResult = await fetch("/api/trpc/htlcWallet.getEscrowAddress?input=" + encodeURIComponent(JSON.stringify({ chain: "solana" })))
-              .then(r => r.json());
-            const addr = escrowResult?.result?.data?.address;
-            if (addr) agentEscrowAddr = addr;
-          } catch { /* fallback to PDA if server unreachable */ }
+          // Use the pre-configured HTLC escrow address from the environment variable.
+          // This avoids a server round-trip (which was causing 504 Gateway Timeout errors)
+          // and ensures the transaction can be built immediately.
+          const agentEscrowAddr: string | undefined = import.meta.env.VITE_SOL_HTLC_ESCROW || undefined;
+          console.error("[HTLC-DEBUG] agentEscrowAddr", agentEscrowAddr);
+          toast.info(`[HTLC-DEBUG] escrow=${agentEscrowAddr?.slice(0,8) ?? "NONE"} building tx...`);
 
           // Build the HTLC lock transaction
           const { transaction, escrowAddress } = await buildSolanaHtlcLockTx({
@@ -1086,21 +1086,22 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             solana?: { signAndSendTransaction?: (tx: unknown) => Promise<{ signature: string }>, signTransaction?: (tx: unknown) => Promise<unknown> }
           }).solana;
 
-          console.log("[HTLC-DEBUG] About to sign. sendSolTransaction:", typeof sendSolTransaction, "solPubkey:", solPubkey?.toBase58(), "signTransaction:", typeof signTransaction, "isPhantomStandard:", isPhantomStandardWallet, "hasPhantomProvider:", !!phantomProvider);
+          console.error("[HTLC-DEBUG] About to sign. sendSolTransaction:", typeof sendSolTransaction, "solPubkey:", solPubkey?.toBase58(), "signTransaction:", typeof signTransaction, "isPhantomStandard:", isPhantomStandardWallet, "hasPhantomProvider:", !!phantomProvider);
+          toast.info(`[HTLC-DEBUG] signing: isStd=${isPhantomStandardWallet} hasProv=${!!phantomProvider} hasSend=${!!sendSolTransaction} hasSolPk=${!!solPubkey}`);
 
           if (isPhantomStandardWallet && phantomProvider?.signAndSendTransaction) {
             // Phantom Standard Wallet path (Phantom v24+): use window.phantom.solana directly
             // This bypasses the legacy adapter which doesn't have the connected state set
-            console.log("[HTLC-DEBUG] Using Phantom Standard Wallet (window.phantom.solana) path");
+            console.error("[HTLC-DEBUG] Using Phantom Standard Wallet (window.phantom.solana) path");
             const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
           } else if (sendSolTransaction && solPubkey) {
             // Standard adapter path: sendTransaction works for legacy adapter wallets
-            console.log("[HTLC-DEBUG] Using sendSolTransaction path — calling now...");
+            console.error("[HTLC-DEBUG] Using sendSolTransaction path — calling now...");
             txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(transaction, solConnection);
           } else if (signTransaction && solPubkey) {
             // Legacy path: sign then broadcast manually
-            console.log("[HTLC-DEBUG] Using legacy signTransaction path");
+            console.error("[HTLC-DEBUG] Using legacy signTransaction path");
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
             const rawTx = signedTx.serialize();
             txHash = await solConnection.sendRawTransaction(rawTx, {
@@ -1109,7 +1110,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             });
           } else if (phantomProvider?.signAndSendTransaction) {
             // Fallback: window.solana / window.phantom.solana
-            console.log("[HTLC-DEBUG] Using window.solana fallback");
+            console.error("[HTLC-DEBUG] Using window.solana fallback");
             const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
           } else {
@@ -1384,7 +1385,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     secretHashHex?: string;
   }) => {
     const { rfqId, fromToken, toToken, fromChain, toChain, amount, outAmount, rate, counterpartyPeerId, counterpartyWallet } = params;
-    console.log("[HTLC-DEBUG] initiateHtlcLock called", { rfqId, fromChain, toChain, amount, counterpartyWallet, secretHashHex: params.secretHashHex?.slice(0, 16) });
+    console.error("[HTLC-DEBUG] initiateHtlcLock called", { rfqId, fromChain, toChain, amount, counterpartyWallet, secretHashHex: params.secretHashHex?.slice(0, 16) });
+    toast.info(`[HTLC-DEBUG] initiateHtlcLock rfqId=${rfqId?.slice(0,8)} chain=${fromChain}`);
     // Build a synthetic IncomingRfq for Agent A (the requester).
     // Agent A locks their SOURCE tokens (fromToken on fromChain).
     // acceptRfq uses rfq.fromChain to determine which chain to lock on,
