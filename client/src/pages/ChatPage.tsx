@@ -1243,7 +1243,19 @@ export default function ChatPage() {
 
       // Send to wallet for signing and submission
       const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-      const txHash = await (sendTransaction as (tx: VersionedTransaction, conn: Connection) => Promise<string>)(transaction, connection);
+      let txHash: string;
+      if (sendTransaction && connected) {
+        // Standard Solana wallet adapter path
+        txHash = await (sendTransaction as (tx: VersionedTransaction, conn: Connection) => Promise<string>)(transaction, connection);
+      } else {
+        // Phantom multi-chain fallback — use window.solana.signAndSendTransaction
+        const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+        if (!phantom?.signAndSendTransaction) {
+          throw new Error("Phantom wallet not found. Please install Phantom to execute swaps.");
+        }
+        const { signature } = await phantom.signAndSendTransaction(transaction);
+        txHash = signature;
+      }
 
       // Wait for confirmation
       toast.loading("Confirming transaction…", { id: "swap-confirm" });

@@ -2360,3 +2360,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Bug: Country flag not showing on deployed site
 
 - [x] Debug why country flag is not appearing on graph nodes, peer detail panel, or peer list on deployed site — root cause: signalingPeers mapping in NetworkPage.tsx was not carrying over countryCode/flagEmoji from RemotePeer to Peer
+
+## Bug: P2P Swap Flow Broken
+
+- [x] RFQs not appearing in Incoming RFQs panel — root cause: acceptRfq condition required signTransaction && solPubkey (standard adapter only); Phantom multi-chain users had solConnected=true but signTransaction=null
+- [x] Accept button on order book does nothing — fixed: added window.solana.signAndSendTransaction fallback when standard adapter's signTransaction is null
+- [x] After "P2P peer matched" agent message, no Phantom wallet popup — fixed: initiateHtlcLock → acceptRfq now uses Phantom multi-chain fallback
+- [x] Full flow investigated: RFQ broadcast → agent_rfq delivery → acceptRfq → HTLC lock signing → all now work with Phantom multi-chain
+- [x] Also fixed Jupiter swap path in ChatPage.tsx to use Phantom multi-chain fallback for sendTransaction

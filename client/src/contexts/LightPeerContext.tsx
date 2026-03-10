@@ -997,10 +997,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     try {
       const chain = rfq.fromChain?.toLowerCase() ?? "solana";
 
-      if (chain === "solana" && solConnected && signTransaction && solPubkey) {
+      if (chain === "solana" && solConnected) {
         // Solana HTLC: build PDA lock transaction and sign with wallet
+        // Supports both standard Solana adapter (signTransaction) and Phantom multi-chain (window.solana)
         setHtlcSigning({ rfqId, step: "locking" });
         try {
+          // Resolve the sender's Solana pubkey from either adapter or Phantom multi-chain
+          const senderPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
+          if (!senderPubkeyStr) throw new Error("No Solana wallet address available");
+          const senderPubkeyObj = new PublicKey(senderPubkeyStr);
+
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
           const existingHash = (rfq as unknown as { secretHashHex?: string }).secretHashHex;
           const { secretHex, secretHashHex } = existingHash
@@ -1013,17 +1019,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
           // Counterparty pubkey: use peer's pubkey from RFQ if available
           const counterpartyStr = (rfq as unknown as { counterpartyAddress?: string }).counterpartyAddress
-            ?? solPubkey.toBase58(); // fallback to self for demo
+            ?? senderPubkeyStr; // fallback to self for demo
           let recipientPubkey: PublicKey;
           try {
             recipientPubkey = new PublicKey(counterpartyStr);
           } catch {
-            recipientPubkey = solPubkey;
+            recipientPubkey = senderPubkeyObj;
           }
 
           // Build the HTLC lock transaction
           const { transaction, escrowAddress } = await buildSolanaHtlcLockTx({
-            senderPubkey:    solPubkey,
+            senderPubkey:    senderPubkeyObj,
             recipientPubkey,
             amountSol:       rfq.amount ?? 0,
             secretHash:      secretHashHex,
@@ -1031,15 +1037,25 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             connection:      solConnection,
           });
 
-          // Sign with the connected wallet
-          const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+          let txHash: string;
 
-          // Broadcast to Solana mainnet
-          const rawTx = signedTx.serialize();
-          const txHash = await solConnection.sendRawTransaction(rawTx, {
-            skipPreflight: false,
-            preflightCommitment: "confirmed",
-          });
+          if (signTransaction && solPubkey) {
+            // Standard Solana wallet adapter path — sign then broadcast
+            const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+            const rawTx = signedTx.serialize();
+            txHash = await solConnection.sendRawTransaction(rawTx, {
+              skipPreflight: false,
+              preflightCommitment: "confirmed",
+            });
+          } else {
+            // Phantom multi-chain fallback — use window.solana.signAndSendTransaction
+            const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+            if (!phantom?.signAndSendTransaction) {
+              throw new Error("Phantom wallet not found. Please install Phantom to sign HTLC transactions.");
+            }
+            const { signature } = await phantom.signAndSendTransaction(transaction);
+            txHash = signature;
+          }
 
           setHtlcSigning({ rfqId, step: "revealing", txHash });
           await new Promise(r => setTimeout(r, 800));
@@ -1259,7 +1275,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
       return prev;
     });
-  }, [incomingRfqs, submitQuote, solConnected, signTransaction, ethereum]);
+  }, [incomingRfqs, submitQuote, solConnected, signTransaction, phantomSolAddress, ethereum]);
 
   // ── Initiate HTLC Lock (Agent A / Requester side) ──────────────────────────
   // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
@@ -1324,7 +1340,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     toast.loading(`Claiming funds on ${claimChain}…`, { id: `claim-${rfqId}` });
 
     try {
-      if (claimChain === "solana" && solConnected && signTransaction && solPubkey) {
+      if (claimChain === "solana" && solConnected) {
         // Solana claim: build a claim instruction using the revealed secret
         // The claim instruction reveals the secret to the HTLC program to release funds
         const htlcProgramId = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
@@ -1338,14 +1354,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const programId = new SolPublicKey(htlcProgramId);
           const secretHashBuf = await crypto.subtle.digest("SHA-256", secretBytes);
           const secretHashBytes = new Uint8Array(secretHashBuf);
+          const claimSolPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
+          if (!claimSolPubkeyStr) throw new Error("No Solana wallet address available");
+          const claimSolPubkey = new SolPublicKey(claimSolPubkeyStr);
           const [escrowPda] = await SolPublicKey.findProgramAddress(
-            [Buffer.from("htlc"), Buffer.from(secretHashBytes), solPubkey.toBuffer()],
+            [Buffer.from("htlc"), Buffer.from(secretHashBytes), claimSolPubkey.toBuffer()],
             programId
           );
           const claimIx = new TransactionInstruction({
             programId,
             keys: [
-              { pubkey: solPubkey, isSigner: true, isWritable: true },
+              { pubkey: claimSolPubkey, isSigner: true, isWritable: true },
               { pubkey: escrowPda, isSigner: false, isWritable: true },
               { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
             ],
@@ -1354,10 +1373,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const { blockhash } = await solConnection.getLatestBlockhash("confirmed");
           const tx = new Transaction();
           tx.recentBlockhash = blockhash;
-          tx.feePayer = solPubkey;
+          tx.feePayer = claimSolPubkey;
           tx.add(claimIx);
-          const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(tx);
-          const txHash = await solConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
+          let txHash: string;
+          if (signTransaction && solPubkey) {
+            const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(tx);
+            txHash = await solConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
+          } else {
+            const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+            if (!phantom?.signAndSendTransaction) throw new Error("Phantom wallet not found");
+            const { signature } = await phantom.signAndSendTransaction(tx);
+            txHash = signature;
+          }
           toast.success("SOL HTLC claimed!", {
             id: `claim-${rfqId}`,
             description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
@@ -1517,7 +1544,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     const refundChain = htlcInfo.fromChain?.toLowerCase() ?? "solana";
     toast.loading(`Refunding locked funds on ${refundChain}…`, { id: `refund-${rfqId}` });
     try {
-      if (refundChain === "solana" && solConnected && signTransaction && solPubkey) {
+      if (refundChain === "solana" && solConnected) {
         const htlcProgramId = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
         if (htlcProgramId) {
           // Anchor refund instruction: [8-byte discriminator] — no secret needed, timelock expired
