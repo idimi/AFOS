@@ -16,7 +16,6 @@
 
 import { getActiveHtlcSecrets, updateHtlcSecretStatus } from "../db";
 import { sendToPeer } from "../signaling";
-import { notifyOwner } from "../_core/notification";
 
 const POLL_INTERVAL_MS = 60_000; // 1 minute
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
@@ -74,19 +73,6 @@ async function runHtlcSecretsCheck(): Promise<void> {
           }
         }
 
-        // Notify project owner
-        try {
-          await notifyOwner({
-            title: "⏰ HTLC Swap Expired",
-            content:
-              `RFQ ${row.rfqId} expired without settlement.\n` +
-              `Chain: ${row.fromChain} → ${row.toChain}\n` +
-              `Counterparty peer: ${row.counterpartyPeerId ?? "unknown"}\n` +
-              `Expired at: ${new Date(Number(expiresAt)).toISOString()}`,
-          });
-        } catch {
-          // Non-critical — notification failure should not break the monitor
-        }
       }
 
       // ── Case 2: revealed but not yet completed — send reminder ───────────────
