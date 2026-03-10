@@ -597,10 +597,12 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
  * Collapsible direct-message panel shown inside the PeerDetail popup.
  * Messages are stored in the DB via the peerMessages tRPC router.
  */
-function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, sendPeerMessage }: {
+function PeerChat({ myPeerId, otherPeerId, otherAlias, otherFlagEmoji, otherCountryCode, initialDraft, autoOpen, sendPeerMessage }: {
   myPeerId: string;
   otherPeerId: string;
   otherAlias: string;
+  otherFlagEmoji?: string;
+  otherCountryCode?: string;
   initialDraft?: string;
   autoOpen?: boolean;
   sendPeerMessage?: (targetPeerId: string, payload: unknown) => void;
@@ -870,7 +872,12 @@ function PeerChat({ myPeerId, otherPeerId, otherAlias, initialDraft, autoOpen, s
                   {peerInitials}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold truncate" style={{ color: peerNameColor }}>{otherAlias}</p>
+                  <p className="text-xs font-semibold truncate flex items-center gap-1" style={{ color: peerNameColor }}>
+                    {otherAlias}
+                    {otherFlagEmoji && (
+                      <span className="text-[12px]" title={otherCountryCode ?? ''}>{otherFlagEmoji}</span>
+                    )}
+                  </p>
                   <p className="text-[10px]" style={{ color: subtitleColor }}>P2P encrypted · {thread.length} messages</p>
                 </div>
               </div>
@@ -1319,7 +1326,12 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory, 
             <div className="w-2 h-2 rounded-full" style={{ background: peer.online ? "#10b981" : "#ef4444" }} />
             <span className="text-sm font-bold text-foreground">{peer.alias}</span>
           </div>
-          <span className="text-[10px] font-mono text-muted-foreground">{peer.region}</span>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="text-[10px] font-mono text-muted-foreground">{peer.region}</span>
+            {peer.flagEmoji && (
+              <span className="text-[11px]" title={peer.countryCode ?? ''}>{peer.flagEmoji}</span>
+            )}
+          </div>
         </div>
         <button onClick={onClose} className="text-foreground/25 hover:text-foreground/60 transition-colors">
           <X className="w-4 h-4" />
@@ -1330,6 +1342,7 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory, 
       <div className="flex-1 overflow-y-auto px-4 pb-4" style={{ scrollbarWidth: 'thin', scrollbarColor: 'var(--border) transparent' }}>
         <div className="space-y-2">
           {[
+            ...(peer.flagEmoji && peer.countryCode ? [{ label: "Country", value: `${peer.flagEmoji} ${peer.countryCode}`, color: '#06b6d4' }] : []),
             { label: "Latency", value: peer.id === "self" ? "local" : `${peer.latency}ms`, color: color },
             { label: "Reputation", value: `${repScore}/100`, color: trust.color },
             { label: "Trust Level", value: trust.label, color: trust.color },
@@ -1453,6 +1466,8 @@ function PeerDetail({ peer, onClose, selfPeerId, reputationScores, pingHistory, 
             myPeerId={selfPeerId}
             otherPeerId={peer.fullKey}
             otherAlias={peer.alias}
+            otherFlagEmoji={peer.flagEmoji}
+            otherCountryCode={peer.countryCode}
             initialDraft={pairDraft}
             autoOpen={pairDraft !== ''}
             sendPeerMessage={sendPeerMessage}
@@ -1963,6 +1978,9 @@ function PeerList({ peers, selectedId, onSelect, pingResults, onPing, reputation
                 <div className="flex-1 min-w-0">
                   <div className="text-[11px] font-mono text-foreground truncate flex items-center gap-1.5">
                     {peer.alias}
+                    {peer.flagEmoji && (
+                      <span className="text-[11px] shrink-0" title={peer.countryCode ?? ''}>{peer.flagEmoji}</span>
+                    )}
                     {/* Peer type badge */}
                     <span
                       className="text-[8px] px-1 py-0.5 rounded font-bold font-mono shrink-0"
@@ -3480,6 +3498,9 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[13px] font-bold text-foreground font-mono truncate max-w-[140px]">{peer.alias}</span>
+                    {peer.flagEmoji && (
+                      <span className="text-[13px] shrink-0" title={peer.countryCode ?? ''}>{peer.flagEmoji}</span>
+                    )}
                     <span
                       className="text-[8px] px-1.5 py-0.5 rounded font-bold font-mono shrink-0"
                       style={{

@@ -2349,3 +2349,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add countryCode field to Peer type and populate it in LightPeerContext from signaling messages
 - [x] Render country flag emoji below peer alias on NodeGraph node label
 - [x] Add showCountryFlag toggle to Privacy settings (DB schema, tRPC, UI, server enforcement)
+
+## Country Flag in Peer UI
+
+- [x] Add country row (flag + country code) to peer detail panel below "Light Peer" label and above Latency
+- [x] Add flag emoji to Network peer list rows next to alias (desktop + mobile)
+- [x] Add flag emoji to DM conversation header next to peer alias
+- [x] All three locations respect peer's showCountryFlag privacy setting (flag only shown when present, server skips geo for opted-out peers)
