@@ -1,0 +1,1 @@
+ALTER TABLE `htlc_secrets` ADD `initiatorPeerId` varchar(128);

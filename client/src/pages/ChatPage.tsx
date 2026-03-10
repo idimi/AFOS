@@ -1251,6 +1251,7 @@ export default function ChatPage() {
           amountBtc: quoteData.fromChain === "bitcoin" ? quoteData.fromAmount : quoteData.toAmount,
           expiryHours: 24,
           network: "mainnet",
+          senderPeerId: myPeerId ?? undefined,
         });
         toast.dismiss("btc-htlc");
 
@@ -1302,6 +1303,7 @@ export default function ChatPage() {
           amount:      quoteData.fromAmount,
           slippage:    1,
           openId,
+          senderPeerId: myPeerId ?? undefined,
         });
         toast.dismiss("eth-swap");
 

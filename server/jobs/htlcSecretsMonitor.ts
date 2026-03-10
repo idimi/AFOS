@@ -58,13 +58,19 @@ async function runHtlcSecretsCheck(): Promise<void> {
           message: "The HTLC swap window has expired. Both parties may now refund their locked funds.",
         };
 
-        // Notify Agent A (requester) — identified by counterpartyPeerId stored in the row
-        // Note: the row's counterpartyPeerId is Agent B's peer ID from Agent A's perspective.
-        // We broadcast to both so both sides can trigger refund UI.
+        // Notify Agent B (counterparty) so they can trigger refund UI
         if (row.counterpartyPeerId) {
           const sentToB = sendToPeer(row.counterpartyPeerId, expiredMsg);
           if (sentToB) {
             console.log(`[HtlcSecretsMonitor] Sent htlc_expired to Agent B peer=${row.counterpartyPeerId}`);
+          }
+        }
+
+        // Notify Agent A (initiator) so their Refund button appears in the UI
+        if (row.initiatorPeerId) {
+          const sentToA = sendToPeer(row.initiatorPeerId, expiredMsg);
+          if (sentToA) {
+            console.log(`[HtlcSecretsMonitor] Sent htlc_expired to Agent A peer=${row.initiatorPeerId}`);
           }
         }
 

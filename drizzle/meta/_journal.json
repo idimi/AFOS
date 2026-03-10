@@ -71,6 +71,13 @@
       "when": 1773100930354,
       "tag": "0009_oval_hardball",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1773152341474,
+      "tag": "0010_mute_slayback",
+      "breakpoints": true
     }
   ]
 }

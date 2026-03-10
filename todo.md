@@ -2432,3 +2432,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Bug #4 (Medium — auto-accept skips HTLC): auto-accept path now calls acceptRfq() instead of submitQuote() so HTLC lock is triggered
 - [x] Fix feeModel.test.ts: update string-match test to match actual inline fee computation
 - [x] All 256 tests pass, 0 TypeScript errors
+
+## Feature: HTLC Expiry Notification + Refund Flow
+
+- [x] Add initiatorPeerId column to htlc_secrets table (DB migration via SQL)
+- [x] Save senderPeerId as initiatorPeerId in all 3 saveHtlcSecret calls (SOL, ETH, BTC paths in chat.ts)
+- [x] Pass senderPeerId to executeBtcSwap and executeEthSwap from ChatPage.tsx
+- [x] Update htlcSecretsMonitor to also notify Agent A (initiator) on HTLC expiry via sendToPeer(initiatorPeerId)
+- [x] Refund button already implemented in SwapProgressCard — now correctly receives htlc_expired event
+- [x] All 256 tests pass, 0 TypeScript errors

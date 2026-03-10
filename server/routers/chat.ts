@@ -1194,6 +1194,7 @@ export const chatRouter = router({
           toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           requesterAddress:   userPublicKey ?? undefined,
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          initiatorPeerId:    senderPeerId ?? undefined,
           expiresAt:          BigInt(expiresAt),
           status:             "locked",
         }).catch(() => {/* non-fatal */});
@@ -1306,10 +1307,12 @@ export const chatRouter = router({
         skipP2P:      z.boolean().optional().default(false),
         /** Manus OAuth openId — used to enforce per-user settings */
         openId:       z.string().optional(),
+        /** Sender's signaling peerId — used to notify Agent A on HTLC expiry */
+        senderPeerId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId } = input;
+      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId: ethSenderPeerId } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1392,11 +1395,12 @@ export const chatRouter = router({
             secretHashHex:      secretHash,
             fromChain:          fromChain as "bitcoin" | "ethereum" | "solana" | "trac_network",
             toChain:            toChain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
-            requesterAddress:   fromAddress ?? undefined,
-            counterpartyPeerId: p2pQuote.peerId ?? undefined,
-            expiresAt:          BigInt(Date.now() + 3600_000),
-            status:             "locked",
-          }).catch(() => {/* non-fatal */});
+          requesterAddress:   fromAddress ?? undefined,
+          counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          initiatorPeerId:    ethSenderPeerId ?? undefined,
+          expiresAt:          BigInt(Date.now() + 3600_000),
+          status:             "locked",
+        }).catch(() => {/* non-fatal */});
         }
         const amountWei    = BigInt(Math.floor(amount * 1e18));
         const htlcLockTx   = buildHtlcLockTx({
@@ -1567,10 +1571,12 @@ export const chatRouter = router({
         toChain: z.enum(["bitcoin", "ethereum", "solana", "trac_network"]).optional(),
         /** Skip IntercomSwap P2P discovery and go straight to direct HTLC */
         skipP2P: z.boolean().optional().default(false),
+        /** Sender's signaling peerId — used to notify Agent A on HTLC expiry */
+        senderPeerId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { senderAddress, amountBtc, expiryHours, network, toToken, toChain, skipP2P } = input;
+      const { senderAddress, amountBtc, expiryHours, network, toToken, toChain, skipP2P, senderPeerId: btcSenderPeerId } = input;
       const amountSats = Math.round(amountBtc * 1e8);
 
       // ── Step 1: IntercomSwap P2P discovery ────────────────────────────────
@@ -1674,6 +1680,7 @@ export const chatRouter = router({
           toChain:            (input.toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           requesterAddress:   input.senderAddress ?? undefined,
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
+          initiatorPeerId:    btcSenderPeerId ?? undefined,
           expiresAt:          BigInt(Date.now() + expiryHours * 3_600_000),
           status:             "locked",
         }).catch(() => {/* non-fatal */});

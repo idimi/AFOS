@@ -422,6 +422,7 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
   toChain:             mysqlEnum("toChain", ["bitcoin", "ethereum", "solana", "trac_network"]).notNull(),
   requesterAddress:    varchar("requesterAddress", { length: 128 }),
   counterpartyPeerId:  varchar("counterpartyPeerId", { length: 128 }),
+  initiatorPeerId:     varchar("initiatorPeerId", { length: 128 }),
   expiresAt:           bigint("expiresAt", { mode: "bigint" }).notNull(),
   status:              mysqlEnum("status", ["locked", "revealed", "completed", "expired", "refunded"]).default("locked").notNull(),
   lockTxId:            varchar("lockTxId", { length: 128 }),
