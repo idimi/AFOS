@@ -2391,3 +2391,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Toast notification when a peer locks their side of the HTLC (already existed in LightPeerContext)
 - [x] Push notification (notifyOwner) for swap status changes (htlc_locked, htlc_secret, agent_rfq in signaling.ts + chat.ts)
 - [x] Agent chat notification when swap events occur (rfq-accepted, htlc-locked, htlc-secret-sent, htlc-secret-received, htlc-expired in ChatPage.tsx)
+
+## Bug Fix: Phantom Orders in Live Order Book
+
+- [x] Remove fake/simulated orders from Live Order Book — removed auto-broadcast logic that seeded phantom "pending" rows for every signaling peer on page load
+- [x] Order book now only shows real quotes from SSE p2p_quote events or rfq_broadcast signals from other users

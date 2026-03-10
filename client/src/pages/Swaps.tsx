@@ -1300,85 +1300,15 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     staleTime: 8_000,
   });
 
-  // ── Debounced fromAmount for RFQ re-broadcast (800ms) ─────────────────────
-  const [debouncedRfqAmount, setDebouncedRfqAmount] = useState<number | undefined>(fromAmount);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedRfqAmount(fromAmount), 800);
-    return () => clearTimeout(timer);
-  }, [fromAmount]);
-
-  // Helper: broadcast a real RFQ and seed pending rows for all matching peers
-  const broadcastRfqRef = useRef<(() => void) | null>(null);
-  broadcastRfqRef.current = () => {
-    if (!walletConnected) return;
-    const pairKey = `${fromToken.symbol}/${toToken.symbol}`;
-    const reversePairKey = `${toToken.symbol}/${fromToken.symbol}`;
-    const matchingPeers = (signalingPeers ?? []).filter(p =>
-      p.pairs.some(pair => pair === pairKey || pair === reversePairKey)
-    );
-    if (matchingPeers.length === 0) return;
-    const quoteAmount = Math.max(debouncedRfqAmount ?? 0.001, 0.001);
-    const now = Date.now();
-    // Seed a pending row for each peer that hasn't responded yet
-    setOrders(prev => {
-      const next = [...prev];
-      for (const sp of matchingPeers) {
-        const alreadyQuoted = prev.some(o => o.peer === sp.peerId && o.rate > 0);
-        if (alreadyQuoted) continue; // keep existing live quote
-        const existingIdx = next.findIndex(o => o.peer === sp.peerId);
-        const pendingEntry: OrderBookEntry = {
-          id: `pending_${sp.peerId}`,
-          peer: sp.peerId,
-          fromSymbol: fromToken.symbol,
-          toSymbol: toToken.symbol,
-          fromAmount: quoteAmount,
-          toAmount: 0,
-          rate: 0,
-          usdValue: 0,
-          expiresIn: 90,
-          latency: 0,
-          reputation: sp.score ?? 95,
-          rfqSentAt: now,
-        };
-        if (existingIdx >= 0) {
-          next[existingIdx] = { ...next[existingIdx], rfqSentAt: now, timedOut: false };
-        } else {
-          next.push(pendingEntry);
-        }
-        pendingPeersRef.current.set(sp.peerId, now);
-      }
-      return next;
-    });
-    // Broadcast the real RFQ via Oracle VM
-    submitRfq(
-      fromToken.symbol,
-      toToken.symbol,
-      quoteAmount,
-      fromToken.chain as import("../lib/afosApi").SupportedChain,
-      toToken.chain as import("../lib/afosApi").SupportedChain,
-    ).catch(() => { /* best-effort */ });
-  };
-
   // Pair change: clear orders and pending state
   useEffect(() => {
     setOrders([]);
     pendingPeersRef.current.clear();
   }, [fromToken.symbol, toToken.symbol]);
 
-  // Re-broadcast when wallet connects, peers list changes, pair changes, or debounced amount changes
-  useEffect(() => {
-    broadcastRfqRef.current?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletConnected, signalingPeers, fromToken.symbol, toToken.symbol, debouncedRfqAmount]);
-
-  // Auto-refresh: re-broadcast every 30s so peer rate updates are reflected live
-  useEffect(() => {
-    if (!walletConnected) return;
-    const interval = setInterval(() => {
-      broadcastRfqRef.current?.();
-    }, 30_000);
-    return () => clearInterval(interval);
-  }, [walletConnected]);
+  // NOTE: No auto-broadcast or pending-row seeding — the order book only shows
+  // real quotes from SSE p2p_quote events or rfq_broadcast signals from other users.
+  // Users initiate RFQs via the Swap button (handleSwap), not by simply loading the page.
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1641,8 +1571,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
         <div className="flex flex-col items-center justify-center py-8 gap-2">
           {walletConnected ? (
             <>
-              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-              <p className="text-[10px] text-slate-500">Waiting for P2P quotes…</p>
+              <Radio className="w-4 h-4 text-cyan-400" />
+              <p className="text-[10px] text-slate-500">Listening for P2P quotes — enter an amount and swap to broadcast an RFQ</p>
             </>
           ) : (
             <>
