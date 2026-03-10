@@ -1135,7 +1135,7 @@ function OperatorConfigTab() {
     btcHost: "localhost:8332",
     btcRpcPassword: "",
     btcTlsCert: "/root/.lnd/tls.cert",
-    solanaRpc: "https://api.mainnet-beta.solana.com",
+    solanaRpc: import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com",
     solanaKeypairPath: "onchain/solana/keypair.json",
     tradeauto: false,
     maxTradeBtc: "0.01",
@@ -1266,7 +1266,7 @@ function OperatorConfigTab() {
       </OperatorConfigCard>
 
       <OperatorConfigCard icon={Wallet} title="Solana Wallet" color="text-purple-400">
-        <OperatorConfigField label="RPC URL" value={cfg.solanaRpc} onChange={set("solanaRpc")} mono placeholder="https://api.mainnet-beta.solana.com" />
+        <OperatorConfigField label="RPC URL" value={cfg.solanaRpc} onChange={set("solanaRpc")} mono placeholder="https://solana-rpc.publicnode.com" />
         <OperatorConfigField label="Keypair Path" value={cfg.solanaKeypairPath} onChange={set("solanaKeypairPath")} mono placeholder="onchain/solana/keypair.json" />
         <div>
           <label className="block text-[10px] text-muted-foreground mb-1">Escrow Program ID</label>

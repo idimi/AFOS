@@ -222,8 +222,13 @@ function WalletInner({ children }: { children: ReactNode }) {
 // ─── Public WalletProvider ─────────────────────────────────────────────────────
 export function WalletProvider({ children }: { children: ReactNode }) {
   const network = WalletAdapterNetwork.Mainnet;
-  // Use Solana mainnet RPC — via AFOS backend or public endpoint
-  const endpoint = useMemo(() => "https://api.mainnet-beta.solana.com", []);
+  // Use Solana mainnet RPC — configurable via VITE_SOL_RPC_URL env var.
+  // The public api.mainnet-beta.solana.com returns 403 Forbidden from browser
+  // origins, so we default to a CORS-friendly free RPC (Allnodes publicnode).
+  const endpoint = useMemo(
+    () => import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com",
+    []
+  );
 
   const wallets = useMemo(
     () => [

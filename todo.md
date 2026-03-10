@@ -2482,3 +2482,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fixed handleConfirmSwap dependency array to include initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias
 - [x] Added comprehensive [HTLC-DEBUG] console logging at every decision point
 - [x] All 256 tests pass, 0 TypeScript errors
+
+## Bug: Solana RPC 403 Forbidden blocking HTLC lock (round 3)
+
+- [x] `api.mainnet-beta.solana.com` returns 403 on `getLatestBlockhash` — public RPC blocks browser Origin headers
+- [x] Added VITE_SOL_RPC_URL env var set to `https://solana-rpc.publicnode.com` (Allnodes, CORS-friendly)
+- [x] Updated WalletContext.tsx ConnectionProvider to use VITE_SOL_RPC_URL (fixes solConnection used in LightPeerContext HTLC lock/claim)
+- [x] Updated ChatPage.tsx, Dashboard.tsx, AdminPanel.tsx, SwapHistoryTabs.tsx — all use VITE_SOL_RPC_URL with publicnode fallback
+- [x] All 258 tests pass (2 new SOL RPC validation tests added)

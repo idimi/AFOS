@@ -130,7 +130,7 @@ const BLOCK_TIMES: Record<string, number> = {
 async function fetchCurrentBlock(chain: string): Promise<number | null> {
   try {
     if (chain === "solana") {
-      const rpc = import.meta.env.VITE_SOL_RPC_URL || "https://api.mainnet-beta.solana.com";
+      const rpc = import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
       const res = await fetch(rpc, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

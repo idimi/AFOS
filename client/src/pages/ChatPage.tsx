@@ -1505,7 +1505,8 @@ export default function ChatPage() {
       const transaction = VersionedTransaction.deserialize(txBytes);
 
       // Send to wallet for signing and submission
-      const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+      const solRpcUrl = import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
+      const connection = new Connection(solRpcUrl, "confirmed");
       let txHash: string;
       if (sendTransaction && connected) {
         // Standard Solana wallet adapter path

@@ -442,7 +442,8 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
 
       // Decode and sign via Phantom
       const { Connection, VersionedTransaction } = await import("@solana/web3.js");
-      const connection = new Connection("https://api.mainnet-beta.solana.com");
+      const solRpcUrl = import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
+      const connection = new Connection(solRpcUrl);
       const txBytes = Uint8Array.from(atob(swapTransaction), c => c.charCodeAt(0));
       const tx = VersionedTransaction.deserialize(txBytes);
       const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
