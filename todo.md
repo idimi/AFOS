@@ -2356,3 +2356,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add flag emoji to Network peer list rows next to alias (desktop + mobile)
 - [x] Add flag emoji to DM conversation header next to peer alias
 - [x] All three locations respect peer's showCountryFlag privacy setting (flag only shown when present, server skips geo for opted-out peers)
+
+## Bug: Country flag not showing on deployed site
+
+- [x] Debug why country flag is not appearing on graph nodes, peer detail panel, or peer list on deployed site — root cause: signalingPeers mapping in NetworkPage.tsx was not carrying over countryCode/flagEmoji from RemotePeer to Peer

@@ -2734,6 +2734,8 @@ export default function NetworkPage({ invitePeerId, onInvitePeerHandled, onNavig
             origin: 'intercomswap' as const,
             lastSeen: sp.lastHeartbeat ?? sp.connectedAt,
             walletAddresses: sp.walletAddresses,
+            countryCode: sp.countryCode,
+            flagEmoji: sp.flagEmoji,
           };
         });
 
