@@ -442,6 +442,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       setDirectPeerCount(client.directPeerCount);
     }));
 
+    // When the server resolves a peer's country code, update that peer in state
+    unsubs.push(client.on("peer_geo_update", (data) => {
+      const { peerId, countryCode, flagEmoji } = data as {
+        peerId: string;
+        countryCode: string;
+        flagEmoji: string;
+      };
+      setRemotePeers((prev) =>
+        prev.map((p) =>
+          p.peerId === peerId ? { ...p, countryCode, flagEmoji } : p
+        )
+      );
+    }));
+
     unsubs.push(client.on("data_channel_open", () => {
       setDirectPeerCount(client.directPeerCount);
     }));
@@ -714,6 +728,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
     }));
 
+    // Read showCountryFlag from persisted settings (localStorage for unauthed, DB for authed)
+    const _showCountryFlag = (() => {
+      try {
+        const s = localStorage.getItem('afos_settings_local');
+        if (s) {
+          const p = JSON.parse(s) as Record<string, unknown>;
+          if (typeof p.showCountryFlag === 'boolean') return p.showCountryFlag;
+        }
+      } catch { /* ignore */ }
+      return true; // default: show flag
+    })();
+
     // Always connect to the signaling WebSocket (needed to receive agent_rfq).
     // Register with the server in all cases so sendToPeer can deliver messages to
     // this peer. When Peer Mode is OFF, register with empty pairs so we are NOT
@@ -721,7 +747,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     client.connect();
     if (prefs.enabled) {
       // Full LP registration: advertise pairs and start heartbeat
-      client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses, prefs.maxTradeUsd);
+      client.register(peerId, peerAlias, prefs.acceptedPairs, walletAddresses, prefs.maxTradeUsd, _showCountryFlag);
       // Also do legacy HTTP announce (best-effort fallback)
       announce(peerId, peerAlias);
       // Legacy heartbeat (best-effort fallback)
@@ -731,7 +757,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }, HEARTBEAT_INTERVAL_MS);
     } else {
       // Listener-only registration: empty pairs — won't be matched as LP but CAN receive agent_rfq
-      client.register(peerId, peerAlias, [], walletAddresses, 0);
+      client.register(peerId, peerAlias, [], walletAddresses, 0, _showCountryFlag);
     }
 
     return () => {

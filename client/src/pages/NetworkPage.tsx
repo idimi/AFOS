@@ -55,6 +55,10 @@ interface Peer {
     ethereum?: string;
     bitcoin?: string;
   };
+  /** 2-letter ISO country code resolved from the peer's IP (e.g. "US", "DE") */
+  countryCode?: string;
+  /** Flag emoji derived from countryCode (e.g. "🇺🇸", "🇩🇪") */
+  flagEmoji?: string;
 }
 
 interface Channel {
@@ -436,11 +440,24 @@ function NodeGraph({ peers, channels, selectedId, onSelect, pulseIds, pingingIds
               {peer.alias.split(" ")[0]}
             </text>
 
+            {/* Country flag emoji — shown below alias when geo is resolved */}
+            {peer.id !== "self" && peer.flagEmoji && (
+              <text
+                x={x} y={y + r + 25}
+                textAnchor="middle"
+                fontSize={10}
+                fontFamily="serif"
+                opacity={0.9}
+              >
+                {peer.flagEmoji}
+              </text>
+            )}
+
             {peer.id !== "self" && peer.online && (
               <g>
                 {/* Latency label — uses live ping result, falls back to peer.latency, shows — if unknown */}
                 <text
-                  x={x} y={y + r + 24}
+                  x={x} y={y + r + (peer.flagEmoji ? 38 : 24)}
                   textAnchor="middle"
                   fontSize={8}
                   fill={color}

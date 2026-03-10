@@ -42,6 +42,45 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Server as HttpServer } from "http";
 import { recordPeerPing } from "./db";
 
+// ─── IP Geolocation ──────────────────────────────────────────────────────────
+
+/** Cache resolved country codes to avoid hammering the geo API */
+const geoCache = new Map<string, string>();
+
+/**
+ * Resolve a country code from an IP address using ip-api.com (free, no key).
+ * Returns a 2-letter ISO country code (e.g. "US", "DE") or "" on failure.
+ * Results are cached in-process to avoid duplicate lookups.
+ */
+async function resolveCountryCode(rawIp: string | string[] | undefined): Promise<string> {
+  if (!rawIp) return "";
+  // x-forwarded-for may be a comma-separated list; take the first (client) IP
+  const ip = (Array.isArray(rawIp) ? rawIp[0] : rawIp).split(",")[0].trim();
+  // Skip private/loopback addresses — they won't resolve to a country
+  if (!ip || ip === "::1" || ip.startsWith("127.") || ip.startsWith("10.") ||
+      ip.startsWith("192.168.") || ip.startsWith("172.")) {
+    return "";
+  }
+  if (geoCache.has(ip)) return geoCache.get(ip)!;
+  try {
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=countryCode`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return "";
+    const data = await res.json() as { countryCode?: string };
+    const code = data.countryCode ?? "";
+    geoCache.set(ip, code);
+    return code;
+  } catch {
+    return "";
+  }
+}
+
+/** Convert a 2-letter ISO country code to a flag emoji (e.g. "US" → "🇺🇸") */
+function countryCodeToFlag(code: string): string {
+  if (!code || code.length !== 2) return "";
+  const upper = code.toUpperCase();
+  return Array.from(upper).map(c => String.fromCodePoint(0x1F1E6 + c.charCodeAt(0) - 65)).join("");
+}
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface SignalingPeer {
@@ -58,6 +97,10 @@ export interface SignalingPeer {
   ws: WebSocket;
   /** Maximum trade size in USD this peer is willing to quote (advertised liquidity) */
   maxTradeUsd?: number;
+  /** 2-letter ISO country code resolved from the connecting IP (e.g. "US", "DE") */
+  countryCode?: string;
+  /** Flag emoji derived from countryCode (e.g. "🇺🇸", "🇩🇪") */
+  flagEmoji?: string;
 }
 
 interface ClientMessage {
@@ -77,6 +120,8 @@ interface ClientMessage {
   rfq?: unknown;
   /** Advertised max trade size in USD for liquidity depth aggregation */
   maxTradeUsd?: number;
+  /** Whether the peer wants their country flag broadcast to others */
+  showCountryFlag?: boolean;
   /** HTLC lock notification fields */
   rfqId?: string;
   txHash?: string;
@@ -101,6 +146,8 @@ function getPeerList() {
     connectedAt: p.connectedAt,
     lastHeartbeat: p.lastHeartbeat,
     maxTradeUsd: p.maxTradeUsd,
+    countryCode: p.countryCode,
+    flagEmoji: p.flagEmoji,
   }));
 }
 
@@ -246,7 +293,7 @@ export function attachSignalingServer(httpServer: HttpServer) {
           peers.set(msg.peerId, peer);
           registeredPeerId = msg.peerId;
 
-          // Confirm registration and send current peer list
+          // Confirm registration and send current peer list immediately (don't wait for geo)
           ws.send(
             JSON.stringify({
               type: "registered",
@@ -280,6 +327,32 @@ export function attachSignalingServer(httpServer: HttpServer) {
           );
           // Persist peer sighting to the database (fire-and-forget)
           recordPeerPing(msg.peerId, peer.alias, "intercomswap", null).catch(() => {});
+
+          // Resolve country code asynchronously and broadcast an update when ready.
+          // Skip if the peer has opted out of showing their flag (showCountryFlag === false).
+          const peerWantsFlag = msg.showCountryFlag !== false; // default true
+          if (peerWantsFlag) {
+            resolveCountryCode(clientIp).then((code) => {
+              if (!code) return;
+              const flag = countryCodeToFlag(code);
+              // Update the stored peer if it's still connected
+              const storedPeer = peers.get(msg.peerId!);
+              if (storedPeer) {
+                storedPeer.countryCode = code;
+                storedPeer.flagEmoji = flag;
+                // Broadcast a geo_update so all peers (including the new one) get the flag
+                broadcastAll({
+                  type: "peer_geo_update",
+                  peerId: msg.peerId,
+                  countryCode: code,
+                  flagEmoji: flag,
+                });
+                console.log(`[Signaling] Geo resolved: ${msg.peerId!.slice(0, 12)}… → ${code} ${flag}`);
+              }
+            }).catch(() => {});
+          } else {
+            console.log(`[Signaling] Flag hidden by peer preference: ${msg.peerId!.slice(0, 12)}…`);
+          }
           break;
         }
 

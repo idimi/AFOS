@@ -36,6 +36,8 @@ export const settingsRouter = router({
         // Message prefs
         showReadReceipts: DEFAULT_USER_SETTINGS.showReadReceipts,
         showTypingIndicator: DEFAULT_USER_SETTINGS.showTypingIndicator,
+        // Privacy prefs
+        showCountryFlag: DEFAULT_USER_SETTINGS.showCountryFlag,
         // Display prefs
         graphDensity: DEFAULT_USER_SETTINGS.graphDensity,
       };
@@ -57,6 +59,8 @@ export const settingsRouter = router({
       // Message prefs
       showReadReceipts: settings.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts,
       showTypingIndicator: settings.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator,
+      // Privacy prefs
+      showCountryFlag: settings.showCountryFlag ?? DEFAULT_USER_SETTINGS.showCountryFlag,
       // Display prefs
       graphDensity: settings.graphDensity ?? DEFAULT_USER_SETTINGS.graphDensity,
     };
@@ -147,6 +151,8 @@ export const settingsRouter = router({
         // Message prefs
         showReadReceipts: z.boolean().optional(),
         showTypingIndicator: z.boolean().optional(),
+        // Privacy prefs
+        showCountryFlag: z.boolean().optional(),
         // Display prefs
         graphDensity: z.number().min(0.3).max(3.0).optional(),
       }),

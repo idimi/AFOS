@@ -184,6 +184,9 @@ export const userSettings = mysqlTable("user_settings", {
   showReadReceipts:     int("showReadReceipts").default(1).notNull(),
   /** Send typing indicator signal to peers while you type (0 = off, 1 = on) */
   showTypingIndicator:  int("showTypingIndicator").default(1).notNull(),
+  // ── Privacy preferences ───────────────────────────────────────────────────
+  /** Broadcast your country flag emoji to other peers on the network (0 = off, 1 = on) */
+  showCountryFlag:      int("showCountryFlag").default(1).notNull(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -243,6 +246,8 @@ export const DEFAULT_USER_SETTINGS = {
   // Message prefs
   showReadReceipts: true,
   showTypingIndicator: true,
+  // Privacy prefs
+  showCountryFlag: true,
   // Display prefs
   graphDensity: 1.0,
 };

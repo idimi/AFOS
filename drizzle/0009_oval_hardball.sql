@@ -1,0 +1,1 @@
+ALTER TABLE `user_settings` ADD `showCountryFlag` int DEFAULT 1 NOT NULL;

@@ -112,6 +112,8 @@ export type UserSettingsResult = {
   // Message prefs
   showReadReceipts: boolean;
   showTypingIndicator: boolean;
+  // Privacy prefs
+  showCountryFlag: boolean;
   // Display prefs
   graphDensity: number;
 };
@@ -142,6 +144,8 @@ export async function getUserSettings(openId: string): Promise<UserSettingsResul
       // Message prefs
       showReadReceipts: (r.showReadReceipts as number) !== 0,
       showTypingIndicator: (r.showTypingIndicator as number) !== 0,
+      // Privacy prefs
+      showCountryFlag: r.showCountryFlag === undefined ? DEFAULT_USER_SETTINGS.showCountryFlag : (r.showCountryFlag as number) !== 0,
       // Display prefs
       graphDensity: typeof r.graphDensity === 'number' ? r.graphDensity : DEFAULT_USER_SETTINGS.graphDensity,
     };
@@ -172,6 +176,8 @@ export async function upsertUserSettings(
     // Message prefs
     showReadReceipts?: boolean;
     showTypingIndicator?: boolean;
+    // Privacy prefs
+    showCountryFlag?: boolean;
     // Display prefs
     graphDensity?: number;
   },
@@ -198,6 +204,7 @@ export async function upsertUserSettings(
     notifyTradeInquiry: ((patch.notifyTradeInquiry ?? DEFAULT_USER_SETTINGS.notifyTradeInquiry) ? 1 : 0) as number,
     showReadReceipts: ((patch.showReadReceipts ?? DEFAULT_USER_SETTINGS.showReadReceipts) ? 1 : 0) as number,
     showTypingIndicator: ((patch.showTypingIndicator ?? DEFAULT_USER_SETTINGS.showTypingIndicator) ? 1 : 0) as number,
+    showCountryFlag: ((patch.showCountryFlag ?? DEFAULT_USER_SETTINGS.showCountryFlag) ? 1 : 0) as number,
     graphDensity: patch.graphDensity ?? DEFAULT_USER_SETTINGS.graphDensity,
   };
 
@@ -215,6 +222,7 @@ export async function upsertUserSettings(
   if (patch.notifyTradeInquiry !== undefined) updateSet.notifyTradeInquiry = patch.notifyTradeInquiry ? 1 : 0;
   if (patch.showReadReceipts !== undefined) updateSet.showReadReceipts = patch.showReadReceipts ? 1 : 0;
   if (patch.showTypingIndicator !== undefined) updateSet.showTypingIndicator = patch.showTypingIndicator ? 1 : 0;
+  if (patch.showCountryFlag !== undefined) updateSet.showCountryFlag = patch.showCountryFlag ? 1 : 0;
   if (patch.graphDensity !== undefined) updateSet.graphDensity = patch.graphDensity;
 
   await db.insert(userSettings).values(insertValues).onDuplicateKeyUpdate({ set: updateSet });

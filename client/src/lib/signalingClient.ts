@@ -27,6 +27,10 @@ export interface RemotePeer {
   lastHeartbeat?: number;
   /** Advertised maximum trade size in USD (liquidity depth) */
   maxTradeUsd?: number;
+  /** 2-letter ISO country code resolved from the peer's IP on the server (e.g. "US", "DE") */
+  countryCode?: string;
+  /** Flag emoji derived from countryCode (e.g. "🇺🇸", "🇩🇪") */
+  flagEmoji?: string;
   /** WebRTC data channel (null until established) */
   dataChannel: RTCDataChannel | null;
   /** RTCPeerConnection (null until WebRTC handshake starts) */
@@ -47,6 +51,7 @@ export type SignalingEvent =
   | "htlc_secret"
   | "htlc_secret_reminder"
   | "htlc_expired"
+  | "peer_geo_update"
   | "data_channel_open"
   | "data_channel_close"
   | "data_channel_message"
@@ -114,6 +119,7 @@ export class SignalingClient {
   private myPairs: string[] = [];
   private myWalletAddresses: Record<string, string> = {};
   private myMaxTradeUsd: number | undefined = undefined;
+  private myShowCountryFlag: boolean = true;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_DELAY;
@@ -188,6 +194,7 @@ export class SignalingClient {
           pairs: this.myPairs,
           walletAddresses: this.myWalletAddresses,
           maxTradeUsd: this.myMaxTradeUsd,
+          showCountryFlag: this.myShowCountryFlag,
         });
       }
     };
@@ -266,13 +273,15 @@ export class SignalingClient {
     alias: string,
     pairs: string[],
     walletAddresses: Record<string, string>,
-    maxTradeUsd?: number
+    maxTradeUsd?: number,
+    showCountryFlag?: boolean
   ) {
     this.myPeerId = peerId;
     this.myAlias = alias;
     this.myPairs = pairs;
     this.myWalletAddresses = walletAddresses;
     this.myMaxTradeUsd = maxTradeUsd;
+    this.myShowCountryFlag = showCountryFlag !== false; // default true
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.connect();
@@ -286,6 +295,7 @@ export class SignalingClient {
       pairs,
       walletAddresses,
       maxTradeUsd,
+      showCountryFlag: this.myShowCountryFlag,
     });
   }
 
@@ -541,6 +551,23 @@ export class SignalingClient {
           message: msg.message,
         });
         break;
+
+      case "peer_geo_update": {
+        // Server resolved the country code for a peer's IP address
+        const { peerId, countryCode, flagEmoji } = msg as {
+          peerId: string;
+          countryCode: string;
+          flagEmoji: string;
+        };
+        const geoRemote = this.remotePeers.get(peerId);
+        if (geoRemote) {
+          geoRemote.countryCode = countryCode;
+          geoRemote.flagEmoji = flagEmoji;
+        }
+        this.emit("peer_geo_update", { peerId, countryCode, flagEmoji });
+        console.log(`[SignalingClient] Geo update for ${peerId.slice(0, 12)}…: ${flagEmoji} ${countryCode}`);
+        break;
+      }
 
       case "error":
         console.error("[SignalingClient] Server error:", msg.message);

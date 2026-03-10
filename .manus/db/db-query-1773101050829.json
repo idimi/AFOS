@@ -1,0 +1,120 @@
+{
+  "query": "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'user_settings' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_DEFAULT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'user_settings' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "openId",
+      "COLUMN_TYPE": "varchar(64)",
+      "COLUMN_DEFAULT": "NULL"
+    },
+    {
+      "COLUMN_NAME": "maxTxAmountUsd",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "500"
+    },
+    {
+      "COLUMN_NAME": "autoConfirm",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "0"
+    },
+    {
+      "COLUMN_NAME": "slippagePct",
+      "COLUMN_TYPE": "varchar(8)",
+      "COLUMN_DEFAULT": "0.5"
+    },
+    {
+      "COLUMN_NAME": "preferredRoute",
+      "COLUMN_TYPE": "enum('intercomswap','jupiter','zerox','oneinch','best')",
+      "COLUMN_DEFAULT": "best"
+    },
+    {
+      "COLUMN_NAME": "theme",
+      "COLUMN_TYPE": "enum('dark','light','system')",
+      "COLUMN_DEFAULT": "dark"
+    },
+    {
+      "COLUMN_NAME": "createdAt",
+      "COLUMN_TYPE": "timestamp",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP"
+    },
+    {
+      "COLUMN_NAME": "updatedAt",
+      "COLUMN_TYPE": "timestamp",
+      "COLUMN_DEFAULT": "CURRENT_TIMESTAMP"
+    },
+    {
+      "COLUMN_NAME": "autoAcceptRfq",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "0"
+    },
+    {
+      "COLUMN_NAME": "autoAcceptMaxUsd",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "0"
+    },
+    {
+      "COLUMN_NAME": "timelockSolBlocks",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "144"
+    },
+    {
+      "COLUMN_NAME": "timelockEthBlocks",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "50"
+    },
+    {
+      "COLUMN_NAME": "timelockBtcBlocks",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "6"
+    },
+    {
+      "COLUMN_NAME": "notifyReactions",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "0"
+    },
+    {
+      "COLUMN_NAME": "notifyIncomingDm",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "notifyUnreadBadge",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "notifyTradeInquiry",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "showReadReceipts",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "showTypingIndicator",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "showCountryFlag",
+      "COLUMN_TYPE": "int",
+      "COLUMN_DEFAULT": "1"
+    },
+    {
+      "COLUMN_NAME": "graph_density",
+      "COLUMN_TYPE": "decimal(4,2)",
+      "COLUMN_DEFAULT": "1.00"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\tCOLUMN_TYPE\tCOLUMN_DEFAULT\nid\tint\tNULL\nopenId\tvarchar(64)\tNULL\nmaxTxAmountUsd\tint\t500\nautoConfirm\tint\t0\nslippagePct\tvarchar(8)\t0.5\npreferredRoute\tenum('intercomswap','jupiter','zerox','oneinch','best')\tbest\ntheme\tenum('dark','light','system')\tdark\ncreatedAt\ttimestamp\tCURRENT_TIMESTAMP\nupdatedAt\ttimestamp\tCURRENT_TIMESTAMP\nautoAcceptRfq\tint\t0\nautoAcceptMaxUsd\tint\t0\ntimelockSolBlocks\tint\t144\ntimelockEthBlocks\tint\t50\ntimelockBtcBlocks\tint\t6\nnotifyReactions\tint\t0\nnotifyIncomingDm\tint\t1\nnotifyUnreadBadge\tint\t1\nnotifyTradeInquiry\tint\t1\nshowReadReceipts\tint\t1\nshowTypingIndicator\tint\t1\nshowCountryFlag\tint\t1\ngraph_density\tdecimal(4,2)\t1.00\n",
+  "stderr": "",
+  "execution_time_ms": 56
+}

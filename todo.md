@@ -2341,3 +2341,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add origin badge (HW/IS) to peer nodes in graph
 - [x] Add reputation arc ring around peer nodes (green/cyan/amber/orange/red based on score)
 - [x] Latency label color now reflects live RTT color coding
+
+## Peer Country Flag on NodeGraph
+
+- [x] Add IP geolocation on signaling server: resolve country code from connecting IP on register, store in peer registry
+- [x] Propagate countryCode in peer_list / peer_joined / registered messages via peer_geo_update
+- [x] Add countryCode field to Peer type and populate it in LightPeerContext from signaling messages
+- [x] Render country flag emoji below peer alias on NodeGraph node label
+- [x] Add showCountryFlag toggle to Privacy settings (DB schema, tRPC, UI, server enforcement)

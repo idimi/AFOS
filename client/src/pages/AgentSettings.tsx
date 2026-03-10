@@ -40,6 +40,7 @@ import {
   Cog,
   CheckCheck,
   Keyboard,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTheme } from "next-themes";
@@ -399,6 +400,8 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
   // Message preferences
   const [showReadReceipts, setShowReadReceipts] = useState(true);
   const [showTypingIndicator, setShowTypingIndicator] = useState(true);
+  // Privacy preferences
+  const [showCountryFlag, setShowCountryFlag] = useState(true);
   // Display preferences
   const [graphDensity, setGraphDensity] = useState(1.0);
   // ── Migrate localStorage → DB when user logs in ────────────────────────────
@@ -426,6 +429,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
         notifyTradeInquiry: local.notifyTradeInquiry !== false,
         showReadReceipts: local.showReadReceipts !== false,
         showTypingIndicator: local.showTypingIndicator !== false,
+        showCountryFlag: local.showCountryFlag !== false,
         graphDensity: typeof local.graphDensity === 'number' ? local.graphDensity : 1.0,
       }, {
         onSuccess: () => {
@@ -465,6 +469,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       if (typeof local.notifyTradeInquiry === 'boolean') setNotifyTradeInquiry(local.notifyTradeInquiry);
       if (typeof local.showReadReceipts === 'boolean') setShowReadReceipts(local.showReadReceipts);
       if (typeof local.showTypingIndicator === 'boolean') setShowTypingIndicator(local.showTypingIndicator);
+      if (typeof local.showCountryFlag === 'boolean') setShowCountryFlag(local.showCountryFlag);
       if (typeof local.graphDensity === 'number') setGraphDensity(local.graphDensity);
     } catch { /* malformed JSON — ignore */ }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -513,6 +518,17 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     if ('notifyTradeInquiry' in remoteSettings) setNotifyTradeInquiry(rs.notifyTradeInquiry !== false);
     if ('showReadReceipts' in remoteSettings) setShowReadReceipts(rs.showReadReceipts !== false);
     if ('showTypingIndicator' in remoteSettings) setShowTypingIndicator(rs.showTypingIndicator !== false);
+    if ('showCountryFlag' in remoteSettings) {
+      const scf = rs.showCountryFlag !== false;
+      setShowCountryFlag(scf);
+      // Sync into afos_settings_local so LightPeerContext can read it on registration
+      try {
+        const stored = localStorage.getItem('afos_settings_local');
+        const parsed = stored ? JSON.parse(stored) as Record<string, unknown> : {};
+        parsed.showCountryFlag = scf;
+        localStorage.setItem('afos_settings_local', JSON.stringify(parsed));
+      } catch { /* best-effort */ }
+    }
     if ('graphDensity' in remoteSettings && typeof rs.graphDensity === 'number') setGraphDensity(rs.graphDensity);
     // Sync slippagePct into LightPeerPrefs so the slippage guard in LightPeerContext
     // uses the user's configured tolerance when auto-accepting RFQs
@@ -543,6 +559,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
     setNotifyTradeInquiry(true);
     setShowReadReceipts(true);
     setShowTypingIndicator(true);
+    setShowCountryFlag(true);
     setGraphDensity(1.0);
     saveMutation.mutate({
       maxTxAmountUsd: 500,
@@ -558,6 +575,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       notifyTradeInquiry: true,
       showReadReceipts: true,
       showTypingIndicator: true,
+      showCountryFlag: true,
       graphDensity: 1.0,
     });
     toast.success("Settings reset to defaults");
@@ -589,6 +607,7 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
       notifyTradeInquiry,
       showReadReceipts,
       showTypingIndicator,
+      showCountryFlag,
       graphDensity,
     };
     // If not authenticated, persist to localStorage only — avoids OAuth redirect
@@ -1136,6 +1155,28 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
             transition={{ duration: 0.15 }}
             className="space-y-4"
           >
+            {/* ── Location Privacy ──────────────────────────────────────────────── */}
+            <SectionCard
+              icon={Globe}
+              title="Privacy — Location"
+              color="text-cyan-400"
+              border="rgba(6,182,212,0.2)"
+              bg="rgba(6,182,212,0.04)"
+              delay={0}
+            >
+              <p className="text-[11px] text-muted-foreground">
+                Control whether your country flag is visible to other peers on the network graph.
+              </p>
+              <div className="space-y-4 pt-1">
+                <ToggleRow
+                  label="Show my country flag"
+                  description="Broadcast your country flag emoji to peers on the network graph. When off, no flag is shown on your node."
+                  value={showCountryFlag}
+                  onChange={setShowCountryFlag}
+                />
+              </div>
+            </SectionCard>
+
             {/* ── Blocked Peers ─────────────────────────────────────────────────── */}
             <SectionCard
               icon={UserX}
@@ -1234,6 +1275,14 @@ export default function AgentSettings({ defaultTab }: { defaultTab?: TabId } = {
                 </div>
               )}
             </SectionCard>
+
+            <SaveBar
+              isWalletConnected={isWalletConnected}
+              isPending={saveMutation.isPending}
+              savedFlash={savedFlash}
+              onSave={handleSave}
+              onConnectWallet={() => setShowWalletModal(true)}
+            />
           </motion.div>
         )}
 
