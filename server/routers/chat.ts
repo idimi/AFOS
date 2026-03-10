@@ -1017,151 +1017,79 @@ export const chatRouter = router({
         ? `This swap (~$${estimatedUsd.toFixed(2)}) is close to your $${userPrefs.maxTxAmountUsd} transaction limit.`
         : undefined;
 
-      // ── Step 0+1: Broadcast RFQ to ALL peers + try direct P2P match ────────────────────
+      // ── Quote-only phase: NO peer matching, NO RFQ broadcast yet ─────────────────────
+      // Peer matching and RFQ broadcast happen ONLY when the user clicks "Confirm Swap".
+      // This prevents peers from waiting before the user has reviewed and approved the quote.
       const skipP2P = userPrefs.preferredRoute === "jupiter" || userPrefs.preferredRoute === "zerox";
-      // Broadcast the open RFQ to ALL connected peers so it appears in the Live Order Book.
-      // This runs even when a direct peer match is found (so other peers see the intent too).
-      if (!skipP2P) {
-        const rfqBroadcastId = `rfq_${Date.now()}_${senderPeerId?.slice(0, 8) ?? "anon"}`;
-        broadcastRfqToAll(senderPeerId, {
-          rfqId:          rfqBroadcastId,
-          fromToken:      from.symbol,
-          toToken:        to.symbol,
-          fromChain:      from.chain,
-          toChain:        to.chain,
-          amount:         swapAmount,
-          requestorPeer:  senderPeerId ?? "anonymous",
-          requesterAlias: senderAlias ?? senderWalletAddress?.slice(0, 8) ?? "Anonymous",
-          timestamp:      Date.now(),
-        });
-      }
-      let p2pMatch: P2PQuoteResult | null = null;
 
-      if (!skipP2P) {
-        p2pMatch = findSignalingPeer({
-          fromToken:    from.symbol,
-          toToken:      to.symbol,
-          fromChain:    from.chain,
-          toChain:      to.chain,
-          amount:       swapAmount,
-          prices,
-          senderPeerId: senderPeerId,
-          senderWallet: senderWalletAddress,
-        });
-      }
+      // Peek at online peers to show an estimated P2P rate — but do NOT notify them yet.
+      const p2pEstimate: P2PQuoteResult | null = !skipP2P
+        ? findSignalingPeer({
+            fromToken:    from.symbol,
+            toToken:      to.symbol,
+            fromChain:    from.chain,
+            toChain:      to.chain,
+            amount:       swapAmount,
+            prices,
+            senderPeerId: senderPeerId,
+            senderWallet: senderWalletAddress,
+          })
+        : null;
 
-       // ── Step 2a: P2P peer found — notify counterparty and return P2P quote ─────────
-      if (p2pMatch && p2pMatch.peerId && p2pMatch.rfqId) {
-        const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
-        // Generate the HTLC secret here (server-side) so both Agent A and Agent B
-        // lock to the SAME hash — this is what makes the swap atomic.
-        const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
-        const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
-        const htlcHashBuf     = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
-        const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBuf)).map(b => b.toString(16).padStart(2, "0")).join("");
-        // Persist HTLC secret to DB so reveal survives page refresh
-        void saveHtlcSecret({
-          rfqId:              p2pMatch.rfqId,
-          secretHex:          htlcSecretHex,
-          secretHashHex:      htlcSecretHash,
-          fromChain:          from.chain as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          toChain:            to.chain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          requesterAddress:   senderWalletAddress ?? undefined,
-          counterpartyPeerId: p2pMatch.peerId ?? undefined,
-          expiresAt:          BigInt(expiresAt),
-          status:             "locked",
-        }).catch(() => {/* non-fatal */});
-        // Push agent_rfq to the matched peer's browser via signaling WebSocket
-        // Include secretHashHex so Agent B locks to the same hash (atomicity)
-        const delivered = sendAgentRfqToPeer({
-          rfqId:           p2pMatch.rfqId,
-          targetPeerId:    p2pMatch.peerId,
-          fromToken:       from.symbol,
-          toToken:         to.symbol,
-          fromChain:       from.chain,
-          toChain:         to.chain,
-          amount:          swapAmount,
-          outAmount:       p2pMatch.outAmount ?? 0,
-          rate:            p2pMatch.rate ?? 0,
-          requesterAlias:  senderAlias ?? senderWalletAddress?.slice(0, 8) ?? "Anonymous",
-          requesterPeerId: senderPeerId,
-          requesterWallet: senderWalletAddress,
-          expiresAt,
-          secretHashHex:   htlcSecretHash,
-        });
-        const peerLabel = p2pMatch.peerAlias ?? p2pMatch.peerId?.slice(0, 8) ?? "peer";
-        const routeLabel = `AFOS P2P — matched @${peerLabel}`;
-        return {
-          type: "quote_card" as const,
-          content: delivered
-            ? `P2P peer found! Swap request sent to **@${peerLabel}**. Waiting for their confirmation…`
-            : `P2P peer found (@${peerLabel}) but they may be offline. You can still proceed — the swap will route via DEX if they don't respond.`,
-          limitWarning: nearLimitWarning,
-          p2pPeer: {
-            peerId:        p2pMatch.peerId,
-            alias:         p2pMatch.peerAlias,
-            rfqId:         p2pMatch.rfqId,
-            wallets:       p2pMatch.counterpartyWallets,
-            delivered,
-            expiresAt,
-            secretHashHex: htlcSecretHash, // Agent A uses this to lock their side
-          },
-          quoteData: {
-            fromToken:      from.symbol,
-            fromChain:      from.chain,
-            toToken:        to.symbol,
-            toChain:        to.chain,
-            fromAmount:     swapAmount,
-            toAmount:       p2pMatch.outAmount ?? 0,
-            netToAmount:    p2pMatch.outAmount ?? 0,
-            fromAmountUsd:  estimatedUsd,
-            toAmountUsd:    (p2pMatch.outAmount ?? 0) * (prices[to.symbol] ?? 1),
-            rate:           p2pMatch.rate ?? 0,
-            priceImpact:    0,
-            platformFee:    swapAmount * (P2P_FEE_BPS / 10000),
-            platformFeeUsd: estimatedUsd * (P2P_FEE_BPS / 10000),
-            platformFeeOut: (p2pMatch.outAmount ?? 0) * (P2P_FEE_BPS / 10000),
-            feeBps:         P2P_FEE_BPS,
-            feeToken:       to.symbol,
-            route:          routeLabel,
-            quoteResponse:  null,
-          },
-        };
-      }
-
-      // ── Step 2b: No peer found — fall back to DEX quote ─────────────────────────
+      // Build DEX quote as baseline (used when no P2P peer is available, or as fallback)
       const quoteResult = await buildQuote(fromAsset, toAsset, swapAmount, prices, slippageBps);
-
       if ("error" in quoteResult) {
         return { type: "text" as const, content: quoteResult.error };
       }
 
+      // If a P2P peer is available, show their estimated rate in the quote card.
+      // The peer is NOT notified yet — notification happens on Confirm.
+      const finalToAmount   = p2pEstimate?.outAmount ?? quoteResult.toAmount;
+      const finalRate       = p2pEstimate?.rate       ?? quoteResult.rate;
+      const finalFeeBps     = p2pEstimate ? P2P_FEE_BPS : quoteResult.feeBps;
+      const finalFeeToken   = quoteResult.feeToken;
+      const peerLabel       = p2pEstimate?.peerAlias ?? p2pEstimate?.peerId?.slice(0, 8) ?? "peer";
+      const finalRoute      = p2pEstimate
+        ? `AFOS P2P — matched @${peerLabel}`
+        : quoteResult.route;
+
       return {
         type: "quote_card" as const,
-        content: skipP2P
-          ? `Here's your swap quote for ${swapAmount} ${from.symbol} → ${to.symbol}:`
-          : `No P2P peer available right now. Here's the best DEX rate for ${swapAmount} ${from.symbol} → ${to.symbol}:`,
+        content: p2pEstimate
+          ? `P2P peer available (@${peerLabel}). Review the quote and click **Confirm Swap** to proceed.`
+          : skipP2P
+            ? `Here's your swap quote for ${swapAmount} ${from.symbol} → ${to.symbol}:`
+            : `Here's the best rate for ${swapAmount} ${from.symbol} → ${to.symbol}. Click **Confirm Swap** to proceed.`,
         limitWarning: nearLimitWarning,
-        p2pPeer: null,
+        // p2pPeer carries the estimated match info — peer is NOT notified until Confirm
+        p2pPeer: p2pEstimate ? {
+          peerId:        p2pEstimate.peerId,
+          alias:         p2pEstimate.peerAlias,
+          rfqId:         p2pEstimate.rfqId,
+          wallets:       p2pEstimate.counterpartyWallets,
+          delivered:     false, // will be set to true after Confirm
+          expiresAt:     Date.now() + 120_000, // 2 min to review quote
+          secretHashHex: "",   // generated on Confirm
+        } : null,
         quoteData: {
           fromToken:      from.symbol,
           fromChain:      from.chain,
           toToken:        to.symbol,
           toChain:        to.chain,
-          fromAmount:     quoteResult.fromAmount,
-          toAmount:       quoteResult.toAmount,
-          netToAmount:    quoteResult.netToAmount,
-          fromAmountUsd:  quoteResult.fromAmountUsd,
-          toAmountUsd:    quoteResult.toAmountUsd,
-          rate:           quoteResult.rate,
-          priceImpact:    quoteResult.priceImpact,
-          platformFee:    quoteResult.platformFee,
-          platformFeeUsd: quoteResult.platformFeeUsd,
-          platformFeeOut: quoteResult.platformFeeOut,
-          feeBps:         quoteResult.feeBps,
-          feeToken:       quoteResult.feeToken,
-          route:          quoteResult.route,
-          quoteResponse:  quoteResult.rawQuote,
+          fromAmount:     swapAmount,
+          toAmount:       finalToAmount,
+          netToAmount:    finalToAmount * (1 - finalFeeBps / 10000),
+          fromAmountUsd:  estimatedUsd,
+          toAmountUsd:    finalToAmount * (prices[to.symbol] ?? 1),
+          rate:           finalRate,
+          priceImpact:    p2pEstimate ? 0 : quoteResult.priceImpact,
+          platformFee:    swapAmount * (finalFeeBps / 10000),
+          platformFeeUsd: estimatedUsd * (finalFeeBps / 10000),
+          platformFeeOut: finalToAmount * (finalFeeBps / 10000),
+          feeBps:         finalFeeBps,
+          feeToken:       finalFeeToken,
+          route:          finalRoute,
+          quoteResponse:  p2pEstimate ? null : quoteResult.rawQuote,
         },
       };
     }),

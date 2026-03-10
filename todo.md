@@ -2414,3 +2414,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add live SwapProgressCard message in agent chat showing RFQ→HTLC→settlement phases with expiry countdown
 - [x] Chat progress card updates in real-time as swap phase advances (rfq-accepted→locking→settling→confirmed→expired)
 - [x] Show expiry timer/countdown in the chat card so user knows time remaining to confirm/act
+
+## Bug Fix: Swap Flow — RFQ Sent on Confirm (not on intent)
+
+- [x] Remove premature RFQ broadcast + peer matching from sendMessage — now quote-only phase
+- [x] buildSwapTx (called on Confirm) is the ONLY place that does real peer matching and RFQ broadcast
+- [x] Fix "Connect Wallet to Swap" bug in full chat page QuoteCard — was using Solana-only useWallet hook; now accepts walletConnected prop from multi-chain context
+- [x] Pass anyWalletConnected to MessageBubble and QuoteCard so all chain wallets are recognized
+- [x] Server result.content now says "P2P peer available — click Confirm Swap to proceed" instead of "Swap request sent"

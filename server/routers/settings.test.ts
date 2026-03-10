@@ -94,9 +94,13 @@ describe("settings router", () => {
       expect(result.theme).toBe("light");
     });
 
-    it("throws UNAUTHORIZED when user is not authenticated", async () => {
+    it("returns default settings when user is not authenticated (public procedure)", async () => {
       const caller = appRouter.createCaller(makeCtx(null));
-      await expect(caller.settings.get()).rejects.toThrow();
+      // settings.get is a publicProcedure that returns defaults for unauthenticated users
+      const result = await caller.settings.get();
+      expect(result).toBeDefined();
+      expect(result.maxTxAmountUsd).toBe(DEFAULT_USER_SETTINGS.maxTxAmountUsd);
+      expect(result.preferredRoute).toBe(DEFAULT_USER_SETTINGS.preferredRoute);
     });
   });
 

@@ -171,6 +171,7 @@ function QuoteCard({
   onRequestConnect,
   limitWarning,
   tnkPeerCount,
+  walletConnected,
 }: {
   data: QuoteData;
   onConfirm: () => void;
@@ -179,8 +180,12 @@ function QuoteCard({
   onRequestConnect: () => void;
   limitWarning?: string;
   tnkPeerCount?: number;
+  /** Pass true when ANY wallet (SOL, ETH, BTC, TNK) is connected — overrides Solana-only hook */
+  walletConnected?: boolean;
 }) {
-  const { connected } = useWallet();
+  const { connected: solConnected } = useWallet();
+  // Use the multi-chain walletConnected prop when provided; fall back to Solana adapter
+  const connected = walletConnected ?? solConnected;
 
   return (
     <motion.div
@@ -648,6 +653,7 @@ function MessageBubble({
   refundedRfqIds,
   htlcLockedAt,
   tnkPeerCount,
+  anyWalletConnected,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -665,6 +671,8 @@ function MessageBubble({
   /** Map of rfqId → Unix ms when HTLC was locked (for countdown timer) */
   htlcLockedAt?: Record<string, number>;
   tnkPeerCount?: number;
+  /** Whether ANY wallet (SOL, ETH, BTC, TNK) is connected — passed to QuoteCard */
+  anyWalletConnected?: boolean;
 }) {
   const isUser = msg.role === "user";
 
@@ -745,6 +753,7 @@ function MessageBubble({
               onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken, msg.quoteData!.fromChain)}
               limitWarning={msg.limitWarning}
               tnkPeerCount={tnkPeerCount}
+              walletConnected={anyWalletConnected}
             />
           </div>
         )}
@@ -1646,6 +1655,7 @@ export default function ChatPage() {
               executingId={executingId}
               onRequestConnect={openWalletForChain}
               tnkPeerCount={remotePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length}
+              anyWalletConnected={anyWalletConnected}
               onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
                 const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;
                 handleSend(text);
