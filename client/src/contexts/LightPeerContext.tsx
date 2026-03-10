@@ -970,10 +970,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
   // ── Submit quote to AFOS agent ─────────────────────────────────────────────
   const submitQuote = useCallback(async (rfq: IncomingRfq) => {
+    // 3-second timeout — this is best-effort; HTLC signing must not be blocked by Oracle VM latency
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 3000);
     try {
       await fetch(`${BACKEND_URL}/api/rfq/${rfq.rfqId}/quote`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ac.signal,
         body: JSON.stringify({
           peerId,
           peerAlias,
@@ -985,7 +989,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           timestamp: Date.now(),
         }),
       });
-    } catch { /* best-effort — best-effort 2014 agent handles matching */ }
+    } catch { /* best-effort — Oracle VM may be slow or unreachable */ } finally {
+      clearTimeout(timer);
+    }
   }, [peerId, peerAlias]);
 
   // ── Accept RFQ with in-browser HTLC signing ───────────────────────────────
@@ -999,27 +1005,40 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       toast.error("[HTLC-DEBUG] acceptRfq early return", { description: `found=${!!rfq} status=${rfq?.status}` });
       return;
     }
+    console.error("[HTLC-DEBUG] acceptRfq passed early return check — proceeding with HTLC lock", { rfqId, chain: rfq.fromChain });
+    toast.success(`[HTLC-DEBUG] acceptRfq proceeding chain=${rfq.fromChain}`);
     setIncomingRfqs(prev =>
       prev.map(r => r.rfqId === rfqId ? { ...r, status: "accepted" } : r)
     );
-    // Step 1: Submit quote to AFOS agent
-    await submitQuote(rfq);
+    // Step 1: Submit quote to AFOS agent (non-critical — 504 from Oracle VM must not abort HTLC signing)
+    try {
+      await submitQuote(rfq);
+    } catch (sqErr) {
+      console.warn("[acceptRfq] submitQuote failed (non-critical):", sqErr instanceof Error ? sqErr.message : sqErr);
+    }
 
-    // Step 1b: Notify the requester (Agent A) that we accepted their RFQ
+    // Step 1b: Notify the requester (Agent A) that we accepted their RFQ (non-critical)
+    console.error("[HTLC-DEBUG] about to sendToPeer rfq_accepted", { hasRequestorPeer: !!rfq.requestorPeer, hasSignaling: !!signalingRef.current });
     if (rfq.requestorPeer && signalingRef.current) {
-      signalingRef.current.sendToPeer(rfq.requestorPeer, {
-        type: "rfq_accepted",
-        rfqId: rfq.rfqId,
-        acceptorAlias: peerAlias,
-        acceptorPeerId: peerId,
-        fromToken: rfq.fromToken,
-        toToken: rfq.toToken,
-        amount: rfq.amount,
-        outAmount: rfq.suggestedOutAmount,
-      });
+      try {
+        signalingRef.current.sendToPeer(rfq.requestorPeer, {
+          type: "rfq_accepted",
+          rfqId: rfq.rfqId,
+          acceptorAlias: peerAlias,
+          acceptorPeerId: peerId,
+          fromToken: rfq.fromToken,
+          toToken: rfq.toToken,
+          amount: rfq.amount,
+          outAmount: rfq.suggestedOutAmount,
+        });
+      } catch (stpErr) {
+        console.warn("[acceptRfq] sendToPeer failed (non-critical):", stpErr instanceof Error ? stpErr.message : stpErr);
+      }
     }
 
     // Step 2: In-browser HTLC lock signing
+    console.error("[HTLC-DEBUG] about to setHtlcSigning signing");
+    toast.info("[HTLC-DEBUG] Step 2: setHtlcSigning");
     setHtlcSigning({ rfqId, step: "signing" });
 
     try {
