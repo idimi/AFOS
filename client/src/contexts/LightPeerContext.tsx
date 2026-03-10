@@ -185,7 +185,7 @@ const RFQ_EXPIRY_MS = 60_000;
 const LightPeerContext = createContext<LightPeerState | null>(null);
 
 export function LightPeerProvider({ children }: { children: ReactNode }) {
-  const { publicKey: solPubkey, connected: solAdapterConnected, signTransaction } = useWallet();
+  const { publicKey: solPubkey, connected: solAdapterConnected, signTransaction, sendTransaction: sendSolTransaction } = useWallet();
   const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
   const { connection: solConnection } = useConnection();
 
@@ -1071,8 +1071,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
           let txHash: string;
 
-          if (signTransaction && solPubkey) {
-            // Standard Solana wallet adapter path — sign then broadcast
+          if (sendSolTransaction && solPubkey) {
+            // Preferred path: sendTransaction works for both Standard Wallet (Phantom v24+)
+            // and legacy adapter wallets. It handles signing + submission in one step.
+            txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(transaction, solConnection);
+          } else if (signTransaction && solPubkey) {
+            // Legacy path: sign then broadcast manually
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
             const rawTx = signedTx.serialize();
             txHash = await solConnection.sendRawTransaction(rawTx, {
@@ -1080,10 +1084,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               preflightCommitment: "confirmed",
             });
           } else {
-            // Phantom multi-chain fallback — use window.solana.signAndSendTransaction
+            // Phantom multi-chain / window.solana fallback
             const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
             if (!phantom?.signAndSendTransaction) {
-              throw new Error("Phantom wallet not found. Please install Phantom to sign HTLC transactions.");
+              throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
             }
             const { signature } = await phantom.signAndSendTransaction(transaction);
             txHash = signature;
@@ -1336,7 +1340,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
       return prev;
     });
-  }, [incomingRfqs, submitQuote, solConnected, signTransaction, phantomSolAddress, ethereum, bitcoin, phantomMultiChain]);
+  }, [incomingRfqs, submitQuote, solConnected, signTransaction, sendSolTransaction, phantomSolAddress, ethereum, bitcoin, phantomMultiChain]);
 
   // ── Initiate HTLC Lock (Agent A / Requester side) ──────────────────────────
   // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
@@ -1446,12 +1450,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           tx.feePayer = claimSolPubkey;
           tx.add(claimIx);
           let txHash: string;
-          if (signTransaction && solPubkey) {
+          if (sendSolTransaction && solPubkey) {
+            // Preferred: sendTransaction works for Standard Wallet (Phantom v24+) and legacy adapters
+            txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(tx, solConnection);
+          } else if (signTransaction && solPubkey) {
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(tx);
             txHash = await solConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
           } else {
             const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
-            if (!phantom?.signAndSendTransaction) throw new Error("Phantom wallet not found");
+            if (!phantom?.signAndSendTransaction) throw new Error("No Solana wallet found. Please connect Phantom or Solflare.");
             const { signature } = await phantom.signAndSendTransaction(tx);
             txHash = signature;
           }

@@ -2463,3 +2463,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Create server/jobs/htlcCleanup.ts — deletes htlc_secrets rows older than 7 days with terminal status (expired/refunded)
 - [x] Register cleanup job in server/_core/index.ts — runs 30s after startup, then every 24 hours
 - [x] All 256 tests pass, 0 TypeScript errors
+
+## Bug Fix: Phantom Standard Wallet — HTLC Lock Not Prompting
+
+- [x] Root cause: Phantom v24+ registers as a "Standard Wallet" — `signTransaction` from `useSolanaWallet()` is undefined for Standard Wallet connections
+- [x] Fix: use `sendTransaction` (available for both Standard Wallet and legacy adapters) as the primary signing path in `acceptRfq` (HTLC lock) and `claimHtlcFunds` (HTLC claim)
+- [x] Add `sendSolTransaction` to `useWallet()` destructure in LightPeerContext
+- [x] Updated both signing paths: HTLC lock (acceptRfq) and HTLC claim (claimHtlcFunds) to prefer `sendSolTransaction` → `signTransaction` → `window.solana` fallback
+- [x] Added `sendSolTransaction` to `acceptRfq` useCallback dependency array
+- [x] All 256 tests pass, 0 TypeScript errors
