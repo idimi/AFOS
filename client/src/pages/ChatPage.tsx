@@ -1445,6 +1445,7 @@ export default function ChatPage() {
       });
 
       // P2P route matched: trigger HTLC lock signing for Agent A (the requester)
+      console.log("[HTLC-DEBUG] buildSwapTx result", { route: solResult.route, hasP2pQuote: !!solResult.p2pQuote, hasSwapTx: !!solResult.swapTransaction });
       if (solResult.route === "AFOS P2P") {
         const p2p = solResult.p2pQuote;
         const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
@@ -1475,6 +1476,7 @@ export default function ChatPage() {
         }]);
         setExecutingId(null);
         // Bug 5 fix: trigger HTLC lock signing for Agent A via LightPeerContext
+        console.log("[HTLC-DEBUG] About to call initiateHtlcLock", { rfqId: p2p?.rfqId, hasInitiateHtlcLock: typeof initiateHtlcLock });
         if (p2p?.rfqId) {
           void initiateHtlcLock({
             rfqId:             p2p.rfqId,
@@ -1562,7 +1564,7 @@ export default function ChatPage() {
     } finally {
       setExecutingId(null);
     }
-  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum]);
+  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum, initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias]);
 
   const handleCancelSwap = useCallback((msgId: string) => {
     setCancelledIds(prev => { const next = new Set(prev); next.add(msgId); return next; });

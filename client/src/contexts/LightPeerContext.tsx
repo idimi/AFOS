@@ -992,8 +992,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Accepts an optional `rfqOverride` so initiateHtlcLock can pass the synthetic
   // RFQ directly without waiting for React state to update.
   const acceptRfq = useCallback(async (rfqId: string, rfqOverride?: IncomingRfq) => {
+    console.log("[HTLC-DEBUG] acceptRfq called", { rfqId, hasOverride: !!rfqOverride });
     const rfq = rfqOverride ?? incomingRfqs.find(r => r.rfqId === rfqId);
-    if (!rfq || rfq.status !== "pending") return;
+    if (!rfq || rfq.status !== "pending") {
+      console.log("[HTLC-DEBUG] acceptRfq early return — rfq not found or not pending", { found: !!rfq, status: rfq?.status });
+      return;
+    }
     setIncomingRfqs(prev =>
       prev.map(r => r.rfqId === rfqId ? { ...r, status: "accepted" } : r)
     );
@@ -1019,14 +1023,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     try {
       const chain = rfq.fromChain?.toLowerCase() ?? "solana";
+      console.log("[HTLC-DEBUG] chain resolved", { chain, solConnected, solAdapterConnected: !!solPubkey, phantomSolAddress, hasSendSolTx: !!sendSolTransaction, hasSignTx: !!signTransaction });
 
       if (chain === "solana" && solConnected) {
         // Solana HTLC: build PDA lock transaction and sign with wallet
         // Supports both standard Solana adapter (signTransaction) and Phantom multi-chain (window.solana)
         setHtlcSigning({ rfqId, step: "locking" });
+        console.log("[HTLC-DEBUG] Entering Solana HTLC lock path");
         try {
           // Resolve the sender's Solana pubkey from either adapter or Phantom multi-chain
           const senderPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
+          console.log("[HTLC-DEBUG] senderPubkeyStr", senderPubkeyStr);
           if (!senderPubkeyStr) throw new Error("No Solana wallet address available");
           const senderPubkeyObj = new PublicKey(senderPubkeyStr);
 
@@ -1070,27 +1077,43 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
 
           let txHash: string;
+          // Detect Phantom Standard Wallet: phantomSolAddress is set but solPubkey (adapter) is null
+          const isPhantomStandardWallet = !!phantomSolAddress && !solPubkey;
+          // window.phantom.solana is the Phantom Standard Wallet provider
+          const phantomProvider = (window as unknown as {
+            phantom?: { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }>, signTransaction?: (tx: unknown) => Promise<unknown> } }
+          }).phantom?.solana ?? (window as unknown as {
+            solana?: { signAndSendTransaction?: (tx: unknown) => Promise<{ signature: string }>, signTransaction?: (tx: unknown) => Promise<unknown> }
+          }).solana;
 
-          if (sendSolTransaction && solPubkey) {
-            // Preferred path: sendTransaction works for both Standard Wallet (Phantom v24+)
-            // and legacy adapter wallets. It handles signing + submission in one step.
+          console.log("[HTLC-DEBUG] About to sign. sendSolTransaction:", typeof sendSolTransaction, "solPubkey:", solPubkey?.toBase58(), "signTransaction:", typeof signTransaction, "isPhantomStandard:", isPhantomStandardWallet, "hasPhantomProvider:", !!phantomProvider);
+
+          if (isPhantomStandardWallet && phantomProvider?.signAndSendTransaction) {
+            // Phantom Standard Wallet path (Phantom v24+): use window.phantom.solana directly
+            // This bypasses the legacy adapter which doesn't have the connected state set
+            console.log("[HTLC-DEBUG] Using Phantom Standard Wallet (window.phantom.solana) path");
+            const { signature } = await phantomProvider.signAndSendTransaction(transaction);
+            txHash = signature;
+          } else if (sendSolTransaction && solPubkey) {
+            // Standard adapter path: sendTransaction works for legacy adapter wallets
+            console.log("[HTLC-DEBUG] Using sendSolTransaction path — calling now...");
             txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(transaction, solConnection);
           } else if (signTransaction && solPubkey) {
             // Legacy path: sign then broadcast manually
+            console.log("[HTLC-DEBUG] Using legacy signTransaction path");
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
             const rawTx = signedTx.serialize();
             txHash = await solConnection.sendRawTransaction(rawTx, {
               skipPreflight: false,
               preflightCommitment: "confirmed",
             });
-          } else {
-            // Phantom multi-chain / window.solana fallback
-            const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
-            if (!phantom?.signAndSendTransaction) {
-              throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
-            }
-            const { signature } = await phantom.signAndSendTransaction(transaction);
+          } else if (phantomProvider?.signAndSendTransaction) {
+            // Fallback: window.solana / window.phantom.solana
+            console.log("[HTLC-DEBUG] Using window.solana fallback");
+            const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
+          } else {
+            throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
           }
 
           setHtlcSigning({ rfqId, step: "revealing", txHash });
@@ -1346,6 +1369,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
   // Reuses the same HTLC signing logic as acceptRfq by creating a synthetic IncomingRfq.
   const initiateHtlcLock = useCallback(async (params: {
+    // [HTLC-DEBUG] entry logged below
     rfqId: string;
     fromToken: string;
     toToken: string;
@@ -1360,6 +1384,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     secretHashHex?: string;
   }) => {
     const { rfqId, fromToken, toToken, fromChain, toChain, amount, outAmount, rate, counterpartyPeerId, counterpartyWallet } = params;
+    console.log("[HTLC-DEBUG] initiateHtlcLock called", { rfqId, fromChain, toChain, amount, counterpartyWallet, secretHashHex: params.secretHashHex?.slice(0, 16) });
     // Build a synthetic IncomingRfq for Agent A (the requester).
     // Agent A locks their SOURCE tokens (fromToken on fromChain).
     // acceptRfq uses rfq.fromChain to determine which chain to lock on,

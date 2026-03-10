@@ -2472,3 +2472,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Updated both signing paths: HTLC lock (acceptRfq) and HTLC claim (claimHtlcFunds) to prefer `sendSolTransaction` → `signTransaction` → `window.solana` fallback
 - [x] Added `sendSolTransaction` to `acceptRfq` useCallback dependency array
 - [x] All 256 tests pass, 0 TypeScript errors
+
+## Bug: Phantom wallet still not prompting during HTLC Lock (round 2)
+
+- [x] Previous sendTransaction fix did not resolve the issue — deeper investigation done
+- [x] Root cause: `solPubkey` is null for Phantom Standard Wallet (adapter not connected), so `sendSolTransaction && solPubkey` was false, falling through to window.solana which may not exist
+- [x] Fix: detect Phantom Standard Wallet via `!!phantomSolAddress && !solPubkey`, use `window.phantom.solana.signAndSendTransaction` directly for this case
+- [x] Signing priority chain: Phantom Standard Wallet → sendSolTransaction (legacy adapter) → signTransaction → window.solana fallback → error
+- [x] Fixed handleConfirmSwap dependency array to include initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias
+- [x] Added comprehensive [HTLC-DEBUG] console logging at every decision point
+- [x] All 256 tests pass, 0 TypeScript errors
