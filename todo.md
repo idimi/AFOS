@@ -2408,3 +2408,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Rewrite swap tab grid to use clean single-column mobile layout and proper 2-col desktop layout with xl:items-start
 - [x] Add Confirm-before-swap toggle in Advanced Settings — persisted to localStorage, shows confirmation banner before executing
 - [x] Add swap-in-progress overlay on accepted order book row — shows phase label with spinner over the accepted row
+
+## Feature: Swap Progress in Agent Chat
+
+- [x] Add live SwapProgressCard message in agent chat showing RFQ→HTLC→settlement phases with expiry countdown
+- [x] Chat progress card updates in real-time as swap phase advances (rfq-accepted→locking→settling→confirmed→expired)
+- [x] Show expiry timer/countdown in the chat card so user knows time remaining to confirm/act

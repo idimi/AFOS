@@ -423,8 +423,151 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
   );
 }
 
-// ─── Message bubble ───────────────────────────────────────────────────────────
-// ─── HTLC Countdown (inline variant for chat bubbles) ───────────────────────
+// // ─── Swap Progress Card (shown in chat when P2P swap is in progress) ──────────────
+const SWAP_PHASES = [
+  { key: "broadcasting", label: "Broadcasting RFQ", desc: "Sending request-for-quote to P2P network" },
+  { key: "negotiating",  label: "Peer Negotiation",  desc: "Peer accepted — confirming terms" },
+  { key: "locking",      label: "HTLC Lock",         desc: "Locking funds in atomic escrow" },
+  { key: "settling",     label: "Atomic Settlement",  desc: "Releasing secret — claiming funds" },
+  { key: "confirmed",    label: "Confirmed",          desc: "Swap complete — funds in your wallet" },
+] as const;
+
+type SwapPhase = "broadcasting" | "negotiating" | "locking" | "settling" | "confirmed" | "failed" | "expired";
+
+function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgressData"]> }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (data.phase === "confirmed" || data.phase === "failed" || data.phase === "expired") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [data.phase]);
+
+  const currentIdx = SWAP_PHASES.findIndex(p => p.key === data.phase);
+  const isDone = data.phase === "confirmed";
+  const isFailed = data.phase === "failed" || data.phase === "expired";
+
+  // Expiry countdown
+  const expiryLabel = (() => {
+    if (!data.expiresAt || isDone || isFailed) return null;
+    const diff = data.expiresAt - now;
+    if (diff <= 0) return "Expired";
+    const totalSecs = Math.floor(diff / 1000);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+  })();
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="w-full mt-2 rounded-2xl p-4 space-y-3"
+      style={{
+        background: isFailed ? "rgba(239,68,68,0.07)" : isDone ? "rgba(16,185,129,0.07)" : "rgba(99,102,241,0.08)",
+        border: `1px solid ${isFailed ? "rgba(239,68,68,0.25)" : isDone ? "rgba(16,185,129,0.25)" : "rgba(99,102,241,0.25)"}`,
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {isDone ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          ) : isFailed ? (
+            <span className="text-sm">\u26A0\uFE0F</span>
+          ) : (
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+              className="w-4 h-4 rounded-full border-2 border-transparent"
+              style={{ borderTopColor: "#818cf8", borderRightColor: "rgba(129,140,248,0.3)" }}
+            />
+          )}
+          <span className="text-xs font-bold" style={{ color: isFailed ? "#f87171" : isDone ? "#34d399" : "#818cf8" }}>
+            {isDone ? "Swap Complete" : isFailed ? (data.phase === "expired" ? "HTLC Expired" : "Swap Failed") : "Swap In Progress"}
+          </span>
+        </div>
+        <span className="text-[10px] font-mono" style={{ color: "var(--muted-foreground)" }}>
+          {data.fromAmount.toFixed(4)} {data.fromToken} \u2192 {data.toAmount.toFixed(4)} {data.toToken}
+        </span>
+      </div>
+
+      {/* Peer + expiry row */}
+      {(data.peerAlias || expiryLabel) && (
+        <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--muted-foreground)" }}>
+          {data.peerAlias && <span>Peer: <span className="font-semibold text-foreground">@{data.peerAlias}</span></span>}
+          {expiryLabel && (
+            <span className="flex items-center gap-1" style={{ color: expiryLabel === "Expired" ? "#f87171" : "#f59e0b" }}>
+              \u23F1 HTLC expires in {expiryLabel}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Step tracker */}
+      {!isFailed && (
+        <div className="space-y-1.5">
+          {SWAP_PHASES.map((phase, idx) => {
+            const isActive = idx === currentIdx;
+            const isDoneStep = isDone || idx < currentIdx;
+            const isPending = idx > currentIdx;
+            return (
+              <div key={phase.key} className="flex items-start gap-2.5">
+                <div className="mt-0.5 shrink-0">
+                  {isDoneStep ? (
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.5)" }}>
+                      <span className="text-[9px]">\u2713</span>
+                    </div>
+                  ) : isActive ? (
+                    <motion.div
+                      animate={{ scale: [1, 1.15, 1] }}
+                      transition={{ duration: 1.2, repeat: Infinity }}
+                      className="w-4 h-4 rounded-full"
+                      style={{ background: "rgba(99,102,241,0.3)", border: "2px solid #818cf8" }}
+                    />
+                  ) : (
+                    <div className="w-4 h-4 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }} />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold leading-tight" style={{ color: isDoneStep ? "#34d399" : isActive ? "#a5b4fc" : "var(--muted-foreground)", opacity: isPending ? 0.5 : 1 }}>
+                    {phase.label}
+                  </p>
+                  {(isActive || isDoneStep) && (
+                    <p className="text-[10px] leading-tight mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+                      {phase.desc}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Error / expired message */}
+      {isFailed && data.errorMsg && (
+        <p className="text-xs" style={{ color: "#f87171" }}>{data.errorMsg}</p>
+      )}
+
+      {/* Tx hash */}
+      {data.txHash && (
+        <a
+          href={`https://solscan.io/tx/${data.txHash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[10px] font-mono"
+          style={{ color: "#67e8f9" }}
+        >
+          <ExternalLink className="w-3 h-3" />
+          {data.txHash.slice(0, 16)}\u2026
+        </a>
+      )}
+    </motion.div>
+  );
+}
+
+// ─── Message bubble ─────────────────────────────────────────────────────
+// ─── HTLC Countdown (inline variant for chat bubbles) ──────────────────────────
 function htlcInlineExplorerUrl(chain: string, txId?: string): string | null {
   if (!txId) return null;
   switch (chain.toLowerCase()) {
@@ -705,6 +848,11 @@ function MessageBubble({
             )}
           </div>
         )}
+        {/* Live swap progress tracker */}
+        {msg.type === "swap_progress" && msg.swapProgressData && (
+          <SwapProgressCard data={msg.swapProgressData} />
+        )}
+
         {/* Tx success */}
         {msg.type === "tx_success" && msg.txHash && msg.quoteData && (
           <TxSuccessCard
@@ -843,18 +991,24 @@ export default function ChatPage() {
       };
       if (!data?.rfqId) return;
       const alias = data.acceptorAlias ?? data.acceptorPeerId?.slice(0, 8) ?? "Peer";
-      addMessage({
-        role: "assistant",
-        type: "text",
-        content: `\u2705 **@${alias}** accepted your swap! **${data.amount?.toFixed(4) ?? "?"} ${data.fromToken ?? "?"}** \u2192 **${data.outAmount?.toFixed(4) ?? "?"} ${data.toToken ?? "?"}**. HTLC atomic settlement is in progress\u2026`,
+      // Update the swap_progress card in-place if it exists for this rfqId
+      setMessages(prev => {
+        const progressIdx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (progressIdx !== -1) {
+          const updated = [...prev];
+          updated[progressIdx] = { ...updated[progressIdx], swapProgressData: { ...updated[progressIdx].swapProgressData!, phase: "negotiating", peerAlias: alias } };
+          return updated;
+        }
+        // No progress card found — fall back to text message
+        return [...prev, { id: `rfq-accepted-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `✅ **@${alias}** accepted your swap! **${data.amount?.toFixed(4) ?? "?"} ${data.fromToken ?? "?"}** → **${data.outAmount?.toFixed(4) ?? "?"} ${data.toToken ?? "?"}**. HTLC atomic settlement is in progress…`, timestamp: Date.now() }];
       });
       toast.success(`Swap accepted by @${alias}`, {
-        description: `${data.amount?.toFixed(4)} ${data.fromToken} \u2192 ${data.outAmount?.toFixed(4)} ${data.toToken}`,
+        description: `${data.amount?.toFixed(4)} ${data.fromToken} → ${data.outAmount?.toFixed(4)} ${data.toToken}`,
       });
     };
     window.addEventListener("afos:rfq-accepted", handler);
     return () => window.removeEventListener("afos:rfq-accepted", handler);
-  }, [addMessage]);
+  }, [addMessage, setMessages]);
 
   // ── HTLC locked: counterparty locked their side ─────────────────────────────
   useEffect(() => {
@@ -864,61 +1018,77 @@ export default function ChatPage() {
       };
       if (!data?.rfqId) return;
       const peerAlias = data.fromPeerId?.slice(0, 12) ?? "Peer";
-      const chainLabel = data.chain ? data.chain.charAt(0).toUpperCase() + data.chain.slice(1) : "";
-      addMessage({
-        role: "assistant",
-        type: "text",
-        content: `\uD83D\uDD12 **Counterparty @${peerAlias}** locked **${data.amountLocked?.toFixed(4) ?? "?"} ${chainLabel}** in HTLC escrow.\n\nTx: \`${(data.txHash ?? "").slice(0, 20)}\u2026\`\n\nRevealing secret to counterparty so they can claim\u2026`,
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "settling", peerAlias, txHash: data.txHash } };
+          return updated;
+        }
+        const chainLabel = data.chain ? data.chain.charAt(0).toUpperCase() + data.chain.slice(1) : "";
+        return [...prev, { id: `htlc-locked-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\uD83D\uDD12 **@${peerAlias}** locked **${data.amountLocked?.toFixed(4) ?? "?"} ${chainLabel}** in HTLC escrow. Tx: \`${(data.txHash ?? "").slice(0, 20)}\u2026\``, timestamp: Date.now() }];
       });
     };
     window.addEventListener("afos:htlc-locked", handler);
     return () => window.removeEventListener("afos:htlc-locked", handler);
-  }, [addMessage]);
+  }, [setMessages]);
 
   // ── HTLC secret sent: we revealed the secret to counterparty ────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail as { rfqId?: string; secretHex?: string };
       if (!data?.rfqId) return;
-      addMessage({
-        role: "assistant",
-        type: "text",
-        content: `\u2705 **HTLC secret revealed** to counterparty for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`\n\nThe counterparty can now claim their funds. Your side of the swap is settling.`,
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "settling" } };
+          return updated;
+        }
+        return [...prev, { id: `htlc-secret-sent-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\u2705 **HTLC secret revealed** \u2014 counterparty can now claim. Your swap is settling.`, timestamp: Date.now() }];
       });
     };
     window.addEventListener("afos:htlc-secret-sent", handler);
     return () => window.removeEventListener("afos:htlc-secret-sent", handler);
-  }, [addMessage]);
+  }, [setMessages]);
 
   // ── HTLC secret received: counterparty revealed the secret to us ────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail as { rfqId?: string; secretHex?: string };
       if (!data?.rfqId) return;
-      addMessage({
-        role: "assistant",
-        type: "text",
-        content: `\uD83D\uDD13 **HTLC secret received** for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`\n\nYou can now claim your funds from the escrow. The agent will attempt to auto-claim.`,
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
+          return updated;
+        }
+        return [...prev, { id: `htlc-secret-rcv-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\uD83D\uDD13 **HTLC secret received** \u2014 claiming your funds from escrow now.`, timestamp: Date.now() }];
       });
     };
     window.addEventListener("afos:htlc-secret-received", handler);
     return () => window.removeEventListener("afos:htlc-secret-received", handler);
-  }, [addMessage]);
+  }, [setMessages]);
 
   // ── HTLC expired: swap window passed without settlement ─────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail as { rfqId?: string; chain?: string };
       if (!data?.rfqId) return;
-      addMessage({
-        role: "assistant",
-        type: "text",
-        content: `\u26A0\uFE0F **HTLC expired** for RFQ \`${data.rfqId.slice(0, 8)}\u2026\`${data.chain ? ` on ${data.chain}` : ""}.\n\nThe swap window has passed. Locked funds will be refunded automatically.`,
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "expired", errorMsg: "HTLC window expired. Funds will be refunded automatically." } };
+          return updated;
+        }
+        return [...prev, { id: `htlc-expired-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\u26A0\uFE0F **HTLC expired**${data.chain ? ` on ${data.chain}` : ""}. Locked funds will be refunded automatically.`, timestamp: Date.now() }];
       });
     };
     window.addEventListener("afos:htlc-expired", handler);
     return () => window.removeEventListener("afos:htlc-expired", handler);
-  }, [addMessage]);
+  }, [setMessages]);
 
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
@@ -1272,14 +1442,28 @@ export default function ChatPage() {
         setMessages(prev => prev.map(m =>
           m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p" } : m
         ));
-        addMessage({
-          role: "assistant",
-          content: solResult.message ?? `P2P peer matched: @${peerLabel}. Please sign the HTLC lock transaction in your wallet.`,
-          type: "text",
-        });
+        // Inject a live swap progress card so the user can track the flow inside chat
+        const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
+        const htlcExpiry = Date.now() + 10 * 60 * 1000; // 10 min default HTLC lock time
+        setMessages(prev => [...prev, {
+          id: progressMsgId,
+          role: "assistant" as const,
+          content: "",
+          type: "swap_progress" as const,
+          timestamp: Date.now(),
+          swapProgressData: {
+            rfqId: p2p?.rfqId ?? progressMsgId,
+            fromAmount: quoteData.fromAmount,
+            fromToken: quoteData.fromToken,
+            toAmount: p2p?.outAmount ?? quoteData.toAmount,
+            toToken: quoteData.toToken,
+            phase: "locking" as const,
+            peerAlias: peerLabel,
+            expiresAt: htlcExpiry,
+          },
+        }]);
         setExecutingId(null);
         // Bug 5 fix: trigger HTLC lock signing for Agent A via LightPeerContext
-        // This opens the wallet signing popup (Phantom / MetaMask / etc.)
         if (p2p?.rfqId) {
           void initiateHtlcLock({
             rfqId:             p2p.rfqId,

@@ -32,7 +32,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching";
+  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching" | "swap_progress";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
@@ -44,6 +44,19 @@ export interface ChatMessage {
   matchedPeerAlias?: string;
   /** DEX name used for fallback (e.g. 'Jupiter', '0x', '1inch') */
   dexName?: string;
+  /** Live swap progress data — updated in-place as phases advance */
+  swapProgressData?: {
+    rfqId: string;
+    fromAmount: number;
+    fromToken: string;
+    toAmount: number;
+    toToken: string;
+    phase: "broadcasting" | "negotiating" | "locking" | "settling" | "confirmed" | "failed" | "expired";
+    peerAlias?: string;
+    txHash?: string;
+    expiresAt?: number; // unix ms — HTLC lock expiry
+    errorMsg?: string;
+  };
   incomingRfqData?: {
     rfqId: string;
     fromToken: string;
