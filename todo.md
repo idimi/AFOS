@@ -2572,3 +2572,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix myOnChainRefunds server procedure to filter by walletAddresses (sender match) — only return HTLCs where senderAddress is in the provided walletAddresses list
 - [x] Fix RefundsTab client to always pass connected wallet addresses (SOL, ETH, BTC) so non-connected users see nothing
 - [x] Ensure admin (HtlcRecoveryTab) still sees all HTLCs regardless of wallet (adminOverride=true)
+
+## Bug: RefundBanner still shows HTLCs to non-sender wallets
+- [x] Investigate why the server-side filter is not working — root cause: deployed server was running old code without the filter; after restart, filter works correctly
+- [x] Verified: fake wallet → empty, actual sender → returns HTLC, empty wallets → empty, adminOverride=true → returns all
+- [x] Fix confirmed: server-side filter is in place, just needs republish to production
