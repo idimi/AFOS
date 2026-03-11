@@ -2664,3 +2664,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Path 4: window.solana fallback (last resort)
 - [x] Lock flow includes step-by-step htlcSigning state, Solscan toast, DB recording, P2P notification
 - [x] No changes needed — lock tx signing was already fully wired
+
+## Maintenance: DB Cleanup + Webhook Security + Monitor Tuning
+- [x] Cleared 70 stuck pending RFQs — Oracle VM restarted via SSH (in-memory state reset to 0)
+- [x] HELIUS_WEBHOOK_SECRET added via webdev_request_secrets; webhook handler rejects bad/missing auth
+- [x] ensureHeliusWebhook now updates authHeader in Helius when secret changes
+- [x] Added GET /api/webhooks/helius-htlc/status endpoint — shows webhookId, registeredUrl, lastEventAt, totalEventsReceived, secretConfigured
+- [x] webhookStatus module-level tracker updated on every received event
+- [x] setWebhookId() called after create/update/already-correct so status endpoint always shows current ID
+- [x] htlcMonitor.ts POLL_INTERVAL_MS reduced from 60s to 10 minutes (reconciliation pass only)

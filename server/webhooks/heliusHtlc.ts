@@ -88,8 +88,11 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
       // 3a. Already exists — update if anything is stale
       const alreadyCorrect =
         match.webhookURL === webhookUrl &&
-        (match.accountAddresses ?? []).includes(AFOS_HTLC_PROGRAM_ID);
+        (match.accountAddresses ?? []).includes(AFOS_HTLC_PROGRAM_ID) &&
+        // Also check that the authHeader is set correctly (update if secret was added/changed)
+        (!secret || (match as any).authHeader === secret);
       if (alreadyCorrect) {
+        setWebhookId(match.webhookID, webhookUrl);
         console.log(`[HeliusWebhook] Webhook already configured (id: ${match.webhookID}) → ${webhookUrl}`);
         return;
       }
@@ -100,6 +103,7 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
       });
       if (updateRes.ok) {
         const updated: HeliusWebhook = await updateRes.json();
+        setWebhookId(updated.webhookID, webhookUrl);
         console.log(`[HeliusWebhook] Updated webhook ${updated.webhookID} → ${webhookUrl} | addresses: ${updated.accountAddresses}`);
       } else {
         console.warn("[HeliusWebhook] Failed to update webhook:", updateRes.status, await updateRes.text());
@@ -113,6 +117,7 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
       });
       if (createRes.ok) {
         const created: HeliusWebhook = await createRes.json();
+        setWebhookId(created.webhookID, webhookUrl);
         console.log(`[HeliusWebhook] Created webhook ${created.webhookID} → ${webhookUrl} | addresses: ${created.accountAddresses}`);
       } else {
         console.warn("[HeliusWebhook] Failed to create webhook:", createRes.status, await createRes.text());
@@ -123,13 +128,45 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
   }
 }
 
+// ── Webhook status tracking ──────────────────────────────────────────────────
+
+const webhookStatus = {
+  webhookId: null as string | null,
+  registeredUrl: null as string | null,
+  lastEventAt: null as number | null,
+  lastEventSig: null as string | null,
+  totalEventsReceived: 0,
+};
+
+export function setWebhookId(id: string, url: string): void {
+  webhookStatus.webhookId = id;
+  webhookStatus.registeredUrl = url;
+}
+
 // ── Express route handler ─────────────────────────────────────────────────────
 
 /**
- * Registers `POST /api/webhooks/helius-htlc` on the Express app.
- * Must be called before Vite middleware so the route is not swallowed by the SPA.
+ * Registers `POST /api/webhooks/helius-htlc` and `GET /api/webhooks/helius-htlc/status`
+ * on the Express app. Must be called before Vite middleware.
  */
 export function registerHeliusWebhookRoute(app: Express): void {
+  // Status endpoint — shows webhook health at a glance
+  app.get("/api/webhooks/helius-htlc/status", (_req: Request, res: Response) => {
+    res.json({
+      ok: true,
+      webhookId: webhookStatus.webhookId,
+      registeredUrl: webhookStatus.registeredUrl,
+      programAddress: AFOS_HTLC_PROGRAM_ID,
+      lastEventAt: webhookStatus.lastEventAt,
+      lastEventAgo: webhookStatus.lastEventAt
+        ? `${Math.round((Date.now() - webhookStatus.lastEventAt) / 1000)}s ago`
+        : null,
+      lastEventSig: webhookStatus.lastEventSig,
+      totalEventsReceived: webhookStatus.totalEventsReceived,
+      secretConfigured: !!process.env.HELIUS_WEBHOOK_SECRET,
+    });
+  });
+
   app.post("/api/webhooks/helius-htlc", async (req: Request, res: Response) => {
     // 1. Verify authorization header (optional but recommended in production)
     const secret = process.env.HELIUS_WEBHOOK_SECRET;
@@ -150,6 +187,10 @@ export function registerHeliusWebhookRoute(app: Express): void {
       try {
         await processHtlcEvent(event);
         processed++;
+        // Track last event for status endpoint
+        webhookStatus.totalEventsReceived++;
+        webhookStatus.lastEventAt = Date.now();
+        webhookStatus.lastEventSig = event.signature ?? event.transaction?.signatures?.[0] ?? null;
       } catch (err) {
         console.error("[HeliusWebhook] Error processing event:", err, JSON.stringify(event).slice(0, 200));
       }

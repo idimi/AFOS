@@ -24,7 +24,10 @@ import { eq, and } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const POLL_INTERVAL_MS = 60_000; // Check every 60 seconds
+// Helius webhooks handle real-time HTLC events (claim/refund/lock).
+// This poller is now a reconciliation pass to catch any events Helius may have
+// missed during downtime. 10-minute interval is sufficient.
+const POLL_INTERVAL_MS = 10 * 60_000; // Reconciliation pass every 10 minutes
 const BTC_MEMPOOL_API  = "https://mempool.space/api";
 const ETH_RPC_URL      = process.env.ETH_RPC_URL || "https://cloudflare-eth.com";
 const SOL_RPC_URL      = process.env.SOL_RPC_URL || "https://api.mainnet-beta.solana.com";
