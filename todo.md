@@ -2595,3 +2595,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Built HTLC Recovery tab in AdminPanel + standalone /htlc-recovery page with countdown timer and Refund Now button
 - [x] Server-side buildRefundTx procedure builds and serializes the Anchor refund instruction for wallet signing
 - [ ] Execute recovery: click Refund Now in AdminPanel > HTLC Recovery tab after timelock expires
+
+## Bug: HTLC Recovery Tab Shows Empty (No Stuck HTLCs Found)
+- [x] Found DB record exists with status='revealed' but htlcId stored as 'htlc_rfq_...' (wrong prefix)
+- [x] Fixed getStuckHtlcs to try multiple htlcId candidate prefixes (htlc_a_, htlc_b_) derived from rfqId
+- [x] Removed status filter so ALL DB rows are checked regardless of status
+- [x] Timelock for stuck HTLC expired 365 days ago — Refund Now button available immediately

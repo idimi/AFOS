@@ -121,68 +121,80 @@ export const htlcRecoveryRouter = router({
     const now = Date.now();
 
     // Fetch all non-completed HTLC secrets from DB
+    // Broaden filter: include any status that isn't explicitly completed/refunded
     const db = await getDb();
     if (!db) return [];
     const rows = await db
       .select()
       .from(htlcSecrets)
-      .where(
-        and(
-          or(
-            eq(htlcSecrets.status, "locked"),
-            eq(htlcSecrets.status, "revealed"),
-          ),
-        ),
-      )
-      .limit(50);
+      .limit(100);
 
     const connection = new Connection(SOL_RPC_URL, "confirmed");
     const results = [];
+    const seen = new Set<string>();
 
     for (const row of rows) {
-      if (!row.htlcId) continue;
+      // Derive candidate htlcId strings from rfqId
+      // The on-chain PDA uses "htlc_a_" prefix + first 24 chars of rfqId (without "rfq_" prefix)
+      // e.g. rfqId="rfq_1773205346880_lp-3dcc9" => htlcIdA="htlc_a_rfq_1773205346880_lp-3"
+      const rfqId = row.rfqId ?? "";
+      const rfqSuffix = rfqId.startsWith("rfq_") ? rfqId.slice(4) : rfqId;
 
-      // Derive the PDA for htlc_a (initiator's lock)
-      const htlcIdA = row.htlcId; // e.g. "htlc_a_rfq_..."
-      const htlcIdABytes = htlcIdToBytes(htlcIdA);
-      const [htlcPdaA] = deriveHtlcPda(htlcIdABytes);
+      // Build candidate htlcId strings to try (different truncations)
+      const candidateHtlcIds = [
+        row.htlcId, // stored value (may be truncated)
+        `htlc_a_rfq_${rfqSuffix}`,
+        `htlc_a_${rfqId}`,
+        `htlc_b_rfq_${rfqSuffix}`,
+        `htlc_b_${rfqId}`,
+      ].filter(Boolean) as string[];
 
-      let onChainState = null;
-      try {
-        const accountInfo = await connection.getAccountInfo(htlcPdaA);
-        if (accountInfo && accountInfo.owner.equals(AFOS_HTLC_PROGRAM_ID)) {
-          onChainState = decodeHtlcState(Buffer.from(accountInfo.data));
+      for (const htlcIdCandidate of candidateHtlcIds) {
+        const htlcIdBytes = htlcIdToBytes(htlcIdCandidate);
+        const [htlcPda] = deriveHtlcPda(htlcIdBytes);
+        const pdaStr = htlcPda.toBase58();
+
+        if (seen.has(pdaStr)) continue;
+        seen.add(pdaStr);
+
+        let onChainState = null;
+        try {
+          const accountInfo = await connection.getAccountInfo(htlcPda);
+          if (accountInfo && accountInfo.owner.equals(AFOS_HTLC_PROGRAM_ID)) {
+            onChainState = decodeHtlcState(Buffer.from(accountInfo.data));
+          }
+        } catch {
+          // RPC error — skip
         }
-      } catch {
-        // RPC error — skip
+
+        if (!onChainState) continue;
+        if (onChainState.claimed || onChainState.refunded) continue;
+
+        const timelockExpired = now / 1000 >= onChainState.timelock;
+        const amountSol = Number(onChainState.amountLamports) / 1e9;
+        const isNativeSol =
+          onChainState.tokenMint === "11111111111111111111111111111111";
+
+        results.push({
+          rfqId: row.rfqId,
+          htlcId: htlcIdCandidate,
+          pdaAddress: pdaStr,
+          sender: onChainState.sender,
+          recipient: onChainState.recipient,
+          amountSol,
+          amountLamports: onChainState.amountLamports.toString(),
+          tokenMint: isNativeSol ? null : onChainState.tokenMint,
+          tokenSymbol: isNativeSol ? "SOL" : (row.fromToken ?? "TOKEN"),
+          timelock: onChainState.timelock,
+          timelockExpired,
+          claimed: onChainState.claimed,
+          refunded: onChainState.refunded,
+          dbStatus: row.status,
+          fromToken: row.fromToken,
+          toToken: row.toToken,
+        });
+        break; // Found a valid PDA for this row, stop trying candidates
       }
-
-      if (!onChainState) continue;
-      if (onChainState.claimed || onChainState.refunded) continue;
-
-      const timelockExpired = now / 1000 >= onChainState.timelock;
-      const amountSol = Number(onChainState.amountLamports) / 1e9;
-      const isNativeSol =
-        onChainState.tokenMint === "11111111111111111111111111111111";
-
-      results.push({
-        rfqId: row.rfqId,
-        htlcId: htlcIdA,
-        pdaAddress: htlcPdaA.toBase58(),
-        sender: onChainState.sender,
-        recipient: onChainState.recipient,
-        amountSol,
-        amountLamports: onChainState.amountLamports.toString(),
-        tokenMint: isNativeSol ? null : onChainState.tokenMint,
-        tokenSymbol: isNativeSol ? "SOL" : (row.fromToken ?? "TOKEN"),
-        timelock: onChainState.timelock,
-        timelockExpired,
-        claimed: onChainState.claimed,
-        refunded: onChainState.refunded,
-        dbStatus: row.status,
-        fromToken: row.fromToken,
-        toToken: row.toToken,
-      });
     }
 
     return results;
