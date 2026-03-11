@@ -352,15 +352,30 @@ export const historyRouter = router({
     }),
 
   /**
-   * On-chain scanner — fetches ALL unclaimed HTLCs directly from the blockchain.
+   * On-chain scanner — fetches unclaimed HTLCs directly from the blockchain.
    * Covers Solana (getProgramAccounts), Ethereum (event logs), and BTC (DB + mempool.space).
-   * No wallet filter — the Solana program enforces sender==signer at refund time.
+   * When walletAddresses is provided, only returns HTLCs where senderAddress matches.
+   * When walletAddresses is empty + adminOverride=true, returns all HTLCs (admin view).
+   * When walletAddresses is empty + adminOverride=false (default), returns nothing (security gate).
    */
   myOnChainRefunds: publicProcedure
     .input(z.object({
       walletAddresses: z.array(z.string()).default([]),
+      // adminOverride: when true AND walletAddresses is empty, return all HTLCs (admin use only).
+      // When false (default) and walletAddresses is empty, return nothing.
+      adminOverride: z.boolean().default(false),
     }))
     .query(async ({ input }) => {
+      // Security gate: if no wallet addresses provided and not admin override, return empty.
+      // This prevents random users from seeing all on-chain HTLCs.
+      if (input.walletAddresses.length === 0 && !input.adminOverride) {
+        return { htlcs: [] };
+      }
+
+      // Normalise wallet addresses to lowercase for case-insensitive comparison (ETH addresses).
+      const walletSet = new Set(input.walletAddresses.map(a => a.toLowerCase()));
+      const filterBySender = input.walletAddresses.length > 0; // false only when adminOverride + empty
+
       const results: Array<{
         htlcId: string;
         pdaAddress: string;
@@ -432,6 +447,9 @@ export const historyRouter = router({
             const amountSol = Number(amountLamports) / 1e9;
             const timelockExpired = timelock > 0 && timelock < nowSec;
 
+            // Filter by sender: only include if sender matches one of the connected wallets
+            if (filterBySender && !walletSet.has(sender.toLowerCase())) continue;
+
             results.push({
               htlcId,
               pdaAddress: acc.pubkey,
@@ -485,6 +503,9 @@ export const historyRouter = router({
               const amountWei = BigInt("0x" + amountHex);
               const timelock = Number(BigInt("0x" + timelockHex));
               const timelockExpired = timelock > 0 && timelock < nowSec;
+
+              // Filter by sender: only include if initiator matches one of the connected wallets
+              if (filterBySender && !walletSet.has(initiator.toLowerCase())) continue;
 
               // Check if still active via getContract
               const statusResp = await fetch(ethRpcUrl, {
@@ -554,6 +575,10 @@ export const historyRouter = router({
               // Estimate timelock expiry from locktime (block height * ~600s)
               const estimatedExpiry = row.locktime * 600;
               const timelockExpired = estimatedExpiry < nowMs / 1000;
+
+              // Filter by sender: only include if senderAddress matches one of the connected wallets
+              const btcSender = row.senderAddress ?? "";
+              if (filterBySender && !walletSet.has(btcSender.toLowerCase())) continue;
 
               results.push({
                 htlcId: row.htlcAddress,

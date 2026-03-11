@@ -2567,3 +2567,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Debug why myOnChainRefunds and admin HTLC Recovery tab both show 0 HTLCs
 - [x] Verify Solana RPC getProgramAccounts call works from server
 - [x] Fix scanner to correctly find expired HTLCs on-chain (root cause: 15s timeout, public RPC takes ~33s; increased to 45s)
+
+## Bug: Refunds tab shows all on-chain HTLCs to every user
+- [x] Fix myOnChainRefunds server procedure to filter by walletAddresses (sender match) — only return HTLCs where senderAddress is in the provided walletAddresses list
+- [x] Fix RefundsTab client to always pass connected wallet addresses (SOL, ETH, BTC) so non-connected users see nothing
+- [x] Ensure admin (HtlcRecoveryTab) still sees all HTLCs regardless of wallet (adminOverride=true)

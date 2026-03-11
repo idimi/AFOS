@@ -57,7 +57,7 @@ export default function HtlcRecoveryTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading, refetch, isFetching } = trpc.history.myOnChainRefunds.useQuery(
-    { walletAddresses: [] }, // empty = scan all, no wallet filter
+    { walletAddresses: [], adminOverride: true }, // admin: scan all, no wallet filter
     { refetchInterval: 120_000 }
   );
 
