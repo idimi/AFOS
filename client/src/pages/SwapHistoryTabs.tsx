@@ -972,43 +972,72 @@ function RefundCard({
   refund: RefundRecord;
   onOpenDetail: (id: number) => void;
 }) {
-  const { publicKey, signTransaction } = useSolanaWallet();
+  const { publicKey, signTransaction, sendTransaction } = useSolanaWallet();
   const { connection } = useConnection();
   const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
   const utils = trpc.useUtils();
   const [claiming, setClaiming] = useState(false);
 
   const claimRefund = useCallback(async () => {
-    // Solana claim
+    // Solana claim — uses wallet adapter sendTransaction for best RPC reliability
     if (refund.chain === "solana") {
-      if (!publicKey || !signTransaction) {
+      if (!publicKey || !signTransaction || !sendTransaction) {
         toast.error("Wallet not connected", { description: "Connect your Phantom wallet to claim the refund" });
         return;
       }
       setClaiming(true);
+      const toastId = "sol-refund-" + refund.htlcAddress.slice(0, 8);
+      toast.loading("Building refund transaction…", { id: toastId });
       try {
+        const htlcId = refund.htlcAddress ?? `htlc_${(refund.secretHash ?? '').slice(0, 16)}`;
         const { transaction } = await buildSolanaHtlcRefundTx({
           senderPubkey: publicKey,
-          htlcId: refund.htlcAddress ?? `htlc_${(refund.secretHash ?? '').slice(0, 16)}`,
+          htlcId,
           connection,
+          tokenSymbol: refund.fromSymbol !== "SOL" ? refund.fromSymbol : undefined,
         });
-        const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
-        const rawTx = signed.serialize();
-        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
-        await connection.confirmTransaction(txHash, "confirmed");
+        toast.loading("Waiting for wallet signature…", { id: toastId });
+        // Prefer sendTransaction (Phantom handles RPC selection + retry internally)
+        let txHash: string;
+        try {
+          txHash = await sendTransaction(transaction, connection, {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+            maxRetries: 3,
+          });
+        } catch (sendErr) {
+          // Fallback: manual sign + sendRawTransaction if sendTransaction not available
+          const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+          const rawTx = signed.serialize();
+          txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false, maxRetries: 3 });
+        }
+        toast.loading("Confirming on-chain…", { id: toastId });
+        // Use confirmTransaction with timeout
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+        await connection.confirmTransaction(
+          { signature: txHash, blockhash, lastValidBlockHeight },
+          "confirmed"
+        );
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
-        toast.success("Refund claimed!", {
+        await utils.history.myOnChainRefunds.invalidate();
+        toast.success("Refund claimed! Funds returned to your wallet.", {
+          id: toastId,
+          duration: 8000,
           description: (
             <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
-              className="text-cyan-400 underline flex items-center gap-1">
+              className="text-cyan-400 underline flex items-center gap-1 mt-1">
               View on Solscan <ExternalLink className="w-3 h-3" />
             </a>
           ),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
-        toast.error("Refund failed", { description: msg });
+        const isUserRejected = msg.toLowerCase().includes("rejected") || msg.toLowerCase().includes("cancelled");
+        toast.error(
+          isUserRejected ? "Signature cancelled" : "Refund failed",
+          { id: toastId, description: isUserRejected ? "You cancelled the wallet signature." : msg }
+        );
       } finally {
         setClaiming(false);
       }
@@ -1170,7 +1199,7 @@ function RefundCard({
     toast.info("Refund not supported", {
       description: `Chain "${refund.chain}" does not have a browser-side refund path yet.`,
     });
-  }, [refund, publicKey, signTransaction, connection, updateHtlcRefund, utils]);
+  }, [refund, publicKey, signTransaction, sendTransaction, connection, updateHtlcRefund, utils]);
 
   return (
     <motion.div layout

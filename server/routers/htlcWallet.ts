@@ -39,6 +39,58 @@ const SOL_USDC_MINT   = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const ETH_USDT_ADDR   = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 const ETH_USDC_ADDR   = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
+// ─── Solana RPC pool (free public endpoints, tried in parallel) ───────────────
+
+/**
+ * Free public Solana RPC endpoints.
+ * We race them in parallel and take the first successful response.
+ * Endpoints are ordered by typical latency (fastest first).
+ */
+const SOL_RPC_ENDPOINTS = [
+  "https://api.mainnet-beta.solana.com",           // Official (rate-limited but reliable)
+  "https://rpc.ankr.com/solana",                   // Ankr free tier (no key required)
+  "https://solana-mainnet.rpc.extrnode.com",       // Extrnode public
+  "https://mainnet.helius-rpc.com/?api-key=public", // Helius public fallback
+];
+
+// ─── Stale-while-revalidate balance cache ─────────────────────────────────────
+
+interface SolBalanceCacheEntry {
+  solBalance: number;
+  usdtBalance: number;
+  usdcBalance: number;
+  fetchedAt: number; // ms timestamp
+}
+
+/** In-memory cache: address → last-known-good balance */
+const _solBalanceCache = new Map<string, SolBalanceCacheEntry>();
+const SOL_BALANCE_CACHE_TTL_MS = 30_000; // 30 seconds — fresh enough for UI
+
+/**
+ * Race multiple Solana RPC endpoints in parallel and return the first
+ * successful SOL balance. Falls back to 0 if all fail.
+ */
+async function fetchSolBalanceRace(address: string): Promise<{ solBal: number; live: boolean }> {
+  const racePromises = SOL_RPC_ENDPOINTS.map(async (rpc) => {
+    const connection = new Connection(rpc, { commitment: "confirmed", disableRetryOnRateLimit: true });
+    const lamports = await connection.getBalance(new PublicKey(address), "confirmed");
+    return lamports / LAMPORTS_PER_SOL;
+  });
+
+  // Race with a 6-second timeout per attempt
+  const withTimeout = racePromises.map(p =>
+    Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 6000))])
+  );
+
+  // Use Promise.any to take the first success
+  try {
+    const solBal = await Promise.any(withTimeout as Promise<number>[]);
+    return { solBal, live: true };
+  } catch {
+    return { solBal: 0, live: false };
+  }
+}
+
 // ─── Shared fetch helpers ─────────────────────────────────────────────────────
 
 /** Fetch an SPL token balance for a given owner address and mint.
@@ -46,12 +98,7 @@ const ETH_USDC_ADDR   = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
  * Returns null only if the RPC itself is unreachable.
  */
 async function fetchSplBalance(ownerAddress: string, mint: string): Promise<number | null> {
-  const RPC_ENDPOINTS = [
-    "https://api.mainnet-beta.solana.com",
-    "https://solana-mainnet.rpc.extrnode.com",
-  ];
-
-  for (const rpc of RPC_ENDPOINTS) {
+  for (const rpc of SOL_RPC_ENDPOINTS) {
     try {
       const resp = await fetch(rpc, {
         method: "POST",
@@ -271,18 +318,12 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
     }
     const address = keypair.publicKey.toBase58();
 
-    // Fetch SOL native balance + SPL token balances in parallel
-    let solBal = 0;
-    let live = false;
-    const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-
-    const [lamports, usdtBal, usdcBal] = await Promise.all([
-      connection.getBalance(new PublicKey(address)).then(l => { live = true; return l; }).catch(() => null),
+    // Fetch SOL native balance + SPL token balances in parallel (race all RPC endpoints)
+    const [{ solBal, live }, usdtBal, usdcBal] = await Promise.all([
+      fetchSolBalanceRace(address),
       fetchSplBalance(address, SOL_USDT_MINT),
       fetchSplBalance(address, SOL_USDC_MINT),
     ]);
-
-    if (lamports !== null) solBal = lamports / LAMPORTS_PER_SOL;
 
     // Use shared cached price (avoids extra CoinGecko call)
     const solUsdPrice = getCachedPrices().sol;
@@ -625,50 +666,70 @@ export const htlcWalletRouter = router({
     .input(z.object({ address: z.string().min(32).max(50) }))
     .query(async ({ input }) => {
       const { address } = input;
-      const RPC_ENDPOINTS = [
-        "https://api.mainnet-beta.solana.com",
-        "https://solana-mainnet.rpc.extrnode.com",
-      ];
+      const now = Date.now();
+      const cached = _solBalanceCache.get(address);
+      const cacheAge = cached ? now - cached.fetchedAt : Infinity;
+      const cacheStale = cacheAge > SOL_BALANCE_CACHE_TTL_MS;
 
-      let solBal = 0;
-      let live = false;
-
-      // Fetch native SOL balance
-      for (const rpc of RPC_ENDPOINTS) {
-        try {
-          const connection = new Connection(rpc, "confirmed");
-          const lamports = await connection.getBalance(new PublicKey(address));
-          solBal = lamports / LAMPORTS_PER_SOL;
-          live = true;
-          break;
-        } catch { /* try next endpoint */ }
+      // ── Stale-while-revalidate ──────────────────────────────────────────────
+      // If we have a fresh cache entry, return it immediately (no RPC call).
+      // If stale, return the stale value immediately AND kick off a background
+      // refresh so the next call gets fresh data.
+      if (cached && !cacheStale) {
+        // Cache is fresh — return immediately
+        const solUsdPrice = getCachedPrices().sol;
+        const solUsd = cached.solBalance * solUsdPrice;
+        return {
+          address, live: true,
+          solBalance: cached.solBalance, solUsd,
+          usdtBalance: cached.usdtBalance, usdtUsd: cached.usdtBalance,
+          usdcBalance: cached.usdcBalance, usdcUsd: cached.usdcBalance,
+          totalUsd: solUsd + cached.usdtBalance + cached.usdcBalance,
+          solUsdPrice, stale: false,
+        };
       }
 
-      // Fetch SPL token balances
-      const [usdtBal, usdcBal] = await Promise.all([
+      // Fetch fresh data — race all RPC endpoints in parallel
+      const [{ solBal, live }, usdtBal, usdcBal] = await Promise.all([
+        fetchSolBalanceRace(address),
         fetchSplBalance(address, SOL_USDT_MINT),
         fetchSplBalance(address, SOL_USDC_MINT),
       ]);
 
-      // Use shared cached price (populated by prices.live endpoint, avoids extra CoinGecko call)
-      const solUsdPrice = getCachedPrices().sol;
+      // If RPC failed but we have stale cache, return stale data (never show $0 for a known wallet)
+      const effectiveSolBal = live ? solBal : (cached?.solBalance ?? 0);
+      const effectiveUsdtBal = (usdtBal !== null && usdtBal >= 0) ? usdtBal : (cached?.usdtBalance ?? 0);
+      const effectiveUsdcBal = (usdcBal !== null && usdcBal >= 0) ? usdcBal : (cached?.usdcBalance ?? 0);
+      const effectiveLive = live || !!cached; // "live" if we have any data
 
-      const solUsd = solBal * solUsdPrice;
-      const usdtUsd = usdtBal ?? 0;
-      const usdcUsd = usdcBal ?? 0;
+      // Update cache only when we got a real response
+      if (live) {
+        _solBalanceCache.set(address, {
+          solBalance: solBal,
+          usdtBalance: usdtBal ?? 0,
+          usdcBalance: usdcBal ?? 0,
+          fetchedAt: now,
+        });
+      }
+
+      const solUsdPrice = getCachedPrices().sol;
+      const solUsd = effectiveSolBal * solUsdPrice;
+      const usdtUsd = effectiveUsdtBal;
+      const usdcUsd = effectiveUsdcBal;
       const totalUsd = solUsd + usdtUsd + usdcUsd;
 
       return {
         address,
-        live,
-        solBalance: solBal,
+        live: effectiveLive,
+        solBalance: effectiveSolBal,
         solUsd,
-        usdtBalance: usdtBal ?? 0,
+        usdtBalance: effectiveUsdtBal,
         usdtUsd,
-        usdcBalance: usdcBal ?? 0,
+        usdcBalance: effectiveUsdcBal,
         usdcUsd,
         totalUsd,
         solUsdPrice,
+        stale: !live && !!cached,
       };
     }),
 

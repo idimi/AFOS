@@ -2602,3 +2602,22 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] HTLC Monitor now correctly identifies expired Solana HTLC and triggers refund (was showing "1.3B blocks remaining")
 - [x] Fix getLandingPrices() to guard against zero prices from CoinGecko (partial rate-limit responses set sol=0)
 - [x] Price cache now always preserves last-known-good price even when CoinGecko returns 0 or partial data
+
+## Feature: Solana On-Chain Refund Claim + RPC Resilience
+
+### Solana Claim Flow
+- [x] Read buildSolanaHtlcRefundTx tRPC procedure to understand what it returns
+- [x] Wire Refunds tab Claim button to use sendTransaction (Phantom handles RPC selection + retry)
+- [x] Show loading toasts during each step: building tx, waiting for signature, confirming on-chain
+- [x] Show Solscan confirmation toast with tx link after success (8s duration)
+- [x] Handle errors: wallet not connected, user rejected (signature cancelled), tx failed, RPC timeout
+- [x] Call updateHtlcRefund after success to record refundTxId in DB
+- [x] Invalidate both history.refunds and history.myOnChainRefunds after success
+
+### RPC Resilience
+- [x] Add 4 free Solana RPC endpoints: mainnet-beta, Ankr, Extrnode, Helius public
+- [x] fetchSolBalanceRace: race all endpoints in parallel with Promise.any (takes fastest)
+- [x] Stale-while-revalidate cache (30s TTL): return cached balance immediately on fresh hit
+- [x] getSolanaBalanceByAddress: never return live:false if we have a stale cached value
+- [x] getSolHtlcWallets: also uses fetchSolBalanceRace instead of single RPC
+- [x] fetchSplBalance: uses SOL_RPC_ENDPOINTS pool (sequential fallback)
