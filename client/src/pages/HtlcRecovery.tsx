@@ -38,7 +38,7 @@ function useCountdown(timelockUnix: number) {
 // ─── Single HTLC row ─────────────────────────────────────────────────────────
 
 type StuckHtlc = {
-  rfqId: string;
+  rfqId: string | null;
   htlcId: string;
   pdaAddress: string;
   sender: string;
@@ -51,7 +51,7 @@ type StuckHtlc = {
   timelockExpired: boolean;
   claimed: boolean;
   refunded: boolean;
-  dbStatus: string;
+  dbStatus: string | null;
   fromToken: string | null | undefined;
   toToken: string | null | undefined;
 };

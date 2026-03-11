@@ -15,7 +15,7 @@ import {
   Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
   Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge,
-  Bot, X as XIcon
+  Bot, X as XIcon, XCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -408,6 +408,24 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount, 
               Explorer <ExternalLink className="w-3 h-3" />
             </a>
           )}
+        </motion.div>
+      )}
+
+      {/* Error state */}
+      {phase === "error" && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mt-4 p-3 rounded-xl flex items-center gap-3"
+          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}
+        >
+          <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-red-400">Swap failed</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+              The on-chain transaction could not be confirmed. No funds were locked.
+            </div>
+          </div>
         </motion.div>
       )}
     </motion.div>
@@ -2919,7 +2937,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             realTxHash = execResult?.txHash ?? execResult?.tx ?? execResult?.txid;
             if (realTxHash) setLastTxHash(realTxHash);
           }
-          setSwapPhase(execError ? "settling" : "settling");
+          setSwapPhase(execError ? "error" : "settling");
         } catch (err) {
           // Network error or missing agent keys — surface as a warning but still allow demo mode
           execError = err instanceof Error ? err.message : "Execute request failed";
@@ -2930,10 +2948,10 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             : `DEX fallback (${rfqResult.dexRoute || 'Jupiter'})`;
           if (execError && !realTxHash) {
             // Real failure — no tx hash returned
-            setSwapPhase("complete"); // still advance UI but show warning toast
-            haptic.success();
-            toast.warning(`Swap routed (no on-chain confirmation)`, {
-              description: `${route} · Agent keys not configured — set SOL_AGENT_KEY to enable live execution. Error: ${execError.slice(0, 80)}`,
+            setSwapPhase("error");
+            haptic.error();
+            toast.error(`Swap failed`, {
+              description: `${route} · ${execError.slice(0, 100)}`,
               duration: 8000,
             });
           } else {

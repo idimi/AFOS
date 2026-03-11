@@ -1,0 +1,9 @@
+{
+  "query": "SELECT id, \"rfqId\", \"htlcId\", \"fromToken\", \"toToken\", status FROM htlc_secrets WHERE \"rfqId\" LIKE '%1773205%' OR \"htlcId\" LIKE '%1773205%' LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, \"rfqId\", \"htlcId\", \"fromToken\", \"toToken\", status FROM htlc_secrets WHERE \"rfqId\" LIKE '%1773205%' OR \"htlcId\" LIKE '%1773205%' LIMIT 10;",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 55
+}

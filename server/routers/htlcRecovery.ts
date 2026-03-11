@@ -5,6 +5,7 @@
  *
  * - getStuckHtlcs: Scan the DB for unclaimed/unrefunded HTLCs and check
  *   their on-chain state to identify recoverable funds.
+ *   Also includes an on-chain scanner that queries program accounts directly.
  * - buildRefundTx: Return a serialized refund transaction that the sender's
  *   wallet can sign to recover funds after the timelock expires.
  */
@@ -34,7 +35,7 @@ import {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const SOL_RPC_URL =
-  process.env.VITE_SOL_RPC_URL || "https://api.mainnet-beta.solana.com";
+  process.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
 
 const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
 const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -114,87 +115,167 @@ function decodeHtlcState(data: Buffer): {
 export const htlcRecoveryRouter = router({
   /**
    * Scan the DB for locked HTLCs and check their on-chain state.
+   * Also scans on-chain program accounts directly (safety net).
    * Returns a list of recoverable HTLCs with their current status.
-   * Public (any authenticated user can see their own stuck HTLCs).
    */
   getStuckHtlcs: protectedProcedure.query(async ({ ctx }) => {
     const now = Date.now();
-
-    // Fetch all non-completed HTLC secrets from DB
-    // Broaden filter: include any status that isn't explicitly completed/refunded
-    const db = await getDb();
-    if (!db) return [];
-    const rows = await db
-      .select()
-      .from(htlcSecrets)
-      .limit(100);
-
     const connection = new Connection(SOL_RPC_URL, "confirmed");
-    const results = [];
+    const results: Array<{
+      rfqId: string | null;
+      htlcId: string;
+      pdaAddress: string;
+      sender: string;
+      recipient: string;
+      amountSol: number;
+      amountLamports: string;
+      tokenMint: string | null;
+      tokenSymbol: string;
+      timelock: number;
+      timelockExpired: boolean;
+      claimed: boolean;
+      refunded: boolean;
+      dbStatus: string | null;
+      fromToken: string | null;
+      toToken: string | null;
+    }> = [];
     const seen = new Set<string>();
 
-    for (const row of rows) {
-      // Derive candidate htlcId strings from rfqId
-      // The on-chain PDA uses "htlc_a_" prefix + first 24 chars of rfqId (without "rfq_" prefix)
-      // e.g. rfqId="rfq_1773205346880_lp-3dcc9" => htlcIdA="htlc_a_rfq_1773205346880_lp-3"
-      const rfqId = row.rfqId ?? "";
-      const rfqSuffix = rfqId.startsWith("rfq_") ? rfqId.slice(4) : rfqId;
+    // ─── Phase 1: DB-based scan ─────────────────────────────────────────
+    const db = await getDb();
+    if (db) {
+      const rows = await db
+        .select()
+        .from(htlcSecrets)
+        .limit(100);
 
-      // Build candidate htlcId strings to try (different truncations)
-      const candidateHtlcIds = [
-        row.htlcId, // stored value (may be truncated)
-        `htlc_a_rfq_${rfqSuffix}`,
-        `htlc_a_${rfqId}`,
-        `htlc_b_rfq_${rfqSuffix}`,
-        `htlc_b_${rfqId}`,
-      ].filter(Boolean) as string[];
+      for (const row of rows) {
+        const rfqId = row.rfqId ?? "";
 
-      for (const htlcIdCandidate of candidateHtlcIds) {
-        const htlcIdBytes = htlcIdToBytes(htlcIdCandidate);
-        const [htlcPda] = deriveHtlcPda(htlcIdBytes);
-        const pdaStr = htlcPda.toBase58();
+        // Build candidate htlcId strings matching the frontend formula:
+        //   htlcId = "htlc_a_" + rfqId.slice(0, 22)
+        //   htlcId = "htlc_b_" + rfqId.slice(0, 22)
+        // This is the EXACT formula used in LightPeerContext.tsx during lock.
+        const candidateHtlcIds: string[] = [];
 
+        // Primary candidates: match frontend formula exactly
+        if (rfqId) {
+          candidateHtlcIds.push(`htlc_a_${rfqId.slice(0, 22)}`);
+          candidateHtlcIds.push(`htlc_b_${rfqId.slice(0, 22)}`);
+        }
+
+        // Also try the stored htlcId (may have been saved with wrong prefix)
+        if (row.htlcId) {
+          candidateHtlcIds.push(row.htlcId);
+        }
+
+        // Also try with different truncation lengths (safety net)
+        if (rfqId) {
+          candidateHtlcIds.push(`htlc_a_${rfqId.slice(0, 25)}`);
+          candidateHtlcIds.push(`htlc_b_${rfqId.slice(0, 25)}`);
+          candidateHtlcIds.push(`htlc_a_${rfqId}`);
+          candidateHtlcIds.push(`htlc_b_${rfqId}`);
+        }
+
+        // Deduplicate (htlcIdToBytes truncates to 32 chars anyway)
+        const uniqueCandidates = Array.from(new Set(candidateHtlcIds));
+
+        for (const htlcIdCandidate of uniqueCandidates) {
+          const htlcIdBytes = htlcIdToBytes(htlcIdCandidate);
+          const [htlcPda] = deriveHtlcPda(htlcIdBytes);
+          const pdaStr = htlcPda.toBase58();
+
+          if (seen.has(pdaStr)) continue;
+          seen.add(pdaStr);
+
+          let onChainState = null;
+          try {
+            const accountInfo = await connection.getAccountInfo(htlcPda);
+            if (accountInfo && accountInfo.owner.equals(AFOS_HTLC_PROGRAM_ID)) {
+              onChainState = decodeHtlcState(Buffer.from(accountInfo.data));
+            }
+          } catch (err) {
+            console.warn(`[HtlcRecovery] RPC error for PDA ${pdaStr}:`, (err as Error).message);
+          }
+
+          if (!onChainState) continue;
+          if (onChainState.claimed || onChainState.refunded) continue;
+
+          const timelockExpired = now / 1000 >= onChainState.timelock;
+          const amountSol = Number(onChainState.amountLamports) / 1e9;
+          const isNativeSol =
+            onChainState.tokenMint === "11111111111111111111111111111111";
+
+          results.push({
+            rfqId: row.rfqId ?? null,
+            htlcId: onChainState.htlcId || htlcIdCandidate,
+            pdaAddress: pdaStr,
+            sender: onChainState.sender,
+            recipient: onChainState.recipient,
+            amountSol,
+            amountLamports: onChainState.amountLamports.toString(),
+            tokenMint: isNativeSol ? null : onChainState.tokenMint,
+            tokenSymbol: isNativeSol ? "SOL" : (row.fromToken ?? "TOKEN"),
+            timelock: onChainState.timelock,
+            timelockExpired,
+            claimed: onChainState.claimed,
+            refunded: onChainState.refunded,
+            dbStatus: row.status,
+            fromToken: row.fromToken,
+            toToken: row.toToken,
+          });
+          break; // Found a valid PDA for this row, stop trying candidates
+        }
+      }
+    }
+
+    // ─── Phase 2: On-chain scanner (safety net for HTLCs not in DB) ─────
+    try {
+      const programAccounts = await connection.getProgramAccounts(
+        AFOS_HTLC_PROGRAM_ID,
+        {
+          filters: [
+            { dataSize: 219 }, // HTLC account size
+          ],
+        }
+      );
+
+      for (const { pubkey, account } of programAccounts) {
+        const pdaStr = pubkey.toBase58();
         if (seen.has(pdaStr)) continue;
         seen.add(pdaStr);
 
-        let onChainState = null;
-        try {
-          const accountInfo = await connection.getAccountInfo(htlcPda);
-          if (accountInfo && accountInfo.owner.equals(AFOS_HTLC_PROGRAM_ID)) {
-            onChainState = decodeHtlcState(Buffer.from(accountInfo.data));
-          }
-        } catch {
-          // RPC error — skip
-        }
+        const state = decodeHtlcState(Buffer.from(account.data));
+        if (!state) continue;
+        if (state.claimed || state.refunded) continue;
 
-        if (!onChainState) continue;
-        if (onChainState.claimed || onChainState.refunded) continue;
-
-        const timelockExpired = now / 1000 >= onChainState.timelock;
-        const amountSol = Number(onChainState.amountLamports) / 1e9;
+        const timelockExpired = now / 1000 >= state.timelock;
+        const amountSol = Number(state.amountLamports) / 1e9;
         const isNativeSol =
-          onChainState.tokenMint === "11111111111111111111111111111111";
+          state.tokenMint === "11111111111111111111111111111111";
 
         results.push({
-          rfqId: row.rfqId,
-          htlcId: htlcIdCandidate,
+          rfqId: null,
+          htlcId: state.htlcId,
           pdaAddress: pdaStr,
-          sender: onChainState.sender,
-          recipient: onChainState.recipient,
+          sender: state.sender,
+          recipient: state.recipient,
           amountSol,
-          amountLamports: onChainState.amountLamports.toString(),
-          tokenMint: isNativeSol ? null : onChainState.tokenMint,
-          tokenSymbol: isNativeSol ? "SOL" : (row.fromToken ?? "TOKEN"),
-          timelock: onChainState.timelock,
+          amountLamports: state.amountLamports.toString(),
+          tokenMint: isNativeSol ? null : state.tokenMint,
+          tokenSymbol: isNativeSol ? "SOL" : "TOKEN",
+          timelock: state.timelock,
           timelockExpired,
-          claimed: onChainState.claimed,
-          refunded: onChainState.refunded,
-          dbStatus: row.status,
-          fromToken: row.fromToken,
-          toToken: row.toToken,
+          claimed: state.claimed,
+          refunded: state.refunded,
+          dbStatus: null,
+          fromToken: null,
+          toToken: null,
         });
-        break; // Found a valid PDA for this row, stop trying candidates
       }
+    } catch (err) {
+      console.warn("[HtlcRecovery] On-chain scanner error:", (err as Error).message);
+      // Non-fatal — DB-based results still returned
     }
 
     return results;

@@ -1,0 +1,210 @@
+{
+  "query": "SELECT id, \"rfqId\", \"htlcId\", \"fromToken\", \"toToken\", status, \"initiatorAddress\", \"counterpartyAddress\" FROM htlc_secrets ORDER BY id DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, \"rfqId\", \"htlcId\", \"fromToken\", \"toToken\", status, \"initiatorAddress\", \"counterpartyAddress\" FROM htlc_secrets ORDER BY id DESC LIMIT 20;",
+  "rows": [
+    {
+      "id": "30",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "revealed",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "29",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "28",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "27",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "26",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "25",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "24",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "23",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "22",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "21",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "20",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "locked",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "19",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "18",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "17",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "16",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "15",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "14",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "13",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "12",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    },
+    {
+      "id": "11",
+      "rfqId": "rfqId",
+      "htlcId": "htlcId",
+      "fromToken": "fromToken",
+      "toToken": "toToken",
+      "status": "expired",
+      "initiatorAddress": "initiatorAddress",
+      "counterpartyAddress": "counterpartyAddress"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\thtlcId\tfromToken\ttoToken\tstatus\tinitiatorAddress\tcounterpartyAddress\n30\trfqId\thtlcId\tfromToken\ttoToken\trevealed\tinitiatorAddress\tcounterpartyAddress\n29\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n28\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n27\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n26\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n25\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n24\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n23\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n22\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n21\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n20\trfqId\thtlcId\tfromToken\ttoToken\tlocked\tinitiatorAddress\tcounterpartyAddress\n19\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n18\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n17\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n16\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n15\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n14\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n13\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n12\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n11\trfqId\thtlcId\tfromToken\ttoToken\texpired\tinitiatorAddress\tcounterpartyAddress\n",
+  "stderr": "",
+  "execution_time_ms": 97
+}

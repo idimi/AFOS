@@ -1204,8 +1204,10 @@ export const chatRouter = router({
           initiatorPeerId:    senderPeerId ?? undefined,
           expiresAt:          BigInt(expiresAt),
           status:             "locked",
-          // On-chain HTLC tracking
-          htlcId:             `htlc_${p2pQuote.rfqId.slice(0, 24)}`,
+          // On-chain HTLC tracking — must match frontend formula:
+          //   htlcId = "htlc_a_" + rfqId.slice(0, 22)
+          // (see LightPeerContext.tsx line ~1104)
+          htlcId:             `htlc_a_${p2pQuote.rfqId.slice(0, 22)}`,
           initiatorAddress:   userPublicKey ?? undefined,
           fromToken:          (fromToken ?? "SOL").toUpperCase(),
           toToken:            (toToken ?? "USDT").toUpperCase(),

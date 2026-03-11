@@ -1188,8 +1188,30 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
           }
 
+          // ── Confirm the transaction landed on-chain before marking as settled ──
           setHtlcSigning({ rfqId, step: "revealing", txHash });
-          await new Promise(r => setTimeout(r, 800));
+          try {
+            const { blockhash: confirmBlockhash, lastValidBlockHeight: confirmHeight } =
+              await solConnection.getLatestBlockhash("confirmed");
+            const confirmation = await solConnection.confirmTransaction(
+              { signature: txHash, blockhash: confirmBlockhash, lastValidBlockHeight: confirmHeight },
+              "confirmed",
+            );
+            if (confirmation.value.err) {
+              // Transaction landed but the program returned an error
+              throw new Error(
+                `On-chain tx failed: ${JSON.stringify(confirmation.value.err)}`,
+              );
+            }
+          } catch (confirmErr) {
+            // confirmTransaction threw — treat as failed lock
+            const errMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
+            setHtlcSigning({ rfqId, step: "failed", error: `Lock tx not confirmed: ${errMsg.slice(0, 100)}` });
+            toast.error("HTLC lock not confirmed on-chain", { description: errMsg.slice(0, 80) });
+            // Re-throw so the outer catch block doesn't mark as settled
+            throw confirmErr;
+          }
+
           setHtlcSigning({ rfqId, step: "settled", txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
@@ -1302,8 +1324,35 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               gas:   txGas,
             }],
           });
+          // ── Confirm the ETH transaction before marking as settled ──
           setHtlcSigning({ rfqId, step: "revealing", txHash });
-          await new Promise(r => setTimeout(r, 800));
+          // Poll for receipt (eth_getTransactionReceipt) — up to ~30s
+          let ethConfirmed = false;
+          for (let attempt = 0; attempt < 15; attempt++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const receipt = await rawEth.request({ method: "eth_getTransactionReceipt", params: [txHash] });
+              if (receipt) {
+                const status = typeof receipt === "object" && receipt !== null && "status" in receipt
+                  ? (receipt as { status: string }).status : undefined;
+                if (status === "0x0") {
+                  throw new Error("ETH transaction reverted on-chain");
+                }
+                ethConfirmed = true;
+                break;
+              }
+            } catch (receiptErr) {
+              const msg = receiptErr instanceof Error ? receiptErr.message : String(receiptErr);
+              if (msg.includes("reverted")) throw receiptErr;
+              // else keep polling
+            }
+          }
+          if (!ethConfirmed) {
+            setHtlcSigning({ rfqId, step: "failed", error: "ETH lock tx not confirmed after 30s" });
+            toast.error("ETH HTLC lock not confirmed", { description: "Transaction was sent but not confirmed on-chain within 30 seconds." });
+            throw new Error("ETH lock tx not confirmed");
+          }
+
           setHtlcSigning({ rfqId, step: "settled", txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side

@@ -2601,3 +2601,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fixed getStuckHtlcs to try multiple htlcId candidate prefixes (htlc_a_, htlc_b_) derived from rfqId
 - [x] Removed status filter so ALL DB rows are checked regardless of status
 - [x] Timelock for stuck HTLC expired 365 days ago — Refund Now button available immediately
+
+## HTLC Recovery & Swap Reliability Fixes
+
+- [x] Fix HTLC Recovery tab still showing "No stuck HTLCs found" — rewrote candidate generation to use frontend formula: htlc_a_ + rfqId.slice(0, 22)
+- [x] Fix HTLC dialog false-positive — added confirmTransaction check for Solana + receipt polling for ETH before marking lock as settled; error state now shows red X instead of green checkmarks
+- [x] Fix htlcId storage bug — updated saveHtlcSecret in chat.ts to store htlc_a_rfq_... (matching frontend formula) instead of htlc_rfq_...
+- [x] Add on-chain scanner — Phase 2 in getStuckHtlcs queries ALL program accounts from AFOS_HTLC_PROGRAM_ID as safety net for HTLCs not in DB
+- [x] Fix Swaps.tsx SwapProgressTracker — error phase now shows red error card instead of false-positive green complete
