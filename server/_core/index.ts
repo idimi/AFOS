@@ -12,7 +12,7 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
 import { startTnkHtlcMonitor } from "../jobs/tnkHtlcMonitor";
 import { startHtlcSecretsMonitor } from "../jobs/htlcSecretsMonitor";
-import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
+import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer, restoreActiveRfqsFromDB } from "../signaling";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -201,6 +201,8 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Restore active RFQs from DB into the in-memory order book
+    restoreActiveRfqsFromDB().catch(err => console.warn("[Startup] Failed to restore active RFQs:", err));
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
     // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks

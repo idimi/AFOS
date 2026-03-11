@@ -2553,3 +2553,28 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update Live Order Book frontend to show all RFQs (all pairs, with pair label badge)
 - [x] RFQ entries should show: peer alias, offer (amount + token), rate, expiry countdown, Accept button
 - [x] Remove RFQ from order book when it expires or is accepted
+
+## Feature: HTLC Claim Retry Logic
+- [ ] Create server/htlcClaimRetry.ts with in-memory retry queue (max 5 attempts, exponential backoff)
+- [ ] Wrap claimSolanaHtlc calls in revealHtlcSecret with retry queue on failure
+- [ ] Add admin tRPC procedure: retryClaimByRfqId — manually trigger retry for a specific rfqId
+- [ ] Add admin UI button in AdminPanel to trigger retry claim by rfqId
+- [ ] Write vitest for retry queue logic
+
+## Feature: Cross-Pair RFQ Accept Auto-Switch
+- [ ] In Swaps.tsx onAccept handler, detect if order.fromSymbol/t## Feature: Cross-Pair RFQ Accept
+- [x] Auto-switch fromToken/toToken state to match the RFQ pair before initiating HTLC
+- [x] Show toast confirming pair switch: "Switched to SOL/USDT to match this RFQ"
+
+## Feature: RFQ Cancellation
+- [x] Add rfq_cancelled WebSocket message type to signaling.ts (broadcasts to all peers)
+- [x] Add cancelRfq tRPC mutation in chat router (calls removeActiveRfq + broadcasts rfq_cancelled)
+- [x] Add Cancel button on own RFQ rows in Live Order Book (only visible to requester)
+- [x] Frontend: listen for rfq_cancelled events and remove matching rows from order book
+
+## Feature: Persist Active RFQs to DB
+- [x] Add active_rfqs table to drizzle/schema.ts
+- [x] Run pnpm db:push to create the table
+- [x] On storeActiveRfq: upsert to DB
+- [x] On removeActiveRfq: delete from DB
+- [x] On server start: load non-expired RFQs from DB into activeRfqs Map

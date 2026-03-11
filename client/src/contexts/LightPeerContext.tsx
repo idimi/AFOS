@@ -628,6 +628,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...(rfq as object) } }));
     }));
 
+    // Handle RFQ cancellation — remove the row from the order book for all peers
+    unsubs.push(client.on("rfq_cancelled", (data) => {
+      const { rfqId } = data as { rfqId: string };
+      window.dispatchEvent(new CustomEvent("afos:rfq-cancelled", { detail: { rfqId } }));
+    }));
+
     // Handle agent-dispatched RFQs (agent matched this peer with a requester)
     unsubs.push(client.on("agent_rfq", (data) => {
       const rfq = data as {

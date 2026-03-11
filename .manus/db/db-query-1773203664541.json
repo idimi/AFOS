@@ -1,0 +1,9 @@
+{
+  "query": "\nCREATE TABLE IF NOT EXISTS `active_rfqs` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `rfqId` varchar(128) NOT NULL,\n  `fromPeerId` varchar(128),\n  `requesterAlias` varchar(128),\n  `fromToken` varchar(16) NOT NULL,\n  `toToken` varchar(16) NOT NULL,\n  `fromChain` varchar(32) NOT NULL DEFAULT 'solana',\n  `toChain` varchar(32) NOT NULL DEFAULT 'solana',\n  `amount` double NOT NULL DEFAULT 0,\n  `outAmount` double,\n  `rate` double,\n  `secretHashHex` varchar(64),\n  `expiresAt` bigint NOT NULL,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  CONSTRAINT `active_rfqs_id` PRIMARY KEY(`id`),\n  CONSTRAINT `active_rfqs_rfqId_unique` UNIQUE(`rfqId`)\n);\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nCREATE TABLE IF NOT EXISTS `active_rfqs` (\n  `id` int AUTO_INCREMENT NOT NULL,\n  `rfqId` varchar(128) NOT NULL,\n  `fromPeerId` varchar(128),\n  `requesterAlias` varchar(128),\n  `fromToken` varchar(16) NOT NULL,\n  `toToken` varchar(16) NOT NULL,\n  `fromChain` varchar(32) NOT NULL DEFAULT 'solana',\n  `toChain` varchar(32) NOT NULL DEFAULT 'solana',\n  `amount` double NOT NULL DEFAULT 0,\n  `outAmount` double,\n  `rate` double,\n  `secretHashHex` varchar(64),\n  `expiresAt` bigint NOT NULL,\n  `createdAt` timestamp NOT NULL DEFAULT (now()),\n  CONSTRAINT `active_rfqs_id` PRIMARY KEY(`id`),\n  CONSTRAINT `active_rfqs_rfqId_unique` UNIQUE(`rfqId`)\n);\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 174
+}

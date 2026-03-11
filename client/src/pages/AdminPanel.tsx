@@ -1912,9 +1912,111 @@ function AuditLogTab() {
   );
 }
 
+// ─── HTLC Claim Retry Tab ───────────────────────────────────────────────────
+function HtlcClaimRetryTab() {
+  const { data: queue, refetch, isLoading } = trpc.htlcRetry.listQueue.useQuery(undefined, {
+    refetchInterval: 10_000,
+  });
+  const retryNow = trpc.htlcRetry.retryNow.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Retry triggered — status: ${result.status}`);
+      void refetch();
+    },
+    onError: (err) => toast.error(`Retry failed: ${err.message}`),
+  });
+
+  const STATUS_COLORS: Record<string, string> = {
+    pending:   "#f59e0b",
+    retrying:  "#3b82f6",
+    succeeded: "#10b981",
+    exhausted: "#ef4444",
+  };
+
+  return (
+    <div className="space-y-4 max-w-3xl mx-auto">
+      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Repeat className="w-4 h-4 text-amber-400" />
+            <p className="text-sm font-bold text-foreground">HTLC Claim Retry Queue</p>
+          </div>
+          <button
+            onClick={() => void refetch()}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
+            <RefreshCw className={`w-3 h-3 ${isLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+        <p className="text-[10px] text-muted-foreground mb-4">
+          When a Solana HTLC claim fails after the secret is revealed, funds stay locked until the timelock expires.
+          The retry queue automatically retries with exponential backoff (max 5 attempts). Use &quot;Retry Now&quot; for immediate manual intervention.
+        </p>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8 gap-2">
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Loading retry queue…</span>
+          </div>
+        ) : !queue || queue.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-2">
+            <CheckCircle2 className="w-8 h-8 text-emerald-400 opacity-60" />
+            <p className="text-sm font-semibold text-emerald-400">No failed claims</p>
+            <p className="text-[10px] text-muted-foreground">All HTLC claims completed successfully</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {queue.map((job) => (
+              <div
+                key={`${job.rfqId}:${job.side}`}
+                className="rounded-xl p-3"
+                style={{ background: "var(--muted)", border: `1px solid ${STATUS_COLORS[job.status] ?? "var(--border)"}30` }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span
+                        className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide"
+                        style={{ background: `${STATUS_COLORS[job.status]}20`, border: `1px solid ${STATUS_COLORS[job.status]}40`, color: STATUS_COLORS[job.status] }}>
+                        {job.status}
+                      </span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded font-mono" style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)", color: "#22d3ee" }}>
+                        {job.side}
+                      </span>
+                      <span className="text-[10px] font-mono text-foreground">{job.rfqId}</span>
+                    </div>
+                    <div className="text-[9px] text-muted-foreground space-y-0.5">
+                      <div>Attempts: <span className="text-foreground font-mono">{job.attempts}/{job.maxAttempts}</span></div>
+                      {job.lastError && (
+                        <div className="text-red-400 truncate max-w-xs">Last error: {job.lastError}</div>
+                      )}
+                      {job.nextRetryAt && job.status === "pending" && (
+                        <div>Next retry: <span className="text-amber-400 font-mono">{new Date(job.nextRetryAt).toLocaleTimeString()}</span></div>
+                      )}
+                    </div>
+                  </div>
+                  {(job.status === "pending" || job.status === "exhausted") && (
+                    <button
+                      onClick={() => retryNow.mutate({ rfqId: job.rfqId, side: job.side })}
+                      disabled={retryNow.isPending}
+                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all hover:scale-105 active:scale-95"
+                      style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}>
+                      {retryNow.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Repeat className="w-3 h-3" />}
+                      Retry Now
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 // LP Node and Routing tabs removed — no backing system yet
-type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log";
+type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_retry";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -2021,6 +2123,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     {
       id: "audit_log", label: "Audit Log", icon: ClipboardList,
       tooltip: "Immutable admin action log. Records every action taken by admin users in this panel, including fee changes, user role updates, config modifications, and peer bans. Each entry includes the actor's identity, timestamp, action type, and before/after values. Cannot be edited or deleted.",
+    },
+    {
+      id: "htlc_retry", label: "Claim Retry", icon: Repeat,
+      tooltip: "HTLC claim retry queue. When a claimSolanaHtlc call fails after the secret has been revealed (network blip, RPC timeout), funds stay locked. This panel shows all pending, retrying, succeeded, and exhausted retry jobs. Admins can manually trigger an immediate retry for any job.",
     },
   ];
 
@@ -2324,6 +2430,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         {/* ── Audit Log Tab ── */}
         {activeTab === "audit_log" && <AuditLogTab />}
+
+        {/* ── HTLC Claim Retry Tab ── */}
+        {activeTab === "htlc_retry" && <HtlcClaimRetryTab />}
 
       </div>
 

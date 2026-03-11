@@ -1,4 +1,4 @@
-import { bigint, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, double, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -475,3 +475,28 @@ export const peerMessageReactions = mysqlTable("peer_message_reactions", {
 });
 export type PeerMessageReaction = typeof peerMessageReactions.$inferSelect;
 export type InsertPeerMessageReaction = typeof peerMessageReactions.$inferInsert;
+
+// ─── Active RFQs (Order Book) ─────────────────────────────────────────────────
+// Persists open RFQs in the order book so they survive server restarts.
+// Rows are deleted when an RFQ is accepted, cancelled, or expires.
+// The in-memory activeRfqs Map in signaling.ts is the primary store;
+// this table is used for persistence and recovery on restart.
+export const activeRfqs = mysqlTable("active_rfqs", {
+  id:             int("id").autoincrement().primaryKey(),
+  rfqId:          varchar("rfqId", { length: 128 }).notNull().unique(),
+  fromPeerId:     varchar("fromPeerId", { length: 128 }),
+  requesterAlias: varchar("requesterAlias", { length: 128 }),
+  fromToken:      varchar("fromToken", { length: 16 }).notNull(),
+  toToken:        varchar("toToken", { length: 16 }).notNull(),
+  fromChain:      varchar("fromChain", { length: 32 }).notNull().default("solana"),
+  toChain:        varchar("toChain", { length: 32 }).notNull().default("solana"),
+  amount:         double("amount").notNull().default(0),
+  outAmount:      double("outAmount"),
+  rate:           double("rate"),
+  // Note: double is imported from drizzle-orm/mysql-core
+  secretHashHex:  varchar("secretHashHex", { length: 64 }),
+  expiresAt:      bigint("expiresAt", { mode: "number" }).notNull(),
+  createdAt:      timestamp("createdAt").defaultNow().notNull(),
+});
+export type ActiveRfqRow = typeof activeRfqs.$inferSelect;
+export type InsertActiveRfqRow = typeof activeRfqs.$inferInsert;

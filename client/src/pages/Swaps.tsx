@@ -1245,10 +1245,11 @@ function useDexRefRate(
   return state;
 }
 
-function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings, acceptingOrderId, swapPhase }: {
+function LiveOrderBook({ fromToken, toToken, onAccept, onCancelRfq, ownQuote, fromAmount, walletConnected, lpEnabled, onNavigateToSettings, acceptingOrderId, swapPhase }: {
   fromToken: typeof TOKENS[0];
   toToken: typeof TOKENS[0];
   onAccept: (order: OrderBookEntry) => void;
+  onCancelRfq?: (rfqId: string) => void;
   ownQuote?: OrderBookEntry | null;
   fromAmount?: number;
   walletConnected?: boolean;
@@ -1461,6 +1462,17 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     return () => window.removeEventListener("afos:signaling-rfq", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseRate, fromToken.usdPrice]);
+
+  // Listen for rfq_cancelled events — remove the row from the order book for all peers
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { rfqId } = (e as CustomEvent).detail as { rfqId: string };
+      if (!rfqId) return;
+      setOrders(prev => prev.filter(o => o.rfqId !== rfqId && o.id !== rfqId));
+    };
+    window.addEventListener("afos:rfq-cancelled", handler);
+    return () => window.removeEventListener("afos:rfq-cancelled", handler);
+  }, []);
 
   // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
   useEffect(() => {
@@ -1683,7 +1695,15 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                           <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
                         </div>
                       </div>
-                      <div className="px-4 py-2 rounded-xl text-[13px] font-mono font-bold flex-shrink-0" style={{ color: "#06b6d4", background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.3)" }}>Quoting</div>
+                      <div className="flex items-center gap-2">
+                        <div className="px-4 py-2 rounded-xl text-[13px] font-mono font-bold flex-shrink-0" style={{ color: "#06b6d4", background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.3)" }}>Quoting</div>
+                        {onCancelRfq && ownQuote.rfqId && (
+                          <button
+                            onClick={() => onCancelRfq(ownQuote.rfqId!)}
+                            className="px-3 py-2 rounded-xl text-[12px] font-bold flex-shrink-0 transition-all hover:scale-105 active:scale-95"
+                            style={{ color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>Cancel</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -1732,7 +1752,15 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                     <div className="h-full rounded-full animate-pulse" style={{ width: "100%", background: "#06b6d4" }} />
                   </div>
                 </div>
-                <div className="text-[9px] text-cyan-600 font-mono">Quoting</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] text-cyan-600 font-mono">Quoting</span>
+                  {onCancelRfq && ownQuote.rfqId && (
+                    <button
+                      onClick={() => onCancelRfq(ownQuote.rfqId!)}
+                      className="text-[8px] px-1.5 py-0.5 rounded font-bold transition-all hover:scale-105 active:scale-95"
+                      style={{ color: "#f87171", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>✕ Cancel</button>
+                  )}
+                </div>
               </div>
             </motion.div>
           )}
@@ -2931,6 +2959,15 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     setSwapPhase("idle");
   };
 
+  const removeRfqMutation = trpc.chat.removeRfq.useMutation({
+    onSuccess: () => toast.success("RFQ cancelled", { duration: 2000 }),
+    onError: (err) => toast.error(`Cancel failed: ${err.message}`),
+  });
+
+  const handleCancelRfq = (rfqId: string) => {
+    removeRfqMutation.mutate({ rfqId });
+  };
+
   const handleAcceptOrder = (order: OrderBookEntry) => {
     haptic.tap();
 
@@ -2939,6 +2976,21 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       setShowWalletModal(true);
       toast.info("Connect a wallet to accept this quote");
       return;
+    }
+
+    // Auto-switch token pair if the accepted RFQ uses a different pair than currently selected
+    const rfqFromSym = order.fromSymbol.toUpperCase();
+    const rfqToSym   = order.toSymbol.toUpperCase();
+    const curFromSym = fromToken.symbol.toUpperCase();
+    const curToSym   = toToken.symbol.toUpperCase();
+    if (rfqFromSym !== curFromSym || rfqToSym !== curToSym) {
+      const newFrom = TOKENS.find(t => t.symbol.toUpperCase() === rfqFromSym);
+      const newTo   = TOKENS.find(t => t.symbol.toUpperCase() === rfqToSym);
+      if (newFrom && newTo) {
+        setFromToken(newFrom);
+        setToToken(newTo);
+        toast.info(`Switched to ${newFrom.symbol}/${newTo.symbol} to match this RFQ`, { duration: 3000 });
+      }
     }
 
     // Pre-fill the swap form with the accepted quote
@@ -3709,6 +3761,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             fromToken={fromToken}
             toToken={toToken}
             onAccept={handleAcceptOrder}
+            onCancelRfq={handleCancelRfq}
             ownQuote={(() => {
               // Only show "You LP" row when:
               // 1. A wallet is actually connected (can settle trades)

@@ -34,8 +34,9 @@ import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
-import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq } from "../signaling";
+import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, broadcastAll, getActiveRfqs, removeActiveRfq } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
+import { enqueueClaimRetry } from "../htlcClaimRetry";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 
@@ -2412,31 +2413,48 @@ export const chatRouter = router({
 
         // Fire-and-forget: don't block the response — claims may take a few seconds
         void (async () => {
+          const paramsA = {
+            htlcId:           input.htlcIdA!,
+            secretHex:        row.secretHex,
+            recipientAddress: input.counterpartyAddress!,
+            tokenSymbol:      tokenSymA,
+          };
+          const paramsB = {
+            htlcId:           input.htlcIdB!,
+            secretHex:        row.secretHex,
+            recipientAddress: input.requesterAddress,
+            tokenSymbol:      tokenSymB,
+          };
+
+          // Claim Agent A's locked fromToken → send to Agent B (counterpartyAddress)
+          let claimATx: string | null = null;
           try {
-            // Claim Agent A's locked fromToken → send to Agent B (counterpartyAddress)
-            const claimA = await claimSolanaHtlc({
-              htlcId:           input.htlcIdA!,
-              secretHex:        row.secretHex,
-              recipientAddress: input.counterpartyAddress!,
-              tokenSymbol:      tokenSymA,
-            });
-            console.log(`[HTLC] Claimed Agent A lock (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+            const claimA = await claimSolanaHtlc(paramsA);
+            claimATx = claimA.txSignature;
+            console.log(`[HTLC] Claimed Agent A lock (${fromTokenSym}) → Agent B: ${claimATx}`);
+          } catch (errA) {
+            const msg = errA instanceof Error ? errA.message : String(errA);
+            console.error(`[HTLC] Claim A failed — enqueuing retry: ${msg}`);
+            enqueueClaimRetry(input.rfqId, "initiator", paramsA, msg);
+          }
 
-            // Claim Agent B's locked toToken → send to Agent A (requesterAddress)
-            const claimB = await claimSolanaHtlc({
-              htlcId:           input.htlcIdB!,
-              secretHex:        row.secretHex,
-              recipientAddress: input.requesterAddress,
-              tokenSymbol:      tokenSymB,
-            });
-            console.log(`[HTLC] Claimed Agent B lock (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+          // Claim Agent B's locked toToken → send to Agent A (requesterAddress)
+          let claimBTx: string | null = null;
+          try {
+            const claimB = await claimSolanaHtlc(paramsB);
+            claimBTx = claimB.txSignature;
+            console.log(`[HTLC] Claimed Agent B lock (${toTokenSym}) → Agent A: ${claimBTx}`);
+          } catch (errB) {
+            const msg = errB instanceof Error ? errB.message : String(errB);
+            console.error(`[HTLC] Claim B failed — enqueuing retry: ${msg}`);
+            enqueueClaimRetry(input.rfqId, "counterparty", paramsB, msg);
+          }
 
+          // Mark completed only if at least one claim succeeded
+          if (claimATx || claimBTx) {
             await updateHtlcSecretStatus(input.rfqId, "completed", {
-              revealTxId: claimA.txSignature,
+              revealTxId: claimATx ?? claimBTx ?? undefined,
             });
-          } catch (claimErr) {
-            console.error("[HTLC] On-chain claim failed:", claimErr instanceof Error ? claimErr.message : claimErr);
-            // Don't throw — the secret is already revealed; Agent B can claim manually
           }
         })();
       }
@@ -2536,6 +2554,8 @@ export const chatRouter = router({
     .input(z.object({ rfqId: z.string() }))
     .mutation(({ input }) => {
       removeActiveRfq(input.rfqId);
+      // Broadcast cancellation so all connected peers remove the row from their order book
+      broadcastAll({ type: "rfq_cancelled", rfqId: input.rfqId });
       return { ok: true };
     }),
 });
