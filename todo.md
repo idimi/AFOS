@@ -2490,3 +2490,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Updated WalletContext.tsx ConnectionProvider to use VITE_SOL_RPC_URL (fixes solConnection used in LightPeerContext HTLC lock/claim)
 - [x] Updated ChatPage.tsx, Dashboard.tsx, AdminPanel.tsx, SwapHistoryTabs.tsx — all use VITE_SOL_RPC_URL with publicnode fallback
 - [x] All 258 tests pass (2 new SOL RPC validation tests added)
+
+## Bug: HTLC swap completes but revealHtlcSecret fails with 400 (round 4)
+
+- [x] Phantom signAndSendTransaction uses its own RPC (rpc.unlock-protocol.com) which returns 403 — cosmetic only, tx still goes through
+- [x] `[HTLC] revealHtlcSecret failed: 400` — Fixed: raw fetch calls missing `?batch=1` in URL, tRPC couldn't parse batch body format
+- [x] Fixed ALL 17 raw fetch mutation calls in LightPeerContext.tsx to include `?batch=1` (revealHtlcSecret, updateHtlcStatus, notifySwapCompletion, logAutoAcceptedRfq, recordHtlcDeposit)
+- [x] Fixed response parsing for revealHtlcSecret to handle batch array format `[{result:{data:{json:{...}}}}]`
+- [ ] Multiple 502 Bad Gateway errors from Manus backend during swap flow (Oracle VM instability — external)

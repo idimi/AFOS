@@ -512,7 +512,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         try {
           // Resolve Agent A's wallet address for the auth check
           const agentAWallet = solPubkey?.toBase58() ?? phantomSolAddress ?? peerId ?? "";
-          const res = await fetch("/api/trpc/chat.revealHtlcSecret", {
+          const res = await fetch("/api/trpc/chat.revealHtlcSecret?batch=1", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
@@ -522,8 +522,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             console.warn("[HTLC] revealHtlcSecret failed:", res.status);
             return;
           }
-          const json = await res.json() as { result?: { data?: { json?: { secretHex?: string } } } };
-          const secretHex = json?.result?.data?.json?.secretHex;
+          const json = await res.json();
+          // Batch response is an array: [{result:{data:{json:{secretHex:...}}}}]
+          const batchResult = Array.isArray(json) ? json[0] : json;
+          const secretHex = batchResult?.result?.data?.json?.secretHex;
           if (!secretHex) { console.warn("[HTLC] No secretHex in revealHtlcSecret response"); return; }
           // Send the secret to Agent B so they can claim
           signalingRef.current?.sendHtlcSecret(fromPeerId, rfqId, secretHex);
@@ -697,7 +699,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           duration: 8000,
         });
         // Write to swap_analytics audit log via tRPC mutation (fire-and-forget)
-        void fetch("/api/trpc/chat.logAutoAcceptedRfq", {
+        void fetch("/api/trpc/chat.logAutoAcceptedRfq?batch=1", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -1146,7 +1148,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }
           // Record the HTLC deposit in the database for server-side monitoring
           try {
-            await fetch("/api/trpc/htlcWallet.recordHtlcDeposit", {
+            await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -1514,11 +1516,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             action: { label: "View on Solscan", onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank") },
           });
           // Mark as completed in DB and hide the Claim button
-          void fetch("/api/trpc/chat.updateHtlcStatus", {
+          void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
-          void fetch("/api/trpc/chat.notifySwapCompletion", {
+          void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "solana", txHash } } }),
           }).catch(() => {});
@@ -1556,11 +1558,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             id: `claim-${rfqId}`,
             description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
           });
-          void fetch("/api/trpc/chat.updateHtlcStatus", {
+          void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "completed", revealTxId: txHash } } }),
           }).catch(() => {});
-          void fetch("/api/trpc/chat.notifySwapCompletion", {
+          void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "ethereum", txHash } } }),
           }).catch(() => {});
@@ -1585,11 +1587,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           duration: 30000,
           action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
         });
-        void fetch("/api/trpc/chat.updateHtlcStatus", {
+        void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
         }).catch(() => {});
-        void fetch("/api/trpc/chat.notifySwapCompletion", {
+        void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "bitcoin" } } }),
         }).catch(() => {});
@@ -1605,11 +1607,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           description: `Secret revealed to AFOS escrow · Sig: ${sig.slice(0, 16)}…`,
           duration: 15000,
         });
-        void fetch("/api/trpc/chat.updateHtlcStatus", {
+        void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "completed" } } }),
         }).catch(() => {});
-        void fetch("/api/trpc/chat.notifySwapCompletion", {
+        void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "trac_network" } } }),
         }).catch(() => {});
@@ -1713,11 +1715,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             id: `refund-${rfqId}`,
             description: `Tx: ${txHash.slice(0, 20)}… · Funds returned to your wallet`,
           });
-          void fetch("/api/trpc/chat.updateHtlcStatus", {
+          void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, status: "refunded", revealTxId: txHash } } }),
           }).catch(() => {});
-          void fetch("/api/trpc/chat.notifySwapCompletion", {
+          void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "ethereum", txHash } } }),
           }).catch(() => {});
@@ -1737,11 +1739,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           description: "Timelock expired. Use mempool.space to broadcast the refund transaction with your wallet.",
           duration: 20000,
         });
-        void fetch("/api/trpc/chat.updateHtlcStatus", {
+        void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
         }).catch(() => {});
-        void fetch("/api/trpc/chat.notifySwapCompletion", {
+        void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "bitcoin" } } }),
         }).catch(() => {});
@@ -1757,11 +1759,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           description: `Refund request sent to AFOS escrow · Sig: ${sig.slice(0, 16)}…`,
           duration: 15000,
         });
-        void fetch("/api/trpc/chat.updateHtlcStatus", {
+        void fetch("/api/trpc/chat.updateHtlcStatus?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, status: "refunded" } } }),
         }).catch(() => {});
-        void fetch("/api/trpc/chat.notifySwapCompletion", {
+        void fetch("/api/trpc/chat.notifySwapCompletion?batch=1", {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "refunded", chain: "trac_network" } } }),
         }).catch(() => {});
