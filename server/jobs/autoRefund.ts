@@ -248,17 +248,10 @@ export async function runAutoRefund(): Promise<AutoRefundResult> {
       }
     }
 
-    // ── Notify owner about user-claimable HTLCs (batch, max once per run) ──
+    // User-claimable HTLCs are surfaced in the Refunds tab — no owner notification needed.
     if (userClaimable.length > 0) {
       result.userNotified += userClaimable.length;
-      const lines = userClaimable.map(h =>
-        `• ${h.amountHuman} ${h.token} at ${h.pdaAddress.slice(0, 12)}… (sender: ${h.senderAddress.slice(0, 8)}…, expired: ${new Date(h.timelockExpiry * 1000).toISOString()})`
-      ).join("\n");
-
-      await notifyOwner({
-        title: `⚠️ ${userClaimable.length} User HTLC(s) Claimable — Action Required`,
-        content: `The following HTLCs have expired and the original senders can now reclaim their funds from the History → Refunds tab:\n\n${lines}\n\nThese are user-owned HTLCs — the server cannot auto-refund them. Users must connect their wallet and click "Claim Refund" in the Refunds tab.`,
-      });
+      console.log(`[AutoRefund] ${userClaimable.length} user-claimable HTLC(s) — visible in Refunds tab.`);
     }
 
   } catch (err) {

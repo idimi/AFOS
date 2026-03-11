@@ -2637,3 +2637,24 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] VITE_SOL_RPC_URL updated to Helius authenticated URL for frontend wallet adapter
 - [x] ENV.solRpcUrl getter in server/_core/env.ts: prefers Helius when key is set
 - [x] fetchSolBalanceRace uses Helius as primary (fastest) in the parallel race
+
+## Bug: Spam owner notifications from autoRefund job
+- [x] Found notifyOwner call in autoRefund.ts sending "User HTLC(s) Claimable" every 5 min
+- [x] Removed notifyOwner call — replaced with silent console.log only
+- [x] Job still runs every 5 min but no longer sends emails for user-claimable HTLCs
+
+## Feature: Helius Webhook for HTLC Events
+- [ ] Research Helius webhook API (create, list, delete endpoints)
+- [ ] Register webhook on AFOS HTLC program ID XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW
+- [ ] Build POST /api/webhooks/helius-htlc endpoint to receive events
+- [ ] Parse claim/refund instructions from webhook payload
+- [ ] Update htlc_swaps DB record status on claim/refund event
+- [ ] Eliminate or reduce htlcMonitor.ts polling interval now that webhooks handle real-time events
+- [ ] Add HELIUS_WEBHOOK_SECRET env var for signature verification
+
+## Feature: Solana Lock Transaction Signing via Phantom
+- [ ] Read ChatPage.tsx / Swap page to find buildSolanaHtlcLockTx call
+- [ ] Wire sendTransaction (Phantom) for the lock tx with same pattern as Claim flow
+- [ ] Show loading toasts: Building tx → Waiting for signature → Confirming on-chain
+- [ ] Show Solscan confirmation toast after lock tx confirmed
+- [ ] Handle errors: wallet not connected, user rejected, insufficient balance
