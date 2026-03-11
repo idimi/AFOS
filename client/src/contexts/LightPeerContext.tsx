@@ -33,6 +33,7 @@ import {
   type BtcWalletProvider,
 } from "../lib/btcHtlc";
 import { buildSolanaHtlcLockTx, generateHtlcSecret } from "../lib/solanaHtlc";
+import { buildSolanaTokenHtlcLockTx, TOKEN_MINTS } from "../lib/solanaTokenHtlc";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { getSignalingClient, type RemotePeer, type SignalingClient } from "../lib/signalingClient";
@@ -68,6 +69,9 @@ export interface IncomingRfq {
   counterpartyAddress?: string;
   /** Agent A's wallet address (alias for counterpartyAddress, used in HTLC lock logic). */
   requesterWallet?: string;
+  /** True when this RFQ was created by initiateHtlcLock (Agent A / requester).
+   *  When false/undefined, this is Agent B (counterparty) who should lock the toToken. */
+  isInitiator?: boolean;
 }
 
 export type HtlcStep = "idle" | "signing" | "locking" | "revealing" | "settled" | "failed";
@@ -1044,15 +1048,25 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     setHtlcSigning({ rfqId, step: "signing" });
 
     try {
-      const chain = rfq.fromChain?.toLowerCase() ?? "solana";
-      console.error("[HTLC-DEBUG] chain resolved", { chain, solConnected, solAdapterConnected: !!solPubkey, phantomSolAddress, hasSendSolTx: !!sendSolTransaction, hasSignTx: !!signTransaction });
-      toast.info(`[HTLC-DEBUG] chain=${chain} solConn=${solConnected} phantomAddr=${phantomSolAddress?.slice(0,8)}`);
+      // Agent A locks on fromChain; Agent B locks on toChain (important for cross-chain swaps)
+      const chain = rfq.isInitiator
+        ? (rfq.fromChain?.toLowerCase() ?? "solana")
+        : (rfq.toChain?.toLowerCase() ?? rfq.fromChain?.toLowerCase() ?? "solana");
+      console.error("[HTLC-DEBUG] chain resolved", { chain, isInitiator: rfq.isInitiator, fromChain: rfq.fromChain, toChain: rfq.toChain, solConnected });
+      toast.info(`[HTLC-DEBUG] chain=${chain} isInit=${!!rfq.isInitiator} solConn=${solConnected}`);
 
       if (chain === "solana" && solConnected) {
-        // Solana HTLC: build PDA lock transaction and sign with wallet
-        // Supports both standard Solana adapter (signTransaction) and Phantom multi-chain (window.solana)
+        // Solana HTLC: build lock transaction and sign with wallet
+        // Agent A locks fromToken (e.g., SOL); Agent B locks toToken (e.g., USDT)
         setHtlcSigning({ rfqId, step: "locking" });
-        console.error("[HTLC-DEBUG] Entering Solana HTLC lock path");
+
+        // Determine what token and amount this agent should lock
+        const isAgentA = !!rfq.isInitiator;
+        const lockToken = isAgentA ? rfq.fromToken : rfq.toToken;
+        const lockAmount = isAgentA ? (rfq.amount ?? 0) : (rfq.suggestedOutAmount ?? 0);
+        const isNativeSol = lockToken.toUpperCase() === "SOL";
+        console.error("[HTLC-DEBUG] Entering Solana HTLC lock path", { isAgentA, lockToken, lockAmount, isNativeSol });
+
         try {
           // Resolve the sender's Solana pubkey from either adapter or Phantom multi-chain
           const senderPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
@@ -1080,22 +1094,45 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }
 
           // Use the pre-configured HTLC escrow address from the environment variable.
-          // This avoids a server round-trip (which was causing 504 Gateway Timeout errors)
-          // and ensures the transaction can be built immediately.
           const agentEscrowAddr: string | undefined = import.meta.env.VITE_SOL_HTLC_ESCROW || undefined;
           console.error("[HTLC-DEBUG] agentEscrowAddr", agentEscrowAddr);
-          toast.info(`[HTLC-DEBUG] escrow=${agentEscrowAddr?.slice(0,8) ?? "NONE"} building tx...`);
 
-          // Build the HTLC lock transaction
-          const { transaction, escrowAddress } = await buildSolanaHtlcLockTx({
-            senderPubkey:    senderPubkeyObj,
-            recipientPubkey,
-            amountSol:       rfq.amount ?? 0,
-            secretHash:      secretHashHex,
-            timelock,
-            connection:      solConnection,
-            escrowAddress:   agentEscrowAddr,
-          });
+          let transaction: import("@solana/web3.js").Transaction;
+          let escrowAddress: string;
+
+          if (isNativeSol) {
+            // ── Native SOL lock (Agent A in SOL→USDT, or Agent B in USDT→SOL) ──
+            const result = await buildSolanaHtlcLockTx({
+              senderPubkey:    senderPubkeyObj,
+              recipientPubkey,
+              amountSol:       lockAmount,
+              secretHash:      secretHashHex,
+              timelock,
+              connection:      solConnection,
+              escrowAddress:   agentEscrowAddr,
+            });
+            transaction = result.transaction;
+            escrowAddress = result.escrowAddress;
+          } else if (TOKEN_MINTS[lockToken.toUpperCase()]) {
+            // ── SPL Token lock (Agent B in SOL→USDT locks USDT, etc.) ──
+            if (!agentEscrowAddr) {
+              throw new Error("VITE_SOL_HTLC_ESCROW not configured — cannot lock SPL tokens without escrow address");
+            }
+            const result = await buildSolanaTokenHtlcLockTx({
+              senderPubkey:    senderPubkeyObj,
+              recipientPubkey,
+              tokenSymbol:     lockToken,
+              amount:          lockAmount,
+              secretHash:      secretHashHex,
+              timelock,
+              connection:      solConnection,
+              escrowAddress:   agentEscrowAddr,
+            });
+            transaction = result.transaction;
+            escrowAddress = result.escrowAddress;
+          } else {
+            throw new Error(`Unsupported token for HTLC lock: ${lockToken}`);
+          }
 
           let txHash: string;
           // Detect Phantom Standard Wallet: phantomSolAddress is set but solPubkey (adapter) is null
@@ -1107,21 +1144,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             solana?: { signAndSendTransaction?: (tx: unknown) => Promise<{ signature: string }>, signTransaction?: (tx: unknown) => Promise<unknown> }
           }).solana;
 
-          console.error("[HTLC-DEBUG] About to sign. sendSolTransaction:", typeof sendSolTransaction, "solPubkey:", solPubkey?.toBase58(), "signTransaction:", typeof signTransaction, "isPhantomStandard:", isPhantomStandardWallet, "hasPhantomProvider:", !!phantomProvider);
-          toast.info(`[HTLC-DEBUG] signing: isStd=${isPhantomStandardWallet} hasProv=${!!phantomProvider} hasSend=${!!sendSolTransaction} hasSolPk=${!!solPubkey}`);
+          console.error("[HTLC-DEBUG] About to sign.", { isAgentA, lockToken, lockAmount, isPhantomStandard: isPhantomStandardWallet });
 
           if (isPhantomStandardWallet && phantomProvider?.signAndSendTransaction) {
-            // Phantom Standard Wallet path (Phantom v24+): use window.phantom.solana directly
-            // This bypasses the legacy adapter which doesn't have the connected state set
             console.error("[HTLC-DEBUG] Using Phantom Standard Wallet (window.phantom.solana) path");
             const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
           } else if (sendSolTransaction && solPubkey) {
-            // Standard adapter path: sendTransaction works for legacy adapter wallets
             console.error("[HTLC-DEBUG] Using sendSolTransaction path — calling now...");
             txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(transaction, solConnection);
           } else if (signTransaction && solPubkey) {
-            // Legacy path: sign then broadcast manually
             console.error("[HTLC-DEBUG] Using legacy signTransaction path");
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
             const rawTx = signedTx.serialize();
@@ -1130,7 +1162,6 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               preflightCommitment: "confirmed",
             });
           } else if (phantomProvider?.signAndSendTransaction) {
-            // Fallback: window.solana / window.phantom.solana
             console.error("[HTLC-DEBUG] Using window.solana fallback");
             const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
@@ -1144,7 +1175,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
-            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", rfq.amount);
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", lockAmount);
           }
           // Record the HTLC deposit in the database for server-side monitoring
           try {
@@ -1157,8 +1188,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 senderAddress: senderPubkeyStr,
                 recipientAddress: recipientPubkey.toBase58(),
                 escrowAddress,
-                amountRaw: String(rfq.amount ?? 0),
-                token: rfq.fromToken ?? "SOL",
+                amountRaw: String(lockAmount),
+                token: lockToken,
                 secretHash: secretHashHex,
                 timelock,
                 rfqId,
@@ -1167,8 +1198,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             });
           } catch { /* non-critical — server will detect deposit via monitor */ }
 
-          toast.success("Solana HTLC locked", {
-            description: `Tx: ${txHash.slice(0, 20)}… · ${rfq.amount} SOL locked in escrow (${escrowAddress.slice(0, 8)}…)`,
+          toast.success(`${lockToken} HTLC locked`, {
+            description: `Tx: ${txHash.slice(0, 20)}… · ${lockAmount} ${lockToken} locked in escrow (${escrowAddress.slice(0, 8)}…)`,
             action: {
               label: "View on Solscan",
               onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank"),
@@ -1216,8 +1247,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Counterparty address: use peer address from RFQ if available
           const recipient = rfq.counterpartyAddress ?? rfq.requesterWallet ?? senderEthAddr;
 
-          // Amount in wei (rfq.amount is in ETH)
-          const amountWei = BigInt(Math.floor((rfq.amount ?? 0) * 1e18));
+          // Agent A locks fromToken amount; Agent B locks toToken amount
+          const isAgentAEth = !!rfq.isInitiator;
+          const ethLockAmount = isAgentAEth ? (rfq.amount ?? 0) : (rfq.suggestedOutAmount ?? 0);
+          // Amount in wei
+          const amountWei = BigInt(Math.floor(ethLockAmount * 1e18));
 
           // ABI-encode lockETH(bytes32 secretHash, address recipient, uint256 timelock)
           // Function selector: keccak256("lockETH(bytes32,address,uint256)") = 0x1d4e5e8c
@@ -1272,8 +1306,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (btcProvider === "unknown") {
             throw new Error("No Bitcoin wallet provider detected. Please connect Phantom, Xverse, or Tap Wallet.");
           }
-          // Convert amount to satoshis (rfq.amount is in BTC)
-          const amountSats = Math.round(rfq.amount * 1e8);
+          // Agent A locks fromToken amount; Agent B locks toToken amount
+          const isAgentABtc = !!rfq.isInitiator;
+          const btcLockAmount = isAgentABtc ? rfq.amount : (rfq.suggestedOutAmount ?? rfq.amount);
+          // Convert amount to satoshis
+          const amountSats = Math.round(btcLockAmount * 1e8);
           // Use a placeholder pubkey for the counterparty — in production this comes from the RFQ
           // The peer's pubkey would be exchanged during the RFQ negotiation phase
           const counterpartyPubKey = rfq.requestorPeer
@@ -1333,8 +1370,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
           const existingTnkHash = rfq.secretHashHex;
           const secretHash = existingTnkHash ?? (await generateHtlcSecret()).secretHashHex;
+          // Agent A locks fromToken amount; Agent B locks toToken amount
+          const isAgentATnk = !!rfq.isInitiator;
+          const tnkLockAmount = isAgentATnk ? rfq.amount : (rfq.suggestedOutAmount ?? rfq.amount);
           const result = await executeTnkHtlcLock({
-            amount: rfq.amount.toFixed(8),
+            amount: tnkLockAmount.toFixed(8),
             secretHash,
             timelockSeconds: 600, // 10 minutes default for TNK
           });
@@ -1432,6 +1472,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       receivedAt: Date.now(),
       // secretHashHex from buildSwapTx ensures Agent A locks to the same hash stored in DB
       secretHashHex: params.secretHashHex,
+      // Mark as initiator so acceptRfq knows Agent A should lock fromToken (not toToken)
+      isInitiator: true,
     };
     // Add to incomingRfqs so the HTLC signing panel shows up
     setIncomingRfqs(prev => {

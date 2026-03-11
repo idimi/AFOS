@@ -2498,3 +2498,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fixed ALL 17 raw fetch mutation calls in LightPeerContext.tsx to include `?batch=1` (revealHtlcSecret, updateHtlcStatus, notifySwapCompletion, logAutoAcceptedRfq, recordHtlcDeposit)
 - [x] Fixed response parsing for revealHtlcSecret to handle batch array format `[{result:{data:{json:{...}}}}]`
 - [ ] Multiple 502 Bad Gateway errors from Manus backend during swap flow (Oracle VM instability — external)
+
+## Bug: HTLC swap logic — wrong token locked + escrow doesn't release (round 5)
+
+- [x] Agent B locks SOL instead of USDT — Fixed: added `isInitiator` flag to IncomingRfq; Agent A locks `fromToken`/`amount`, Agent B locks `toToken`/`suggestedOutAmount`
+- [x] Created `solanaTokenHtlc.ts` with `buildSolanaTokenHtlcLockTx()` for USDT/USDC SPL token transfers to escrow ATA
+- [x] Fixed chain routing: Agent A locks on `fromChain`, Agent B locks on `toChain` (cross-chain swap support)
+- [x] Applied same Agent A/B amount fix to Ethereum, Bitcoin, and TNK HTLC lock paths
+- [ ] HTLC escrow accumulates funds but doesn't release/swap to the correct party on secret reveal
+- [ ] Escrow program (Ey3PYDh9gKuk...) is a simple SOL transfer, not a real HTLC program with claim/release logic — server-side release needed
