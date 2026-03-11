@@ -1,0 +1,52 @@
+HTLC Program Deployment Transaction Analysis
+==============================================
+
+Deployment tx: 5YqKt6mJe3crX5caNRjM52heNF3doDvUk9btuiTnbTrqUCGAjeFUwjbpE1n4TVRFzv5TGZhwbycsL78MZ1BnTrgg
+Status: SUCCESS (Finalized)
+Date: 03:28:36 Mar 11, 2026 (UTC)
+Signer/Deployer: Ey3PYDh9gKukTcGriXo8rb1T11QFxP3pJvnMqkCDQopR
+
+Instructions:
+  #1 - System Program: createAccount
+       Created XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW with deposit of 0.001 SOL ($0.0987)
+       Funded by Ey3PYD...CDQopR
+
+  #2 - BPF Upgradeable Loader: deployWithMaxDataLen
+       Created BW64GL...uQy46G with deposit of 1.8121404 SOL ($156.7)
+       Funded by Ey3PYD...CDQopR
+
+Program ID: XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW
+Program Data Account: BW64GL...uQy46G (contains the actual bytecode)
+
+Key finding: The program IS deployed and executable on mainnet.
+The "ProgramAccountNotFound" error in the failed swap tx is about a PDA account
+passed to the instruction, NOT about the program itself.
+
+Failed swap tx: RgdkEJRNsus9dDnxNyPMGFzhfyGZ2WiVtWvGRQWncPhZdvgRAe1ih1XVrfxWA2s1LQUrjkyivJ5myAYEPqE4sWc
+Error: ProgramAccountNotFound (no log messages returned)
+Accounts in failed tx:
+  [0] CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW  (signer/user wallet)
+  [1] 2ZpEPh8oGMLJzsmEZoxD6ud4qgHCTXwAE5Ceep8cWMpg  (HTLC PDA)
+  [2] DaHR6fWPs1fV22kGoMbK8wYj6osGcjxXDwm2oekLaAUW  (?)
+  [3] ExCGMcoPcauhVPZDg1YYxN1sURd1NXN7rjhKPDFXRZSU  (?)
+  [4] 11111111111111111111111111111111               (System Program)
+  [5] ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bE   (Associated Token Program)
+  [6] ComputeBudget111111111111111111111111111111     (Compute Budget)
+  [7] Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB   (USDT mint)
+  [8] TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA    (SPL Token Program)
+  [9] XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW   (AFOS HTLC Program)
+
+Instruction #2 (index 5): ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bE
+  accounts=[0, 1, 2, 7, 4, 8]  => Create ATA for PDA
+  This creates the vault ATA for the HTLC PDA
+
+Instruction #3 (index 9): XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW
+  accounts=[0, 2, 7, 3, 1, 8, 4]  => lock_token instruction
+  data_len=164
+
+ANALYSIS: The error "ProgramAccountNotFound" with no log messages means the runtime
+couldn't even invoke the program. This happens when:
+1. The program executable data account is missing/corrupted
+2. OR the program needs to be finalized after deployment
+
+Let me check if the program data account BW64GL... still exists.

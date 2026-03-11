@@ -35,7 +35,7 @@ const SPL_TOKEN_PROGRAM_ID = new PublicKey(
 );
 
 const SPL_ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bE"
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
 
 // Anchor discriminators (first 8 bytes of SHA256("global:<instruction_name>"))
@@ -142,12 +142,18 @@ export async function claimSolanaHtlc(params: {
   CLAIM_DISCRIMINATOR.copy(data, 0);
   Buffer.from(preimage).copy(data, 8);
 
-  // Build account keys
+  // Build account keys — must match Anchor Claim context order:
+  // 1. caller (signer, mut)
+  // 2. htlc PDA (mut)
+  // 3. recipient (mut)
+  // 4. vault_token_account (Option, mut) — SPL only
+  // 5. recipient_token_account (Option, mut) — SPL only
+  // 6. token_program (Option) — SPL only
+  // 7. system_program
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: agentKeypair.publicKey, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
     { pubkey: recipient, isSigner: false, isWritable: true },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
 
   // Add SPL token accounts if this is a token claim
@@ -164,12 +170,16 @@ export async function claimSolanaHtlc(params: {
     await ensureAtaExists(connection, agentKeypair, recipient, tokenMint, recipientAta);
 
     keys.push(
-      { pubkey: tokenMint, isSigner: false, isWritable: false },
       { pubkey: vaultAta, isSigner: false, isWritable: true },
       { pubkey: recipientAta, isSigner: false, isWritable: true },
       { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
     );
   }
+
+  // system_program is always LAST (matches Anchor Claim context)
+  keys.push(
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
+  );
 
   const claimIx = new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,

@@ -2578,3 +2578,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] On storeActiveRfq: upsert to DB
 - [x] On removeActiveRfq: delete from DB
 - [x] On server start: load non-expired RFQs from DB into activeRfqs Map
+
+## Bug: HTLC Swap Fails with ProgramAccountNotFound
+- [x] Diagnose: Root cause was WRONG Associated Token Program ID (ATokenGPv...LJe1bE doesn't exist on mainnet, correct is ATokenGPv...LJA8knL)
+- [x] Fixed AToken program ID in both client (afosHtlcProgram.ts) and server (solanaHtlcClaim.ts)
+- [x] Fixed claim/refund instruction account ordering: SystemProgram must be LAST (was at position 4)
+- [x] Removed extra tokenMint account from server-side claim keys (not in Anchor Claim context)
+- [x] Verified all Anchor discriminators match deployed program
+- [ ] Also fix: revealHtlcSecret returns 403, rpc.unlock-protocol.com returns 403 (RPC issue, separate from program bug)
+- [ ] Verify HTLC dialog should NOT show all-green checkmarks when tx actually failed (UX issue, separate)
