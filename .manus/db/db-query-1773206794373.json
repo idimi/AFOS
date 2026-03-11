@@ -1,0 +1,32 @@
+{
+  "query": "SELECT * FROM htlc_secrets WHERE rfqId LIKE '%1773205346880%' OR htlcId LIKE '%1773205346880%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT * FROM htlc_secrets WHERE rfqId LIKE '%1773205346880%' OR htlcId LIKE '%1773205346880%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "30",
+      "rfqId": "rfq_1773205346880_lp-3dcc9",
+      "secretHex": "4ac13b7b04793d80882aa6a695a3f7911ed44a2af53b9cb0e6bf714ed9a5868a",
+      "secretHashHex": "5a6a54b18a34f72035ff750851a588b3afc1e2bbdd62759ff18a6438dc3b293e",
+      "fromChain": "solana",
+      "toChain": "solana",
+      "requesterAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyPeerId": "lp-3dcc94c0da",
+      "initiatorPeerId": "lp-a0508fd1e1",
+      "expiresAt": "1773205406880",
+      "status": "revealed",
+      "lockTxId": "NULL",
+      "revealTxId": "NULL",
+      "createdAt": "2026-03-11 05:02:26",
+      "updatedAt": "2026-03-11 05:03:14",
+      "htlcId": "htlc_rfq_1773205346880_lp-3dc",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "NULL",
+      "fromToken": "SOL",
+      "toToken": "USDT"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\tsecretHex\tsecretHashHex\tfromChain\ttoChain\trequesterAddress\tcounterpartyPeerId\tinitiatorPeerId\texpiresAt\tstatus\tlockTxId\trevealTxId\tcreatedAt\tupdatedAt\thtlcId\tinitiatorAddress\tcounterpartyAddress\tfromToken\ttoToken\n30\trfq_1773205346880_lp-3dcc9\t4ac13b7b04793d80882aa6a695a3f7911ed44a2af53b9cb0e6bf714ed9a5868a\t5a6a54b18a34f72035ff750851a588b3afc1e2bbdd62759ff18a6438dc3b293e\tsolana\tsolana\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tlp-3dcc94c0da\tlp-a0508fd1e1\t1773205406880\trevealed\tNULL\tNULL\t2026-03-11 05:02:26\t2026-03-11 05:03:14\thtlc_rfq_1773205346880_lp-3dc\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\tSOL\tUSDT\n",
+  "stderr": "",
+  "execution_time_ms": 64
+}

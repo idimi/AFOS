@@ -2014,9 +2014,140 @@ function HtlcClaimRetryTab() {
   );
 }
 
+// ─── HTLC Recovery Tab ──────────────────────────────────────────────────────
+
+function HtlcRecoveryTab() {
+  const { data: stuckHtlcs, isLoading, refetch } = trpc.htlcRecovery.getStuckHtlcs.useQuery(
+    undefined,
+    { refetchInterval: 30_000 }
+  );
+
+  // Get the connected wallet address from Phantom
+  const phantomAddr = (window as any).phantom?.solana?.publicKey?.toString() ?? "";
+
+  return (
+    <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-foreground">HTLC Recovery</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Recover funds locked in HTLC escrow accounts after the timelock expires.
+          </p>
+        </div>
+        <button
+          onClick={() => refetch()}
+          className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Refresh
+        </button>
+      </div>
+
+      <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-yellow-200">
+        <strong>How refunds work:</strong> After the timelock expires, click <strong>Refund Now</strong>
+        to sign a transaction that returns the locked funds to your wallet.
+        Only the original sender can trigger a refund.
+      </div>
+
+      {isLoading ? (
+        <div className="text-center text-muted-foreground py-8 text-sm">Scanning on-chain HTLC accounts...</div>
+      ) : !stuckHtlcs || stuckHtlcs.length === 0 ? (
+        <div className="rounded-xl border border-border p-8 text-center text-muted-foreground">
+          <div className="text-3xl mb-2">✓</div>
+          <p className="font-medium text-sm">No stuck HTLCs found</p>
+          <p className="text-xs mt-1">All HTLC locks have been claimed, refunded, or completed.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {stuckHtlcs.map((htlc) => (
+            <AdminHtlcRow key={htlc.htlcId} htlc={htlc} walletAddress={phantomAddr} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminHtlcRow({ htlc, walletAddress }: { htlc: any; walletAddress: string }) {
+  const [remaining, setRemaining] = React.useState(
+    Math.max(0, htlc.timelock - Math.floor(Date.now() / 1000))
+  );
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      setRemaining(Math.max(0, htlc.timelock - Math.floor(Date.now() / 1000)));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [htlc.timelock]);
+
+  const expired = remaining === 0;
+  const isSender = htlc.sender === walletAddress;
+  const [isRefunding, setIsRefunding] = React.useState(false);
+  const buildRefundTx = trpc.htlcRecovery.buildRefundTx.useMutation();
+  const utils = trpc.useUtils();
+
+  async function handleRefund() {
+    if (!isSender) { toast.error("Only the original sender can refund this HTLC"); return; }
+    if (!expired) { toast.error(`Timelock not expired yet — ${Math.floor(remaining / 60)}m ${remaining % 60}s remaining`); return; }
+    setIsRefunding(true);
+    try {
+      const result = await buildRefundTx.mutateAsync({
+        htlcId: htlc.htlcId,
+        senderAddress: walletAddress,
+        tokenMint: htlc.tokenMint ?? null,
+      });
+      const phantom = (window as any).phantom?.solana;
+      if (!phantom) { toast.error("Phantom wallet not found"); return; }
+      const { Transaction } = await import("@solana/web3.js");
+      const txBytes = Buffer.from(result.serializedTx, "base64");
+      const tx = Transaction.from(txBytes);
+      const { signature } = await phantom.signAndSendTransaction(tx);
+      toast.success(`Refund submitted! Tx: ${signature.slice(0, 8)}...`);
+      await utils.htlcRecovery.getStuckHtlcs.invalidate();
+    } catch (err: any) {
+      toast.error(`Refund failed: ${err?.message ?? String(err)}`);
+    } finally {
+      setIsRefunding(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-border p-4 space-y-2">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-mono font-semibold text-yellow-400">{htlc.amountSol.toFixed(4)} {htlc.tokenSymbol}</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+            expired ? "text-green-400 border-green-400/40" : "text-orange-400 border-orange-400/40"
+          }`}>{expired ? "Refundable" : `${Math.floor(remaining / 60)}m ${remaining % 60}s`}</span>
+          {!isSender && <span className="text-[10px] text-muted-foreground">(not your lock)</span>}
+        </div>
+        <button
+          disabled={!expired || !isSender || isRefunding}
+          onClick={handleRefund}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            expired && isSender
+              ? "border-green-500/50 text-green-400 hover:bg-green-500/10"
+              : "border-border text-muted-foreground opacity-50 cursor-not-allowed"
+          }`}
+        >
+          {isRefunding ? "Submitting..." : expired ? "Refund Now" : "Waiting..."}
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground font-mono">
+        <div><span className="text-foreground/40">HTLC: </span>{htlc.htlcId}</div>
+        <div><span className="text-foreground/40">PDA: </span>
+          <a href={`https://solscan.io/account/${htlc.pdaAddress}`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">
+            {htlc.pdaAddress.slice(0, 8)}...{htlc.pdaAddress.slice(-6)}
+          </a>
+        </div>
+        <div><span className="text-foreground/40">Sender: </span>{htlc.sender.slice(0, 8)}...{isSender && <span className="text-cyan-400 ml-1">(you)</span>}</div>
+        <div><span className="text-foreground/40">Expires: </span>{new Date(htlc.timelock * 1000).toLocaleString()}</div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 // LP Node and Routing tabs removed — no backing system yet
-type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_retry";
+type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_retry" | "htlc_recovery";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -2127,6 +2258,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     {
       id: "htlc_retry", label: "Claim Retry", icon: Repeat,
       tooltip: "HTLC claim retry queue. When a claimSolanaHtlc call fails after the secret has been revealed (network blip, RPC timeout), funds stay locked. This panel shows all pending, retrying, succeeded, and exhausted retry jobs. Admins can manually trigger an immediate retry for any job.",
+    },
+    {
+      id: "htlc_recovery", label: "HTLC Recovery", icon: Lock,
+      tooltip: "Recover funds stuck in HTLC escrow accounts. Shows all unclaimed/unrefunded HTLC locks and lets the sender trigger a refund transaction after the timelock expires.",
     },
   ];
 
@@ -2433,6 +2568,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         {/* ── HTLC Claim Retry Tab ── */}
         {activeTab === "htlc_retry" && <HtlcClaimRetryTab />}
+
+        {/* ── HTLC Recovery Tab ── */}
+        {activeTab === "htlc_recovery" && <HtlcRecoveryTab />}
 
       </div>
 

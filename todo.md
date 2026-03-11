@@ -2587,3 +2587,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Verified all Anchor discriminators match deployed program
 - [ ] Also fix: revealHtlcSecret returns 403, rpc.unlock-protocol.com returns 403 (RPC issue, separate from program bug)
 - [ ] Verify HTLC dialog should NOT show all-green checkmarks when tx actually failed (UX issue, separate)
+
+## Task: Recover Stuck HTLC Tokens at 45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ
+- [x] Investigated account: HTLC PDA, 0.025 SOL locked, sender=AuSUBiVV..., timelock=2026-03-11 06:02:29 UTC
+- [x] Determined: valid HTLC PDA owned by AFOS program, not lost — just waiting for timelock
+- [x] Timelock expires ~36 min from discovery — refund available after that
+- [x] Built HTLC Recovery tab in AdminPanel + standalone /htlc-recovery page with countdown timer and Refund Now button
+- [x] Server-side buildRefundTx procedure builds and serializes the Anchor refund instruction for wallet signing
+- [ ] Execute recovery: click Refund Now in AdminPanel > HTLC Recovery tab after timelock expires

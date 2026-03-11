@@ -18,6 +18,7 @@ import { WalletToastManager } from "./components/WalletToastManager";
 import Dashboard from "./pages/Dashboard";
 import Swaps from "./pages/Swaps";
 import AdminPanel from "./pages/AdminPanel";
+import HtlcRecovery from "./pages/HtlcRecovery";
 import LandingPage from "./pages/LandingPage";
 
 /** Scrolls the window to the top whenever the pathname changes. */
@@ -42,6 +43,8 @@ function Router() {
       <Route path={"/app/:rest*"} component={Dashboard} />
       {/* Hidden admin panel — not linked from consumer UI */}
       <Route path={"/admin"} component={AdminPanel} />
+      {/* HTLC Recovery — for recovering stuck HTLC funds after timelock */}
+      <Route path={"/htlc-recovery"} component={HtlcRecovery} />
       <Route path={"/404"} component={NotFound} />
       <Route component={NotFound} />
     </Switch>
