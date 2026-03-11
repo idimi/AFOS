@@ -463,8 +463,7 @@ function OpenTradeCard({
       try {
         const { transaction } = await buildSolanaHtlcRefundTx({
           senderPubkey: publicKey,
-          secretHash: trade.secretHash,
-          amountSol: trade.fromAmount,
+          htlcId: trade.htlcAddress ?? `htlc_${(trade.secretHash ?? '').slice(0, 16)}`,
           connection,
         });
         const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
@@ -990,8 +989,7 @@ function RefundCard({
       try {
         const { transaction } = await buildSolanaHtlcRefundTx({
           senderPubkey: publicKey,
-          secretHash: refund.secretHash,
-          amountSol: parseFloat(refund.amountHuman),
+          htlcId: refund.htlcAddress ?? `htlc_${(refund.secretHash ?? '').slice(0, 16)}`,
           connection,
         });
         const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);

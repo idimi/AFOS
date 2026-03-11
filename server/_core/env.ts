@@ -8,4 +8,10 @@ export const ENV = {
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   oracleApiUrl: process.env.ORACLE_API_URL ?? "http://141.253.123.101:4000",
+  // Solana HTLC agent keys
+  solHtlcKey: process.env.SOL_HTLC_KEY ?? "",
+  solRpcUrl: process.env.VITE_SOL_RPC_URL ?? "https://solana-rpc.publicnode.com",
+  // Ethereum HTLC agent keys
+  ethHtlcKey: process.env.ETH_HTLC_KEY ?? "",
+  ethRpcUrl: process.env.ETH_RPC_URL ?? "",
 };

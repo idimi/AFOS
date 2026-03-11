@@ -1,0 +1,13 @@
+{
+  "query": "SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ', ') AS cols FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_secrets';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ', ') AS cols FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_secrets';",
+  "rows": [
+    {
+      "cols": "id, rfqId, secretHex, secretHashHex, fromChain, toChain, requesterAddress, counterpartyPeerId, initiatorPeerId, expiresAt, status, lockTxId, revealTxId, createdAt, updatedAt, htlcId, initiatorAddress, counterpartyAddress, fromToken, toToken"
+    }
+  ],
+  "messages": [],
+  "stdout": "cols\nid, rfqId, secretHex, secretHashHex, fromChain, toChain, requesterAddress, counterpartyPeerId, initiatorPeerId, expiresAt, status, lockTxId, revealTxId, createdAt, updatedAt, htlcId, initiatorAddress, counterpartyAddress, fromToken, toToken\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

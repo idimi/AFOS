@@ -2505,5 +2505,41 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Created `solanaTokenHtlc.ts` with `buildSolanaTokenHtlcLockTx()` for USDT/USDC SPL token transfers to escrow ATA
 - [x] Fixed chain routing: Agent A locks on `fromChain`, Agent B locks on `toChain` (cross-chain swap support)
 - [x] Applied same Agent A/B amount fix to Ethereum, Bitcoin, and TNK HTLC lock paths
-- [ ] HTLC escrow accumulates funds but doesn't release/swap to the correct party on secret reveal
-- [ ] Escrow program (Ey3PYDh9gKuk...) is a simple SOL transfer, not a real HTLC program with claim/release logic — server-side release needed
+- [x] HTLC escrow accumulates funds but doesn't release/swap to the correct party on secret reveal
+- [x] Escrow program (Ey3PYDh9gKuk...) is a simple SOL transfer, not a real HTLC program with claim/release logic — server-side release needed
+
+## On-Chain HTLC Program — Solana (Trustless, Hackathon Priority)
+
+### Phase 1: Anchor Program
+- [ ] Install Rust + Anchor toolchain in sandbox
+- [x] Scaffold Anchor HTLC program (`afos-htlc`)
+- [ ] Write `lock_sol` instruction: sender locks SOL with secretHash + timelock + recipient
+- [ ] Write `lock_token` instruction: sender locks SPL tokens (USDT/USDC) with secretHash + timelock + recipient
+- [ ] Write `claim` instruction: recipient claims by revealing preimage (SHA-256 verified on-chain)
+- [ ] Write `refund` instruction: sender reclaims after timelock expires
+- [ ] Unit tests for all 4 instructions
+- [ ] Build and deploy to Solana mainnet
+- [x] Record Program ID in VITE_SOL_HTLC_PROGRAM_ID env var
+
+### Phase 2: Frontend Integration
+- [ ] Update `solanaHtlc.ts` to call `lock_sol` on the deployed program
+- [ ] Update `solanaTokenHtlc.ts` to call `lock_token` on the deployed program
+- [x] Update HTLC signing UI to show program-based lock (not simple transfer)
+
+### Phase 3: Agent Server-Side Claim
+- [x] Update `revealHtlcSecret` tRPC procedure to submit `claim` instruction on-chain
+- [x] Agent signs claim tx using SOL_HTLC_KEY (agent keypair, not escrow)
+- [ ] Handle claim failure with retry logic
+- [ ] Handle timelock expiry: auto-refund monitoring
+
+### Phase 4: Ethereum HTLC (Next after Solana)
+- [ ] Deploy HTLC.sol to Ethereum mainnet
+- [ ] Update ETH lock path to use HTLC contract
+
+### Phase 5: Bitcoin HTLC (After Ethereum)
+- [ ] Polish existing P2WSH script in btcHtlc.ts
+- [ ] Test on mainnet with small amounts
+
+### Phase 6: Trac Network HTLC (Final)
+- [ ] Investigate TNK contract capabilities
+- [ ] Implement TNK HTLC if supported

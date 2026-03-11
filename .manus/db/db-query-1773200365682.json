@@ -1,0 +1,9 @@
+{
+  "query": "\nALTER TABLE htlc_secrets ADD COLUMN initiatorAddress VARCHAR(128) NULL;\nALTER TABLE htlc_secrets ADD COLUMN counterpartyAddress VARCHAR(128) NULL;\nALTER TABLE htlc_secrets ADD COLUMN fromToken VARCHAR(16) NULL;\nALTER TABLE htlc_secrets ADD COLUMN toToken VARCHAR(16) NULL;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nALTER TABLE htlc_secrets ADD COLUMN initiatorAddress VARCHAR(128) NULL;\nALTER TABLE htlc_secrets ADD COLUMN counterpartyAddress VARCHAR(128) NULL;\nALTER TABLE htlc_secrets ADD COLUMN fromToken VARCHAR(16) NULL;\nALTER TABLE htlc_secrets ADD COLUMN toToken VARCHAR(16) NULL;\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 853
+}

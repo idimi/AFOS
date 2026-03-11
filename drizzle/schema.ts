@@ -444,6 +444,16 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
   status:              mysqlEnum("status", ["locked", "revealed", "completed", "expired", "refunded"]).default("locked").notNull(),
   lockTxId:            varchar("lockTxId", { length: 128 }),
   revealTxId:          varchar("revealTxId", { length: 128 }),
+  /** HTLC PDA seed used to derive the on-chain PDA (e.g. htlc_rfq_1773...) */
+  htlcId:              varchar("htlcId", { length: 128 }),
+  /** Agent A wallet address (initiator — locks fromToken, receives toToken) */
+  initiatorAddress:    varchar("initiatorAddress", { length: 128 }),
+  /** Agent B wallet address (counterparty — locks toToken, receives fromToken) */
+  counterpartyAddress: varchar("counterpartyAddress", { length: 128 }),
+  /** Token symbol locked by Agent A (e.g. SOL, ETH) */
+  fromToken:           varchar("fromToken", { length: 16 }),
+  /** Token symbol locked by Agent B (e.g. USDT, USDC) */
+  toToken:             varchar("toToken", { length: 16 }),
   createdAt:           timestamp("createdAt").defaultNow().notNull(),
   updatedAt:           timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

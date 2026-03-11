@@ -35,6 +35,7 @@ import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
+import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 
@@ -1202,6 +1203,11 @@ export const chatRouter = router({
           initiatorPeerId:    senderPeerId ?? undefined,
           expiresAt:          BigInt(expiresAt),
           status:             "locked",
+          // On-chain HTLC tracking
+          htlcId:             `htlc_${p2pQuote.rfqId.slice(0, 24)}`,
+          initiatorAddress:   userPublicKey ?? undefined,
+          fromToken:          (fromToken ?? "SOL").toUpperCase(),
+          toToken:            (toToken ?? "USDT").toUpperCase(),
         }).catch(() => {/* non-fatal */});
         // Push agent_rfq to the matched peer's browser via signaling WebSocket
         const delivered = sendAgentRfqToPeer({
@@ -2356,7 +2362,14 @@ export const chatRouter = router({
    * Only the requester (matched by walletAddress) may retrieve the secret.
    */
   revealHtlcSecret: publicProcedure
-    .input(z.object({ rfqId: z.string(), requesterAddress: z.string() }))
+    .input(z.object({
+      rfqId:                z.string(),
+      requesterAddress:     z.string(),
+      counterpartyAddress:  z.string().optional(),  // Agent B's wallet address
+      htlcIdA:              z.string().optional(),   // Agent A's PDA seed (htlc_a_...)
+      htlcIdB:              z.string().optional(),   // Agent B's PDA seed (htlc_b_...)
+      chain:                z.string().optional(),   // "solana" | "ethereum" | "bitcoin" | "trac_network"
+    }))
     .mutation(async ({ input }) => {
       const row = await getHtlcSecret(input.rfqId);
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "HTLC secret not found for this RFQ" });
@@ -2368,6 +2381,51 @@ export const chatRouter = router({
       }
       // Mark as revealed
       await updateHtlcSecretStatus(input.rfqId, "revealed");
+
+      // ── Trigger on-chain claims for Solana HTLC ──────────────────────────────
+      // The AFOS server (using SOL_HTLC_KEY as coordinator) submits claim instructions
+      // to the deployed HTLC program, releasing funds to the correct counterparties.
+      const chain = input.chain ?? row.fromChain ?? "solana";
+      if (chain === "solana" && input.htlcIdA && input.htlcIdB && input.counterpartyAddress) {
+        // Determine SPL token symbols from stored fromToken/toToken
+        // SOL is native; USDT/USDC are SPL tokens that need tokenSymbol for ATA routing
+        const SPL_TOKENS = new Set(["USDT", "USDC"]);
+        const fromTokenSym = row.fromToken?.toUpperCase() ?? "SOL";
+        const toTokenSym   = row.toToken?.toUpperCase()   ?? "SOL";
+        const tokenSymA = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined; // Agent A locked fromToken
+        const tokenSymB = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined; // Agent B locked toToken
+
+        // Fire-and-forget: don't block the response — claims may take a few seconds
+        void (async () => {
+          try {
+            // Claim Agent A's locked fromToken → send to Agent B (counterpartyAddress)
+            const claimA = await claimSolanaHtlc({
+              htlcId:           input.htlcIdA!,
+              secretHex:        row.secretHex,
+              recipientAddress: input.counterpartyAddress!,
+              tokenSymbol:      tokenSymA,
+            });
+            console.log(`[HTLC] Claimed Agent A lock (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+
+            // Claim Agent B's locked toToken → send to Agent A (requesterAddress)
+            const claimB = await claimSolanaHtlc({
+              htlcId:           input.htlcIdB!,
+              secretHex:        row.secretHex,
+              recipientAddress: input.requesterAddress,
+              tokenSymbol:      tokenSymB,
+            });
+            console.log(`[HTLC] Claimed Agent B lock (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+
+            await updateHtlcSecretStatus(input.rfqId, "completed", {
+              revealTxId: claimA.txSignature,
+            });
+          } catch (claimErr) {
+            console.error("[HTLC] On-chain claim failed:", claimErr instanceof Error ? claimErr.message : claimErr);
+            // Don't throw — the secret is already revealed; Agent B can claim manually
+          }
+        })();
+      }
+
       return { secretHex: row.secretHex, secretHashHex: row.secretHashHex };
     }),
   /**

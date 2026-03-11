@@ -498,8 +498,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Handle htlc_locked: Agent B notified Agent A that their lock is on-chain.
     // Agent A calls revealHtlcSecret, then sends the secret to Agent B.
     unsubs.push(client.on("htlc_locked", (data) => {
-      const { fromPeerId, rfqId, txHash, chain, amountLocked } = data as {
+      const { fromPeerId, rfqId, txHash, chain, amountLocked, senderWallet, htlcId: agentBHtlcId } = data as {
         fromPeerId: string; rfqId: string; txHash?: string; chain?: string; amountLocked?: number;
+        senderWallet?: string; htlcId?: string;
       };
       if (!rfqId) return;
       // Show toast so Agent A knows Agent B locked
@@ -516,11 +517,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         try {
           // Resolve Agent A's wallet address for the auth check
           const agentAWallet = solPubkey?.toBase58() ?? phantomSolAddress ?? peerId ?? "";
+          // Compute Agent A's htlcId (same rfqId-based formula)
+          const agentAHtlcId = `htlc_a_${rfqId.slice(0, 22)}`;
           const res = await fetch("/api/trpc/chat.revealHtlcSecret?batch=1", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
-            body: JSON.stringify({ "0": { json: { rfqId, requesterAddress: agentAWallet } } }),
+            body: JSON.stringify({ "0": { json: {
+              rfqId,
+              requesterAddress: agentAWallet,
+              counterpartyAddress: senderWallet ?? undefined,  // Agent B's wallet
+              htlcIdA: agentAHtlcId,                           // Agent A's PDA seed
+              htlcIdB: agentBHtlcId ?? undefined,              // Agent B's PDA seed
+              chain: chain ?? "solana",
+            } } }),
           });
           if (!res.ok) {
             console.warn("[HTLC] revealHtlcSecret failed:", res.status);
@@ -1083,6 +1093,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Timelock: 1 hour from now
           const timelock = Math.floor(Date.now() / 1000) + 3600;
 
+          // Generate distinct htlcId for Agent A vs Agent B (different PDAs, same secret hash)
+          // Agent A: htlc_a_<rfqId first 22 chars>  Agent B: htlc_b_<rfqId first 22 chars>
+          const htlcId = isAgentA
+            ? `htlc_a_${rfqId.slice(0, 22)}`
+            : `htlc_b_${rfqId.slice(0, 22)}`;
+
           // Counterparty pubkey: use peer's pubkey from RFQ if available
           const counterpartyStr = rfq.counterpartyAddress ?? rfq.requesterWallet
             ?? senderPubkeyStr; // fallback to self for demo
@@ -1109,15 +1125,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               secretHash:      secretHashHex,
               timelock,
               connection:      solConnection,
-              escrowAddress:   agentEscrowAddr,
+              htlcId,
             });
             transaction = result.transaction;
             escrowAddress = result.escrowAddress;
           } else if (TOKEN_MINTS[lockToken.toUpperCase()]) {
             // ── SPL Token lock (Agent B in SOL→USDT locks USDT, etc.) ──
-            if (!agentEscrowAddr) {
-              throw new Error("VITE_SOL_HTLC_ESCROW not configured — cannot lock SPL tokens without escrow address");
-            }
             const result = await buildSolanaTokenHtlcLockTx({
               senderPubkey:    senderPubkeyObj,
               recipientPubkey,
@@ -1126,7 +1139,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               secretHash:      secretHashHex,
               timelock,
               connection:      solConnection,
-              escrowAddress:   agentEscrowAddr,
+              htlcId,
             });
             transaction = result.transaction;
             escrowAddress = result.escrowAddress;
@@ -1175,7 +1188,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
-            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, txHash, "solana", lockAmount);
+            signalingRef.current.sendHtlcLocked(
+              rfq.requestorPeer, rfqId, txHash, "solana", lockAmount,
+              senderPubkeyStr,  // Agent B's wallet address (so Agent A knows where to send funds)
+              htlcId,           // Agent B's htlcId (PDA seed for the program)
+            );
           }
           // Record the HTLC deposit in the database for server-side monitoring
           try {
@@ -1194,6 +1211,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 timelock,
                 rfqId,
                 peerId: rfq.requestorPeer ?? undefined,
+                htlcId,
+                isAgentA,
               }),
             });
           } catch { /* non-critical — server will detect deposit via monitor */ }

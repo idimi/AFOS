@@ -366,7 +366,7 @@ export class SignalingClient {
    * Notify Agent A that Agent B has locked their HTLC on-chain.
    * Agent A listens for this to know it's safe to sign their own lock.
    */
-  sendHtlcLocked(targetPeerId: string, rfqId: string, txHash?: string, chain?: string, amountLocked?: number) {
+  sendHtlcLocked(targetPeerId: string, rfqId: string, txHash?: string, chain?: string, amountLocked?: number, senderWallet?: string, htlcId?: string) {
     this.sendMessage({
       type: "htlc_locked",
       targetPeerId,
@@ -374,6 +374,8 @@ export class SignalingClient {
       txHash: txHash ?? null,
       chain: chain ?? null,
       amountLocked: amountLocked ?? null,
+      senderWallet: senderWallet ?? null,
+      htlcId: htlcId ?? null,
     });
   }
 
@@ -519,6 +521,8 @@ export class SignalingClient {
           txHash: msg.txHash,
           chain: msg.chain,
           amountLocked: msg.amountLocked,
+          senderWallet: msg.senderWallet,  // Agent B's wallet address
+          htlcId: msg.htlcId,              // Agent B's htlcId (PDA seed)
         });
         break;
 

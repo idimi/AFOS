@@ -1,0 +1,70 @@
+{
+  "query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_secrets' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_secrets' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "rfqId"
+    },
+    {
+      "COLUMN_NAME": "secretHex"
+    },
+    {
+      "COLUMN_NAME": "secretHashHex"
+    },
+    {
+      "COLUMN_NAME": "fromChain"
+    },
+    {
+      "COLUMN_NAME": "toChain"
+    },
+    {
+      "COLUMN_NAME": "requesterAddress"
+    },
+    {
+      "COLUMN_NAME": "counterpartyPeerId"
+    },
+    {
+      "COLUMN_NAME": "initiatorPeerId"
+    },
+    {
+      "COLUMN_NAME": "expiresAt"
+    },
+    {
+      "COLUMN_NAME": "status"
+    },
+    {
+      "COLUMN_NAME": "lockTxId"
+    },
+    {
+      "COLUMN_NAME": "revealTxId"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "htlcId"
+    },
+    {
+      "COLUMN_NAME": "initiatorAddress"
+    },
+    {
+      "COLUMN_NAME": "counterpartyAddress"
+    },
+    {
+      "COLUMN_NAME": "fromToken"
+    },
+    {
+      "COLUMN_NAME": "toToken"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nrfqId\nsecretHex\nsecretHashHex\nfromChain\ntoChain\nrequesterAddress\ncounterpartyPeerId\ninitiatorPeerId\nexpiresAt\nstatus\nlockTxId\nrevealTxId\ncreatedAt\nupdatedAt\nhtlcId\ninitiatorAddress\ncounterpartyAddress\nfromToken\ntoToken\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}
