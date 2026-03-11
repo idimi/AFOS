@@ -38,6 +38,7 @@ import { trpc } from "@/lib/trpc";
 import { usePeerMessageChime } from "../hooks/usePeerMessageChime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AfosLogo } from "@/components/AfosLogo";
+import RefundBanner from "@/components/RefundBanner";
 import { usePrices } from "../contexts/PriceContext";
 
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
@@ -3028,73 +3029,7 @@ function TopbarAgentDot() {
   return <div className={`w-2 h-2 rounded-full ${dotClass}`} title={label} />;
 }
 
-// ── Refund Banner ── dismissible warning when on-chain scanner finds claimable HTLCs
-function RefundBanner({ onNavigateToRefunds }: { onNavigateToRefunds: () => void }) {
-  const [dismissed, setDismissed] = useState(false);
-  const { data, isLoading } = trpc.history.myOnChainRefunds.useQuery(
-    { walletAddresses: [] },
-    { refetchInterval: 120_000, staleTime: 60_000 }
-  );
-
-  const claimableCount = data?.htlcs?.filter((h: { timelockExpired: boolean }) => h.timelockExpired).length ?? 0;
-  const totalSol = data?.htlcs
-    ?.filter((h: { timelockExpired: boolean }) => h.timelockExpired)
-    .reduce((sum: number, h: { amountSol: number }) => sum + h.amountSol, 0) ?? 0;
-
-  if (dismissed || isLoading || claimableCount === 0) return null;
-
-  return (
-    <div className="max-w-[1280px] mx-auto px-4 sm:px-5 pb-0">
-      <motion.div
-        initial={{ opacity: 0, y: -8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        className="relative flex items-center gap-3 px-4 py-3 rounded-xl"
-        style={{
-          background: "linear-gradient(135deg, rgba(245,158,11,0.12), rgba(239,68,68,0.08))",
-          border: "1px solid rgba(245,158,11,0.3)",
-        }}
-      >
-        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-amber-200">
-            {claimableCount} stuck HTLC{claimableCount > 1 ? "s" : ""} found — {totalSol.toFixed(4)} SOL recoverable
-          </p>
-          <p className="text-xs text-amber-300/60 mt-0.5">
-            Expired escrow funds detected on-chain. Connect your wallet and claim your refund.
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            onNavigateToRefunds();
-            // Small delay to let the page switch, then click the Refunds tab
-            setTimeout(() => {
-              const refundsTab = document.querySelector('[data-tab="refunds"]') as HTMLElement;
-              refundsTab?.click();
-            }, 200);
-          }}
-          className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-          style={{
-            background: "rgba(245,158,11,0.2)",
-            border: "1px solid rgba(245,158,11,0.4)",
-            color: "rgb(251,191,36)",
-          }}
-        >
-          View Refunds <ArrowRight className="w-3 h-3 inline ml-1" />
-        </button>
-        <button
-          onClick={() => setDismissed(true)}
-          className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-amber-400/50 hover:text-amber-400 transition-colors"
-          style={{ background: "rgba(245,158,11,0.1)" }}
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </motion.div>
-    </div>
-  );
-}
-
-// ── Main Dashboard ─────────────────────────────────────────────────────────────────────────────────
+// ── Main Dashboard ─────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
@@ -3639,8 +3574,15 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* ── Refund Banner ── shows when on-chain scanner finds claimable HTLCs */}
-              <RefundBanner onNavigateToRefunds={() => setActivePage("activity")} />
+              {/* ── Refund Banner ── */}
+              <RefundBanner
+                walletAddresses={[
+                  phantomMultiChain?.solanaAddress,
+                  topbarEth?.address,
+                  topbarBtc?.address,
+                ].filter((a): a is string => !!a)}
+                onNavigateToRefunds={() => setActivePage("activity")}
+              />
 
               {/* ── DESKTOP: 2-column layout ── */}
               <div className="hidden lg:block px-5 pb-5">

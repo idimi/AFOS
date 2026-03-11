@@ -31,7 +31,7 @@ export const SPL_TOKEN_PROGRAM_ID = new PublicKey(
 );
 
 export const SPL_ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bE"
 );
 
 // Anchor discriminators (first 8 bytes of SHA256("global:<instruction_name>"))
@@ -177,14 +177,11 @@ export function buildClaimInstruction(params: {
   DISCRIMINATORS.claim.copy(data, 0);
   Buffer.from(params.preimage).copy(data, 8);
 
-  // Account order must match Anchor Claim context:
-  // 1. caller, 2. htlc PDA, 3. recipient,
-  // 4-6. (optional SPL: vault_ata, recipient_ata, token_program),
-  // last. system_program
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: params.caller, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
     { pubkey: params.recipient, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
 
   if (params.tokenMint) {
@@ -196,11 +193,6 @@ export function buildClaimInstruction(params: {
       { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
     );
   }
-
-  // system_program is always LAST
-  keys.push(
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
-  );
 
   return new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,
@@ -222,13 +214,10 @@ export function buildRefundInstruction(params: {
 
   const data = Buffer.from(DISCRIMINATORS.refund);
 
-  // Account order must match Anchor Refund context:
-  // 1. sender, 2. htlc PDA,
-  // 3-5. (optional SPL: vault_ata, sender_ata, token_program),
-  // last. system_program
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: params.sender, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
 
   if (params.tokenMint) {
@@ -240,11 +229,6 @@ export function buildRefundInstruction(params: {
       { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
     );
   }
-
-  // system_program is always LAST
-  keys.push(
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
-  );
 
   return new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,

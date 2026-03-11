@@ -1061,24 +1061,18 @@ function RefundCard({
       }
       setClaiming(true);
       try {
-        // ABI-encode refund(bytes32 contractId)
+        // ABI-encode refund(bytes32 secretHash)
         // Function selector: keccak256("refund(bytes32)") = 0x7249fbb6
-        // For on-chain scanner results, htlcAddress IS the contractId (bytes32)
-        // For DB results, htlcAddress is the contract address — use secretHash as contractId
-        const contractIdHex = (refund.htlcAddress?.startsWith("0x") && refund.htlcAddress.length === 66)
-          ? refund.htlcAddress.slice(2) // on-chain scanner: htlcAddress = contractId
-          : (refund.secretHash?.startsWith("0x") ? refund.secretHash.slice(2) : refund.secretHash);
-        const calldata = "0x7249fbb6" + contractIdHex.padStart(64, "0");
-        // For on-chain results, the "to" address should be the ETH HTLC contract, not the contractId
-        const ethContractAddress = refund.htlcAddress?.startsWith("0x") && refund.htlcAddress.length === 66
-          ? undefined // on-chain scanner result — need contract address from env
-          : refund.htlcAddress;
+        const secretHashHex = refund.secretHash.startsWith("0x")
+          ? refund.secretHash.slice(2)
+          : refund.secretHash;
+        const calldata = "0x7249fbb6" + secretHashHex.padStart(64, "0");
         toast.loading("Waiting for MetaMask signature…", { id: "eth-refund-sign" });
         const txHash = await rawEth.request({
           method: "eth_sendTransaction",
           params: [{
             from: fromAddress,
-            to:   ethContractAddress || (import.meta.env.VITE_ETH_HTLC_ADDRESS as string) || refund.htlcAddress,
+            to:   refund.htlcAddress,
             data: calldata,
             gas:  "0x30D40", // 200 000 gas
           }],
@@ -1263,81 +1257,56 @@ function RefundCard({
 }
 
 export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
-  const hasWallet = walletAddresses.length > 0;
-
-  // DB-based refunds (expired/refunded records already in our DB)
-  const { data: dbData, isLoading: dbLoading } = trpc.history.refunds.useQuery(
+  const { data, isLoading } = trpc.history.refunds.useQuery(
     { walletAddresses, search },
     { refetchInterval: 30000 }
   );
-
-  // On-chain scanner — always runs (server auto-includes HTLC wallet address)
-  // Queries ALL AFOS program accounts filtered by sender == connected wallet + server HTLC wallet
+  // On-chain scanner — always runs, finds HTLCs not in DB too
   const { data: onChainData, isLoading: onChainLoading } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses },
-    {
-      refetchInterval: 60000,
-      // Don't block the UI while the on-chain scan runs
-      staleTime: 30000,
-    }
+    { refetchInterval: 60000 }
   );
-
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
 
-  // Merge DB records with on-chain results, deduplicating by htlcAddress/pdaAddress
-  const dbRefunds: RefundRecord[] = (dbData?.refunds ?? []).map(mapHtlcToRefund);
-  const dbAddresses = new Set(dbRefunds.map(r => r.htlcAddress.toLowerCase()));
+  // Merge DB refunds with on-chain scanner results (deduplicate by htlcId)
+  const dbRefunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
+  const dbHtlcIds = new Set(dbRefunds.map(r => r.htlcAddress));
 
-  // Convert on-chain HTLCs to RefundRecord format (only those not already in DB)
+  // Map on-chain HTLCs to RefundRecord format (only expired ones not already in DB)
   const onChainRefunds: RefundRecord[] = (onChainData?.htlcs ?? [])
-    .filter(h => !dbAddresses.has(h.pdaAddress.toLowerCase()))
-    .map((h, i) => {
-      const amount = h.amountSol;
-      const chain = (h as any).chain || "solana";
-      const price = PRICE_ESTIMATES[h.tokenSymbol] ?? (
-        h.tokenSymbol === "SOL" ? 150 :
-        h.tokenSymbol === "ETH" ? 3500 :
-        h.tokenSymbol === "BTC" ? 90000 : 1
-      );
-      const usdValue = amount * price;
-      return {
-        id: `onchain_${h.pdaAddress.slice(0, 8)}_${i}`,
-        htlcId: -1, // no DB row
-        fromSymbol: h.tokenSymbol,
-        toSymbol: "USDT",
-        amount,
-        usdValue,
-        peer: h.recipient.slice(0, 8) + "...",
-        failReason: h.timelockExpired
-          ? `HTLC timelock expired on ${chain.toUpperCase()} — refund available`
-          : `HTLC locked on ${chain.toUpperCase()} — timelock not yet expired`,
-        htlcExpiry: new Date(h.timelock * 1000),
-        status: h.timelockExpired ? ("claimable" as const) : ("claimable" as const),
-        txHash: "",
-        escrowPda: h.pdaAddress.slice(0, 12) + "...",
-        chain: chain as SupportedChain,
-        htlcAddress: chain === "solana" ? h.htlcId : h.pdaAddress, // SOL uses htlcId, ETH/BTC use address
-        secretHash: h.secretHash,
-        senderAddress: h.sender,
-        amountHuman: h.amountSol.toString(),
-        locktime: h.timelock,
-        // Extra fields for display
-        pdaAddress: h.pdaAddress,
-        timelockExpired: h.timelockExpired,
-      } as RefundRecord & { pdaAddress: string; timelockExpired: boolean };
-    });
+    .filter(h => h.timelockExpired && !dbHtlcIds.has(h.pdaAddress))
+    .map(h => ({
+      id: h.pdaAddress,
+      htlcId: 0,
+      fromSymbol: h.token,
+      toSymbol: "USDT",
+      amount: parseFloat(h.amountHuman),
+      usdValue: parseFloat(h.amountHuman) * (PRICE_ESTIMATES[h.token] ?? 1),
+      peer: "P2P Network",
+      failReason: "HTLC expired — timelock passed without settlement",
+      htlcExpiry: new Date((h.timelockExpiry ?? 0) * 1000),
+      status: "claimable" as const,
+      txHash: h.htlcId,
+      escrowPda: h.pdaAddress.slice(0, 12) + "...",
+      chain: h.chain,
+      htlcAddress: h.chain === "solana" ? h.htlcId : h.pdaAddress,
+      secretHash: h.secretHash ?? "",
+      senderAddress: h.senderAddress,
+      amountHuman: h.amountHuman,
+      locktime: h.timelockExpiry ?? 0,
+    }));
 
   const refunds = [...dbRefunds, ...onChainRefunds];
+  const hasWallet = walletAddresses.length > 0;
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
+  const isScanning = isLoading || onChainLoading;
 
-  const isLoading = dbLoading;
-  const isScanningChain = onChainLoading;
-
-  if (isLoading) {
+  if (isScanning && refunds.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16">
+      <div className="flex items-center justify-center py-16 gap-2">
         <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+        <span className="text-xs text-muted-foreground">Scanning SOL · ETH · BTC chains...</span>
       </div>
     );
   }
@@ -1345,27 +1314,23 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   return (
     <>
       <div className="space-y-4">
-        {!hasWallet && (
+        {onChainLoading && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+          >
+            <Loader2 className="w-3 h-3 text-cyan-400 animate-spin flex-shrink-0" />
+            <span className="text-cyan-300/80">Scanning SOL · ETH · BTC chains for unclaimed HTLCs...</span>
+          </div>
+        )}
+        {!hasWallet && !onChainLoading && (
           <div
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
             style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
           >
             <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
             <span className="text-cyan-300/80">
-              Connect a wallet to see your refunds. Showing all network refunds (operator view).
-            </span>
-          </div>
-        )}
-
-        {/* On-chain scan indicator */}
-        {isScanningChain && (
-          <div
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}
-          >
-            <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin flex-shrink-0" />
-            <span className="text-amber-300/80">
-              Scanning SOL, ETH &amp; BTC chains for stuck HTLCs…
+              Connect a wallet to filter your refunds. Showing all on-chain expired HTLCs.
             </span>
           </div>
         )}
@@ -1384,22 +1349,16 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
           ))}
         </div>
 
-        {refunds.length === 0 && !isScanningChain && (
+        {refunds.length === 0 && (
           <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">No refunds needed</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">
-              {hasWallet ? "All your swaps settled successfully" : "All swaps settled successfully"}
-            </p>
+            <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
           </div>
         )}
 
         {refunds.map(refund => (
-          <RefundCard
-            key={refund.id}
-            refund={refund}
-            onOpenDetail={setSelectedHtlcId}
-          />
+          <RefundCard key={refund.id} refund={refund} onOpenDetail={setSelectedHtlcId} />
         ))}
       </div>
 

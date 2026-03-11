@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS, htlcSecrets, HtlcSecret, InsertHtlcSecret, activeRfqs, ActiveRfqRow } from "../drizzle/schema";
+import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS, htlcSecrets, HtlcSecret, InsertHtlcSecret } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -414,56 +414,4 @@ export async function getSettledHtlcSecrets(limit = 50): Promise<HtlcSecret[]> {
     .where(sql`${htlcSecrets.status} IN ('completed', 'expired', 'refunded')`)
     .orderBy(sql`${htlcSecrets.updatedAt} DESC`)
     .limit(limit);
-}
-
-// ─── Active RFQ Order Book Persistence ───────────────────────────────────────
-
-/** Upsert an RFQ into the persistent order book. */
-export async function saveActiveRfqToDB(rfq: {
-  rfqId: string;
-  fromPeerId?: string;
-  requesterAlias?: string;
-  fromToken: string;
-  toToken: string;
-  fromChain: string;
-  toChain: string;
-  amount: number;
-  outAmount?: number;
-  rate?: number;
-  secretHashHex?: string;
-  expiresAt: number;
-}): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  try {
-    await db.insert(activeRfqs).values(rfq).onDuplicateKeyUpdate({ set: rfq });
-  } catch (err) {
-    console.warn("[DB] saveActiveRfqToDB failed:", err);
-  }
-}
-
-/** Remove an RFQ from the persistent order book (accepted, cancelled, or expired). */
-export async function removeActiveRfqFromDB(rfqId: string): Promise<void> {
-  const db = await getDb();
-  if (!db) return;
-  try {
-    await db.delete(activeRfqs).where(eq(activeRfqs.rfqId, rfqId));
-  } catch (err) {
-    console.warn("[DB] removeActiveRfqFromDB failed:", err);
-  }
-}
-
-/** Load all non-expired RFQs from the DB for in-memory restore on server startup. */
-export async function loadActiveRfqsFromDB(): Promise<ActiveRfqRow[]> {
-  const db = await getDb();
-  if (!db) return [];
-  try {
-    const now = Date.now();
-    // Delete expired rows first
-    await db.delete(activeRfqs).where(sql`${activeRfqs.expiresAt} < ${now}`);
-    return db.select().from(activeRfqs).orderBy(sql`${activeRfqs.createdAt} DESC`);
-  } catch (err) {
-    console.warn("[DB] loadActiveRfqsFromDB failed:", err);
-    return [];
-  }
 }

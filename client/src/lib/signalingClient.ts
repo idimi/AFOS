@@ -46,7 +46,6 @@ export type SignalingEvent =
   | "peer_left"
   | "peer_message"
   | "rfq_broadcast"
-  | "rfq_cancelled"
   | "agent_rfq"
   | "htlc_locked"
   | "htlc_secret"
@@ -507,11 +506,6 @@ export class SignalingClient {
           fromPeerId: msg.fromPeerId,
           rfq: msg.rfq,
         });
-        break;
-
-      case "rfq_cancelled":
-        // Server broadcasts RFQ cancellation — remove from order book
-        this.emit("rfq_cancelled", { rfqId: msg.rfqId });
         break;
 
       case "agent_rfq":

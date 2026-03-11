@@ -1,8 +1,0 @@
-{
-  "query": "SELECT rfqId, htlcId, secret, secretHash, initiatorAddress, counterpartyAddress, fromToken, toToken, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773205346880%' OR htlcId LIKE '%1773205346880%' LIMIT 5;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, htlcId, secret, secretHash, initiatorAddress, counterpartyAddress, fromToken, toToken, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773205346880%' OR htlcId LIKE '%1773205346880%' LIMIT 5;",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 1: Unknown column 'secret' in 'field list'"
-  ]
-}

@@ -12,7 +12,7 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
 import { startTnkHtlcMonitor } from "../jobs/tnkHtlcMonitor";
 import { startHtlcSecretsMonitor } from "../jobs/htlcSecretsMonitor";
-import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer, restoreActiveRfqsFromDB } from "../signaling";
+import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -201,8 +201,6 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
-    // Restore active RFQs from DB into the in-memory order book
-    restoreActiveRfqsFromDB().catch(err => console.warn("[Startup] Failed to restore active RFQs:", err));
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
     // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks
@@ -268,26 +266,26 @@ async function startServer() {
     setTimeout(runOracleSync, 15_000);         // initial run 15s after startup
     setInterval(runOracleSync, 60_000);        // repeat every 60s
 
-    // ── Auto-Refund cron ─────────────────────────────────────────────────────────────
-    // Scans for expired HTLCs every 5 minutes.
-    // Auto-refunds server-owned HTLCs, notifies owner about user-owned ones.
+    // ── Auto-refund job ─────────────────────────────────────────────────────────────────────────────────
+    // Scans SOL/ETH/BTC every 5 minutes for expired HTLCs.
+    // Auto-refunds server-owned HTLCs; notifies owner about user-owned ones.
     const runAutoRefundJob = async () => {
       try {
         const { runAutoRefund } = await import("../jobs/autoRefund");
         const result = await runAutoRefund();
-        if (result.autoRefunded > 0 || result.notified > 0) {
+        if (result.autoRefunded > 0 || result.userNotified > 0) {
           console.log(
-            `[AutoRefund] Scanned ${result.scanned} HTLC(s): ` +
-            `${result.autoRefunded} auto-refunded, ${result.notified} notified. ` +
-            (result.errors.length > 0 ? `Errors: ${result.errors.join("; ")}` : "")
+            `[AutoRefund] Scanned ${result.scanned} expired HTLCs. ` +
+            `Auto-refunded: ${result.autoRefunded}, User-notified: ${result.userNotified}` +
+            (result.errors.length > 0 ? `, Errors: ${result.errors.length}` : "")
           );
         }
       } catch (err) {
         console.error("[AutoRefund] Error running auto-refund job:", err);
       }
     };
-    setTimeout(runAutoRefundJob, 45_000);          // initial run 45s after startup
-    setInterval(runAutoRefundJob, 5 * 60 * 1000);  // repeat every 5 minutes
+    setTimeout(runAutoRefundJob, 60_000);              // initial run after 60s warm-up
+    setInterval(runAutoRefundJob, 5 * 60_000);         // repeat every 5 minutes
   });
 }
 

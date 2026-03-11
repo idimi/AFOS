@@ -2554,75 +2554,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] RFQ entries should show: peer alias, offer (amount + token), rate, expiry countdown, Accept button
 - [x] Remove RFQ from order book when it expires or is accepted
 
-## Feature: HTLC Claim Retry Logic
-- [ ] Create server/htlcClaimRetry.ts with in-memory retry queue (max 5 attempts, exponential backoff)
-- [ ] Wrap claimSolanaHtlc calls in revealHtlcSecret with retry queue on failure
-- [ ] Add admin tRPC procedure: retryClaimByRfqId — manually trigger retry for a specific rfqId
-- [ ] Add admin UI button in AdminPanel to trigger retry claim by rfqId
-- [ ] Write vitest for retry queue logic
+## Regression Fixes (v08af05f7)
 
-## Feature: Cross-Pair RFQ Accept Auto-Switch
-- [ ] In Swaps.tsx onAccept handler, detect if order.fromSymbol/t## Feature: Cross-Pair RFQ Accept
-- [x] Auto-switch fromToken/toToken state to match the RFQ pair before initiating HTLC
-- [x] Show toast confirming pair switch: "Switched to SOL/USDT to match this RFQ"
-
-## Feature: RFQ Cancellation
-- [x] Add rfq_cancelled WebSocket message type to signaling.ts (broadcasts to all peers)
-- [x] Add cancelRfq tRPC mutation in chat router (calls removeActiveRfq + broadcasts rfq_cancelled)
-- [x] Add Cancel button on own RFQ rows in Live Order Book (only visible to requester)
-- [x] Frontend: listen for rfq_cancelled events and remove matching rows from order book
-
-## Feature: Persist Active RFQs to DB
-- [x] Add active_rfqs table to drizzle/schema.ts
-- [x] Run pnpm db:push to create the table
-- [x] On storeActiveRfq: upsert to DB
-- [x] On removeActiveRfq: delete from DB
-- [x] On server start: load non-expired RFQs from DB into activeRfqs Map
-
-## Bug: HTLC Swap Fails with ProgramAccountNotFound
-- [x] Diagnose: Root cause was WRONG Associated Token Program ID (ATokenGPv...LJe1bE doesn't exist on mainnet, correct is ATokenGPv...LJA8knL)
-- [x] Fixed AToken program ID in both client (afosHtlcProgram.ts) and server (solanaHtlcClaim.ts)
-- [x] Fixed claim/refund instruction account ordering: SystemProgram must be LAST (was at position 4)
-- [x] Removed extra tokenMint account from server-side claim keys (not in Anchor Claim context)
-- [x] Verified all Anchor discriminators match deployed program
-- [ ] Also fix: revealHtlcSecret returns 403, rpc.unlock-protocol.com returns 403 (RPC issue, separate from program bug)
-- [ ] Verify HTLC dialog should NOT show all-green checkmarks when tx actually failed (UX issue, separate)
-
-## Task: Recover Stuck HTLC Tokens at 45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ
-- [x] Investigated account: HTLC PDA, 0.025 SOL locked, sender=AuSUBiVV..., timelock=2026-03-11 06:02:29 UTC
-- [x] Determined: valid HTLC PDA owned by AFOS program, not lost — just waiting for timelock
-- [x] Timelock expires ~36 min from discovery — refund available after that
-- [x] Built HTLC Recovery tab in AdminPanel + standalone /htlc-recovery page with countdown timer and Refund Now button
-- [x] Server-side buildRefundTx procedure builds and serializes the Anchor refund instruction for wallet signing
-- [ ] Execute recovery: click Refund Now in AdminPanel > HTLC Recovery tab after timelock expires
-
-## Bug: HTLC Recovery Tab Shows Empty (No Stuck HTLCs Found)
-- [x] Found DB record exists with status='revealed' but htlcId stored as 'htlc_rfq_...' (wrong prefix)
-- [x] Fixed getStuckHtlcs to try multiple htlcId candidate prefixes (htlc_a_, htlc_b_) derived from rfqId
-- [x] Removed status filter so ALL DB rows are checked regardless of status
-- [x] Timelock for stuck HTLC expired 365 days ago — Refund Now button available immediately
-
-## HTLC Recovery & Swap Reliability Fixes
-
-- [x] Fix HTLC Recovery tab still showing "No stuck HTLCs found" — rewrote candidate generation to use frontend formula: htlc_a_ + rfqId.slice(0, 22)
-- [x] Fix HTLC dialog false-positive — added confirmTransaction check for Solana + receipt polling for ETH before marking lock as settled; error state now shows red X instead of green checkmarks
-- [x] Fix htlcId storage bug — updated saveHtlcSecret in chat.ts to store htlc_a_rfq_... (matching frontend formula) instead of htlc_rfq_...
-- [x] Add on-chain scanner — Phase 2 in getStuckHtlcs queries ALL program accounts from AFOS_HTLC_PROGRAM_ID as safety net for HTLCs not in DB
-- [x] Fix Swaps.tsx SwapProgressTracker — error phase now shows red error card instead of false-positive green complete
-
-## User Self-Service Refunds — Wire On-Chain Scanner to History Refunds Tab
-
-- [x] Audit current Refunds tab data source (what tRPC procedure it calls)
-- [x] Build myOnChainRefunds tRPC procedure — queries on-chain by sender wallet address (history.myOnChainRefunds)
-- [x] Update History Refunds tab to use new procedure and merge on-chain results with DB records
-- [x] Show correct Claimable count and Total Value from on-chain data
-- [x] Wire buildSolanaHtlcRefundTx to the Claim button in the Refunds tab (existing RefundCard handles it)
-- [x] Add tests for the new procedure (server/historyOnChainRefunds.test.ts — 288 tests pass)
-
-## Fix Refunds Tab + Auto-Refund + Banner + Multi-Chain Scanner
-
-- [x] Fix Refunds tab on-chain scanner not showing stuck HTLC for user — removed wallet filter, show ALL unclaimed HTLCs (program enforces sender==signer)
-- [x] Add auto-refund cron job for expired HTLCs — scans SOL/ETH/BTC every 5 min, auto-refunds server-owned SOL HTLCs, notifies owner for user-owned
-- [x] Add refund banner on Overview page — dismissible warning banner with link to Refunds tab when claimable HTLCs detected
-- [x] Add multi-chain on-chain scanner — ETH (query Locked events + getContract status) + BTC (DB + mempool.space UTXO check)
-- [x] Add multi-chain tests (server/multiChainScanner.test.ts — 311 tests pass across 24 files)
+- [x] Restore HTLC Recovery tab in admin panel (accidentally dropped from AdminTab type and TABS array)
+- [x] Fix Refunds tab on-chain scanner returning empty array (myOnChainRefunds returns data via curl but browser gets empty)
+- [x] Create HtlcRecoveryTab component with KPI cards, expandable rows, explorer links, manual refund recording
+- [x] Update RefundsTab to call myOnChainRefunds and merge on-chain results with DB records
+- [x] Create auto-refund cron job (server/jobs/autoRefund.ts) - scans every 5 min, auto-refunds server-owned, notifies owner for user-owned
+- [x] Create RefundBanner component on Overview page - dismissible warning when claimable HTLCs detected

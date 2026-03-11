@@ -31,6 +31,7 @@ import QRCode from "react-qr-code";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "@/components/ConnectWalletModal";
 import type { SupportedChain } from "@shared/const";
+import HtlcRecoveryTab from "@/components/AdminPanel/HtlcRecoveryTab";
 
 // Admin wallet allowlist — set via VITE_ADMIN_WALLETS env var (comma-separated)
 const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
@@ -1912,242 +1913,9 @@ function AuditLogTab() {
   );
 }
 
-// ─── HTLC Claim Retry Tab ───────────────────────────────────────────────────
-function HtlcClaimRetryTab() {
-  const { data: queue, refetch, isLoading } = trpc.htlcRetry.listQueue.useQuery(undefined, {
-    refetchInterval: 10_000,
-  });
-  const retryNow = trpc.htlcRetry.retryNow.useMutation({
-    onSuccess: (result) => {
-      toast.success(`Retry triggered — status: ${result.status}`);
-      void refetch();
-    },
-    onError: (err) => toast.error(`Retry failed: ${err.message}`),
-  });
-
-  const STATUS_COLORS: Record<string, string> = {
-    pending:   "#f59e0b",
-    retrying:  "#3b82f6",
-    succeeded: "#10b981",
-    exhausted: "#ef4444",
-  };
-
-  return (
-    <div className="space-y-4 max-w-3xl mx-auto">
-      <div className="rounded-2xl p-4" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Repeat className="w-4 h-4 text-amber-400" />
-            <p className="text-sm font-bold text-foreground">HTLC Claim Retry Queue</p>
-          </div>
-          <button
-            onClick={() => void refetch()}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
-            style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}>
-            <RefreshCw className={`w-3 h-3 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        </div>
-        <p className="text-[10px] text-muted-foreground mb-4">
-          When a Solana HTLC claim fails after the secret is revealed, funds stay locked until the timelock expires.
-          The retry queue automatically retries with exponential backoff (max 5 attempts). Use &quot;Retry Now&quot; for immediate manual intervention.
-        </p>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8 gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Loading retry queue…</span>
-          </div>
-        ) : !queue || queue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2">
-            <CheckCircle2 className="w-8 h-8 text-emerald-400 opacity-60" />
-            <p className="text-sm font-semibold text-emerald-400">No failed claims</p>
-            <p className="text-[10px] text-muted-foreground">All HTLC claims completed successfully</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {queue.map((job) => (
-              <div
-                key={`${job.rfqId}:${job.side}`}
-                className="rounded-xl p-3"
-                style={{ background: "var(--muted)", border: `1px solid ${STATUS_COLORS[job.status] ?? "var(--border)"}30` }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span
-                        className="text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide"
-                        style={{ background: `${STATUS_COLORS[job.status]}20`, border: `1px solid ${STATUS_COLORS[job.status]}40`, color: STATUS_COLORS[job.status] }}>
-                        {job.status}
-                      </span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-mono" style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)", color: "#22d3ee" }}>
-                        {job.side}
-                      </span>
-                      <span className="text-[10px] font-mono text-foreground">{job.rfqId}</span>
-                    </div>
-                    <div className="text-[9px] text-muted-foreground space-y-0.5">
-                      <div>Attempts: <span className="text-foreground font-mono">{job.attempts}/{job.maxAttempts}</span></div>
-                      {job.lastError && (
-                        <div className="text-red-400 truncate max-w-xs">Last error: {job.lastError}</div>
-                      )}
-                      {job.nextRetryAt && job.status === "pending" && (
-                        <div>Next retry: <span className="text-amber-400 font-mono">{new Date(job.nextRetryAt).toLocaleTimeString()}</span></div>
-                      )}
-                    </div>
-                  </div>
-                  {(job.status === "pending" || job.status === "exhausted") && (
-                    <button
-                      onClick={() => retryNow.mutate({ rfqId: job.rfqId, side: job.side })}
-                      disabled={retryNow.isPending}
-                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all hover:scale-105 active:scale-95"
-                      style={{ background: "rgba(59,130,246,0.15)", border: "1px solid rgba(59,130,246,0.35)", color: "#60a5fa" }}>
-                      {retryNow.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Repeat className="w-3 h-3" />}
-                      Retry Now
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── HTLC Recovery Tab ──────────────────────────────────────────────────────
-
-function HtlcRecoveryTab() {
-  const { data: stuckHtlcs, isLoading, refetch } = trpc.htlcRecovery.getStuckHtlcs.useQuery(
-    undefined,
-    { refetchInterval: 30_000 }
-  );
-
-  // Get the connected wallet address from Phantom
-  const phantomAddr = (window as any).phantom?.solana?.publicKey?.toString() ?? "";
-
-  return (
-    <div className="max-w-3xl mx-auto py-6 px-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold text-foreground">HTLC Recovery</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Recover funds locked in HTLC escrow accounts after the timelock expires.
-          </p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="text-xs px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Refresh
-        </button>
-      </div>
-
-      <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-xs text-yellow-200">
-        <strong>How refunds work:</strong> After the timelock expires, click <strong>Refund Now</strong>
-        to sign a transaction that returns the locked funds to your wallet.
-        Only the original sender can trigger a refund.
-      </div>
-
-      {isLoading ? (
-        <div className="text-center text-muted-foreground py-8 text-sm">Scanning on-chain HTLC accounts...</div>
-      ) : !stuckHtlcs || stuckHtlcs.length === 0 ? (
-        <div className="rounded-xl border border-border p-8 text-center text-muted-foreground">
-          <div className="text-3xl mb-2">✓</div>
-          <p className="font-medium text-sm">No stuck HTLCs found</p>
-          <p className="text-xs mt-1">All HTLC locks have been claimed, refunded, or completed.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {stuckHtlcs.map((htlc) => (
-            <AdminHtlcRow key={htlc.htlcId} htlc={htlc} walletAddress={phantomAddr} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AdminHtlcRow({ htlc, walletAddress }: { htlc: any; walletAddress: string }) {
-  const [remaining, setRemaining] = React.useState(
-    Math.max(0, htlc.timelock - Math.floor(Date.now() / 1000))
-  );
-  React.useEffect(() => {
-    const id = setInterval(() => {
-      setRemaining(Math.max(0, htlc.timelock - Math.floor(Date.now() / 1000)));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [htlc.timelock]);
-
-  const expired = remaining === 0;
-  const isSender = htlc.sender === walletAddress;
-  const [isRefunding, setIsRefunding] = React.useState(false);
-  const buildRefundTx = trpc.htlcRecovery.buildRefundTx.useMutation();
-  const utils = trpc.useUtils();
-
-  async function handleRefund() {
-    if (!isSender) { toast.error("Only the original sender can refund this HTLC"); return; }
-    if (!expired) { toast.error(`Timelock not expired yet — ${Math.floor(remaining / 60)}m ${remaining % 60}s remaining`); return; }
-    setIsRefunding(true);
-    try {
-      const result = await buildRefundTx.mutateAsync({
-        htlcId: htlc.htlcId,
-        senderAddress: walletAddress,
-        tokenMint: htlc.tokenMint ?? null,
-      });
-      const phantom = (window as any).phantom?.solana;
-      if (!phantom) { toast.error("Phantom wallet not found"); return; }
-      const { Transaction } = await import("@solana/web3.js");
-      const txBytes = Buffer.from(result.serializedTx, "base64");
-      const tx = Transaction.from(txBytes);
-      const { signature } = await phantom.signAndSendTransaction(tx);
-      toast.success(`Refund submitted! Tx: ${signature.slice(0, 8)}...`);
-      await utils.htlcRecovery.getStuckHtlcs.invalidate();
-    } catch (err: any) {
-      toast.error(`Refund failed: ${err?.message ?? String(err)}`);
-    } finally {
-      setIsRefunding(false);
-    }
-  }
-
-  return (
-    <div className="rounded-lg border border-border p-4 space-y-2">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-mono font-semibold text-yellow-400">{htlc.amountSol.toFixed(4)} {htlc.tokenSymbol}</span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-            expired ? "text-green-400 border-green-400/40" : "text-orange-400 border-orange-400/40"
-          }`}>{expired ? "Refundable" : `${Math.floor(remaining / 60)}m ${remaining % 60}s`}</span>
-          {!isSender && <span className="text-[10px] text-muted-foreground">(not your lock)</span>}
-        </div>
-        <button
-          disabled={!expired || !isSender || isRefunding}
-          onClick={handleRefund}
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-            expired && isSender
-              ? "border-green-500/50 text-green-400 hover:bg-green-500/10"
-              : "border-border text-muted-foreground opacity-50 cursor-not-allowed"
-          }`}
-        >
-          {isRefunding ? "Submitting..." : expired ? "Refund Now" : "Waiting..."}
-        </button>
-      </div>
-      <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground font-mono">
-        <div><span className="text-foreground/40">HTLC: </span>{htlc.htlcId}</div>
-        <div><span className="text-foreground/40">PDA: </span>
-          <a href={`https://solscan.io/account/${htlc.pdaAddress}`} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline">
-            {htlc.pdaAddress.slice(0, 8)}...{htlc.pdaAddress.slice(-6)}
-          </a>
-        </div>
-        <div><span className="text-foreground/40">Sender: </span>{htlc.sender.slice(0, 8)}...{isSender && <span className="text-cyan-400 ml-1">(you)</span>}</div>
-        <div><span className="text-foreground/40">Expires: </span>{new Date(htlc.timelock * 1000).toLocaleString()}</div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 // LP Node and Routing tabs removed — no backing system yet
-type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_retry" | "htlc_recovery";
+type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_recovery";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -2256,12 +2024,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
       tooltip: "Immutable admin action log. Records every action taken by admin users in this panel, including fee changes, user role updates, config modifications, and peer bans. Each entry includes the actor's identity, timestamp, action type, and before/after values. Cannot be edited or deleted.",
     },
     {
-      id: "htlc_retry", label: "Claim Retry", icon: Repeat,
-      tooltip: "HTLC claim retry queue. When a claimSolanaHtlc call fails after the secret has been revealed (network blip, RPC timeout), funds stay locked. This panel shows all pending, retrying, succeeded, and exhausted retry jobs. Admins can manually trigger an immediate retry for any job.",
-    },
-    {
-      id: "htlc_recovery", label: "HTLC Recovery", icon: Lock,
-      tooltip: "Recover funds stuck in HTLC escrow accounts. Shows all unclaimed/unrefunded HTLC locks and lets the sender trigger a refund transaction after the timelock expires.",
+      id: "htlc_recovery", label: "HTLC Recovery", icon: AlertTriangle,
+      tooltip: "Multi-chain HTLC recovery dashboard. Scans Solana, Ethereum, and Bitcoin for stuck or expired HTLCs across all users. Shows expired HTLCs that are claimable, active HTLCs with countdown timers, and estimated USD at risk. Allows marking HTLCs as refunded after manual recovery. Users can self-service refund from History → Refunds tab.",
     },
   ];
 
@@ -2565,9 +2329,6 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         {/* ── Audit Log Tab ── */}
         {activeTab === "audit_log" && <AuditLogTab />}
-
-        {/* ── HTLC Claim Retry Tab ── */}
-        {activeTab === "htlc_retry" && <HtlcClaimRetryTab />}
 
         {/* ── HTLC Recovery Tab ── */}
         {activeTab === "htlc_recovery" && <HtlcRecoveryTab />}

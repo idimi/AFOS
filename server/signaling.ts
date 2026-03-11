@@ -163,56 +163,12 @@ const activeRfqs = new Map<string, ActiveRfq>();
 export function storeActiveRfq(rfq: ActiveRfq): void {
   activeRfqs.set(rfq.rfqId, rfq);
   const ttl = Math.max(0, rfq.expiresAt - Date.now());
-  setTimeout(() => {
-    activeRfqs.delete(rfq.rfqId);
-    // Also clean up from DB when it expires in memory
-    import("./db").then(({ removeActiveRfqFromDB }) => removeActiveRfqFromDB(rfq.rfqId)).catch(() => {});
-  }, ttl + 1000);
-  // Persist to DB (fire-and-forget)
-  import("./db").then(({ saveActiveRfqToDB }) => saveActiveRfqToDB(rfq)).catch(() => {});
+  setTimeout(() => activeRfqs.delete(rfq.rfqId), ttl + 1000);
 }
 
 /** Remove an RFQ from the order book (e.g. after it is accepted or cancelled) */
 export function removeActiveRfq(rfqId: string): void {
   activeRfqs.delete(rfqId);
-  // Persist removal to DB (fire-and-forget)
-  import("./db").then(({ removeActiveRfqFromDB }) => removeActiveRfqFromDB(rfqId)).catch(() => {});
-}
-
-/** Restore active RFQs from DB into the in-memory map on server startup */
-export async function restoreActiveRfqsFromDB(): Promise<void> {
-  try {
-    const { loadActiveRfqsFromDB } = await import("./db");
-    const rows = await loadActiveRfqsFromDB();
-    const now = Date.now();
-    for (const row of rows) {
-      const expiresAt = typeof row.expiresAt === 'number' ? row.expiresAt : Number(row.expiresAt);
-      if (expiresAt <= now) continue;
-      const rfq: ActiveRfq = {
-        rfqId:          row.rfqId,
-        fromPeerId:     row.fromPeerId ?? "agent",
-        requesterAlias: row.requesterAlias ?? undefined,
-        fromToken:      row.fromToken,
-        toToken:        row.toToken,
-        fromChain:      row.fromChain,
-        toChain:        row.toChain,
-        amount:         row.amount,
-        outAmount:      row.outAmount ?? undefined,
-        rate:           row.rate ?? undefined,
-        expiresAt,
-        timestamp:      row.createdAt instanceof Date ? row.createdAt.getTime() : Date.now(),
-        secretHashHex:  row.secretHashHex ?? undefined,
-      };
-      activeRfqs.set(rfq.rfqId, rfq);
-      const ttl = Math.max(0, expiresAt - now);
-      setTimeout(() => activeRfqs.delete(rfq.rfqId), ttl + 1000);
-    }
-    if (rows.length > 0) {
-      console.log(`[Signaling] Restored ${rows.length} active RFQ(s) from DB`);
-    }
-  } catch (err) {
-    console.warn("[Signaling] Failed to restore active RFQs from DB:", err);
-  }
 }
 
 /** Return all non-expired active RFQs for the order book */
