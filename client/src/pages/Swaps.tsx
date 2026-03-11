@@ -1296,11 +1296,49 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   // pendingPeers: peerId → timestamp when RFQ was sent (for 30s timeout tracking)
   const pendingPeersRef = useRef<Map<string, number>>(new Map());
 
-  // ── Signaling peer list from tRPC (refreshes every 10s) ──────────────────
+  // ── Signaling peer list from tRPC (refreshes every 10s) ────────────────────────
   const { data: signalingPeers } = trpc.chat.getPeerList.useQuery(undefined, {
     refetchInterval: 10_000,
     staleTime: 8_000,
   });
+
+  // ── Active RFQs from server (order book snapshot for late-joining peers) ──────────
+  // Fetches all non-expired RFQs stored server-side so any peer who joins late
+  // can see open orders without waiting for a new rfq_broadcast WebSocket event.
+  const { data: serverRfqs } = trpc.chat.getActiveRfqs.useQuery(undefined, {
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+  useEffect(() => {
+    if (!serverRfqs || serverRfqs.length === 0) return;
+    const now = Date.now();
+    const newEntries: OrderBookEntry[] = serverRfqs
+      .filter(rfq => rfq.expiresAt > now)
+      .map(rfq => ({
+        id:         rfq.rfqId,
+        rfqId:      rfq.rfqId,
+        peer:       rfq.requesterAlias ?? rfq.fromPeerId.slice(0, 8),
+        fromSymbol: rfq.fromToken.toUpperCase(),
+        toSymbol:   rfq.toToken.toUpperCase(),
+        fromAmount: rfq.amount,
+        toAmount:   rfq.outAmount ?? parseFloat((rfq.amount * (rfq.rate ?? baseRate)).toFixed(6)),
+        rate:       rfq.rate ?? baseRate,
+        usdValue:   rfq.amount * (fromToken.usdPrice || baseRate),
+        expiresIn:  Math.max(0, Math.round((rfq.expiresAt - now) / 1000)),
+        latency:    0,
+        reputation: 95,
+        timedOut:   false,
+        rfqSentAt:  rfq.timestamp,
+      }));
+    if (newEntries.length === 0) return;
+    setOrders(prev => {
+      const existingIds = new Set(prev.map(o => o.id));
+      const fresh = newEntries.filter(e => !existingIds.has(e.id));
+      if (fresh.length === 0) return prev;
+      return [...fresh, ...prev].slice(0, 15).sort((a, b) => b.rate - a.rate);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverRfqs]);
 
   // Pair change: clear orders and pending state
   useEffect(() => {
@@ -1308,9 +1346,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     pendingPeersRef.current.clear();
   }, [fromToken.symbol, toToken.symbol]);
 
-  // NOTE: No auto-broadcast or pending-row seeding — the order book only shows
-  // real quotes from SSE p2p_quote events or rfq_broadcast signals from other users.
-  // Users initiate RFQs via the Swap button (handleSwap), not by simply loading the page.
+  // NOTE: The order book shows RFQs from all sources:
+  // 1. Server snapshot (getActiveRfqs) — populated on mount and every 15s
+  // 2. Real-time SSE p2p_quote events — from Oracle VM
+  // 3. Real-time rfq_broadcast WebSocket events — from other peers via signaling
 
   // Subscribe to real SSE p2p_quote events
   useEffect(() => {
@@ -1366,7 +1405,8 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   // When Agent A types "swap X SOL to USDC" in the chat, the server broadcasts
   // an rfq_broadcast to all connected peers via WebSocket. LightPeerContext
   // dispatches it as an "afos:signaling-rfq" window event. We listen here so
-  // any user on the Swaps page can see and accept the open RFQ.
+  // ALL users on the Swaps page can see every open RFQ regardless of their
+  // currently selected pair. Each row shows its own pair label.
   useEffect(() => {
     const handler = (e: Event) => {
       const rfq = (e as CustomEvent).detail as {
@@ -1376,20 +1416,23 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
         fromChain?: string;
         toChain?: string;
         amount?: number;
+        outAmount?: number;
+        rate?: number;
         requestorPeer?: string;
         requesterAlias?: string;
         fromPeerId?: string;
         timestamp?: number;
+        expiresAt?: number;
       };
       if (!rfq.fromToken || !rfq.toToken) return;
       const rfqFrom = rfq.fromToken.toUpperCase();
       const rfqTo   = rfq.toToken.toUpperCase();
-      const curFrom = fromToken.symbol.toUpperCase();
-      const curTo   = toToken.symbol.toUpperCase();
-      // Show RFQs for the current pair (either direction)
-      if ((rfqFrom !== curFrom || rfqTo !== curTo) && (rfqFrom !== curTo || rfqTo !== curFrom)) return;
-      const amount = rfq.amount ?? 0.001;
-      const estRate = baseRate > 0 ? baseRate : 1;
+      const amount  = rfq.amount ?? 0.001;
+      // Use the rate from the RFQ payload if available; otherwise estimate from USD prices
+      const estRate = rfq.rate ?? (baseRate > 0 ? baseRate : 1);
+      const expiresInSec = rfq.expiresAt
+        ? Math.max(0, Math.round((rfq.expiresAt - Date.now()) / 1000))
+        : 120;
       const entry: OrderBookEntry = {
         id:         rfq.rfqId ?? `bc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         rfqId:      rfq.rfqId,
@@ -1397,10 +1440,10 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
         fromSymbol: rfqFrom,
         toSymbol:   rfqTo,
         fromAmount: amount,
-        toAmount:   parseFloat((amount * estRate).toFixed(6)),
+        toAmount:   rfq.outAmount ?? parseFloat((amount * estRate).toFixed(6)),
         rate:       estRate,
         usdValue:   amount * (fromToken.usdPrice || estRate),
-        expiresIn:  60,
+        expiresIn:  expiresInSec,
         latency:    0,
         reputation: 95,
         timedOut:   false,
@@ -1408,7 +1451,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
       };
       setOrders(prev => {
         if (prev.some(o => o.id === entry.id)) return prev;
-        const next = [entry, ...prev].slice(0, 10);
+        const next = [entry, ...prev].slice(0, 15);
         return next.sort((a, b) => b.rate - a.rate);
       });
       setFlash(entry.id);
@@ -1417,7 +1460,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     window.addEventListener("afos:signaling-rfq", handler);
     return () => window.removeEventListener("afos:signaling-rfq", handler);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromToken.symbol, toToken.symbol, baseRate]);
+  }, [baseRate, fromToken.usdPrice]);
 
   // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
   useEffect(() => {
@@ -1497,7 +1540,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           </div>
           <p className="text-[9px] text-slate-600 mt-0.5">
-            {walletConnected ? "P2P SSE quotes" : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
+            {walletConnected ? "P2P SSE quotes — All Pairs" : "Connect wallet to request live quotes"} · {fromToken.symbol}/{toToken.symbol}
           </p>
         </div>
         <div className="text-right">
@@ -1735,6 +1778,12 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}>
                           {rep.tierLabel}
                         </span>
+                        {/* Pair label — shown when the RFQ pair differs from the current view */}
+                        {(order.fromSymbol !== fromToken.symbol.toUpperCase() || order.toSymbol !== toToken.symbol.toUpperCase()) && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded font-mono" style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}>
+                            {order.fromSymbol}/{order.toSymbol}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] text-slate-500">{order.latency}ms · {order.reputation}% rep</span>
                     </div>
@@ -1814,12 +1863,18 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
                 >
                   {/* Peer */}
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {isBest && <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0" />}
                       <span className="text-[10px] font-mono text-slate-300">{order.peer}</span>
                       <span className={`text-[8px] px-1 py-0.5 rounded font-bold uppercase tracking-wide ${rep.tierColor} ${rep.tierBg}`}>
                         {rep.tierLabel}
                       </span>
+                      {/* Pair label — shown when the RFQ pair differs from the current view */}
+                      {(order.fromSymbol !== fromToken.symbol.toUpperCase() || order.toSymbol !== toToken.symbol.toUpperCase()) && (
+                        <span className="text-[8px] px-1 py-0.5 rounded font-mono" style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}>
+                          {order.fromSymbol}/{order.toSymbol}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[9px] text-slate-600">{order.latency}ms · {order.reputation}%</div>
                     {showBestBadge && (

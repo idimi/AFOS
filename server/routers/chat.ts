@@ -34,7 +34,7 @@ import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
-import { getSignalingPeerList, sendToPeer, broadcastRfqToAll } from "../signaling";
+import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
@@ -1227,6 +1227,21 @@ export const chatRouter = router({
           secretHashHex:   htlcSecretHash,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
+        // Broadcast to ALL peers so the RFQ appears in the Live Order Book for everyone
+        broadcastRfqToAll(senderPeerId ?? undefined, {
+          rfqId:          p2pQuote.rfqId,
+          fromToken:      (fromToken ?? "SOL").toUpperCase(),
+          toToken:        (toToken ?? "USDT").toUpperCase(),
+          fromChain:      fromChain ?? "solana",
+          toChain:        toChain ?? "solana",
+          amount:         amount ?? 0,
+          outAmount:      p2pQuote.outAmount ?? 0,
+          rate:           p2pQuote.rate ?? 0,
+          requesterAlias: senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
+          expiresAt,
+          secretHashHex:  htlcSecretHash,
+          timestamp:      Date.now(),
+        });
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
           fromChain:  (fromChain ?? "solana") as SupportedChain,
@@ -2505,4 +2520,22 @@ export const chatRouter = router({
       score: Math.max(0, Math.round(100 - (Date.now() - p.lastHeartbeat) / 1000)),
     }));
   }),
+
+  /**
+   * Returns all active (non-expired) RFQs in the server-side order book.
+   * Called by the Live Order Book on mount so late-joining peers can see open orders.
+   */
+  getActiveRfqs: publicProcedure.query(() => {
+    return getActiveRfqs();
+  }),
+
+  /**
+   * Remove an RFQ from the order book (e.g. after acceptance or cancellation).
+   */
+  removeRfq: publicProcedure
+    .input(z.object({ rfqId: z.string() }))
+    .mutation(({ input }) => {
+      removeActiveRfq(input.rfqId);
+      return { ok: true };
+    }),
 });

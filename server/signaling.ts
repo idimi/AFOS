@@ -138,6 +138,50 @@ interface ClientMessage {
 const peers = new Map<string, SignalingPeer>();
 const STALE_TIMEOUT_MS = 90_000; // Remove peers after 90s without heartbeat
 
+// ─── Active RFQ Order Book ───────────────────────────────────────────────────
+
+/** An RFQ visible to all peers in the Live Order Book */
+export interface ActiveRfq {
+  rfqId: string;
+  fromPeerId: string;
+  requesterAlias?: string;
+  fromToken: string;
+  toToken: string;
+  fromChain: string;
+  toChain: string;
+  amount: number;
+  outAmount?: number;
+  rate?: number;
+  expiresAt: number;  // Unix ms
+  timestamp: number;  // Unix ms when stored
+  secretHashHex?: string;
+}
+
+const activeRfqs = new Map<string, ActiveRfq>();
+
+/** Store an RFQ in the active order book; auto-removes at expiry */
+export function storeActiveRfq(rfq: ActiveRfq): void {
+  activeRfqs.set(rfq.rfqId, rfq);
+  const ttl = Math.max(0, rfq.expiresAt - Date.now());
+  setTimeout(() => activeRfqs.delete(rfq.rfqId), ttl + 1000);
+}
+
+/** Remove an RFQ from the order book (e.g. after it is accepted or cancelled) */
+export function removeActiveRfq(rfqId: string): void {
+  activeRfqs.delete(rfqId);
+}
+
+/** Return all non-expired active RFQs for the order book */
+export function getActiveRfqs(): ActiveRfq[] {
+  const now = Date.now();
+  const result: ActiveRfq[] = [];
+  Array.from(activeRfqs.values()).forEach(rfq => {
+    if (rfq.expiresAt > now) result.push(rfq);
+    else activeRfqs.delete(rfq.rfqId);
+  });
+  return result;
+}
+
 /** Get a sanitised peer list (no WebSocket refs) for broadcasting */
 function getPeerList() {
   return Array.from(peers.values()).map((p) => ({
@@ -176,8 +220,27 @@ export function broadcastAll(message: object) {
 /**
  * Broadcast an RFQ to all peers EXCEPT the sender.
  * Called by the chat agent so any connected peer can see and accept the open RFQ.
+ * Also stores the RFQ in the active order book for late-joining peers.
  */
-export function broadcastRfqToAll(senderPeerId: string | undefined, rfq: object) {
+export function broadcastRfqToAll(senderPeerId: string | undefined, rfq: Record<string, unknown>) {
+  // Persist in order book
+  if (rfq.rfqId && typeof rfq.rfqId === "string" && typeof rfq.fromToken === "string") {
+    storeActiveRfq({
+      rfqId:          rfq.rfqId as string,
+      fromPeerId:     senderPeerId ?? "agent",
+      requesterAlias: rfq.requesterAlias as string | undefined,
+      fromToken:      (rfq.fromToken as string).toUpperCase(),
+      toToken:        ((rfq.toToken as string) ?? "").toUpperCase(),
+      fromChain:      (rfq.fromChain as string) ?? "solana",
+      toChain:        (rfq.toChain   as string) ?? "solana",
+      amount:         (rfq.amount    as number) ?? 0,
+      outAmount:      rfq.outAmount  as number | undefined,
+      rate:           rfq.rate       as number | undefined,
+      expiresAt:      (rfq.expiresAt as number) ?? (Date.now() + 120_000),
+      timestamp:      Date.now(),
+      secretHashHex:  rfq.secretHashHex as string | undefined,
+    });
+  }
   const message = JSON.stringify({
     type: "rfq_broadcast",
     fromPeerId: senderPeerId ?? "agent",
@@ -546,6 +609,25 @@ export function attachSignalingServer(httpServer: HttpServer) {
           if (!fromId5) {
             ws.send(JSON.stringify({ type: "error", message: "Not registered" }));
             return;
+          }
+          const rfqPayload = msg.rfq as Record<string, unknown> | undefined;
+          // Store in the order book so late-joining peers can fetch it
+          if (rfqPayload && typeof rfqPayload.rfqId === "string" && typeof rfqPayload.fromToken === "string") {
+            storeActiveRfq({
+              rfqId:          rfqPayload.rfqId as string,
+              fromPeerId:     fromId5,
+              requesterAlias: rfqPayload.requesterAlias as string | undefined,
+              fromToken:      (rfqPayload.fromToken as string).toUpperCase(),
+              toToken:        ((rfqPayload.toToken as string) ?? "").toUpperCase(),
+              fromChain:      (rfqPayload.fromChain as string) ?? "solana",
+              toChain:        (rfqPayload.toChain   as string) ?? "solana",
+              amount:         (rfqPayload.amount    as number) ?? 0,
+              outAmount:      rfqPayload.outAmount  as number | undefined,
+              rate:           rfqPayload.rate       as number | undefined,
+              expiresAt:      (rfqPayload.expiresAt as number) ?? (Date.now() + 120_000),
+              timestamp:      Date.now(),
+              secretHashHex:  rfqPayload.secretHashHex as string | undefined,
+            });
           }
           broadcastExcept(fromId5, {
             type: "rfq_broadcast",

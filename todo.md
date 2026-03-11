@@ -2543,3 +2543,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ### Phase 6: Trac Network HTLC (Final)
 - [ ] Investigate TNK contract capabilities
 - [ ] Implement TNK HTLC if supported
+
+## Feature: RFQs visible in Live Order Book for all peers
+
+- [x] Trace RFQ broadcast flow: where RFQ is sent and who receives it
+- [x] Add server-side RFQ broadcast to ALL connected peers (not just matching ones)
+- [x] Persist active RFQs in server memory so late-joining peers can see them
+- [x] Add tRPC endpoint to fetch active RFQs for the order book
+- [x] Update Live Order Book frontend to show all RFQs (all pairs, with pair label badge)
+- [x] RFQ entries should show: peer alias, offer (amount + token), rate, expiry countdown, Accept button
+- [x] Remove RFQ from order book when it expires or is accepted
