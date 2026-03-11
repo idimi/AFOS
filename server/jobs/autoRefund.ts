@@ -46,7 +46,7 @@ async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(45000),
     });
     const json = await resp.json() as { result?: Array<{ pubkey: string; account: { data: [string, string] } }> };
     const accounts = json.result ?? [];

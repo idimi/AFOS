@@ -2562,3 +2562,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update RefundsTab to call myOnChainRefunds and merge on-chain results with DB records
 - [x] Create auto-refund cron job (server/jobs/autoRefund.ts) - scans every 5 min, auto-refunds server-owned, notifies owner for user-owned
 - [x] Create RefundBanner component on Overview page - dismissible warning when claimable HTLCs detected
+
+## Bug: On-chain HTLC scanner returns empty results
+- [x] Debug why myOnChainRefunds and admin HTLC Recovery tab both show 0 HTLCs
+- [x] Verify Solana RPC getProgramAccounts call works from server
+- [x] Fix scanner to correctly find expired HTLCs on-chain (root cause: 15s timeout, public RPC takes ~33s; increased to 45s)

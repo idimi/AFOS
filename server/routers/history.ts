@@ -395,11 +395,12 @@ export const historyRouter = router({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body,
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(45000),
         });
         const json = await resp.json() as { result?: Array<{ pubkey: string; account: { data: [string, string] } }> };
         const accounts = json.result ?? [];
         const nowSec = Math.floor(Date.now() / 1000);
+        console.log(`[myOnChainRefunds] Solana scan: ${accounts.length} accounts found`);
         const { PublicKey } = await import("@solana/web3.js");
 
         for (const acc of accounts) {
