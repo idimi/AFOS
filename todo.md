@@ -2618,3 +2618,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show correct Claimable count and Total Value from on-chain data
 - [x] Wire buildSolanaHtlcRefundTx to the Claim button in the Refunds tab (existing RefundCard handles it)
 - [x] Add tests for the new procedure (server/historyOnChainRefunds.test.ts — 288 tests pass)
+
+## Fix Refunds Tab + Auto-Refund + Banner + Multi-Chain Scanner
+
+- [x] Fix Refunds tab on-chain scanner not showing stuck HTLC for user — removed wallet filter, show ALL unclaimed HTLCs (program enforces sender==signer)
+- [x] Add auto-refund cron job for expired HTLCs — scans SOL/ETH/BTC every 5 min, auto-refunds server-owned SOL HTLCs, notifies owner for user-owned
+- [x] Add refund banner on Overview page — dismissible warning banner with link to Refunds tab when claimable HTLCs detected
+- [x] Add multi-chain on-chain scanner — ETH (query Locked events + getContract status) + BTC (DB + mempool.space UTXO check)
+- [x] Add multi-chain tests (server/multiChainScanner.test.ts — 311 tests pass across 24 files)

@@ -267,6 +267,27 @@ async function startServer() {
     };
     setTimeout(runOracleSync, 15_000);         // initial run 15s after startup
     setInterval(runOracleSync, 60_000);        // repeat every 60s
+
+    // ── Auto-Refund cron ─────────────────────────────────────────────────────────────
+    // Scans for expired HTLCs every 5 minutes.
+    // Auto-refunds server-owned HTLCs, notifies owner about user-owned ones.
+    const runAutoRefundJob = async () => {
+      try {
+        const { runAutoRefund } = await import("../jobs/autoRefund");
+        const result = await runAutoRefund();
+        if (result.autoRefunded > 0 || result.notified > 0) {
+          console.log(
+            `[AutoRefund] Scanned ${result.scanned} HTLC(s): ` +
+            `${result.autoRefunded} auto-refunded, ${result.notified} notified. ` +
+            (result.errors.length > 0 ? `Errors: ${result.errors.join("; ")}` : "")
+          );
+        }
+      } catch (err) {
+        console.error("[AutoRefund] Error running auto-refund job:", err);
+      }
+    };
+    setTimeout(runAutoRefundJob, 45_000);          // initial run 45s after startup
+    setInterval(runAutoRefundJob, 5 * 60 * 1000);  // repeat every 5 minutes
   });
 }
 

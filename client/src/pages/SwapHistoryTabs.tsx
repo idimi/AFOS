@@ -1061,18 +1061,24 @@ function RefundCard({
       }
       setClaiming(true);
       try {
-        // ABI-encode refund(bytes32 secretHash)
+        // ABI-encode refund(bytes32 contractId)
         // Function selector: keccak256("refund(bytes32)") = 0x7249fbb6
-        const secretHashHex = refund.secretHash.startsWith("0x")
-          ? refund.secretHash.slice(2)
-          : refund.secretHash;
-        const calldata = "0x7249fbb6" + secretHashHex.padStart(64, "0");
+        // For on-chain scanner results, htlcAddress IS the contractId (bytes32)
+        // For DB results, htlcAddress is the contract address — use secretHash as contractId
+        const contractIdHex = (refund.htlcAddress?.startsWith("0x") && refund.htlcAddress.length === 66)
+          ? refund.htlcAddress.slice(2) // on-chain scanner: htlcAddress = contractId
+          : (refund.secretHash?.startsWith("0x") ? refund.secretHash.slice(2) : refund.secretHash);
+        const calldata = "0x7249fbb6" + contractIdHex.padStart(64, "0");
+        // For on-chain results, the "to" address should be the ETH HTLC contract, not the contractId
+        const ethContractAddress = refund.htlcAddress?.startsWith("0x") && refund.htlcAddress.length === 66
+          ? undefined // on-chain scanner result — need contract address from env
+          : refund.htlcAddress;
         toast.loading("Waiting for MetaMask signature…", { id: "eth-refund-sign" });
         const txHash = await rawEth.request({
           method: "eth_sendTransaction",
           params: [{
             from: fromAddress,
-            to:   refund.htlcAddress,
+            to:   ethContractAddress || (import.meta.env.VITE_ETH_HTLC_ADDRESS as string) || refund.htlcAddress,
             data: calldata,
             gas:  "0x30D40", // 200 000 gas
           }],
@@ -1265,12 +1271,11 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
     { refetchInterval: 30000 }
   );
 
-  // On-chain scanner — only runs when a wallet is connected
-  // Queries ALL AFOS program accounts filtered by sender == connected wallet
+  // On-chain scanner — always runs (server auto-includes HTLC wallet address)
+  // Queries ALL AFOS program accounts filtered by sender == connected wallet + server HTLC wallet
   const { data: onChainData, isLoading: onChainLoading } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses },
     {
-      enabled: hasWallet,
       refetchInterval: 60000,
       // Don't block the UI while the on-chain scan runs
       staleTime: 30000,
@@ -1288,7 +1293,12 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
     .filter(h => !dbAddresses.has(h.pdaAddress.toLowerCase()))
     .map((h, i) => {
       const amount = h.amountSol;
-      const price = PRICE_ESTIMATES[h.tokenSymbol] ?? (h.tokenSymbol === "SOL" ? 150 : 1);
+      const chain = (h as any).chain || "solana";
+      const price = PRICE_ESTIMATES[h.tokenSymbol] ?? (
+        h.tokenSymbol === "SOL" ? 150 :
+        h.tokenSymbol === "ETH" ? 3500 :
+        h.tokenSymbol === "BTC" ? 90000 : 1
+      );
       const usdValue = amount * price;
       return {
         id: `onchain_${h.pdaAddress.slice(0, 8)}_${i}`,
@@ -1299,19 +1309,19 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
         usdValue,
         peer: h.recipient.slice(0, 8) + "...",
         failReason: h.timelockExpired
-          ? "HTLC timelock expired — refund available"
-          : "HTLC locked — timelock not yet expired",
+          ? `HTLC timelock expired on ${chain.toUpperCase()} — refund available`
+          : `HTLC locked on ${chain.toUpperCase()} — timelock not yet expired`,
         htlcExpiry: new Date(h.timelock * 1000),
         status: h.timelockExpired ? ("claimable" as const) : ("claimable" as const),
         txHash: "",
         escrowPda: h.pdaAddress.slice(0, 12) + "...",
-        chain: "solana",
-        htlcAddress: h.htlcId, // the htlcId string (used by buildSolanaHtlcRefundTx)
+        chain: chain as SupportedChain,
+        htlcAddress: chain === "solana" ? h.htlcId : h.pdaAddress, // SOL uses htlcId, ETH/BTC use address
         secretHash: h.secretHash,
         senderAddress: h.sender,
         amountHuman: h.amountSol.toString(),
         locktime: h.timelock,
-        // Extra field: the actual PDA address for display
+        // Extra fields for display
         pdaAddress: h.pdaAddress,
         timelockExpired: h.timelockExpired,
       } as RefundRecord & { pdaAddress: string; timelockExpired: boolean };
@@ -1322,7 +1332,7 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   const claimed = refunds.filter(r => r.status === "claimed");
 
   const isLoading = dbLoading;
-  const isScanningChain = hasWallet && onChainLoading;
+  const isScanningChain = onChainLoading;
 
   if (isLoading) {
     return (
@@ -1355,7 +1365,7 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
           >
             <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin flex-shrink-0" />
             <span className="text-amber-300/80">
-              Scanning on-chain for stuck HTLCs…
+              Scanning SOL, ETH &amp; BTC chains for stuck HTLCs…
             </span>
           </div>
         )}

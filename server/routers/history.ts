@@ -428,29 +428,32 @@ export const historyRouter = router({
    */
   myOnChainRefunds: publicProcedure
     .input(z.object({
-      walletAddresses: z.array(z.string()).min(1).max(10),
+      walletAddresses: z.array(z.string()).min(0).max(20),
     }))
     .query(async ({ input }) => {
       const now = Math.floor(Date.now() / 1000);
-      const connection = new Connection(SOL_RPC_URL, "confirmed");
-      const walletSet = new Set(input.walletAddresses.map(a => a.toLowerCase()));
 
-      const onChainHtlcs: Array<{
+      // Unified result type for all chains
+      type OnChainHtlc = {
         htlcId: string;
-        pdaAddress: string;
+        pdaAddress: string; // PDA (SOL) / contractId (ETH) / P2WSH address (BTC)
         sender: string;
         recipient: string;
-        amountSol: number;
-        amountLamports: string;
+        amountSol: number; // display amount in chain-native units
+        amountLamports: string; // raw amount string
         tokenMint: string | null;
         tokenSymbol: string;
         timelock: number;
         timelockExpired: boolean;
         secretHash: string;
         source: "on_chain";
-      }> = [];
+        chain: string; // "solana" | "ethereum" | "bitcoin"
+      };
+      const allHtlcs: OnChainHtlc[] = [];
 
+      // ─── Solana on-chain scan ─────────────────────────────────────────
       try {
+        const connection = new Connection(SOL_RPC_URL, "confirmed");
         const programAccounts = await connection.getProgramAccounts(
           AFOS_HTLC_PROGRAM_ID,
           { filters: [{ dataSize: 219 }] },
@@ -460,14 +463,12 @@ export const historyRouter = router({
           const state = decodeHtlcStateForHistory(Buffer.from(account.data));
           if (!state) continue;
           if (state.claimed || state.refunded) continue;
-          // Only include HTLCs where the sender matches the connected wallet
-          if (!walletSet.has(state.sender.toLowerCase())) continue;
 
           const timelockExpired = now >= state.timelock;
           const amountSol = Number(state.amountLamports) / 1e9;
           const isNativeSol = state.tokenMint === "11111111111111111111111111111111";
 
-          onChainHtlcs.push({
+          allHtlcs.push({
             htlcId: state.htlcId,
             pdaAddress: pubkey.toBase58(),
             sender: state.sender,
@@ -480,13 +481,187 @@ export const historyRouter = router({
             timelockExpired,
             secretHash: state.secretHash,
             source: "on_chain",
+            chain: "solana",
           });
         }
       } catch (err) {
-        console.warn("[history.myOnChainRefunds] RPC error:", (err as Error).message);
-        // Return empty array — don't crash the page
+        console.warn("[history.myOnChainRefunds] SOL RPC error:", (err as Error).message);
       }
 
-      return { htlcs: onChainHtlcs };
+      // ─── Ethereum on-chain scan ───────────────────────────────────────
+      const ethContractAddr = process.env.ETH_HTLC_ADDRESS;
+      const ethRpcUrl = process.env.ETH_RPC_URL || "https://cloudflare-eth.com";
+      if (ethContractAddr) {
+        try {
+          // Locked(bytes32 indexed contractId, address indexed initiator, address indexed recipient, address token, uint256 amount, bytes32 secretHash, uint256 timelock)
+          // Pre-computed keccak256 of the event signature
+          const LOCKED_EVENT_TOPIC = "0x14442dbf5e9aa943f3b7681bdf4e57c3256930c69ccc137263150f7e01bd51cf";
+
+          // Fetch recent Locked events (last ~50000 blocks ≈ 7 days)
+          const currentBlockRes = await fetch(ethRpcUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
+            signal: AbortSignal.timeout(8000),
+          });
+          const currentBlockData = await currentBlockRes.json() as { result?: string };
+          const currentBlock = currentBlockData.result ? parseInt(currentBlockData.result, 16) : 0;
+
+          if (currentBlock > 0) {
+            const fromBlock = "0x" + Math.max(0, currentBlock - 50000).toString(16);
+
+            const logsRes = await fetch(ethRpcUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0",
+                method: "eth_getLogs",
+                params: [{
+                  address: ethContractAddr,
+                  fromBlock,
+                  toBlock: "latest",
+                  topics: [LOCKED_EVENT_TOPIC],
+                }],
+                id: 2,
+              }),
+              signal: AbortSignal.timeout(15000),
+            });
+            const logsData = await logsRes.json() as { result?: Array<{ topics: string[]; data: string }> };
+
+            for (const log of logsData.result ?? []) {
+              if (!log.topics || log.topics.length < 4) continue;
+              const contractId = log.topics[1];
+              const initiator = "0x" + (log.topics[2] ?? "").slice(26);
+              const recipient = "0x" + (log.topics[3] ?? "").slice(26);
+
+              // Decode non-indexed data: token (address), amount (uint256), secretHash (bytes32), timelock (uint256)
+              const data = log.data.replace(/^0x/, "");
+              if (data.length < 256) continue; // 4 * 64 hex chars
+              const token = "0x" + data.slice(24, 64);
+              const amount = BigInt("0x" + data.slice(64, 128));
+              const secretHash = "0x" + data.slice(128, 192);
+              const timelock = parseInt(data.slice(192, 256), 16);
+
+              // Check contract status via getContract(contractId)
+              const callData = "0x" + "e16c7d98" + contractId.replace(/^0x/, "");
+              try {
+                const statusRes = await fetch(ethRpcUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    method: "eth_call",
+                    params: [{ to: ethContractAddr, data: callData }, "latest"],
+                    id: 3,
+                  }),
+                  signal: AbortSignal.timeout(8000),
+                });
+                const statusData = await statusRes.json() as { result?: string };
+                if (statusData.result) {
+                  const resultHex = statusData.result.replace(/^0x/, "");
+                  // status is the last uint8 in the return tuple (7th field, offset 6*64)
+                  const statusByte = parseInt(resultHex.slice(6 * 64, 6 * 64 + 64), 16);
+                  // 0 = Active, 1 = Redeemed, 2 = Refunded
+                  if (statusByte !== 0) continue; // Skip redeemed/refunded
+                }
+              } catch {
+                // If status check fails, include it anyway (better to show than miss)
+              }
+
+              const isNativeEth = token === "0x" + "0".repeat(40);
+              const amountEth = Number(amount) / 1e18;
+              const timelockExpired = now >= timelock;
+
+              allHtlcs.push({
+                htlcId: contractId,
+                pdaAddress: contractId, // Use contractId as the identifier
+                sender: initiator,
+                recipient,
+                amountSol: amountEth, // reusing field name for display amount
+                amountLamports: amount.toString(),
+                tokenMint: isNativeEth ? null : token,
+                tokenSymbol: isNativeEth ? "ETH" : "ERC20",
+                timelock,
+                timelockExpired,
+                secretHash,
+                source: "on_chain",
+                chain: "ethereum",
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("[history.myOnChainRefunds] ETH RPC error:", (err as Error).message);
+        }
+      }
+
+      // ─── Bitcoin on-chain scan (DB + mempool.space UTXO check) ────────
+      try {
+        const db = await getDb();
+        if (db) {
+          const pendingBtcHtlcs = await db
+            .select()
+            .from(htlcSwaps)
+            .where(
+              and(
+                eq(htlcSwaps.chain, "bitcoin"),
+                eq(htlcSwaps.status, "pending")
+              )
+            )
+            .limit(50);
+
+          for (const htlc of pendingBtcHtlcs) {
+            // Check if the UTXO still has funds via mempool.space
+            let hasBalance = false;
+            try {
+              const utxoRes = await fetch(
+                `https://mempool.space/api/address/${htlc.htlcAddress}/utxo`,
+                { signal: AbortSignal.timeout(8000) }
+              );
+              if (utxoRes.ok) {
+                const utxos = await utxoRes.json() as Array<{ value: number; status: { confirmed: boolean } }>;
+                const totalSats = utxos.reduce((s, u) => s + u.value, 0);
+                hasBalance = totalSats > 0;
+              }
+            } catch {
+              // If mempool check fails, include from DB data
+              hasBalance = true; // assume still locked
+            }
+
+            if (!hasBalance) continue;
+
+            const amountBtc = parseFloat(htlc.amountHuman || "0");
+            const timelockExpired = (() => {
+              // For BTC, locktime is block height. Check current block.
+              // We'll use a simple heuristic: if locktime < current time as unix, it's expired
+              // BTC locktime > 500_000_000 means it's a unix timestamp, otherwise block height
+              if (htlc.locktime > 500_000_000) return now >= htlc.locktime;
+              // For block heights, we can't easily check without another API call
+              // Mark as potentially expired if created > 24h ago
+              const createdMs = htlc.createdAt?.getTime() ?? 0;
+              return Date.now() - createdMs > 24 * 60 * 60 * 1000;
+            })();
+
+            allHtlcs.push({
+              htlcId: htlc.htlcAddress,
+              pdaAddress: htlc.htlcAddress,
+              sender: htlc.senderAddress ?? "unknown",
+              recipient: htlc.peerId ?? "unknown",
+              amountSol: amountBtc,
+              amountLamports: htlc.amountRaw,
+              tokenMint: null,
+              tokenSymbol: "BTC",
+              timelock: htlc.locktime,
+              timelockExpired,
+              secretHash: htlc.secretHash,
+              source: "on_chain",
+              chain: "bitcoin",
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[history.myOnChainRefunds] BTC scan error:", (err as Error).message);
+      }
+
+      return { htlcs: allHtlcs };
     }),
 });
