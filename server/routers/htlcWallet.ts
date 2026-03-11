@@ -42,16 +42,31 @@ const ETH_USDC_ADDR   = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 // ─── Solana RPC pool (free public endpoints, tried in parallel) ───────────────
 
 /**
- * Free public Solana RPC endpoints.
- * We race them in parallel and take the first successful response.
- * Endpoints are ordered by typical latency (fastest first).
+ * Solana RPC endpoints, ordered by priority.
+ * Helius (authenticated) is first when HELIUS_API_KEY is set — 100k req/day free tier,
+ * much higher rate limits than public endpoints.
+ * Falls back to free public endpoints if Helius key is not configured.
  */
-const SOL_RPC_ENDPOINTS = [
-  "https://api.mainnet-beta.solana.com",           // Official (rate-limited but reliable)
-  "https://rpc.ankr.com/solana",                   // Ankr free tier (no key required)
-  "https://solana-mainnet.rpc.extrnode.com",       // Extrnode public
-  "https://mainnet.helius-rpc.com/?api-key=public", // Helius public fallback
-];
+function buildSolRpcEndpoints(): string[] {
+  const heliusKey = process.env.HELIUS_API_KEY;
+  const endpoints: string[] = [];
+
+  // Primary: Helius authenticated (highest rate limits)
+  if (heliusKey) {
+    endpoints.push(`https://mainnet.helius-rpc.com/?api-key=${heliusKey}`);
+  }
+
+  // Secondary: other free public endpoints as fallbacks
+  endpoints.push(
+    "https://api.mainnet-beta.solana.com",     // Official (rate-limited)
+    "https://rpc.ankr.com/solana",             // Ankr free tier
+    "https://solana-mainnet.rpc.extrnode.com", // Extrnode public
+  );
+
+  return endpoints;
+}
+
+const SOL_RPC_ENDPOINTS = buildSolRpcEndpoints();
 
 // ─── Stale-while-revalidate balance cache ─────────────────────────────────────
 

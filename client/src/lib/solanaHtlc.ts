@@ -224,14 +224,52 @@ export interface SolanaHtlcRefundResult {
 }
 
 /**
+ * Check if the AFOS HTLC program is deployed on-chain.
+ * Returns { deployed: true } if the program account exists and is executable,
+ * or { deployed: false, reason } with a human-readable explanation.
+ */
+export async function checkHtlcProgramDeployed(
+  connection: Connection
+): Promise<{ deployed: boolean; reason?: string }> {
+  try {
+    const info = await connection.getAccountInfo(AFOS_HTLC_PROGRAM_ID, "confirmed");
+    if (!info) {
+      return {
+        deployed: false,
+        reason: `AFOS HTLC program (${AFOS_HTLC_PROGRAM_ID.toBase58().slice(0, 8)}…) is not deployed on mainnet yet. On-chain refunds will be available once the program is live.`,
+      };
+    }
+    if (!info.executable) {
+      return {
+        deployed: false,
+        reason: `Program account exists but is not executable. Contact the AFOS team.`,
+      };
+    }
+    return { deployed: true };
+  } catch (err) {
+    // RPC error — don't block the user, let the tx attempt proceed
+    console.warn("[HTLC] Program deployment check failed (RPC error):", err);
+    return { deployed: true }; // Optimistic: let the tx attempt and surface the real error
+  }
+}
+
+/**
  * Build a Solana HTLC refund transaction.
  * Calls the program's refund instruction — only succeeds after timelock expires.
  * The sender gets their funds back automatically.
+ *
+ * Throws a user-friendly error if the HTLC program is not deployed on mainnet.
  */
 export async function buildSolanaHtlcRefundTx(
   params: SolanaHtlcRefundParams
 ): Promise<SolanaHtlcRefundResult> {
   const { senderPubkey, htlcId, connection, tokenSymbol } = params;
+
+  // ── Pre-flight: verify program is deployed ────────────────────────────────
+  const programCheck = await checkHtlcProgramDeployed(connection);
+  if (!programCheck.deployed) {
+    throw new Error(programCheck.reason ?? "HTLC program not deployed on mainnet.");
+  }
 
   const htlcIdBytes = htlcIdToBytes(htlcId);
   const isTokenLock = tokenSymbol && tokenSymbol !== "SOL" && tokenSymbol !== "WSOL";

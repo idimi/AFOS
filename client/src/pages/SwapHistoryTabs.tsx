@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { buildSolanaHtlcRefundTx } from "@/lib/solanaHtlc";
+import { buildSolanaHtlcRefundTx, checkHtlcProgramDeployed } from "@/lib/solanaHtlc";
 import { requestTnkHtlcRefund } from "@/lib/tnkHtlc";
 import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";

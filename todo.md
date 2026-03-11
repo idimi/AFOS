@@ -2621,3 +2621,19 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] getSolanaBalanceByAddress: never return live:false if we have a stale cached value
 - [x] getSolHtlcWallets: also uses fetchSolBalanceRace instead of single RPC
 - [x] fetchSplBalance: uses SOL_RPC_ENDPOINTS pool (sequential fallback)
+
+## Feature: HTLC Program Pre-flight Check + Helius RPC Integration
+
+### HTLC Program Pre-flight
+- [x] Read afosHtlcProgram.ts to understand AFOS_HTLC_PROGRAM_ID and buildRefundInstruction
+- [x] Added checkHtlcProgramDeployed() to solanaHtlc.ts — checks getAccountInfo on program ID
+- [x] buildSolanaHtlcRefundTx now calls checkHtlcProgramDeployed() as pre-flight before building tx
+- [x] Throws user-friendly error if program not found: "AFOS HTLC program not deployed on mainnet yet"
+- [x] Program confirmed deployed: tx 5YqKt6mJe3crX5caNRjM52heNF3doDvUk9btuiTnbTrqUCGAjeFUwjbpE1n4TVRFzv5TGZhwbycsL78MZ1BnTrgg
+
+### Helius RPC Integration
+- [x] HELIUS_API_KEY added via webdev_request_secrets, validated with vitest (slot 405770549 confirmed)
+- [x] buildSolRpcEndpoints() in htlcWallet.ts: Helius authenticated URL added as first endpoint when key is set
+- [x] VITE_SOL_RPC_URL updated to Helius authenticated URL for frontend wallet adapter
+- [x] ENV.solRpcUrl getter in server/_core/env.ts: prefers Helius when key is set
+- [x] fetchSolBalanceRace uses Helius as primary (fastest) in the parallel race
