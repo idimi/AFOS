@@ -2673,3 +2673,20 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] webhookStatus module-level tracker updated on every received event
 - [x] setWebhookId() called after create/update/already-correct so status endpoint always shows current ID
 - [x] htlcMonitor.ts POLL_INTERVAL_MS reduced from 60s to 10 minutes (reconciliation pass only)
+
+## Bug: HTLC falsely marked as "refunded" by htlcMonitor (fake tx ID)
+- [ ] Revert DB record 45jdLtyQBrbC... from status=refunded back to status=pending
+- [ ] Fix htlcMonitor triggerSolRefund: do NOT update DB with fake tx IDs — only update on real on-chain success
+- [ ] Fix htlcMonitor triggerBtcRefund / triggerEthRefund: same — no fake tx ID DB updates
+- [ ] Fix Refunds tab UI: "refunded" status should show "Refunded" badge not "Claimed"
+- [ ] Ensure Claim button appears for pending HTLCs that are expired but not yet refunded
+
+## Bug Fix: RefundRecord status mapping + UI (completed)
+- [x] Revert DB record 45jdLtyQBrbC... from status=refunded back to status=pending (done via SQL)
+- [x] Fix htlcMonitor triggerSolRefund: do NOT update DB with fake tx IDs — only update on real on-chain success
+- [x] Fix htlcMonitor triggerBtcRefund / triggerEthRefund: same — no fake tx ID DB updates
+- [x] RefundRecord type updated to include "refunded" as valid status (was missing)
+- [x] mapHtlcToRefund: pending→claimable, completed→claimed, refunded→refunded, expired→expired
+- [x] RefundCard badge: REFUNDED shown in cyan for refunded status (was falling through to EXPIRED)
+- [x] RefundCard action area: "Refunded" indicator (cyan CheckCircle) shown for refunded status
+- [x] Stats grid: expanded from 3 to 4 columns — Claimable, Claimed, Refunded, At Risk ($)

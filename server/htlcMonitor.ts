@@ -112,18 +112,18 @@ async function triggerBtcRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
   // BTC_HTLC_WIF is the dedicated HTLC escrow key; fall back to BTC_AGENT_WIF for backwards compatibility
   const agentWif = process.env.BTC_HTLC_WIF ?? process.env.BTC_AGENT_WIF;
   if (!agentWif) {
-    // Demo mode — no real refund possible, just mark expired
-    console.log(`[HTLC Monitor] [BTC] Demo mode: HTLC ${htlc.htlcAddress} expired (no BTC_HTLC_WIF). Marking as expired.`);
-    return `demo-refund-${htlc.secretHash.slice(0, 16)}`;
+    // No server key — user must claim manually. Do NOT mark DB as refunded.
+    console.log(`[HTLC Monitor] [BTC] HTLC ${htlc.htlcAddress} expired. No BTC_HTLC_WIF — user must claim manually.`);
+    return null;
   }
-  // Production: delegate to btcHtlc router logic
-  // The actual refund tx building is in server/routers/btcHtlc.ts (htlcRefund procedure).
-  // Here we log the trigger — in a full production setup, you'd call the procedure directly.
+  // Server has the key — TODO: implement real on-chain BTC refund tx.
+  // Return null until real tx submission is implemented to avoid false DB updates.
   console.log(
     `[HTLC Monitor] [BTC] CLTV expired for HTLC ${htlc.htlcAddress}. ` +
-    `SecretHash: ${htlc.secretHash.slice(0, 16)}… Triggering refund via btcHtlc.htlcRefund.`
+    `Server key available but on-chain refund not yet implemented in monitor. ` +
+    `SecretHash: ${htlc.secretHash.slice(0, 16)}…`
   );
-  return `btc-refund-triggered-${htlc.secretHash.slice(0, 16)}`;
+  return null;
 }
 
 /**
@@ -134,14 +134,18 @@ async function triggerEthRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
   // ETH_HTLC_KEY is the dedicated HTLC escrow key; fall back to ETH_AGENT_KEY for backwards compatibility
   const agentKey = process.env.ETH_HTLC_KEY ?? process.env.ETH_AGENT_KEY;
   if (!agentKey) {
-    console.log(`[HTLC Monitor] [ETH] Demo mode: HTLC ${htlc.htlcAddress} expired (no ETH_HTLC_KEY). Marking as expired.`);
-    return `demo-eth-refund-${htlc.secretHash.slice(0, 16)}`;
+    // No server key — user must claim manually. Do NOT mark DB as refunded.
+    console.log(`[HTLC Monitor] [ETH] HTLC ${htlc.htlcAddress} expired. No ETH_HTLC_KEY — user must claim manually.`);
+    return null;
   }
+  // Server has the key — TODO: implement real on-chain ETH refund tx.
+  // Return null until real tx submission is implemented to avoid false DB updates.
   console.log(
     `[HTLC Monitor] [ETH] Block timeout reached for HTLC contract ${htlc.htlcAddress}. ` +
-    `Calling refund() on HTLC.sol. SecretHash: ${htlc.secretHash.slice(0, 16)}…`
+    `Server key available but on-chain refund not yet implemented in monitor. ` +
+    `SecretHash: ${htlc.secretHash.slice(0, 16)}…`
   );
-  return `eth-refund-triggered-${htlc.secretHash.slice(0, 16)}`;
+  return null;
 }
 
 /**
@@ -152,14 +156,25 @@ async function triggerSolRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
   // SOL_HTLC_KEY is the dedicated HTLC escrow key; fall back to SOL_AGENT_KEY for backwards compatibility
   const agentKey = process.env.SOL_HTLC_KEY ?? process.env.SOL_AGENT_KEY;
   if (!agentKey) {
-    console.log(`[HTLC Monitor] [SOL] Demo mode: HTLC PDA ${htlc.htlcAddress} expired (no SOL_HTLC_KEY). Marking as expired.`);
-    return `demo-sol-refund-${htlc.secretHash.slice(0, 16)}`;
+    // No server-side key — this HTLC belongs to a user who must claim it themselves.
+    // Log the expiry but do NOT mark as refunded in the DB.
+    // The user will see it in the Refunds tab and can claim it manually.
+    console.log(
+      `[HTLC Monitor] [SOL] HTLC PDA ${htlc.htlcAddress} expired. ` +
+      `No SOL_HTLC_KEY — user must claim manually from the Refunds tab.`
+    );
+    return null; // null = no DB update, leave as pending
   }
+
+  // Server has the HTLC key — attempt to submit the actual on-chain refund tx.
+  // TODO: implement real on-chain refund using @solana/web3.js + AFOS HTLC program.
+  // For now, log the expiry and return null so the DB is NOT falsely updated.
   console.log(
-    `[HTLC Monitor] [SOL] Slot timeout reached for PDA ${htlc.htlcAddress}. ` +
-    `Triggering PDA close instruction. SecretHash: ${htlc.secretHash.slice(0, 16)}…`
+    `[HTLC Monitor] [SOL] HTLC PDA ${htlc.htlcAddress} expired. ` +
+    `Server key available but on-chain refund not yet implemented in monitor. ` +
+    `User must claim manually from the Refunds tab. SecretHash: ${htlc.secretHash.slice(0, 16)}…`
   );
-  return `sol-refund-triggered-${htlc.secretHash.slice(0, 16)}`;
+  return null; // null = no DB update until real tx succeeds
 }
 
 // ─── Main poll cycle ──────────────────────────────────────────────────────────
@@ -253,6 +268,17 @@ async function pollPendingHtlcs(): Promise<void> {
       continue;
     }
 
+    // Only update DB if a real on-chain refund tx was submitted.
+    // null means the refund could not be executed (user-owned HTLC, or tx failed).
+    // Leave as 'pending' so the user can claim it manually from the Refunds tab.
+    if (refundTxId === null) {
+      console.log(
+        `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} expired but no server refund tx — ` +
+        `leaving as pending for user to claim manually.`
+      );
+      continue;
+    }
+
     // Update DB record — htlcSwaps + matching swapAnalytics row
     try {
       const db2 = await getDb();
@@ -261,7 +287,7 @@ async function pollPendingHtlcs(): Promise<void> {
         .update(htlcSwaps)
         .set({
           status:     "refunded",
-          refundTxId: refundTxId ?? undefined,
+          refundTxId: refundTxId,
           refundedAt: new Date(),
           updatedAt:  new Date(),
         })
@@ -277,7 +303,7 @@ async function pollPendingHtlcs(): Promise<void> {
 
       console.log(
         `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} marked as refunded. ` +
-        `RefundTxId: ${refundTxId ?? "N/A"}`
+        `RefundTxId: ${refundTxId}`
       );
     } catch (err) {
       console.error(`[HTLC Monitor] DB update failed for HTLC ${htlc.id}:`, err);

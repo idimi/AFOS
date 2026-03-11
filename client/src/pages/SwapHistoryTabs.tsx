@@ -920,7 +920,7 @@ interface RefundRecord {
   peer: string;
   failReason: string;
   htlcExpiry: Date;
-  status: "claimable" | "claimed" | "expired";
+  status: "claimable" | "claimed" | "refunded" | "expired";
   txHash: string;
   escrowPda: string;
   chain: string;
@@ -941,7 +941,16 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
   const amount = parseFloat(row.amountHuman);
   const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
   const usdValue = amount * price;
-  const status: RefundRecord["status"] = row.status === "refunded" ? "claimed" : "claimable";
+  // Map DB status to UI status:
+  //   pending   → claimable (user can claim it via Phantom)
+  //   completed → claimed   (user already claimed it on-chain)
+  //   refunded  → refunded  (server refunded it on-chain)
+  //   expired   → expired   (timelock expired, no action taken)
+  const status: RefundRecord["status"] =
+    row.status === "completed" ? "claimed" :
+    row.status === "refunded"  ? "refunded" :
+    row.status === "expired"   ? "expired" :
+    "claimable";
 
   return {
     id: String(row.id),
@@ -1213,11 +1222,24 @@ function RefundCard({
           <div className="flex items-center gap-2 mb-2">
             <span className="px-2 py-0.5 rounded text-[9px] font-bold font-mono"
               style={{
-                background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" : refund.status === "claimed" ? "rgba(16,185,129,0.12)" : "rgba(100,116,139,0.12)",
-                border: `1px solid ${refund.status === "claimable" ? "rgba(245,158,11,0.3)" : refund.status === "claimed" ? "rgba(16,185,129,0.3)" : "rgba(100,116,139,0.3)"}`,
-                color: refund.status === "claimable" ? "#f59e0b" : refund.status === "claimed" ? "#10b981" : "#64748b",
+                background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" :
+                            refund.status === "claimed"   ? "rgba(16,185,129,0.12)" :
+                            refund.status === "refunded"  ? "rgba(6,182,212,0.12)" :
+                            "rgba(100,116,139,0.12)",
+                border: `1px solid ${
+                  refund.status === "claimable" ? "rgba(245,158,11,0.3)" :
+                  refund.status === "claimed"   ? "rgba(16,185,129,0.3)" :
+                  refund.status === "refunded"  ? "rgba(6,182,212,0.3)" :
+                  "rgba(100,116,139,0.3)"}`,
+                color: refund.status === "claimable" ? "#f59e0b" :
+                       refund.status === "claimed"   ? "#10b981" :
+                       refund.status === "refunded"  ? "#06b6d4" :
+                       "#64748b",
               }}>
-              {refund.status === "claimable" ? "CLAIMABLE" : refund.status === "claimed" ? "CLAIMED" : "EXPIRED"}
+              {refund.status === "claimable" ? "CLAIMABLE" :
+               refund.status === "claimed"   ? "CLAIMED" :
+               refund.status === "refunded"  ? "REFUNDED" :
+               "EXPIRED"}
             </span>
             <span className="text-[10px] font-mono text-muted-foreground">
               {refund.amount} {refund.fromSymbol} → {refund.toSymbol}
@@ -1267,6 +1289,13 @@ function RefundCard({
               style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
               <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
+            </div>
+          )}
+          {refund.status === "refunded" && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
+              style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}>
+              <CheckCircle2 className="w-3 h-3 text-cyan-400" />
+              <span className="text-[10px] font-mono text-cyan-400">Refunded</span>
             </div>
           )}
           {/* Detail drawer button */}
@@ -1329,6 +1358,7 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   const hasWallet = walletAddresses.length > 0;
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
+  const refunded = refunds.filter(r => r.status === "refunded");
   const isScanning = isLoading || onChainLoading;
 
   if (isScanning && refunds.length === 0) {
@@ -1364,11 +1394,12 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
             { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
             { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
-            { label: "Total Value", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
+            { label: "Refunded", value: refunded.length, color: "text-cyan-400", bg: "rgba(6,182,212,0.1)", border: "rgba(6,182,212,0.25)" },
+            { label: "At Risk", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
           ].map(stat => (
             <div key={stat.label} className="rounded-xl p-3 text-center"
               style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>
