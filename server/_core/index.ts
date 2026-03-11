@@ -13,6 +13,7 @@ import { startHtlcMonitor } from "../htlcMonitor";
 import { startTnkHtlcMonitor } from "../jobs/tnkHtlcMonitor";
 import { startHtlcSecretsMonitor } from "../jobs/htlcSecretsMonitor";
 import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
+import { registerHeliusWebhookRoute, ensureHeliusWebhook } from "../webhooks/heliusHtlc";
 
 // Oracle VM backend URL — proxied server-side to avoid HTTPS→HTTP mixed-content block
 const ORACLE_API = process.env.ORACLE_API_URL || "http://141.253.123.101:4000";
@@ -63,6 +64,8 @@ async function startServer() {
 
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  // Helius HTLC webhook — MUST be before Vite middleware
+  registerHeliusWebhookRoute(app);
   // tRPC API
   app.use(
     "/api/trpc",
@@ -214,6 +217,20 @@ async function startServer() {
         console.warn("[PriceCache] Warmup failed:", err);
       }
     }, 3_000); // 3s after startup
+    // ── Helius webhook registration ─────────────────────────────────────────────
+    // Registers/updates the Helius webhook for the AFOS HTLC program so we receive
+    // real-time claim/refund/lock events without polling.
+    setTimeout(async () => {
+      try {
+        // Use production domain if available, otherwise fall back to the dev tunnel URL
+        const baseUrl = process.env.NODE_ENV === "production"
+          ? "https://afos.trade"
+          : `https://3000-ine621j5j1akefv6jd7gm-91070166.us2.manus.computer`;
+        await ensureHeliusWebhook(baseUrl);
+      } catch (err) {
+        console.warn("[HeliusWebhook] Startup registration failed:", err);
+      }
+    }, 5_000); // 5s after startup
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
     // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks
