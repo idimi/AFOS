@@ -1257,16 +1257,72 @@ function RefundCard({
 }
 
 export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
-  const { data, isLoading } = trpc.history.refunds.useQuery(
+  const hasWallet = walletAddresses.length > 0;
+
+  // DB-based refunds (expired/refunded records already in our DB)
+  const { data: dbData, isLoading: dbLoading } = trpc.history.refunds.useQuery(
     { walletAddresses, search },
     { refetchInterval: 30000 }
   );
+
+  // On-chain scanner — only runs when a wallet is connected
+  // Queries ALL AFOS program accounts filtered by sender == connected wallet
+  const { data: onChainData, isLoading: onChainLoading } = trpc.history.myOnChainRefunds.useQuery(
+    { walletAddresses },
+    {
+      enabled: hasWallet,
+      refetchInterval: 60000,
+      // Don't block the UI while the on-chain scan runs
+      staleTime: 30000,
+    }
+  );
+
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
 
-  const refunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
-  const hasWallet = walletAddresses.length > 0;
+  // Merge DB records with on-chain results, deduplicating by htlcAddress/pdaAddress
+  const dbRefunds: RefundRecord[] = (dbData?.refunds ?? []).map(mapHtlcToRefund);
+  const dbAddresses = new Set(dbRefunds.map(r => r.htlcAddress.toLowerCase()));
+
+  // Convert on-chain HTLCs to RefundRecord format (only those not already in DB)
+  const onChainRefunds: RefundRecord[] = (onChainData?.htlcs ?? [])
+    .filter(h => !dbAddresses.has(h.pdaAddress.toLowerCase()))
+    .map((h, i) => {
+      const amount = h.amountSol;
+      const price = PRICE_ESTIMATES[h.tokenSymbol] ?? (h.tokenSymbol === "SOL" ? 150 : 1);
+      const usdValue = amount * price;
+      return {
+        id: `onchain_${h.pdaAddress.slice(0, 8)}_${i}`,
+        htlcId: -1, // no DB row
+        fromSymbol: h.tokenSymbol,
+        toSymbol: "USDT",
+        amount,
+        usdValue,
+        peer: h.recipient.slice(0, 8) + "...",
+        failReason: h.timelockExpired
+          ? "HTLC timelock expired — refund available"
+          : "HTLC locked — timelock not yet expired",
+        htlcExpiry: new Date(h.timelock * 1000),
+        status: h.timelockExpired ? ("claimable" as const) : ("claimable" as const),
+        txHash: "",
+        escrowPda: h.pdaAddress.slice(0, 12) + "...",
+        chain: "solana",
+        htlcAddress: h.htlcId, // the htlcId string (used by buildSolanaHtlcRefundTx)
+        secretHash: h.secretHash,
+        senderAddress: h.sender,
+        amountHuman: h.amountSol.toString(),
+        locktime: h.timelock,
+        // Extra field: the actual PDA address for display
+        pdaAddress: h.pdaAddress,
+        timelockExpired: h.timelockExpired,
+      } as RefundRecord & { pdaAddress: string; timelockExpired: boolean };
+    });
+
+  const refunds = [...dbRefunds, ...onChainRefunds];
   const claimable = refunds.filter(r => r.status === "claimable");
   const claimed = refunds.filter(r => r.status === "claimed");
+
+  const isLoading = dbLoading;
+  const isScanningChain = hasWallet && onChainLoading;
 
   if (isLoading) {
     return (
@@ -1291,6 +1347,19 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
           </div>
         )}
 
+        {/* On-chain scan indicator */}
+        {isScanningChain && (
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
+            style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.2)" }}
+          >
+            <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin flex-shrink-0" />
+            <span className="text-amber-300/80">
+              Scanning on-chain for stuck HTLCs…
+            </span>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
@@ -1305,16 +1374,22 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
           ))}
         </div>
 
-        {refunds.length === 0 && (
+        {refunds.length === 0 && !isScanningChain && (
           <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
             <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">No refunds needed</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              {hasWallet ? "All your swaps settled successfully" : "All swaps settled successfully"}
+            </p>
           </div>
         )}
 
         {refunds.map(refund => (
-          <RefundCard key={refund.id} refund={refund} onOpenDetail={setSelectedHtlcId} />
+          <RefundCard
+            key={refund.id}
+            refund={refund}
+            onOpenDetail={setSelectedHtlcId}
+          />
         ))}
       </div>
 

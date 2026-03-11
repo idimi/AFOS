@@ -16,6 +16,50 @@ import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
 import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
+import { Connection, PublicKey } from "@solana/web3.js";
+import {
+  AFOS_HTLC_PROGRAM_ID,
+  deriveHtlcPda,
+  htlcIdToBytes,
+} from "../../client/src/lib/afosHtlcProgram";
+
+const SOL_RPC_URL = process.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
+
+/**
+ * Decode HtlcState from raw Anchor account data.
+ * Returns null if the data is too short or doesn't match.
+ */
+function decodeHtlcStateForHistory(data: Buffer): {
+  htlcId: string;
+  sender: string;
+  recipient: string;
+  secretHash: string;
+  timelock: number;
+  amountLamports: bigint;
+  tokenMint: string;
+  claimed: boolean;
+  refunded: boolean;
+} | null {
+  if (data.length < 219) return null;
+  let offset = 8; // skip Anchor discriminator
+  const htlcId = Buffer.from(data.slice(offset, offset + 32)).toString("utf8").replace(/\0/g, "");
+  offset += 32;
+  const sender = new PublicKey(data.slice(offset, offset + 32)).toBase58();
+  offset += 32;
+  const recipient = new PublicKey(data.slice(offset, offset + 32)).toBase58();
+  offset += 32;
+  const secretHash = data.slice(offset, offset + 32).toString("hex");
+  offset += 32;
+  const timelock = Number(data.readBigInt64LE(offset));
+  offset += 8;
+  const amountLamports = data.readBigUInt64LE(offset);
+  offset += 8;
+  const tokenMint = new PublicKey(data.slice(offset, offset + 32)).toBase58();
+  offset += 32;
+  const claimed = data[offset] !== 0;
+  const refunded = data[offset + 1] !== 0;
+  return { htlcId, sender, recipient, secretHash, timelock, amountLamports, tokenMint, claimed, refunded };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -370,5 +414,79 @@ export const historyRouter = router({
         })
         .where(eq(htlcSwaps.htlcAddress, input.htlcAddress));
       return { success: true };
+    }),
+
+  /**
+   * On-chain scanner for user self-service refunds.
+   *
+   * Queries ALL AFOS HTLC program accounts on Solana and returns those where
+   * sender matches one of the provided walletAddresses, the HTLC is not yet
+   * claimed or refunded, and the timelock has expired.
+   *
+   * This is the user-facing equivalent of the admin getStuckHtlcs — it is
+   * wallet-scoped so users only see their own recoverable HTLCs.
+   */
+  myOnChainRefunds: publicProcedure
+    .input(z.object({
+      walletAddresses: z.array(z.string()).min(1).max(10),
+    }))
+    .query(async ({ input }) => {
+      const now = Math.floor(Date.now() / 1000);
+      const connection = new Connection(SOL_RPC_URL, "confirmed");
+      const walletSet = new Set(input.walletAddresses.map(a => a.toLowerCase()));
+
+      const onChainHtlcs: Array<{
+        htlcId: string;
+        pdaAddress: string;
+        sender: string;
+        recipient: string;
+        amountSol: number;
+        amountLamports: string;
+        tokenMint: string | null;
+        tokenSymbol: string;
+        timelock: number;
+        timelockExpired: boolean;
+        secretHash: string;
+        source: "on_chain";
+      }> = [];
+
+      try {
+        const programAccounts = await connection.getProgramAccounts(
+          AFOS_HTLC_PROGRAM_ID,
+          { filters: [{ dataSize: 219 }] },
+        );
+
+        for (const { pubkey, account } of programAccounts) {
+          const state = decodeHtlcStateForHistory(Buffer.from(account.data));
+          if (!state) continue;
+          if (state.claimed || state.refunded) continue;
+          // Only include HTLCs where the sender matches the connected wallet
+          if (!walletSet.has(state.sender.toLowerCase())) continue;
+
+          const timelockExpired = now >= state.timelock;
+          const amountSol = Number(state.amountLamports) / 1e9;
+          const isNativeSol = state.tokenMint === "11111111111111111111111111111111";
+
+          onChainHtlcs.push({
+            htlcId: state.htlcId,
+            pdaAddress: pubkey.toBase58(),
+            sender: state.sender,
+            recipient: state.recipient,
+            amountSol,
+            amountLamports: state.amountLamports.toString(),
+            tokenMint: isNativeSol ? null : state.tokenMint,
+            tokenSymbol: isNativeSol ? "SOL" : "TOKEN",
+            timelock: state.timelock,
+            timelockExpired,
+            secretHash: state.secretHash,
+            source: "on_chain",
+          });
+        }
+      } catch (err) {
+        console.warn("[history.myOnChainRefunds] RPC error:", (err as Error).message);
+        // Return empty array — don't crash the page
+      }
+
+      return { htlcs: onChainHtlcs };
     }),
 });

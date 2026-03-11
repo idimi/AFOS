@@ -2609,3 +2609,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix htlcId storage bug — updated saveHtlcSecret in chat.ts to store htlc_a_rfq_... (matching frontend formula) instead of htlc_rfq_...
 - [x] Add on-chain scanner — Phase 2 in getStuckHtlcs queries ALL program accounts from AFOS_HTLC_PROGRAM_ID as safety net for HTLCs not in DB
 - [x] Fix Swaps.tsx SwapProgressTracker — error phase now shows red error card instead of false-positive green complete
+
+## User Self-Service Refunds — Wire On-Chain Scanner to History Refunds Tab
+
+- [x] Audit current Refunds tab data source (what tRPC procedure it calls)
+- [x] Build myOnChainRefunds tRPC procedure — queries on-chain by sender wallet address (history.myOnChainRefunds)
+- [x] Update History Refunds tab to use new procedure and merge on-chain results with DB records
+- [x] Show correct Claimable count and Total Value from on-chain data
+- [x] Wire buildSolanaHtlcRefundTx to the Claim button in the Refunds tab (existing RefundCard handles it)
+- [x] Add tests for the new procedure (server/historyOnChainRefunds.test.ts — 288 tests pass)
