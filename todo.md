@@ -2577,3 +2577,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Investigate why the server-side filter is not working — root cause: deployed server was running old code without the filter; after restart, filter works correctly
 - [x] Verified: fake wallet → empty, actual sender → returns HTLC, empty wallets → empty, adminOverride=true → returns all
 - [x] Fix confirmed: server-side filter is in place, just needs republish to production
+
+## Improvement: Make wallet balance fetching and portfolio display more robust
+- [x] Investigate current balance fetching logic in MultiChainWalletContext
+- [x] Add withRetry helper with exponential backoff (3 attempts, 2s/4s/8s) for all RPC calls
+- [x] SOL balance fetch: returns null on failure instead of empty data, callers preserve last-known-good state
+- [x] BTC balance fetch (mempool.space): returns null on failure, callers preserve last-known-good state
+- [x] ETH/BTC price fetches: wrapped in withRetry (2 attempts, 1.5s delay)
+- [x] ETH auto-refresh: now includes native ETH balance (was only ERC-20 tokens before)
+- [x] All auto-refresh intervals reduced from 60s to 30s for faster updates
+- [x] Portfolio total handles partial data gracefully — failed refreshes keep previous values

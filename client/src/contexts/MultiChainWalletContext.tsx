@@ -229,40 +229,50 @@ function getEthProvider(type: EthProviderType): EthProvider | null {
 
 async function fetchEthPriceUsd(): Promise<number> {
   try {
-    const res = await fetch("/api/afos/api/prices");
-    if (res.ok) {
+    return await withRetry(async () => {
+      const res = await fetch("/api/afos/api/prices");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      return data.prices?.ETH?.usd || data.prices?.eth?.usd || 0;
-    }
-  } catch (_) {}
-  return 0;
+      const price = data.prices?.ETH?.usd || data.prices?.eth?.usd || 0;
+      if (price <= 0) throw new Error("ETH price is 0");
+      return price;
+    }, 2, 1500, "ETH price");
+  } catch (_) {
+    return 0;
+  }
 }
 
-async function fetchBtcBalanceFromMempool(address: string): Promise<{ btc: string; sats: number }> {
+async function fetchBtcBalanceFromMempool(address: string): Promise<{ btc: string; sats: number } | null> {
   try {
-    const res = await fetch(`https://mempool.space/api/address/${address}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const sats: number =
-      (data.chain_stats?.funded_txo_sum ?? 0) -
-      (data.chain_stats?.spent_txo_sum ?? 0);
-    const btc = (sats / 1e8).toFixed(8);
-    return { btc, sats };
+    return await withRetry(async () => {
+      const res = await fetch(`https://mempool.space/api/address/${address}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const sats: number =
+        (data.chain_stats?.funded_txo_sum ?? 0) -
+        (data.chain_stats?.spent_txo_sum ?? 0);
+      const btc = (sats / 1e8).toFixed(8);
+      return { btc, sats };
+    }, 2, 2000, "BTC balance");
   } catch (err) {
-    console.warn("[Mempool] BTC balance fetch failed:", err);
-    return { btc: "0.00000000", sats: 0 };
+    console.warn("[Mempool] BTC balance fetch failed after retries:", err);
+    return null; // Return null so callers can preserve last-known-good values
   }
 }
 
 async function fetchBtcPriceUsd(): Promise<number> {
   try {
-    const res = await fetch("/api/afos/api/prices");
-    if (res.ok) {
+    return await withRetry(async () => {
+      const res = await fetch("/api/afos/api/prices");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      return data.prices?.BTC?.usd || data.prices?.btc?.usd || 0;
-    }
-  } catch (_) {}
-  return 0;
+      const price = data.prices?.BTC?.usd || data.prices?.btc?.usd || 0;
+      if (price <= 0) throw new Error("BTC price is 0");
+      return price;
+    }, 2, 1500, "BTC price");
+  } catch (_) {
+    return 0;
+  }
 }
 
 /**
@@ -324,6 +334,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 /**
+ * Retry a promise-returning function with exponential backoff.
+ * On failure, waits `baseDelayMs * 2^attempt` before retrying.
+ * Returns the last error if all attempts fail.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts: number = 3,
+  baseDelayMs: number = 2000,
+  label: string = "fetch"
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts - 1) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        console.warn(`[${label}] Attempt ${attempt + 1}/${maxAttempts} failed, retrying in ${delay}ms...`, err);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
  * Parse TNK balance from the wallet's raw string (smallest-unit, 18 decimals)
  * to a human-readable decimal string.  TNK uses 18 decimals (like ETH wei),
  * so "1000000000000000000" → "1.0000".
@@ -348,27 +385,28 @@ function parseTnkBalance(raw: string | undefined | null): string {
 
 async function fetchSolanaBalancesForAddress(
   address: string
-): Promise<{ balances: Array<{ symbol: string; amount: string; usdValue: number }>; totalUsd: number }> {
+): Promise<{ balances: Array<{ symbol: string; amount: string; usdValue: number }>; totalUsd: number } | null> {
   try {
-    // Call our backend tRPC procedure which fetches from Solana RPC server-side
-    const encoded = encodeURIComponent(JSON.stringify({ "0": { json: { address } } }));
-    const res = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const batchResult = await res.json();
-    const data = batchResult?.[0]?.result?.data?.json;
-    if (!data) throw new Error("No data in response");
+    return await withRetry(async () => {
+      const encoded = encodeURIComponent(JSON.stringify({ "0": { json: { address } } }));
+      const res = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const batchResult = await res.json();
+      const data = batchResult?.[0]?.result?.data?.json;
+      if (!data) throw new Error("No data in response");
 
-    const balances = [
-      { symbol: "SOL",  amount: data.solBalance.toFixed(4),  usdValue: data.solUsd },
-      { symbol: "USDT", amount: data.usdtBalance.toFixed(2), usdValue: data.usdtUsd },
-      { symbol: "USDC", amount: data.usdcBalance.toFixed(2), usdValue: data.usdcUsd },
-    ];
-    return { balances, totalUsd: data.totalUsd };
+      const balances = [
+        { symbol: "SOL",  amount: data.solBalance.toFixed(4),  usdValue: data.solUsd },
+        { symbol: "USDT", amount: data.usdtBalance.toFixed(2), usdValue: data.usdtUsd },
+        { symbol: "USDC", amount: data.usdcBalance.toFixed(2), usdValue: data.usdcUsd },
+      ];
+      return { balances, totalUsd: data.totalUsd };
+    }, 3, 2000, "SOL balance");
   } catch (err) {
-    console.warn("[MultiChainWallet] SOL balance fetch via backend failed:", err);
-    return { balances: [], totalUsd: 0 };
+    console.warn("[MultiChainWallet] SOL balance fetch failed after 3 retries:", err);
+    return null; // Return null so callers can preserve last-known-good values
   }
 }
 
@@ -502,10 +540,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             bitcoinAddress = paymentAcc.address;
             connectedChains.push("bitcoin");
 
-            const [{ btc, sats }, priceUsd] = await Promise.all([
+            const [btcResult, priceUsd] = await Promise.all([
               fetchBtcBalanceFromMempool(bitcoinAddress),
               fetchBtcPriceUsd(),
             ]);
+            const btc = btcResult?.btc ?? "0.00000000";
+            const sats = btcResult?.sats ?? 0;
 
             setBitcoin({
               chain: "bitcoin",
@@ -542,11 +582,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // Fetch Solana balances in the background and update state when ready
       if (solanaAddress) {
         fetchSolanaBalancesForAddress(solanaAddress)
-          .then(({ balances, totalUsd }) => {
+          .then((result) => {
+            if (!result) return; // Keep existing state on failure
             setPhantomMultiChain(prev => prev ? {
               ...prev,
-              solanaBalances: balances,
-              solanaTotalUsd: totalUsd,
+              solanaBalances: result.balances,
+              solanaTotalUsd: result.totalUsd,
             } : null);
           })
           .catch(e => console.warn("[Phantom] SOL balance fetch failed:", e));
@@ -571,8 +612,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     const addr = phantomMultiChain?.solanaAddress;
     if (!addr) return;
     try {
-      const { balances, totalUsd } = await fetchSolanaBalancesForAddress(addr);
-      setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: balances, solanaTotalUsd: totalUsd } : null);
+      const result = await fetchSolanaBalancesForAddress(addr);
+      if (!result) return; // Keep existing state on failure
+      setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: result.balances, solanaTotalUsd: result.totalUsd } : null);
     } catch (e) {
       console.warn("[Phantom] SOL balance refresh failed:", e);
     }
@@ -736,10 +778,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const address = caip10Accounts[0].split(":").slice(2).join(":");
       if (!address) throw new Error("Could not parse Bitcoin address from MetaMask session");
 
-      const [{ btc: btcBalance, sats }, priceUsd] = await Promise.all([
+      const [btcResult, priceUsd] = await Promise.all([
         fetchBtcBalanceFromMempool(address),
         fetchBtcPriceUsd(),
       ]);
+      const btcBalance = btcResult?.btc ?? "0.00000000";
+      const sats = btcResult?.sats ?? 0;
       const balanceUsd = (sats / 1e8) * priceUsd;
 
       setBitcoin({
@@ -877,10 +921,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           if (btcAddress) {
             connectedBtcAddress = btcAddress;
             console.log("[AFOS] Tap Wallet: BTC address", btcAddress);
-            const [{ btc: btcBal, sats }, btcPrice] = await Promise.all([
+            const [btcResult, btcPrice] = await Promise.all([
               fetchBtcBalanceFromMempool(btcAddress),
               fetchBtcPriceUsd(),
             ]);
+            const btcBal = btcResult?.btc ?? "0.00000000";
+            const sats = btcResult?.sats ?? 0;
             setBitcoin({
               chain: "bitcoin",
               walletName: "Tap Wallet",
@@ -975,10 +1021,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const paymentAddr = result.addresses.find(a => a.purpose === "payment");
       const addr = paymentAddr?.address ?? result.addresses[0]?.address;
       if (!addr) throw new Error("No Bitcoin address returned from Xverse");
-      const [{ btc, sats }, priceUsd] = await Promise.all([
+      const [btcResult, priceUsd] = await Promise.all([
         fetchBtcBalanceFromMempool(addr),
         fetchBtcPriceUsd(),
       ]);
+      const btc = btcResult?.btc ?? "0.00000000";
+      const sats = btcResult?.sats ?? 0;
       const balanceUsd = (sats / 1e8) * priceUsd;
       setBitcoin({
         chain: "bitcoin",
@@ -1166,10 +1214,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           );
           const btcAddress = btcAccounts?.[0];
           if (btcAddress) {
-            const [{ btc: btcBalance, sats }, btcPriceUsd] = await Promise.all([
+            const [btcResult, btcPriceUsd] = await Promise.all([
               fetchBtcBalanceFromMempool(btcAddress),
               fetchBtcPriceUsd(),
             ]);
+            const btcBalance = btcResult?.btc ?? "0.00000000";
+            const sats = btcResult?.sats ?? 0;
             setBitcoin({
               chain: "bitcoin",
               walletName: "Tap Wallet",
@@ -1277,22 +1327,35 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Auto-refresh ERC-20 balances every 60 seconds ───────────────────────────────────────────
+  // ── Auto-refresh ETH native + ERC-20 balances every 30 seconds ───────────────────────────────
   useEffect(() => {
     if (!ethereum?.connected || !ethereum.address) return;
 
-    const refreshErc20 = async () => {
+    const refreshEthBalances = async () => {
       // Use Phantom's ethereum provider if connected via Phantom, else window.ethereum
       const provider = (ethereum.isPhantom ? window.phantom?.ethereum : window.ethereum) as EthProvider | undefined;
       if (!provider) return;
-      const [usdc, usdt] = await Promise.all([
-        fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, ethereum.address, 6),
-        fetchErc20Balance(provider, ERC20_CONTRACTS.USDT, ethereum.address, 6),
-      ]);
-      setErc20Balances({ usdc, usdt });
+      try {
+        const [balanceHex, priceUsd, usdc, usdt] = await Promise.all([
+          provider.request({ method: "eth_getBalance", params: [ethereum.address, "latest"] }) as Promise<string>,
+          fetchEthPriceUsd(),
+          fetchErc20Balance(provider, ERC20_CONTRACTS.USDC, ethereum.address, 6),
+          fetchErc20Balance(provider, ERC20_CONTRACTS.USDT, ethereum.address, 6),
+        ]);
+        const balanceEth = parseInt(balanceHex, 16) / 1e18;
+        setEthereum(prev => prev ? {
+          ...prev,
+          balance: balanceEth.toFixed(4),
+          balanceUsd: balanceEth * priceUsd,
+        } : null);
+        setErc20Balances({ usdc, usdt });
+      } catch (err) {
+        console.warn("[ETH refresh] Failed:", err);
+        // Keep existing state on failure
+      }
     };
 
-    const interval = setInterval(refreshErc20, 60_000);
+    const interval = setInterval(refreshEthBalances, 30_000);
     return () => clearInterval(interval);
   }, [ethereum?.connected, ethereum?.address, ethereum?.isPhantom]);
 
@@ -1303,14 +1366,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     const refreshBtcBalance = async () => {
       try {
         // Fetch BTC balance from mempool (BTC only — TNK is now in tracNetwork state)
-        const [{ btc, sats }, priceUsd] = await Promise.all([
+        const [btcResult, priceUsd] = await Promise.all([
           fetchBtcBalanceFromMempool(bitcoin.address),
           fetchBtcPriceUsd(),
         ]);
-        const balanceUsd = (sats / 1e8) * priceUsd;
+        if (!btcResult) return; // Keep existing state on failure
+        const balanceUsd = (btcResult.sats / 1e8) * priceUsd;
         setBitcoin(prev => {
           if (!prev) return null;
-          return { ...prev, balance: `${btc} BTC`, balanceUsd };
+          return { ...prev, balance: `${btcResult.btc} BTC`, balanceUsd };
         });
       } catch (err) {
         console.warn("[BTC refresh] Failed:", err);
@@ -1336,8 +1400,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
     };
 
-    const btcInterval = setInterval(refreshBtcBalance, 60_000);
-    const tnkInterval = setInterval(refreshTnkBalance, 60_000);
+    const btcInterval = setInterval(refreshBtcBalance, 30_000);
+    const tnkInterval = setInterval(refreshTnkBalance, 30_000);
     return () => { clearInterval(btcInterval); clearInterval(tnkInterval); };
   }, [bitcoin?.connected, bitcoin?.address]);
 
@@ -1350,15 +1414,16 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     window.tracnetwork?.off?.("accountsChanged", () => {});
   }, [bitcoin?.connected, bitcoin?.walletName]);
 
-  // ── Auto-refresh SOL balance every 60 seconds when Phantom multi-chain is connected ──
+  // ── Auto-refresh SOL balance every 30 seconds when Phantom multi-chain is connected ──
   useEffect(() => {
     const addr = phantomMultiChain?.solanaAddress;
     if (!addr) return;
     const interval = setInterval(() => {
-      fetchSolanaBalancesForAddress(addr).then(({ balances, totalUsd }) => {
-        setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: balances, solanaTotalUsd: totalUsd } : null);
+      fetchSolanaBalancesForAddress(addr).then((result) => {
+        if (!result) return; // Keep existing state on failure
+        setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: result.balances, solanaTotalUsd: result.totalUsd } : null);
       }).catch(() => {});
-    }, 60_000);
+    }, 30_000);
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
