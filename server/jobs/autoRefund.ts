@@ -10,6 +10,10 @@
  *     → Does NOT auto-refund (user must sign from their own wallet)
  *
  * The job is idempotent — it skips HTLCs already marked as 'refunded' in the DB.
+ *
+ * Solana scanning strategy: DB-first + getAccountInfo (avoids getProgramAccounts which
+ * times out on the public RPC). Queries the DB for pending Solana HTLCs, then verifies
+ * each one on-chain with getAccountInfo (fast, ~150ms per call).
  */
 
 import { getDb } from "../db.js";
@@ -20,7 +24,7 @@ import { notifyOwner } from "../_core/notification.js";
 const AFOS_HTLC_PROGRAM_ID = "XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW";
 const SOL_RPC_URL = process.env.SOL_RPC_URL || process.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
 
-// ─── Solana on-chain scanner ──────────────────────────────────────────────────
+// ─── Solana on-chain scanner (DB-first + getAccountInfo) ─────────────────────
 
 interface OnChainHtlc {
   htlcId: string;
@@ -34,59 +38,99 @@ interface OnChainHtlc {
   secretHash: string;
 }
 
-async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
+async function parseHtlcAccountData(raw: Buffer, pdaAddress: string): Promise<OnChainHtlc | null> {
   try {
-    const body = JSON.stringify({
-      jsonrpc: "2.0", id: 1,
-      method: "getProgramAccounts",
-      params: [AFOS_HTLC_PROGRAM_ID, { encoding: "base64" }],
-    });
+    if (raw.length < 153) return null;
 
-    const resp = await fetch(SOL_RPC_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      signal: AbortSignal.timeout(45000),
-    });
-    const json = await resp.json() as { result?: Array<{ pubkey: string; account: { data: [string, string] } }> };
-    const accounts = json.result ?? [];
-    const nowSec = Math.floor(Date.now() / 1000);
+    const htlcIdRaw = raw.slice(8, 40);
+    const nullIdx = htlcIdRaw.indexOf(0);
+    const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
 
     const { PublicKey } = await import("@solana/web3.js");
+    const sender = new PublicKey(raw.slice(40, 72)).toBase58();
+    const secretHashHex = raw.slice(104, 136).toString("hex");
+    const timelock = Number(raw.readBigInt64LE(136));
+    const amountLamports = raw.readBigUInt64LE(144);
+    const status = raw[152];
+
+    if (status !== 0) return null; // 0 = active/locked
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const timelockExpired = timelock > 0 && timelock < nowSec;
+    if (!timelockExpired) return null; // only expired ones
+
+    return {
+      htlcId,
+      pdaAddress,
+      senderAddress: sender,
+      amountHuman: (Number(amountLamports) / 1e9).toFixed(6),
+      token: "SOL",
+      chain: "solana",
+      timelockExpiry: timelock,
+      timelockExpired: true,
+      secretHash: secretHashHex,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
+  try {
+    const db = await getDb();
+    if (!db) return [];
+
+    // Query DB for all pending/locked Solana HTLCs
+    const pendingRows = await db
+      .select({
+        htlcAddress: htlcSwaps.htlcAddress,
+        rfqId: htlcSwaps.rfqId,
+        senderAddress: htlcSwaps.senderAddress,
+        chain: htlcSwaps.chain,
+      })
+      .from(htlcSwaps)
+      .where(
+        and(
+          eq(htlcSwaps.chain, "solana"),
+          eq(htlcSwaps.status, "pending")
+        )
+      );
+
+    if (pendingRows.length === 0) return [];
+
     const results: OnChainHtlc[] = [];
 
-    for (const acc of accounts) {
+    // Check each HTLC on-chain with getAccountInfo (fast, ~150ms per call)
+    for (const row of pendingRows) {
+      if (!row.htlcAddress) continue;
       try {
-        const raw = Buffer.from(acc.account.data[0], "base64");
-        if (raw.length < 153) continue;
-
-        const htlcIdRaw = raw.slice(8, 40);
-        const nullIdx = htlcIdRaw.indexOf(0);
-        const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
-
-        const sender = new PublicKey(raw.slice(40, 72)).toBase58();
-        const secretHashHex = raw.slice(104, 136).toString("hex");
-        const timelock = Number(raw.readBigInt64LE(136));
-        const amountLamports = raw.readBigUInt64LE(144);
-        const status = raw[152];
-        if (status !== 0) continue; // 0 = active/locked
-
-        const timelockExpired = timelock > 0 && timelock < nowSec;
-        if (!timelockExpired) continue; // only expired ones
-
-        results.push({
-          htlcId,
-          pdaAddress: acc.pubkey,
-          senderAddress: sender,
-          amountHuman: (Number(amountLamports) / 1e9).toFixed(6),
-          token: "SOL",
-          chain: "solana",
-          timelockExpiry: timelock,
-          timelockExpired: true,
-          secretHash: secretHashHex,
+        const body = JSON.stringify({
+          jsonrpc: "2.0", id: 1,
+          method: "getAccountInfo",
+          params: [row.htlcAddress, { encoding: "base64" }],
         });
+
+        const resp = await fetch(SOL_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        const json = await resp.json() as {
+          result?: { value?: { data: [string, string] } | null }
+        };
+
+        const accountData = json.result?.value?.data;
+        if (!accountData) continue; // account doesn't exist or was closed
+
+        const raw = Buffer.from(accountData[0], "base64");
+        const htlc = await parseHtlcAccountData(raw, row.htlcAddress);
+        if (htlc) {
+          results.push(htlc);
+        }
       } catch {
-        // skip malformed accounts
+        // skip this HTLC if RPC call fails
       }
     }
 
@@ -162,22 +206,9 @@ export async function runAutoRefund(): Promise<AutoRefundResult> {
   try {
     const db = await getDb();
 
-    // ── Solana scan ──
+    // ── Solana scan (DB-first + getAccountInfo) ──
     const solExpired = await scanSolanaExpiredHtlcs();
     result.scanned += solExpired.length;
-
-    // Get already-refunded PDA addresses from DB to avoid re-processing
-    const alreadyRefunded = new Set<string>();
-    if (db && solExpired.length > 0) {
-      const pdaAddresses = solExpired.map(h => h.pdaAddress);
-      const dbRows = await db
-        .select({ htlcAddress: htlcSwaps.htlcAddress, status: htlcSwaps.status })
-        .from(htlcSwaps)
-        .where(inArray(htlcSwaps.htlcAddress, pdaAddresses));
-      for (const row of dbRows) {
-        if (row.status === "refunded") alreadyRefunded.add(row.htlcAddress);
-      }
-    }
 
     const solHtlcKey = process.env.SOL_HTLC_KEY;
     let serverSolAddress: string | null = null;
@@ -193,8 +224,6 @@ export async function runAutoRefund(): Promise<AutoRefundResult> {
     const userClaimable: OnChainHtlc[] = [];
 
     for (const htlc of solExpired) {
-      if (alreadyRefunded.has(htlc.pdaAddress)) continue;
-
       const isServerOwned = serverSolAddress && htlc.senderAddress === serverSolAddress;
 
       if (isServerOwned) {
@@ -203,7 +232,7 @@ export async function runAutoRefund(): Promise<AutoRefundResult> {
         if (txSig) {
           result.autoRefunded++;
           console.log(`[AutoRefund] Auto-refunded server SOL HTLC ${htlc.pdaAddress} → tx ${txSig}`);
-          // Update DB if the HTLC is recorded there
+          // Update DB record to refunded
           if (db) {
             await db
               .update(htlcSwaps)

@@ -1,0 +1,20 @@
+{
+  "query": "SELECT id, chain, htlcAddress, senderAddress, status, amountHuman, locktime, rfqId FROM htlc_swaps WHERE chain = 'solana' ORDER BY createdAt DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, chain, htlcAddress, senderAddress, status, amountHuman, locktime, rfqId FROM htlc_swaps WHERE chain = 'solana' ORDER BY createdAt DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "1",
+      "chain": "solana",
+      "htlcAddress": "45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "status": "pending",
+      "amountHuman": "0.025000",
+      "locktime": "1773208949",
+      "rfqId": "rfq_1773205346880"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tchain\thtlcAddress\tsenderAddress\tstatus\tamountHuman\tlocktime\trfqId\n1\tsolana\t45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tpending\t0.025000\t1773208949\trfq_1773205346880\n",
+  "stderr": "",
+  "execution_time_ms": 75
+}

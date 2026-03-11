@@ -1,0 +1,19 @@
+{
+  "query": "SELECT COUNT(*) as htlc_count FROM htlc_swaps;\nSELECT COUNT(*) as analytics_count FROM swap_analytics;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COUNT(*) as htlc_count FROM htlc_swaps;\nSELECT COUNT(*) as analytics_count FROM swap_analytics;",
+  "rows": [
+    {
+      "htlc_count": "0"
+    },
+    {
+      "htlc_count": "analytics_count"
+    },
+    {
+      "htlc_count": "83"
+    }
+  ],
+  "messages": [],
+  "stdout": "htlc_count\n0\nanalytics_count\n83\n",
+  "stderr": "",
+  "execution_time_ms": 59
+}

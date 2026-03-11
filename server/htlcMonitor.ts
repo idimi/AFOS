@@ -193,28 +193,52 @@ async function pollPendingHtlcs(): Promise<void> {
     `Heights: BTC=${heights.bitcoin ?? "N/A"} ETH=${heights.ethereum ?? "N/A"} SOL=${heights.solana ?? "N/A"}`
   );
 
+  const nowSec = Math.floor(Date.now() / 1000);
+
   for (const htlc of pending) {
-    const currentHeight = heights[htlc.chain];
-    if (currentHeight === null) {
-      console.warn(`[HTLC Monitor] Cannot fetch block height for ${htlc.chain} — skipping HTLC ${htlc.id}`);
-      continue;
-    }
+    // Solana HTLCs use Unix timestamps (not slot numbers) for timelock.
+    // If locktime > 1_000_000_000 it's almost certainly a Unix timestamp (year 2001+).
+    // Use wall-clock comparison for Solana; block height comparison for BTC/ETH.
+    const isSolanaTimestamp = htlc.chain === "solana" && htlc.locktime > 1_000_000_000;
 
-    // Check if the timelock has expired
-    if (currentHeight < htlc.locktime) {
-      const remaining = htlc.locktime - currentHeight;
+    if (isSolanaTimestamp) {
+      // Unix timestamp comparison
+      if (nowSec < htlc.locktime) {
+        const remaining = htlc.locktime - nowSec;
+        console.log(
+          `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} still active. ` +
+          `Locktime: ${new Date(htlc.locktime * 1000).toISOString()}, Remaining: ${remaining}s`
+        );
+        continue;
+      }
+      // Timelock expired — fall through to trigger refund
       console.log(
-        `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} still active. ` +
-        `Locktime: ${htlc.locktime}, Current: ${currentHeight}, Remaining: ${remaining} blocks/slots`
+        `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} EXPIRED (timestamp)! ` +
+        `Locktime: ${new Date(htlc.locktime * 1000).toISOString()}, Now: ${new Date(nowSec * 1000).toISOString()}. Triggering refund…`
       );
-      continue;
-    }
+    } else {
+      const currentHeight = heights[htlc.chain];
+      if (currentHeight === null) {
+        console.warn(`[HTLC Monitor] Cannot fetch block height for ${htlc.chain} — skipping HTLC ${htlc.id}`);
+        continue;
+      }
 
-    // Timelock expired — trigger refund
-    console.log(
-      `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} EXPIRED! ` +
-      `Locktime: ${htlc.locktime}, Current: ${currentHeight}. Triggering refund…`
-    );
+      // Check if the timelock has expired
+      if (currentHeight < htlc.locktime) {
+        const remaining = htlc.locktime - currentHeight;
+        console.log(
+          `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} still active. ` +
+          `Locktime: ${htlc.locktime}, Current: ${currentHeight}, Remaining: ${remaining} blocks/slots`
+        );
+        continue;
+      }
+
+      // Timelock expired — fall through to trigger refund
+      console.log(
+        `[HTLC Monitor] [${htlc.chain.toUpperCase()}] HTLC ${htlc.id} EXPIRED! ` +
+        `Locktime: ${htlc.locktime}, Current: ${currentHeight}. Triggering refund…`
+      );
+    }
 
     let refundTxId: string | null = null;
     try {

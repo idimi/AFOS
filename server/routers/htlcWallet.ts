@@ -17,6 +17,7 @@
  */
 
 import { publicProcedure, router } from "../_core/trpc";
+import { getCachedPrices } from "../priceCache";
 import { getDb } from "../db";
 import { htlcSwaps } from "../../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
@@ -283,15 +284,8 @@ async function getSolHtlcWallets(): Promise<HtlcChainWallet[]> {
 
     if (lamports !== null) solBal = lamports / LAMPORTS_PER_SOL;
 
-    // Fetch SOL price
-    let solUsdPrice = 0;
-    try {
-      const priceRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", { signal: AbortSignal.timeout(5000) });
-      if (priceRes.ok) {
-        const priceData = await priceRes.json() as { solana: { usd: number } };
-        solUsdPrice = priceData.solana?.usd ?? 0;
-      }
-    } catch { /* price optional */ }
+    // Use shared cached price (avoids extra CoinGecko call)
+    const solUsdPrice = getCachedPrices().sol;
 
     const solUsd = solBal * solUsdPrice;
     const usdtUsd = usdtBal ?? 0;
@@ -656,18 +650,8 @@ export const htlcWalletRouter = router({
         fetchSplBalance(address, SOL_USDC_MINT),
       ]);
 
-      // Fetch SOL price from CoinGecko
-      let solUsdPrice = 0;
-      try {
-        const priceRes = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
-          { signal: AbortSignal.timeout(5000) }
-        );
-        if (priceRes.ok) {
-          const priceData = await priceRes.json() as { solana: { usd: number } };
-          solUsdPrice = priceData.solana?.usd ?? 0;
-        }
-      } catch { /* price optional */ }
+      // Use shared cached price (populated by prices.live endpoint, avoids extra CoinGecko call)
+      const solUsdPrice = getCachedPrices().sol;
 
       const solUsd = solBal * solUsdPrice;
       const usdtUsd = usdtBal ?? 0;

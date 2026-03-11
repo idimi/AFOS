@@ -2587,3 +2587,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] ETH auto-refresh: now includes native ETH balance (was only ERC-20 tokens before)
 - [x] All auto-refresh intervals reduced from 60s to 30s for faster updates
 - [x] Portfolio total handles partial data gracefully — failed refreshes keep previous values
+
+## Bug: Refunds tab shows 0 for correct wallet + Portfolio shows $0.00
+- [x] Diagnose Refunds tab showing 0: root cause = DB was empty (HTLC never recorded); switched to DB-first + getAccountInfo approach; manually inserted stuck HTLC into DB
+- [x] Diagnose portfolio $0.00: root cause = CoinGecko rate-limiting returns solUsdPrice=0 in getSolanaBalanceByAddress
+- [x] Fix: created server/priceCache.ts shared module (getCachedPrices/setPriceCache) to avoid circular imports
+- [x] Fix: getSolanaBalanceByAddress and getSolHtlcWallets now use getCachedPrices() instead of CoinGecko
+- [x] Fix: price cache warmed up 3s after server startup so balance endpoints immediately have correct USD prices
+- [x] Fix: Solana scanner now uses DB-first + getAccountInfo (fast, <2s) instead of getProgramAccounts (times out >60s)
+
+## Bug: Refunds tab still shows 0 + HTLC Monitor incorrect comparison + Portfolio price $0
+- [x] Fix SwapHistory.tsx connectedAddresses to include phantomMultiChain.solanaAddress (Phantom SOL addr was missing from wallet filter)
+- [x] Fix HTLC Monitor: Solana HTLCs use Unix timestamps not slot numbers — added isSolanaTimestamp detection (locktime > 1_000_000_000)
+- [x] HTLC Monitor now correctly identifies expired Solana HTLC and triggers refund (was showing "1.3B blocks remaining")
+- [x] Fix getLandingPrices() to guard against zero prices from CoinGecko (partial rate-limit responses set sol=0)
+- [x] Price cache now always preserves last-known-good price even when CoinGecko returns 0 or partial data

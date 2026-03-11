@@ -7,6 +7,7 @@ import { btcHtlcRouter } from "./routers/btcHtlc";
 import { pathFinderRouter } from "./pathFinder";
 import { analyticsRouter } from "./routers/analytics";
 import { htlcWalletRouter } from "./routers/htlcWallet";
+import { setPriceCache } from "./priceCache";
 import { peerReputationRouter } from "./routers/peerReputation";
 import { peerMessagesRouter } from "./routers/peerMessages";
 import { peerBlocksRouter } from "./routers/peerBlocks";
@@ -78,7 +79,7 @@ async function getTnkPrice(): Promise<{ usd: number; change24h: number; vol24h: 
   return { usd: 0, change24h: 0, vol24h: 0 };
 }
 
-async function getLandingPrices() {
+export async function getLandingPrices() {
   if (_priceCache && Date.now() - _priceCache.fetchedAt < 30_000) return _priceCache;
   try {
     // Fetch BTC/SOL/ETH from CoinGecko and TNK from Gate.io in parallel
@@ -97,13 +98,14 @@ async function getLandingPrices() {
 
     if (mainRes.status === "fulfilled" && mainRes.value.ok) {
       const data = await mainRes.value.json() as {
-        bitcoin: { usd: number };
-        solana: { usd: number };
-        ethereum: { usd: number };
+        bitcoin?: { usd: number };
+        solana?: { usd: number };
+        ethereum?: { usd: number };
       };
-      btc = data.bitcoin.usd;
-      sol = data.solana.usd;
-      eth = data.ethereum.usd;
+      // Guard against zero/missing prices (CoinGecko rate-limit responses can return partial data)
+      if (data.bitcoin?.usd && data.bitcoin.usd > 0) btc = data.bitcoin.usd;
+      if (data.solana?.usd && data.solana.usd > 0) sol = data.solana.usd;
+      if (data.ethereum?.usd && data.ethereum.usd > 0) eth = data.ethereum.usd;
     }
 
     const tnk = tnkData.status === "fulfilled"
@@ -117,6 +119,7 @@ async function getLandingPrices() {
       tnkVol24h: tnk.vol24h,
       fetchedAt: Date.now(),
     };
+    setPriceCache(_priceCache);
     return _priceCache;
   } catch {
     // Return stale cache or sensible fallback

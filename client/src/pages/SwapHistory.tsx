@@ -266,15 +266,26 @@ export default function SwapHistory() {
 
   // Wallet context — collect all connected wallet addresses
   const { publicKey } = useWallet();
-  const { bitcoin, ethereum } = useMultiChainWallet();
+  const { bitcoin, ethereum, phantomMultiChain } = useMultiChainWallet();
 
   const connectedAddresses = useMemo(() => {
     const addrs: string[] = [];
     if (publicKey) addrs.push(publicKey.toString());
+    // Also include Phantom's Solana address (may differ from adapter publicKey)
+    if (phantomMultiChain?.solanaAddress && !addrs.includes(phantomMultiChain.solanaAddress)) {
+      addrs.push(phantomMultiChain.solanaAddress);
+    }
     if (bitcoin?.address) addrs.push(bitcoin.address);
     if (ethereum?.address) addrs.push(ethereum.address);
+    // Also include Phantom's ETH/BTC addresses if they differ
+    if (phantomMultiChain?.ethereumAddress && !addrs.includes(phantomMultiChain.ethereumAddress)) {
+      addrs.push(phantomMultiChain.ethereumAddress);
+    }
+    if (phantomMultiChain?.bitcoinAddress && !addrs.includes(phantomMultiChain.bitcoinAddress)) {
+      addrs.push(phantomMultiChain.bitcoinAddress);
+    }
     return addrs;
-  }, [publicKey, bitcoin?.address, ethereum?.address]);
+  }, [publicKey, bitcoin?.address, ethereum?.address, phantomMultiChain?.solanaAddress, phantomMultiChain?.ethereumAddress, phantomMultiChain?.bitcoinAddress]);
 
   // When admin toggles "All Swaps", pass empty array to get global view
   const walletAddresses = isAdmin && showAllSwaps ? [] : connectedAddresses;

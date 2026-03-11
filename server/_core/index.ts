@@ -201,6 +201,19 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // ── Price cache warmup ─────────────────────────────────────────────────────
+    // Pre-warm the shared price cache (BTC/SOL/ETH) so balance endpoints
+    // immediately return correct USD values without waiting for the first
+    // prices.live request from the frontend.
+    setTimeout(async () => {
+      try {
+        const { getLandingPrices } = await import("../routers");
+        await getLandingPrices();
+        console.log("[PriceCache] Warmed up on startup");
+      } catch (err) {
+        console.warn("[PriceCache] Warmup failed:", err);
+      }
+    }, 3_000); // 3s after startup
     // Start HTLC timeout monitor — watches pending HTLCs and auto-refunds on CLTV expiry
     startHtlcMonitor();
     // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks

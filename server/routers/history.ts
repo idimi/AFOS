@@ -392,84 +392,94 @@ export const historyRouter = router({
       }> = [];
 
       // ── Phase 1: Solana on-chain scanner ──────────────────────────────────────
+      // Strategy: DB-first + getAccountInfo per PDA.
+      // We query htlcSwaps for pending Solana HTLCs, then verify each PDA with
+      // getAccountInfo (fast: ~0.1s per call). This avoids getProgramAccounts
+      // which times out on public RPCs.
       try {
         const { ENV } = await import("../_core/env");
         const rpcUrl = ENV.solRpcUrl || "https://solana-rpc.publicnode.com";
-        const AFOS_HTLC_PROGRAM_ID = "XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW";
-
-        const body = JSON.stringify({
-          jsonrpc: "2.0", id: 1,
-          method: "getProgramAccounts",
-          params: [AFOS_HTLC_PROGRAM_ID, {
-            encoding: "base64",
-            // No dataSize filter — htlcId is variable length so account size varies
-          }],
-        });
-
-        const resp = await fetch(rpcUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
-          signal: AbortSignal.timeout(45000),
-        });
-        const json = await resp.json() as { result?: Array<{ pubkey: string; account: { data: [string, string] } }> };
-        const accounts = json.result ?? [];
-        const nowSec = Math.floor(Date.now() / 1000);
-        console.log(`[myOnChainRefunds] Solana scan: ${accounts.length} accounts found`);
         const { PublicKey } = await import("@solana/web3.js");
+        const nowSec = Math.floor(Date.now() / 1000);
+        const db = await getDb();
+        if (!db) throw new Error("DB unavailable");
 
-        for (const acc of accounts) {
+        // Build DB query for pending Solana HTLCs
+        const solConditions = [
+          eq(htlcSwaps.chain, "solana"),
+          eq(htlcSwaps.status, "pending"),
+        ];
+        // For user view, filter by sender address in DB
+        if (filterBySender) {
+          const { inArray } = await import("drizzle-orm");
+          solConditions.push(inArray(htlcSwaps.senderAddress, input.walletAddresses));
+        }
+        const pendingSol = await db
+          .select()
+          .from(htlcSwaps)
+          .where(and(...solConditions))
+          .limit(50);
+
+        console.log(`[myOnChainRefunds] Solana DB query: ${pendingSol.length} pending HTLCs (wallets: ${JSON.stringify(input.walletAddresses)}, filterBySender: ${filterBySender})`);
+        if (pendingSol.length > 0) {
+          console.log(`[myOnChainRefunds] Found HTLCs:`, pendingSol.map(r => ({ addr: r.htlcAddress?.slice(0,8), sender: r.senderAddress?.slice(0,8), status: r.status })));
+        }
+
+        // Helper to parse a single HTLC account buffer
+        const parseHtlcAccount = (raw: Buffer, pubkey: string) => {
+          if (raw.length < 153) return null;
+          // Layout: discriminator(8) + htlcId_fixed(32) + sender(32) + receiver(32) + secretHash(32) + timelock(8) + amount(8) + status(1)
+          const htlcIdRaw = raw.slice(8, 40);
+          const nullIdx = htlcIdRaw.indexOf(0);
+          const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
+          const sender = new PublicKey(raw.slice(40, 72)).toBase58();
+          const secretHashHex = raw.slice(104, 136).toString("hex");
+          const timelock = Number(raw.readBigInt64LE(136));
+          const amountLamports = raw.readBigUInt64LE(144);
+          const status = raw[152];
+          if (status !== 0) return null; // 0 = active/locked only
+          const amountSol = Number(amountLamports) / 1e9;
+          return {
+            htlcId, pdaAddress: pubkey, senderAddress: sender,
+            amount: amountLamports.toString(), amountHuman: amountSol.toFixed(6),
+            token: "SOL", chain: "solana",
+            timelockExpiry: timelock, timelockExpired: timelock > 0 && timelock < nowSec,
+            dbStatus: null, rfqId: null, secretHash: secretHashHex,
+          };
+        };
+
+        // Verify each PDA on-chain with getAccountInfo (fast)
+        for (const row of pendingSol) {
           try {
-            const raw = Buffer.from(acc.account.data[0], "base64");
-            // Minimum: discriminator(8) + htlcId_fixed(32) + sender(32) + receiver(32) + secretHash(32) + timelock(8) + amount(8) + status(1) = 153
-            if (raw.length < 153) continue;
-
-            // Actual on-chain layout (verified from account 45jdLty...):
-            // 0-8:    discriminator
-            // 8-40:   htlcId as fixed [u8; 32] (null-padded)
-            // 40-72:  sender pubkey (32 bytes)
-            // 72-104: receiver pubkey (32 bytes)
-            // 104-136: secretHash (32 bytes)
-            // 136-144: timelock as Unix timestamp (i64 LE)
-            // 144-152: amount in lamports (u64 LE)
-            // 152:    status (0=active, 1=redeemed, 2=refunded)
-            const htlcIdRaw = raw.slice(8, 40);
-            const nullIdx = htlcIdRaw.indexOf(0);
-            const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
-
-            const sender = new PublicKey(raw.slice(40, 72)).toBase58();
-            const secretHashHex = raw.slice(104, 136).toString("hex");
-            const timelock = Number(raw.readBigInt64LE(136));
-            const amountLamports = raw.readBigUInt64LE(144);
-            const status = raw[152];
-            if (status !== 0) continue; // 0 = active/locked
-
-            const amountSol = Number(amountLamports) / 1e9;
-            const timelockExpired = timelock > 0 && timelock < nowSec;
-
-            // Filter by sender: only include if sender matches one of the connected wallets
-            if (filterBySender && !walletSet.has(sender.toLowerCase())) continue;
-
-            results.push({
-              htlcId,
-              pdaAddress: acc.pubkey,
-              senderAddress: sender,
-              amount: amountLamports.toString(),
-              amountHuman: amountSol.toFixed(6),
-              token: "SOL",
-              chain: "solana",
-              timelockExpiry: timelock,
-              timelockExpired,
-              dbStatus: null,
-              rfqId: null,
-              secretHash: secretHashHex,
+            const resp = await fetch(rpcUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                jsonrpc: "2.0", id: 1,
+                method: "getAccountInfo",
+                params: [row.htlcAddress, { encoding: "base64" }],
+              }),
+              signal: AbortSignal.timeout(8000),
             });
-          } catch {
-            // skip malformed accounts
+            const json = await resp.json() as { result?: { value?: { data: [string, string] } | null } };
+            const accValue = json.result?.value;
+            if (!accValue) continue; // account closed (already refunded/redeemed)
+            const raw = Buffer.from(accValue.data[0], "base64");
+            const parsed = parseHtlcAccount(raw, row.htlcAddress);
+            if (parsed) {
+              // Enrich with DB data and push
+              results.push({
+                ...parsed,
+                rfqId: row.rfqId ?? null,
+                dbStatus: row.status,
+              });
+            }
+          } catch (err) {
+            console.warn(`[myOnChainRefunds] getAccountInfo failed for ${row.htlcAddress.slice(0,8)}:`, err);
           }
         }
       } catch (err) {
-        console.warn("[myOnChainRefunds] Solana scan failed:", err);
+        console.warn("[myOnChainRefunds] Solana scanner error:", err);
       }
 
       // ── Phase 2: ETH on-chain scanner ─────────────────────────────────────────
