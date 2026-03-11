@@ -54,11 +54,23 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
     return;
   }
 
-  const webhookUrl = `${appBaseUrl}/api/webhooks/helius-htlc`;
+  // Always use the production domain for the webhook URL so Helius can reach it.
+  // The dev tunnel URL changes on every restart and is not reachable by Helius.
+  const PROD_DOMAIN = "https://afos.trade";
+  const webhookUrl = `${PROD_DOMAIN}/api/webhooks/helius-htlc`;
   const secret = process.env.HELIUS_WEBHOOK_SECRET ?? "";
 
+  const body = {
+    webhookURL: webhookUrl,
+    transactionTypes: ["ANY"],
+    accountAddresses: [AFOS_HTLC_PROGRAM_ID],
+    webhookType: "raw",
+    txnStatus: "all",
+    ...(secret ? { authHeader: secret } : {}),
+  };
+
   try {
-    // 1. List existing webhooks
+    // 1. List existing webhooks — find ours by program address
     const listRes = await fetch(`${HELIUS_WEBHOOKS_API}?api-key=${apiKey}`);
     if (!listRes.ok) {
       console.warn("[HeliusWebhook] Failed to list webhooks:", listRes.status, await listRes.text());
@@ -66,24 +78,19 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
     }
     const existing: HeliusWebhook[] = await listRes.json();
 
-    // 2. Find an existing webhook for our program
+    // 2. Match by program address (most reliable) or by our known prod URL
     const match = existing.find(w =>
-      w.accountAddresses?.includes(AFOS_HTLC_PROGRAM_ID) ||
+      (w.accountAddresses ?? []).includes(AFOS_HTLC_PROGRAM_ID) ||
       w.webhookURL === webhookUrl
     );
 
-    const body = {
-      webhookURL: webhookUrl,
-      transactionTypes: ["ANY"],
-      accountAddresses: [AFOS_HTLC_PROGRAM_ID],
-      webhookType: "rawDevnet" in {} ? "raw" : "raw", // always raw for custom programs
-      authHeader: secret || undefined,
-    };
-
     if (match) {
-      // 3a. Update existing webhook if URL or addresses changed
-      if (match.webhookURL === webhookUrl && match.accountAddresses?.includes(AFOS_HTLC_PROGRAM_ID)) {
-        console.log(`[HeliusWebhook] Webhook already configured (id: ${match.webhookID}). No update needed.`);
+      // 3a. Already exists — update if anything is stale
+      const alreadyCorrect =
+        match.webhookURL === webhookUrl &&
+        (match.accountAddresses ?? []).includes(AFOS_HTLC_PROGRAM_ID);
+      if (alreadyCorrect) {
+        console.log(`[HeliusWebhook] Webhook already configured (id: ${match.webhookID}) → ${webhookUrl}`);
         return;
       }
       const updateRes = await fetch(`${HELIUS_WEBHOOKS_API}/${match.webhookID}?api-key=${apiKey}`, {
@@ -92,7 +99,8 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
         body: JSON.stringify(body),
       });
       if (updateRes.ok) {
-        console.log(`[HeliusWebhook] Updated webhook ${match.webhookID} → ${webhookUrl}`);
+        const updated: HeliusWebhook = await updateRes.json();
+        console.log(`[HeliusWebhook] Updated webhook ${updated.webhookID} → ${webhookUrl} | addresses: ${updated.accountAddresses}`);
       } else {
         console.warn("[HeliusWebhook] Failed to update webhook:", updateRes.status, await updateRes.text());
       }
@@ -105,7 +113,7 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
       });
       if (createRes.ok) {
         const created: HeliusWebhook = await createRes.json();
-        console.log(`[HeliusWebhook] Created webhook ${created.webhookID} → ${webhookUrl}`);
+        console.log(`[HeliusWebhook] Created webhook ${created.webhookID} → ${webhookUrl} | addresses: ${created.accountAddresses}`);
       } else {
         console.warn("[HeliusWebhook] Failed to create webhook:", createRes.status, await createRes.text());
       }
