@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
-  Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock,
+  Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -1431,6 +1431,150 @@ function RefundCard({
   );
 }
 
+// ─── Claim All Batch Button ──────────────────────────────────────────────────
+
+function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
+  const { publicKey, signTransaction } = useSolanaWallet();
+  const { connection } = useConnection();
+  const { phantomMultiChain } = useMultiChainWallet();
+  const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
+  const utils = trpc.useUtils();
+
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const claimAll = useCallback(async () => {
+    if (running || claimable.length < 1) return;
+
+    // Resolve Phantom wallet once
+    const phantomSolana = (
+      (window as unknown as { phantom?: { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } } }).phantom?.solana ||
+      (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana
+    );
+    const phantomSolAddr = phantomMultiChain?.solanaAddress;
+    const effectivePubkey = publicKey ?? (phantomSolAddr ? new PublicKey(phantomSolAddr) : null);
+
+    setRunning(true);
+    setProgress({ done: 0, total: claimable.length });
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < claimable.length; i++) {
+      const refund = claimable[i];
+      setProgress({ done: i, total: claimable.length });
+
+      try {
+        if (refund.chain === "solana") {
+          if (!effectivePubkey || (!signTransaction && !phantomSolana?.signAndSendTransaction)) {
+            toast.error("Wallet not connected", { description: "Connect Phantom to claim SOL refunds." });
+            failed++;
+            continue;
+          }
+          const htlcId = refund.lockTxId ?? refund.htlcAddress;
+          const toastId = `claim-all-sol-${i}`;
+          toast.loading(`Claiming ${i + 1}/${claimable.length} — waiting for Phantom…`, { id: toastId });
+          const { transaction } = await buildSolanaHtlcRefundTx({
+            senderPubkey: effectivePubkey,
+            htlcId,
+            connection,
+            tokenSymbol: refund.fromSymbol !== "SOL" ? refund.fromSymbol : undefined,
+          });
+          let txHash: string;
+          if (publicKey && signTransaction) {
+            const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+            txHash = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+          } else if (phantomSolana?.signAndSendTransaction) {
+            const result = await phantomSolana.signAndSendTransaction(transaction);
+            txHash = result.signature;
+          } else {
+            throw new Error("No signing method available");
+          }
+          await connection.confirmTransaction(txHash, "confirmed");
+          await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
+          toast.dismiss(toastId);
+          succeeded++;
+        } else if (refund.chain === "trac_network") {
+          const { requestTnkHtlcRefund: tnkRefund } = await import("@/lib/tnkHtlc");
+          const result = await tnkRefund({
+            secretHash: refund.secretHash,
+            amount: refund.amountHuman,
+            escrowAddress: refund.htlcAddress,
+          });
+          await updateHtlcRefund.mutateAsync({
+            htlcAddress: refund.htlcAddress,
+            refundTxId: result.refundRequestSignature.slice(0, 64),
+          });
+          succeeded++;
+        } else if (refund.chain === "ethereum") {
+          const rawEth = (window as unknown as {
+            ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string>; selectedAddress?: string };
+          }).ethereum;
+          if (!rawEth?.selectedAddress) { failed++; continue; }
+          const secretHashHex = refund.secretHash.startsWith("0x") ? refund.secretHash.slice(2) : refund.secretHash;
+          const calldata = "0x7249fbb6" + secretHashHex.padStart(64, "0");
+          const txHash = await rawEth.request({
+            method: "eth_sendTransaction",
+            params: [{ from: rawEth.selectedAddress, to: refund.htlcAddress, data: calldata, gas: "0x30D40" }],
+          });
+          await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
+          succeeded++;
+        } else {
+          // Bitcoin and unknown chains — skip (require manual signing)
+          failed++;
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error(`Claim ${i + 1}/${claimable.length} failed`, { description: msg });
+        failed++;
+      }
+    }
+
+    setProgress({ done: claimable.length, total: claimable.length });
+    await utils.history.refunds.invalidate();
+    await utils.history.myOnChainRefunds.invalidate();
+
+    if (succeeded > 0 && failed === 0) {
+      toast.success(`All ${succeeded} refund${succeeded > 1 ? "s" : ""} claimed successfully!`);
+    } else if (succeeded > 0) {
+      toast.success(`${succeeded} claimed, ${failed} failed — check individual cards for details.`);
+    } else {
+      toast.error("All claims failed — check wallet connection and try individually.");
+    }
+
+    setRunning(false);
+    setProgress(null);
+  }, [claimable, running, publicKey, signTransaction, connection, phantomMultiChain, updateHtlcRefund, utils]);
+
+  if (claimable.length < 2) return null;
+
+  return (
+    <button
+      onClick={claimAll}
+      disabled={running}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all disabled:opacity-60"
+      style={{
+        background: running ? "rgba(245,158,11,0.08)" : "rgba(245,158,11,0.15)",
+        border: "1px solid rgba(245,158,11,0.35)",
+        color: "#f59e0b",
+      }}
+      title={`Claim all ${claimable.length} refundable HTLCs sequentially`}
+    >
+      {running ? (
+        <>
+          <Loader2 className="w-3 h-3 animate-spin" />
+          {progress ? `Claiming ${progress.done + 1}/${progress.total}…` : "Claiming…"}
+        </>
+      ) : (
+        <>
+          <Zap className="w-3 h-3" />
+          Claim All ({claimable.length})
+        </>
+      )}
+    </button>
+  );
+}
+
 export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
   const { data, isLoading } = trpc.history.refunds.useQuery(
     { walletAddresses, search },
@@ -1526,6 +1670,13 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
             </div>
           ))}
         </div>
+
+        {/* Claim All batch button — only shown when 2+ CLAIMABLE HTLCs */}
+        {claimable.length >= 2 && (
+          <div className="flex justify-end">
+            <ClaimAllButton claimable={claimable} />
+          </div>
+        )}
 
         {refunds.length === 0 && (
           <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>

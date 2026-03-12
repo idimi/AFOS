@@ -2764,3 +2764,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Delete test HTLC row (rfq_test_countdown_demo) from DB
 - [x] Add live "Expired X ago" indicator to CLAIMABLE RefundCards (e.g. "Expired 6 minutes ago")
+
+## Refunds Tab — Claim All Batch Button
+
+- [x] Add "Claim All" button to Refunds tab header (visible only when 2+ CLAIMABLE HTLCs)
+- [x] Sequential claim with progress indicator (e.g. "Claiming 1/3…")
+- [x] Skip already-claimed/failed items and show summary toast at the end
