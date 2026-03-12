@@ -762,7 +762,112 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Handle RFQ broadcasts
     unsubs.push(client.on("rfq_broadcast", (data) => {
       const { fromPeerId, rfq } = data as { fromPeerId: string; rfq: unknown };
+      // Dispatch to Live Order Book (Swaps page)
       window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...(rfq as object) } }));
+      // Also add to incomingRfqs so the Incoming RFQs panel in NetworkPanel shows it
+      const r = rfq as {
+        rfqId?: string; fromToken?: string; toToken?: string; fromChain?: string; toChain?: string;
+        amount?: number; outAmount?: number; rate?: number; expiresAt?: number;
+        requesterAlias?: string; requesterPeerId?: string; requesterWallet?: string;
+        secretHashHex?: string;
+      };
+      if (!r.rfqId || !r.fromToken || !r.toToken) return;
+      // Echo-filter: ignore our own broadcasts
+      if (r.requesterPeerId && r.requesterPeerId === peerId) return;
+      const incoming: IncomingRfq = {
+        rfqId: r.rfqId,
+        fromToken: r.fromToken,
+        toToken: r.toToken,
+        amount: r.amount ?? 0,
+        fromChain: r.fromChain ?? "solana",
+        toChain: r.toChain ?? "solana",
+        requestorPeer: fromPeerId,
+        expiresAt: r.expiresAt ?? (Date.now() + 120_000),
+        suggestedRate: r.rate ?? 0,
+        suggestedOutAmount: r.outAmount ?? 0,
+        status: "pending",
+        receivedAt: Date.now(),
+        secretHashHex: r.secretHashHex,
+        counterpartyAddress: r.requesterWallet,
+        requesterWallet: r.requesterWallet,
+      };
+      setIncomingRfqs(prev => {
+        if (prev.some(x => x.rfqId === r.rfqId)) return prev;
+        return [incoming, ...prev].slice(0, 20);
+      });
+      // Dispatch to chat page so the agent shows the incoming swap card
+      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...r, requesterPeerId: fromPeerId } }));
+      // Auto-accept guard logic (same as agent_rfq path)
+      const prefs_b = prefsRef.current as LightPeerPrefs & {
+        autoAcceptRfq?: boolean;
+        autoAcceptMaxUsd?: number;
+        slippagePct?: string | number;
+      };
+      const autoAcceptEnabled_b = prefs_b.autoAcceptRfq ?? prefs_b.autoAccept;
+      if (!autoAcceptEnabled_b) return;
+      const autoAcceptCap_b = (prefs_b.autoAcceptMaxUsd && prefs_b.autoAcceptMaxUsd > 0)
+        ? prefs_b.autoAcceptMaxUsd
+        : prefs_b.maxTradeUsd;
+      const fromPrice_b = pricesRef.current[(r.fromToken ?? "").toUpperCase()] ?? 0;
+      const toPrice_b = pricesRef.current[(r.toToken ?? "").toUpperCase()] ?? 0;
+      const tradeUsd_b = fromPrice_b > 0 ? (r.amount ?? 0) * fromPrice_b : (r.outAmount ?? 0) * (r.rate ?? 1);
+      const oracleRate_b = (fromPrice_b > 0 && toPrice_b > 0) ? fromPrice_b / toPrice_b : 0;
+      const slippagePctNum_b = parseFloat(String(prefs_b.slippagePct ?? "0.5"));
+      const slippageFrac_b = isNaN(slippagePctNum_b) ? 0.005 : slippagePctNum_b / 100;
+      const rateOk_b = oracleRate_b <= 0 || (r.rate ?? 0) >= oracleRate_b * (1 - slippageFrac_b);
+      if (tradeUsd_b <= autoAcceptCap_b && rateOk_b) {
+        const acceptedDecision_b: IncomingRfq["autoDecision"] = {
+          action: "accepted",
+          reason: `All guards passed — pair accepted, $${tradeUsd_b.toFixed(2)} within size limits, rate within slippage tolerance`,
+          oracleRate: oracleRate_b,
+          offeredRate: r.rate ?? 0,
+          tradeUsd: tradeUsd_b,
+          spreadBps: prefsRef.current.spreadBps,
+          timestamp: Date.now(),
+        };
+        incoming.autoDecision = acceptedDecision_b;
+        void acceptRfq(r.rfqId!, incoming);
+        setIncomingRfqs(prev =>
+          prev.map(x => x.rfqId === r.rfqId ? { ...x, status: "accepted", autoDecision: acceptedDecision_b } : x)
+        );
+        setAutoDecisionLog(prev => [{
+          rfqId: r.rfqId!,
+          pair: `${r.fromToken}/${r.toToken}`,
+          fromAmount: r.amount ?? 0,
+          fromToken: r.fromToken!,
+          toToken: r.toToken!,
+          ...acceptedDecision_b,
+        }, ...prev].slice(0, 50));
+        toast.success(`Smart Auto-Accept: broadcast swap`, {
+          description: `${(r.amount ?? 0).toFixed(4)} ${r.fromToken} → ${(r.outAmount ?? 0).toFixed(4)} ${r.toToken} · All guards passed`,
+          duration: 8000,
+        });
+      } else if (!rateOk_b) {
+        const rejectedDecision_b: IncomingRfq["autoDecision"] = {
+          action: "rejected",
+          reason: `Rate guard failed — peer offered ${(r.rate ?? 0).toFixed(6)} but oracle is ${oracleRate_b.toFixed(6)} (>${(slippageFrac_b * 100).toFixed(2)}% slippage)`,
+          oracleRate: oracleRate_b,
+          offeredRate: r.rate ?? 0,
+          tradeUsd: tradeUsd_b,
+          spreadBps: prefsRef.current.spreadBps,
+          timestamp: Date.now(),
+        };
+        setIncomingRfqs(prev =>
+          prev.map(x => x.rfqId === r.rfqId ? { ...x, autoDecision: rejectedDecision_b } : x)
+        );
+        setAutoDecisionLog(prev => [{
+          rfqId: r.rfqId!,
+          pair: `${r.fromToken}/${r.toToken}`,
+          fromAmount: r.amount ?? 0,
+          fromToken: r.fromToken!,
+          toToken: r.toToken!,
+          ...rejectedDecision_b,
+        }, ...prev].slice(0, 50));
+        toast.warning(`Smart Auto-Accept blocked: bad rate (broadcast)`, {
+          description: `Offered ${(r.rate ?? 0).toFixed(6)} vs oracle ${oracleRate_b.toFixed(6)} — exceeds ${(slippageFrac_b * 100).toFixed(2)}% slippage limit`,
+          duration: 10000,
+        });
+      }
     }));
 
     // Handle agent-dispatched RFQs (agent matched this peer with a requester)
