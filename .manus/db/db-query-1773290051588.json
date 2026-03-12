@@ -1,0 +1,18 @@
+{
+  "query": "SELECT route, COUNT(*) as cnt FROM swap_analytics GROUP BY route ORDER BY cnt DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT route, COUNT(*) as cnt FROM swap_analytics GROUP BY route ORDER BY cnt DESC;",
+  "rows": [
+    {
+      "route": "AFOS P2P",
+      "cnt": "20"
+    },
+    {
+      "route": "Oracle VM DEX",
+      "cnt": "1"
+    }
+  ],
+  "messages": [],
+  "stdout": "route\tcnt\nAFOS P2P\t20\nOracle VM DEX\t1\n",
+  "stderr": "",
+  "execution_time_ms": 351
+}

@@ -587,7 +587,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // Dispatch window event so ChatPage / other UI can react
       window.dispatchEvent(new CustomEvent("afos:htlc-locked", { detail: { fromPeerId, rfqId, txHash, chain, amountLocked } }));
       // Retrieve the plaintext secret from the server and send it to Agent B.
-      // IMPORTANT: requesterAddress must be the wallet address (not peerId) because that's
+      // IMPORTANT: initiatorAddress must be the wallet address (not peerId) because that's
       // what was saved in the DB by buildSwapTx (userPublicKey). Use solPubkey or phantomSolAddress.
       void (async () => {
         try {
@@ -608,7 +608,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             credentials: "include",
             body: JSON.stringify({ "0": { json: {
               rfqId,
-              requesterAddress: agentAWallet,
+              initiatorAddress: agentAWallet,
               counterpartyAddress: senderWallet ?? undefined,  // Agent B's wallet
               htlcIdA: agentAHtlcId,                           // Agent A's PDA seed
               htlcIdB: agentBHtlcId ?? undefined,              // Agent B's PDA seed

@@ -2780,3 +2780,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Read HtlcSecretsMonitor to understand the auto-claim flow and wallet address lookup
 - [x] Fix monitor to pass htlcSeedId (PDA seed) and wallet addresses when auto-claiming Agent B's HTLC
+
+## Data Cleanup: Remove fake Jupiter DEX swap records
+
+- [x] Delete all swap records where route contains "Jupiter DEX" from the DB (89 rows removed from swap_analytics)
+
+## Refactor: Consolidate requesterAddress → initiatorAddress in htlc_secrets
+
+- [x] Audit all usages of requesterAddress and initiatorAddress
+- [x] Drop requesterAddress column from schema, migrate DB (ALTER TABLE htlc_secrets DROP COLUMN requesterAddress)
+- [x] Update all call sites to use initiatorAddress only (chat.ts x5, LightPeerContext.tsx x1)

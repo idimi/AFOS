@@ -1,0 +1,1 @@
+ALTER TABLE `htlc_secrets` DROP COLUMN `requesterAddress`;

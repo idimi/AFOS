@@ -1198,7 +1198,6 @@ export const chatRouter = router({
           secretHashHex:      htlcSecretHash,
           fromChain:          (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          requesterAddress:   userPublicKey ?? undefined,
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    senderPeerId ?? undefined,
           expiresAt:          BigInt(expiresAt),
@@ -1421,7 +1420,7 @@ export const chatRouter = router({
             secretHashHex:      secretHash,
             fromChain:          fromChain as "bitcoin" | "ethereum" | "solana" | "trac_network",
             toChain:            toChain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          requesterAddress:   fromAddress ?? undefined,
+          initiatorAddress:   fromAddress ?? undefined,
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    ethSenderPeerId ?? undefined,
           expiresAt:          BigInt(Date.now() + 3600_000),
@@ -1704,7 +1703,7 @@ export const chatRouter = router({
           secretHashHex:      secretHash,
           fromChain:          "bitcoin",
           toChain:            (input.toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
-          requesterAddress:   input.senderAddress ?? undefined,
+          initiatorAddress:   input.senderAddress ?? undefined,
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    btcSenderPeerId ?? undefined,
           expiresAt:          BigInt(Date.now() + expiryHours * 3_600_000),
@@ -2379,7 +2378,7 @@ export const chatRouter = router({
   revealHtlcSecret: publicProcedure
     .input(z.object({
       rfqId:                z.string(),
-      requesterAddress:     z.string(),
+      initiatorAddress:     z.string(),
       counterpartyAddress:  z.string().optional(),  // Agent B's wallet address
       htlcIdA:              z.string().optional(),   // Agent A's PDA seed (htlc_a_...)
       htlcIdB:              z.string().optional(),   // Agent B's PDA seed (htlc_b_...)
@@ -2388,8 +2387,8 @@ export const chatRouter = router({
     .mutation(async ({ input }) => {
       const row = await getHtlcSecret(input.rfqId);
       if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "HTLC secret not found for this RFQ" });
-      if (row.requesterAddress && row.requesterAddress.toLowerCase() !== input.requesterAddress.toLowerCase()) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Only the requester may reveal the HTLC secret" });
+      if (row.initiatorAddress && row.initiatorAddress.toLowerCase() !== input.initiatorAddress.toLowerCase()) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Only the initiator may reveal the HTLC secret" });
       }
       if (row.status === "expired" || row.status === "refunded") {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: `HTLC is ${row.status} — cannot reveal` });
@@ -2424,11 +2423,11 @@ export const chatRouter = router({
             });
             console.log(`[HTLC] Claimed Agent A lock (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
 
-            // Claim Agent B's locked toToken → send to Agent A (requesterAddress)
+            // Claim Agent B's locked toToken → send to Agent A (initiatorAddress)
             const claimB = await claimSolanaHtlc({
               htlcId:           input.htlcIdB!,
               secretHex:        row.secretHex,
-              recipientAddress: input.requesterAddress,
+              recipientAddress: input.initiatorAddress,
               tokenSymbol:      tokenSymB,
             });
             console.log(`[HTLC] Claimed Agent B lock (${toTokenSym}) → Agent A: ${claimB.txSignature}`);

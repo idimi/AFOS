@@ -1,0 +1,210 @@
+{
+  "query": "SELECT id, route, fromToken, toToken, amount, status, walletAddress, createdAt FROM swap_analytics ORDER BY createdAt DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, route, fromToken, toToken, amount, status, walletAddress, createdAt FROM swap_analytics ORDER BY createdAt DESC LIMIT 20;",
+  "rows": [
+    {
+      "id": "90089",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-12 02:49:42"
+    },
+    {
+      "id": "90060",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.025",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-11 05:02:26"
+    },
+    {
+      "id": "90045",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:55:25"
+    },
+    {
+      "id": "90040",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:32:43"
+    },
+    {
+      "id": "90037",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:25:20"
+    },
+    {
+      "id": "90036",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:22:58"
+    },
+    {
+      "id": "90035",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:16:44"
+    },
+    {
+      "id": "90033",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 23:02:00"
+    },
+    {
+      "id": "90030",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:42:25"
+    },
+    {
+      "id": "90029",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:32:27"
+    },
+    {
+      "id": "90026",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:20:48"
+    },
+    {
+      "id": "90025",
+      "route": "Oracle VM DEX",
+      "fromToken": "TNK",
+      "toToken": "SOL",
+      "amount": "100",
+      "status": "completed",
+      "walletAddress": "NULL",
+      "createdAt": "2026-03-10 22:19:32"
+    },
+    {
+      "id": "90024",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:17:49"
+    },
+    {
+      "id": "90023",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:16:22"
+    },
+    {
+      "id": "90022",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:16:03"
+    },
+    {
+      "id": "90021",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 22:15:41"
+    },
+    {
+      "id": "90004",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 03:35:08"
+    },
+    {
+      "id": "90003",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.1",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 02:52:07"
+    },
+    {
+      "id": "90002",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.1",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 02:51:34"
+    },
+    {
+      "id": "90001",
+      "route": "AFOS P2P",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "amount": "0.01",
+      "status": "completed",
+      "walletAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-10 00:47:59"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\troute\tfromToken\ttoToken\tamount\tstatus\twalletAddress\tcreatedAt\n90089\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-12 02:49:42\n90060\tAFOS P2P\tSOL\tUSDT\t0.025\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-11 05:02:26\n90045\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:55:25\n90040\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:32:43\n90037\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:25:20\n90036\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:22:58\n90035\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:16:44\n90033\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 23:02:00\n90030\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:42:25\n90029\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:32:27\n90026\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:20:48\n90025\tOracle VM DEX\tTNK\tSOL\t100\tcompleted\tNULL\t2026-03-10 22:19:32\n90024\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:17:49\n90023\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:16:22\n90022\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:16:03\n90021\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 22:15:41\n90004\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 03:35:08\n90003\tAFOS P2P\tSOL\tUSDT\t0.1\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 02:52:07\n90002\tAFOS P2P\tSOL\tUSDT\t0.1\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 02:51:34\n90001\tAFOS P2P\tSOL\tUSDT\t0.01\tcompleted\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-10 00:47:59\n",
+  "stderr": "",
+  "execution_time_ms": 356
+}
