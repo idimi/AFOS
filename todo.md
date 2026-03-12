@@ -2790,3 +2790,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Audit all usages of requesterAddress and initiatorAddress
 - [x] Drop requesterAddress column from schema, migrate DB (ALTER TABLE htlc_secrets DROP COLUMN requesterAddress)
 - [x] Update all call sites to use initiatorAddress only (chat.ts x5, LightPeerContext.tsx x1)
+
+## Bug Fix: Agent B "You have no USDT" false positive
+- [x] Root cause: senderPubkeyStr used stale phantomSolAddress; balance check used unreliable publicnode getAccountInfo
+- [x] Fix 1: Use live window.phantom.solana.publicKey as sender address (avoids stale phantomSolAddress)
+- [x] Fix 2: Replace getAccountInfo pre-flight check with server-side getSolanaBalanceByAddress (Helius + fallbacks)
+- [x] Same live-address fix applied to agentAResolvedWallet in initiateHtlcLock
