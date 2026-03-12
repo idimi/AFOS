@@ -2797,3 +2797,5 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix 2: Replace getAccountInfo pre-flight check with server-side getSolanaBalanceByAddress (Helius + fallbacks)
 - [x] Same live-address fix applied to agentAResolvedWallet in initiateHtlcLock
 - [x] Redesign Swap In Progress card: remove ⏱ icon overlap, premium AFOS aesthetic, connector lines, swap summary panel, elapsed timer, exchange rate, chain labels, HTLC ATOMIC badge
+- [x] Extend getSolanaBalanceByAddress with optional mint parameter for arbitrary SPL token pre-checks
+- [x] Persist counterpartyAddress in htlc_swaps so HtlcSecretsMonitor can auto-claim without missing wallet addresses

@@ -1224,38 +1224,46 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             // ── Pre-flight: verify Agent B has enough SPL token balance ──
             // Uses the server-side getSolanaBalanceByAddress endpoint which races multiple
             // reliable RPC endpoints (Helius + fallbacks) — avoids publicnode 403 issues.
-            // For USDT/USDC, the endpoint returns dedicated fields.
-            // For any other SPL token in TOKEN_MINTS, we fall through and let the tx fail
-            // on-chain (which gives a clear error) rather than blocking on a false negative.
+            //
+            // For USDT/USDC: the endpoint returns dedicated named fields (usdtBalance / usdcBalance).
+            // For any other TOKEN_MINTS entry: we pass the mint address via the `mint` parameter
+            //   and read the generic `splBalance` field from the response.
+            // This means ALL tokens in TOKEN_MINTS are now pre-checked — no false negatives.
             try {
               const tokenUpper = lockToken.toUpperCase();
-              if (tokenUpper === 'USDT' || tokenUpper === 'USDC') {
-                const encoded = encodeURIComponent(JSON.stringify({ '0': { json: { address: senderPubkeyStr } } }));
-                const balRes = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
-                  credentials: 'include',
-                });
-                if (balRes.ok) {
-                  const batchResult = await balRes.json() as Array<{ result?: { data?: { json?: { usdtBalance?: number; usdcBalance?: number } } } }>;
-                  const data = batchResult?.[0]?.result?.data?.json;
-                  if (data) {
-                    const balance = tokenUpper === 'USDT' ? (data.usdtBalance ?? 0) : (data.usdcBalance ?? 0);
-                    console.log(`[HTLC] Pre-flight balance check: ${balance} ${lockToken} (need ${lockAmount}) for ${senderPubkeyStr.slice(0,8)}...`);
-                    if (balance < lockAmount) {
-                      const msg = balance === 0
-                        ? `You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`
-                        : `Insufficient ${lockToken} balance. You have ${balance.toFixed(6)} ${lockToken} but need ${lockAmount} ${lockToken}.`;
-                      setHtlcSigning({ rfqId, step: 'failed', error: msg });
-                      toast.error('Insufficient balance', { description: msg });
-                      return;
-                    }
+              const tokenMintInfo = TOKEN_MINTS[tokenUpper];
+              // Build input: always include address; include mint for non-USDT/USDC tokens
+              const balInput: { address: string; mint?: string } = { address: senderPubkeyStr };
+              if (tokenUpper !== 'USDT' && tokenUpper !== 'USDC' && tokenMintInfo) {
+                balInput.mint = tokenMintInfo.mint;
+              }
+              const encoded = encodeURIComponent(JSON.stringify({ '0': { json: balInput } }));
+              const balRes = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
+                credentials: 'include',
+              });
+              if (balRes.ok) {
+                const batchResult = await balRes.json() as Array<{ result?: { data?: { json?: { usdtBalance?: number; usdcBalance?: number; splBalance?: number | null } } } }>;
+                const data = batchResult?.[0]?.result?.data?.json;
+                if (data) {
+                  // Resolve balance: named field for USDT/USDC, generic splBalance for everything else
+                  const balance =
+                    tokenUpper === 'USDT' ? (data.usdtBalance ?? 0) :
+                    tokenUpper === 'USDC' ? (data.usdcBalance ?? 0) :
+                    (data.splBalance ?? null); // null = check unavailable, don't block
+                  console.log(`[HTLC] Pre-flight balance check: ${balance} ${lockToken} (need ${lockAmount}) for ${senderPubkeyStr.slice(0,8)}...`);
+                  if (balance !== null && balance < lockAmount) {
+                    const msg = balance === 0
+                      ? `You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`
+                      : `Insufficient ${lockToken} balance. You have ${balance.toFixed(6)} ${lockToken} but need ${lockAmount} ${lockToken}.`;
+                    setHtlcSigning({ rfqId, step: 'failed', error: msg });
+                    toast.error('Insufficient balance', { description: msg });
+                    return;
                   }
-                  // If data is missing, proceed anyway (don't block on check failure)
-                } else {
-                  console.warn('[HTLC] Balance pre-check HTTP error (proceeding):', balRes.status);
+                  // If balance is null (splBalance not returned), proceed without blocking
                 }
+                // If data is missing, proceed anyway (don't block on check failure)
               } else {
-                // For other SPL tokens (future support): skip pre-check, let on-chain tx surface the error
-                console.log(`[HTLC] Pre-flight balance check skipped for ${lockToken} (not USDT/USDC) — proceeding to on-chain lock`);
+                console.warn('[HTLC] Balance pre-check HTTP error (proceeding):', balRes.status);
               }
             } catch (balErr: unknown) {
               // If balance check itself fails (network error), proceed anyway
@@ -1342,6 +1350,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               peerId: rfq.requestorPeer ?? undefined,
               htlcId,
               isAgentA,
+              // Store the counterparty's wallet address so HtlcSecretsMonitor can auto-claim
+              // without needing a separate htlc_secrets lookup.
+              // For Agent A: counterparty = Agent B (recipient = the person who will claim Agent A's funds)
+              // For Agent B: counterparty = Agent A (the initiator, whose address is in rfq.requesterWallet)
+              counterpartyAddress: isAgentA
+                ? recipientPubkey.toBase58()   // Agent B's address
+                : (rfq.requesterWallet ?? rfq.counterpartyAddress ?? undefined),  // Agent A's address
             };
             try {
               const res = await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {

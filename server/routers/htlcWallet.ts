@@ -574,6 +574,14 @@ export const htlcWalletRouter = router({
       // Additional monitoring fields sent by the client
       htlcId: z.string().optional(),
       isAgentA: z.boolean().optional(),
+      /**
+       * The counterparty's wallet address on the same chain.
+       * For Agent A: pass Agent B's wallet address (the recipient of Agent A's locked funds).
+       * For Agent B: pass Agent A's wallet address (the initiator).
+       * Stored so HtlcSecretsMonitor can resolve both addresses for auto-claim retries
+       * without needing a separate htlc_secrets lookup.
+       */
+      counterpartyAddress: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       try {
@@ -594,6 +602,7 @@ export const htlcWalletRouter = router({
           status: "pending",
           rfqId: input.rfqId ?? null,
           peerId: input.peerId ?? null,
+          counterpartyAddress: input.counterpartyAddress ?? null,
         });
         console.log(`[HTLC] Recorded deposit: ${input.chain} ${input.amountRaw} ${input.token} tx=${input.txHash}`);
         return { success: true };
@@ -683,19 +692,27 @@ export const htlcWalletRouter = router({
    * (bypassing the wallet adapter) and needs server-side RPC access.
    */
   getSolanaBalanceByAddress: publicProcedure
-    .input(z.object({ address: z.string().min(32).max(50) }))
+    .input(z.object({
+      address: z.string().min(32).max(50),
+      /**
+       * Optional: on-chain mint address of an arbitrary SPL token to check.
+       * When provided, the response includes `splBalance` for that specific mint.
+       * Useful for pre-checking any SPL token balance before an HTLC lock.
+       * USDT and USDC are always returned regardless of this field.
+       */
+      mint: z.string().min(32).max(50).optional(),
+    }))
     .query(async ({ input }) => {
-      const { address } = input;
+      const { address, mint } = input;
       const now = Date.now();
       const cached = _solBalanceCache.get(address);
       const cacheAge = cached ? now - cached.fetchedAt : Infinity;
       const cacheStale = cacheAge > SOL_BALANCE_CACHE_TTL_MS;
 
       // ── Stale-while-revalidate ──────────────────────────────────────────────
-      // If we have a fresh cache entry, return it immediately (no RPC call).
-      // If stale, return the stale value immediately AND kick off a background
-      // refresh so the next call gets fresh data.
-      if (cached && !cacheStale) {
+      // If we have a fresh cache entry AND no custom mint was requested, return
+      // immediately (no RPC call). Custom mint queries always go live.
+      if (cached && !cacheStale && !mint) {
         // Cache is fresh — return immediately
         const solUsdPrice = getCachedPrices().sol;
         const solUsd = cached.solBalance * solUsdPrice;
@@ -706,14 +723,18 @@ export const htlcWalletRouter = router({
           usdcBalance: cached.usdcBalance, usdcUsd: cached.usdcBalance,
           totalUsd: solUsd + cached.usdtBalance + cached.usdcBalance,
           solUsdPrice, stale: false,
+          splBalance: null,
         };
       }
 
-      // Fetch fresh data — race all RPC endpoints in parallel
-      const [{ solBal, live }, usdtBal, usdcBal] = await Promise.all([
+      // Fetch fresh data — race all RPC endpoints in parallel.
+      // If a custom mint was requested, fetch its balance alongside USDT/USDC.
+      const [{ solBal, live }, usdtBal, usdcBal, splBal] = await Promise.all([
         fetchSolBalanceRace(address),
         fetchSplBalance(address, SOL_USDT_MINT),
         fetchSplBalance(address, SOL_USDC_MINT),
+        // Only fetch the custom mint if provided; otherwise resolve null immediately
+        mint ? fetchSplBalance(address, mint) : Promise.resolve(null),
       ]);
 
       // If RPC failed but we have stale cache, return stale data (never show $0 for a known wallet)
@@ -722,8 +743,9 @@ export const htlcWalletRouter = router({
       const effectiveUsdcBal = (usdcBal !== null && usdcBal >= 0) ? usdcBal : (cached?.usdcBalance ?? 0);
       const effectiveLive = live || !!cached; // "live" if we have any data
 
-      // Update cache only when we got a real response
-      if (live) {
+      // Update cache only when we got a real response (don't cache custom-mint queries
+      // to avoid polluting the general-purpose cache entry)
+      if (live && !mint) {
         _solBalanceCache.set(address, {
           solBalance: solBal,
           usdtBalance: usdtBal ?? 0,
@@ -750,6 +772,8 @@ export const htlcWalletRouter = router({
         totalUsd,
         solUsdPrice,
         stale: !live && !!cached,
+        /** Balance of the custom `mint` token, if requested. Null if not requested or fetch failed. */
+        splBalance: splBal,
       };
     }),
 

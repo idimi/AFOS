@@ -63,6 +63,13 @@ export const htlcSwaps = mysqlTable("htlc_swaps", {
   recipientAddress: varchar("recipientAddress", { length: 128 }),
   /** HTLC PDA seed used to derive the on-chain PDA (e.g. htlc_a_<rfqId slice>) */
   htlcId:           varchar("htlcId", { length: 64 }),
+  /**
+   * The counterparty's wallet address on the same chain.
+   * For Agent A rows: this is Agent B's wallet (who will receive the locked funds on claim).
+   * For Agent B rows: this is Agent A's wallet (the initiator).
+   * Stored here so HtlcSecretsMonitor can auto-claim without a separate htlc_secrets lookup.
+   */
+  counterpartyAddress: varchar("counterpartyAddress", { length: 128 }),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   refundedAt:       timestamp("refundedAt"),

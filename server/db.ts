@@ -416,12 +416,17 @@ export async function getHtlcSwapAddresses(
 ): Promise<{ initiatorAddress: string | null; counterpartyAddress: string | null }> {
   const db = await getDb();
   if (!db) return { initiatorAddress: null, counterpartyAddress: null };
-  // Agent A's swap row: isAgentA=true, senderAddress = initiator
-  // Agent B's swap row: isAgentA=false, senderAddress = counterparty
+  // Fetch both Agent A and Agent B rows for this rfqId.
+  // Each row now stores:
+  //   senderAddress       — the wallet that locked funds (this agent's address)
+  //   recipientAddress    — who will receive the funds on claim (the other agent)
+  //   counterpartyAddress — explicitly stored other-agent address (most reliable)
+  //   htlcId              — 'htlc_a_...' for Agent A, 'htlc_b_...' for Agent B
   const rows = await db.select({
-    senderAddress:    htlcSwaps.senderAddress,
-    recipientAddress: htlcSwaps.recipientAddress,
-    htlcId:           htlcSwaps.htlcId,
+    senderAddress:       htlcSwaps.senderAddress,
+    recipientAddress:    htlcSwaps.recipientAddress,
+    counterpartyAddress: htlcSwaps.counterpartyAddress,
+    htlcId:              htlcSwaps.htlcId,
   }).from(htlcSwaps)
     .where(eq(htlcSwaps.rfqId, rfqId))
     .limit(10);
@@ -430,10 +435,27 @@ export async function getHtlcSwapAddresses(
   const rowA = rows.find(r => r.htlcId?.startsWith('htlc_a_'));
   const rowB = rows.find(r => r.htlcId?.startsWith('htlc_b_'));
 
-  return {
-    initiatorAddress:    rowA?.senderAddress    ?? rows[0]?.senderAddress    ?? null,
-    counterpartyAddress: rowB?.senderAddress    ?? rowA?.recipientAddress    ?? null,
-  };
+  // Resolution priority for initiatorAddress (Agent A's wallet):
+  //   1. rowA.senderAddress (Agent A locked, so their senderAddress IS their wallet)
+  //   2. rowB.counterpartyAddress (Agent B explicitly stored Agent A's address)
+  //   3. rowB.recipientAddress (Agent A is the recipient of Agent B's lock)
+  //   4. first row senderAddress as last resort
+  const initiatorAddress =
+    rowA?.senderAddress ??
+    rowB?.counterpartyAddress ??
+    rowB?.recipientAddress ??
+    rows[0]?.senderAddress ?? null;
+
+  // Resolution priority for counterpartyAddress (Agent B's wallet):
+  //   1. rowB.senderAddress (Agent B locked, so their senderAddress IS their wallet)
+  //   2. rowA.counterpartyAddress (Agent A explicitly stored Agent B's address)
+  //   3. rowA.recipientAddress (Agent B is the recipient of Agent A's lock)
+  const counterpartyAddress =
+    rowB?.senderAddress ??
+    rowA?.counterpartyAddress ??
+    rowA?.recipientAddress ?? null;
+
+  return { initiatorAddress, counterpartyAddress };
 }
 
 /** Get recently settled (completed/expired/refunded) HTLC secrets for the history panel */
