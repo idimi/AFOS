@@ -2690,3 +2690,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] RefundCard badge: REFUNDED shown in cyan for refunded status (was falling through to EXPIRED)
 - [x] RefundCard action area: "Refunded" indicator (cyan CheckCircle) shown for refunded status
 - [x] Stats grid: expanded from 3 to 4 columns — Claimable, Claimed, Refunded, At Risk ($)
+
+## Bug Fix: HTLC showing REFUNDED + RefundBanner missing (completed)
+- [x] Added 'pending' status to refunds DB query so pending HTLCs show in Refunds tab as CLAIMABLE
+- [x] Upgraded RefundBanner to use both DB refunds query (fast, 30s) and on-chain scanner (authoritative, 5min)
+- [x] DB record confirmed as status=pending (persisted from previous session)
+- [x] Server logs confirm: AutoRefund sees 1 user-claimable HTLC visible in Refunds tab
+- [x] Verified in browser: Refunds tab shows 1 CLAIMABLE with working Claim button

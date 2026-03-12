@@ -306,6 +306,7 @@ export const historyRouter = router({
       const isWalletScoped = input.walletAddresses.length > 0;
 
       const statusCondition = or(
+        eq(htlcSwaps.status, "pending"),
         eq(htlcSwaps.status, "refunded"),
         eq(htlcSwaps.status, "expired"),
       );

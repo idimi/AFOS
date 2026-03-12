@@ -2,7 +2,10 @@
  * RefundBanner — Dismissible warning banner shown on the Overview page
  * when the connected wallet has claimable (expired) HTLCs.
  *
- * Queries myOnChainRefunds with the user's wallet addresses.
+ * Uses TWO data sources for reliability:
+ *   1. DB refunds query (fast, includes pending HTLCs)
+ *   2. On-chain scanner (verifies PDA still exists on-chain)
+ *
  * Shows a banner with count + total amount + link to History → Refunds tab.
  * Dismissed state is stored in sessionStorage (resets on page reload).
  */
@@ -24,45 +27,88 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
     return sessionStorage.getItem("afos_refund_banner_dismissed") === "1";
   });
 
-  const { data } = trpc.history.myOnChainRefunds.useQuery(
+  const enabled = walletAddresses.length > 0 && !dismissed;
+
+  // Source 1: DB refunds query (fast — includes pending HTLCs now)
+  const { data: dbData } = trpc.history.refunds.useQuery(
+    { walletAddresses, search: "" },
+    {
+      enabled,
+      refetchInterval: 30_000,
+      staleTime: 15_000,
+    }
+  );
+
+  // Source 2: On-chain scanner (slower but authoritative)
+  const { data: onChainData } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses },
     {
-      enabled: walletAddresses.length > 0 && !dismissed,
-      refetchInterval: 5 * 60_000, // re-check every 5 minutes
+      enabled,
+      refetchInterval: 5 * 60_000,
       staleTime: 60_000,
     }
   );
 
-  const claimable = useMemo(
-    () => (data?.htlcs ?? []).filter(h => h.timelockExpired),
-    [data]
+  // Count claimable from DB: pending HTLCs are claimable
+  const dbClaimable = useMemo(() => {
+    return (dbData?.refunds ?? []).filter(r => r.status === "pending");
+  }, [dbData]);
+
+  // Count claimable from on-chain scanner: expired timelocks
+  const onChainClaimable = useMemo(
+    () => (onChainData?.htlcs ?? []).filter(h => h.timelockExpired),
+    [onChainData]
   );
 
-  const totalUsd = useMemo(
-    () => claimable.reduce((sum, h) => {
-      const price = PRICE_ESTIMATES[h.token] ?? 1;
-      return sum + parseFloat(h.amountHuman) * price;
-    }, 0),
-    [claimable]
-  );
+  // Merge: use whichever source found more claimable HTLCs (avoid double-counting)
+  // DB is faster and more reliable; on-chain is authoritative but slower
+  const claimableCount = Math.max(dbClaimable.length, onChainClaimable.length);
+
+  // Calculate total USD from the best available source
+  const totalUsd = useMemo(() => {
+    if (onChainClaimable.length > 0) {
+      return onChainClaimable.reduce((sum, h) => {
+        const price = PRICE_ESTIMATES[h.token] ?? 1;
+        return sum + parseFloat(h.amountHuman) * price;
+      }, 0);
+    }
+    // Fallback to DB data
+    return dbClaimable.reduce((sum, r) => {
+      const fromSymbol = r.chain === "bitcoin" ? "BTC" : r.chain === "ethereum" ? "ETH" : r.chain === "trac_network" ? "TNK" : "SOL";
+      const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
+      return sum + parseFloat(r.amountHuman) * price;
+    }, 0);
+  }, [onChainClaimable, dbClaimable]);
+
+  // Build amount summary string
+  const amountStr = useMemo(() => {
+    if (onChainClaimable.length > 0) {
+      const summary = onChainClaimable.reduce((acc, h) => {
+        acc[h.token] = (acc[h.token] ?? 0) + parseFloat(h.amountHuman);
+        return acc;
+      }, {} as Record<string, number>);
+      return Object.entries(summary)
+        .map(([sym, amt]) => `${amt.toFixed(sym === "BTC" ? 8 : 4)} ${sym}`)
+        .join(" + ");
+    }
+    // Fallback to DB data
+    const summary = dbClaimable.reduce((acc, r) => {
+      const sym = r.chain === "bitcoin" ? "BTC" : r.chain === "ethereum" ? "ETH" : r.chain === "trac_network" ? "TNK" : "SOL";
+      acc[sym] = (acc[sym] ?? 0) + parseFloat(r.amountHuman);
+      return acc;
+    }, {} as Record<string, number>);
+    return Object.entries(summary)
+      .map(([sym, amt]) => `${amt.toFixed(sym === "BTC" ? 8 : 4)} ${sym}`)
+      .join(" + ");
+  }, [onChainClaimable, dbClaimable]);
 
   // Don't render if no wallet connected, dismissed, or no claimable HTLCs
-  if (walletAddresses.length === 0 || dismissed || claimable.length === 0) return null;
+  if (!enabled || claimableCount === 0) return null;
 
   const handleDismiss = () => {
     sessionStorage.setItem("afos_refund_banner_dismissed", "1");
     setDismissed(true);
   };
-
-  const amountSummary = claimable
-    .reduce((acc, h) => {
-      acc[h.token] = (acc[h.token] ?? 0) + parseFloat(h.amountHuman);
-      return acc;
-    }, {} as Record<string, number>);
-
-  const amountStr = Object.entries(amountSummary)
-    .map(([sym, amt]) => `${amt.toFixed(sym === "BTC" ? 8 : 4)} ${sym}`)
-    .join(" + ");
 
   return (
     <div
@@ -83,9 +129,9 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
       {/* Message */}
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-amber-300">
-          {claimable.length === 1
+          {claimableCount === 1
             ? "You have 1 claimable refund"
-            : `You have ${claimable.length} claimable refunds`}
+            : `You have ${claimableCount} claimable refunds`}
         </p>
         <p className="text-[10px] text-amber-400/70 truncate">
           {amountStr}
