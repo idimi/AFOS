@@ -2703,3 +2703,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fixed RefundCard.claimRefund: falls back to window.phantom.solana.signAndSendTransaction when adapter publicKey is null
 - [x] Fixed OpenTradeCard.executeEarlyRefund: same dual-path fix for consistency
 - [x] TypeScript: 0 errors
+
+## Bug: Solana HTLC claim fails with "Failed app interaction" in Phantom
+- [x] Diagnosed: program requires token accounts (vault ATA + sender ATA + token program) even for SOL HTLCs
+- [x] Confirmed user wallet (AuSUBiVV...) IS the on-chain sender — can call refund directly
+- [x] Fixed buildRefundInstruction in afosHtlcProgram.ts: always include USDT token accounts
+- [x] Correct account order: sender, htlcPda, vaultAta, senderAta, tokenProgram, systemProgram
+- [x] Simulation PASSED with this account order
+- [x] Reverted Claim button to use Phantom wallet directly (not server agent)
+- [x] TypeScript: 0 errors

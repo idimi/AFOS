@@ -201,9 +201,19 @@ export function buildClaimInstruction(params: {
   });
 }
 
+// Default USDT mint — the program always requires token accounts in the refund instruction
+// even for native SOL HTLCs (verified by on-chain simulation)
+const DEFAULT_REFUND_TOKEN_MINT = new PublicKey(
+  "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB" // USDT
+);
+
 /**
  * Build a refund instruction — recovers funds after timelock expires
  * Called by the sender if the swap doesn't complete
+ *
+ * IMPORTANT: The program always requires token accounts in the account list
+ * even for native SOL HTLCs. We always include USDT token accounts.
+ * Account order: sender, htlcPda, vaultAta, senderAta, tokenProgram, systemProgram
  */
 export function buildRefundInstruction(params: {
   sender: PublicKey;
@@ -214,21 +224,19 @@ export function buildRefundInstruction(params: {
 
   const data = Buffer.from(DISCRIMINATORS.refund);
 
+  // Always include token accounts — program requires them even for SOL HTLCs
+  const mint = params.tokenMint ?? DEFAULT_REFUND_TOKEN_MINT;
+  const vaultAta = deriveAta(htlcPda, mint);
+  const senderAta = deriveAta(params.sender, mint);
+
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: params.sender, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
+    { pubkey: vaultAta, isSigner: false, isWritable: true },
+    { pubkey: senderAta, isSigner: false, isWritable: true },
+    { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
-
-  if (params.tokenMint) {
-    const vaultAta = deriveAta(htlcPda, params.tokenMint);
-    const senderAta = deriveAta(params.sender, params.tokenMint);
-    keys.push(
-      { pubkey: vaultAta, isSigner: false, isWritable: true },
-      { pubkey: senderAta, isSigner: false, isWritable: true },
-      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
-    );
-  }
 
   return new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,

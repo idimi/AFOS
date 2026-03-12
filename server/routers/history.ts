@@ -11,6 +11,7 @@
  * When walletAddresses is provided → wallet-scoped view (only that wallet's records).
  */
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
@@ -636,5 +637,63 @@ export const historyRouter = router({
         })
         .where(eq(htlcSwaps.htlcAddress, input.htlcAddress));
       return { success: true };
+    }),
+
+  /**
+   * Agent-side refund: triggers the AFOS agent to submit the on-chain refund tx.
+   * Used when the agent is the on-chain sender (locked the HTLC on behalf of the user).
+   * The agent signs with SOL_HTLC_KEY and the program returns the SOL to the agent wallet.
+   */
+  agentRefundHtlc: publicProcedure
+    .input(z.object({
+      htlcAddress: z.string(),
+      htlcId:      z.string(),
+      tokenSymbol: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB unavailable' });
+
+      // Verify the HTLC exists and is still pending
+      const [htlc] = await db
+        .select()
+        .from(htlcSwaps)
+        .where(eq(htlcSwaps.htlcAddress, input.htlcAddress))
+        .limit(1);
+
+      if (!htlc) throw new TRPCError({ code: 'NOT_FOUND', message: 'HTLC not found' });
+      if (htlc.status !== 'pending') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `HTLC is already ${htlc.status}` });
+      }
+
+      // Verify timelock has expired
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (htlc.locktime && nowSec < htlc.locktime) {
+        const remaining = htlc.locktime - nowSec;
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Timelock has not expired yet. ${remaining}s remaining.`,
+        });
+      }
+
+      // Import and call the refund executor
+      const { refundSolanaHtlc } = await import('../solanaHtlcRefund.js');
+      const result = await refundSolanaHtlc({
+        htlcId: input.htlcId,
+        tokenSymbol: input.tokenSymbol,
+      });
+
+      // Update DB
+      await db
+        .update(htlcSwaps)
+        .set({
+          refundTxId: result.txSignature,
+          status:     'refunded',
+          refundedAt: new Date(),
+          updatedAt:  new Date(),
+        })
+        .where(eq(htlcSwaps.htlcAddress, input.htlcAddress));
+
+      return { success: true, txSignature: result.txSignature };
     }),
 });
