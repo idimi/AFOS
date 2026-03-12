@@ -2813,3 +2813,5 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: Agent B never prompts Phantom wallet to sign USDT lock — Root cause: stale closure bug. acceptRfq captured solConnected=false at mount. Fix: all callers now use acceptRfqRef.current
 - [x] Fix: Agent B never discovers/claims the secret — htlc_secret handler + auto-claim via claimHtlcFundsRef was already correct; the issue was Agent B never locked in the first place (stale closure)
 - [x] Fix: End-to-end swap flow: RFQ → auto-accept → Phantom sign → HTLC lock → secret reveal → claim — Fixed via acceptRfqRef pattern + echo guards + proper error states
+- [x] Set autoClaim default to true (on by default for seamless atomic swaps) — added migration so existing users with saved false value get upgraded; setPrefs tracks explicit-disable flag
+- [x] Add live Swap Status indicator in NetworkPanel: HTLC state (idle → locking → locked → settling → claimed) + countdown timer for lock expiry — SwapStatusIndicator component with color-coded urgency (amber <2min, red expired), tx hash, error display

@@ -5,13 +5,14 @@
  * into a single tabbed card so users see both sides of the P2P network in one place.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Radio, Settings2, ChevronDown, ChevronUp, ChevronRight,
   CheckCircle2, XCircle, Clock, Zap, TrendingUp,
   Users, Shield, AlertCircle, Network,
   ToggleLeft, ToggleRight, Info, Lock, ExternalLink,
+  Activity,
 } from "lucide-react";
 import { useLightPeer, type IncomingRfq, type HtlcStep } from "../contexts/LightPeerContext";
 import { useWallet } from "../contexts/WalletContext";
@@ -300,6 +301,167 @@ function PairToggle({ pair, active, onToggle }: { pair: string; active: boolean;
   );
 }
 
+// ─── Swap Status Indicator ───────────────────────────────────────────────────
+
+/**
+ * Inline persistent indicator showing the live HTLC state for the most recent swap.
+ * Visible in My Node tab whenever a swap is in progress or recently completed.
+ */
+function SwapStatusIndicator() {
+  const peer = useLightPeer();
+  const signing = peer.htlcSigning;
+  const [now, setNow] = useState(Date.now());
+  // Countdown tick — only runs when locked
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (signing?.step === "locked") {
+      tickRef.current = setInterval(() => setNow(Date.now()), 1000);
+    } else {
+      if (tickRef.current) clearInterval(tickRef.current);
+    }
+    return () => { if (tickRef.current) clearInterval(tickRef.current); };
+  }, [signing?.step]);
+
+  // Find the most recent accepted RFQ with a lock timestamp for countdown
+  const lockedRfqId = signing?.rfqId;
+  const lockedAt = lockedRfqId ? peer.htlcLockedAt[lockedRfqId] : undefined;
+  const LOCK_DURATION_MS = 10 * 60 * 1000; // 10 min default
+  const expiresAt = lockedAt ? lockedAt + LOCK_DURATION_MS : null;
+  const msLeft = expiresAt ? expiresAt - now : null;
+
+  // Don't show if idle or no signing state
+  if (!signing || signing.step === "idle") {
+    // Check if there's a recently locked RFQ (within last 10 min)
+    const recentLocked = peer.incomingRfqs.find(r =>
+      r.status === "accepted" && peer.htlcLockedAt[r.rfqId] && (Date.now() - peer.htlcLockedAt[r.rfqId]) < LOCK_DURATION_MS
+    );
+    if (!recentLocked) return null;
+  }
+
+  const STEPS: Array<{ key: string; label: string }> = [
+    { key: "signing",   label: "Signing" },
+    { key: "locking",   label: "Locking" },
+    { key: "locked",    label: "Locked" },
+    { key: "revealing", label: "Revealing" },
+    { key: "settled",   label: "Settled" },
+  ];
+
+  const currentStep = signing?.step ?? "locked";
+  const currentIdx = STEPS.findIndex(s => s.key === currentStep);
+  const isFailed = currentStep === "failed";
+  const isDone = currentStep === "settled";
+
+  const stepColor = isFailed
+    ? "text-red-400 border-red-500/30 bg-red-500/10"
+    : isDone
+    ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+    : "text-cyan-400 border-cyan-500/30 bg-cyan-500/10";
+
+  const stepLabel = isFailed
+    ? "Failed"
+    : STEPS[currentIdx]?.label ?? currentStep;
+
+  // Format countdown
+  const formatCountdown = (ms: number) => {
+    if (ms <= 0) return "Expired";
+    const totalSecs = Math.floor(ms / 1000);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return `${m}m ${s.toString().padStart(2, "0")}s`;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
+      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 space-y-2"
+    >
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Activity className={`w-3.5 h-3.5 ${isFailed ? "text-red-400" : isDone ? "text-emerald-400" : "text-cyan-400 animate-pulse"}`} />
+          <span className="text-xs font-semibold text-white">Swap Status</span>
+          {signing?.rfqId && (
+            <span className="text-[9px] font-mono text-slate-500">{signing.rfqId.slice(0, 8)}…</span>
+          )}
+        </div>
+        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${stepColor}`}>
+          {stepLabel}
+        </span>
+      </div>
+
+      {/* Step pipeline */}
+      <div className="flex items-center gap-1">
+        {STEPS.map((step, idx) => {
+          const done = !isFailed && idx < currentIdx;
+          const active = !isFailed && idx === currentIdx;
+          const future = isFailed ? true : idx > currentIdx;
+          return (
+            <div key={step.key} className="flex items-center gap-1 flex-1">
+              <div className="flex flex-col items-center gap-0.5 flex-1">
+                <div
+                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold transition-all ${
+                    done ? "bg-emerald-500/20 border border-emerald-500/50 text-emerald-400"
+                    : active && !isFailed ? "bg-cyan-500/20 border border-cyan-500/60 text-cyan-400"
+                    : isFailed && idx === currentIdx ? "bg-red-500/20 border border-red-500/50 text-red-400"
+                    : "bg-white/5 border border-white/10 text-slate-600"
+                  }`}
+                >
+                  {done ? "✓" : active && !isFailed ? <span className="animate-spin inline-block text-[7px]">◌</span> : isFailed && idx === currentIdx ? "✗" : idx + 1}
+                </div>
+                <span className={`text-[8px] text-center leading-tight ${
+                  done ? "text-emerald-400" : active ? (isFailed ? "text-red-400" : "text-cyan-400") : "text-slate-600"
+                }`}>
+                  {step.label}
+                </span>
+              </div>
+              {idx < STEPS.length - 1 && (
+                <div className={`h-px flex-1 mb-3 ${
+                  done ? "bg-emerald-500/40" : "bg-white/10"
+                }`} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Countdown timer — shown when funds are locked and waiting for counterparty */}
+      {currentStep === "locked" && lockedAt && msLeft !== null && (
+        <div className={`flex items-center justify-between text-[10px] rounded px-2 py-1 ${
+          msLeft <= 0
+            ? "bg-red-500/10 border border-red-500/20 text-red-400"
+            : msLeft < 120_000
+            ? "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+            : "bg-white/5 border border-white/10 text-slate-400"
+        }`}>
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {msLeft <= 0 ? "Lock expired — refund available" : "Refundable in"}
+          </span>
+          {msLeft > 0 && (
+            <span className="font-mono font-semibold">{formatCountdown(msLeft)}</span>
+          )}
+        </div>
+      )}
+
+      {/* Tx hash */}
+      {signing?.txHash && (
+        <div className="text-[9px] font-mono text-slate-500 truncate">
+          Tx: {signing.txHash.slice(0, 24)}…
+        </div>
+      )}
+
+      {/* Error message */}
+      {isFailed && signing?.error && (
+        <div className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1">
+          {signing.error}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 // ─── My Node Tab ────────────────────────────────────────────────────────────
 
 function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
@@ -505,6 +667,13 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
               : <><ToggleLeft className="w-4 h-4" /> Off</>}
           </button>
         </div>
+      )}
+
+      {/* Live Swap Status Indicator */}
+      {isWalletConnected && (
+        <AnimatePresence>
+          <SwapStatusIndicator />
+        </AnimatePresence>
       )}
       {/* Quote Settings */}
       {isWalletConnected && peer.prefs.enabled && (

@@ -269,9 +269,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const hasExplicitlyOptedIn = localStorage.getItem("afos_lp_opted_in") === "true";
       if (!hasExplicitlyOptedIn && parsed.enabled) {
         parsed.enabled = false;
-        localStorage.setItem("afos_light_peer_prefs", JSON.stringify({ ...DEFAULT_PREFS, ...parsed }));
       }
-      return { ...DEFAULT_PREFS, ...parsed };
+      // Migration: autoClaim was previously false by default — force it to true
+      // so all existing users get seamless atomic swap completion without manual steps.
+      // Users can still turn it off in Agent Settings if they prefer manual claiming.
+      if (parsed.autoClaim === false && !localStorage.getItem("afos_autoclaim_explicitly_disabled")) {
+        parsed.autoClaim = true;
+      }
+      const merged = { ...DEFAULT_PREFS, ...parsed };
+      localStorage.setItem("afos_light_peer_prefs", JSON.stringify(merged));
+      return merged;
     } catch {
       return DEFAULT_PREFS;
     }
@@ -2223,6 +2230,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         localStorage.setItem("afos_lp_opted_in", "true");
       } else if (partial.enabled === false) {
         localStorage.removeItem("afos_lp_opted_in");
+      }
+      // Track explicit autoClaim disable so migration doesn't re-enable it
+      if (partial.autoClaim === false) {
+        localStorage.setItem("afos_autoclaim_explicitly_disabled", "true");
+      } else if (partial.autoClaim === true) {
+        localStorage.removeItem("afos_autoclaim_explicitly_disabled");
       }
       return next;
     });
