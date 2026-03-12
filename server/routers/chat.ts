@@ -2394,8 +2394,10 @@ export const chatRouter = router({
       if (row.status === "expired" || row.status === "refunded") {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: `HTLC is ${row.status} — cannot reveal` });
       }
-      // Mark as revealed
-      await updateHtlcSecretStatus(input.rfqId, "revealed");
+      // Mark as revealed — also persist counterpartyAddress so the monitor can auto-claim on retry
+      await updateHtlcSecretStatus(input.rfqId, "revealed", {
+        counterpartyAddress: input.counterpartyAddress ?? undefined,
+      });
 
       // ── Trigger on-chain claims for Solana HTLC ──────────────────────────────
       // The AFOS server (using SOL_HTLC_KEY as coordinator) submits claim instructions

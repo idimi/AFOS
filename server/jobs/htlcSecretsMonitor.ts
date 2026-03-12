@@ -19,7 +19,7 @@
  * returns an error which is treated as success (DB is marked completed).
  */
 
-import { getActiveHtlcSecrets, updateHtlcSecretStatus } from "../db";
+import { getActiveHtlcSecrets, updateHtlcSecretStatus, getHtlcSwapAddresses } from "../db";
 import { sendToPeer } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 
@@ -155,12 +155,34 @@ async function runHtlcSecretsCheck(): Promise<void> {
             continue;
           }
 
-          // We need both wallet addresses to claim
-          if (!row.initiatorAddress || !row.counterpartyAddress) {
-            console.warn(
-              `[HtlcSecretsMonitor] Missing wallet addresses for rfqId=${row.rfqId} — cannot auto-claim`
+          // We need both wallet addresses to claim.
+          // If not in htlc_secrets, fall back to htlc_swaps lookup by rfqId.
+          let initiatorAddress   = row.initiatorAddress;
+          let counterpartyAddress = row.counterpartyAddress;
+
+          if (!initiatorAddress || !counterpartyAddress) {
+            console.log(
+              `[HtlcSecretsMonitor] Missing wallet addresses for rfqId=${row.rfqId} — looking up from htlc_swaps`
             );
-            continue;
+            const fallback = await getHtlcSwapAddresses(row.rfqId);
+            initiatorAddress    = initiatorAddress    ?? fallback.initiatorAddress;
+            counterpartyAddress = counterpartyAddress ?? fallback.counterpartyAddress;
+
+            if (!initiatorAddress || !counterpartyAddress) {
+              console.warn(
+                `[HtlcSecretsMonitor] Still missing wallet addresses after htlc_swaps lookup for rfqId=${row.rfqId} — cannot auto-claim`
+              );
+              continue;
+            }
+
+            // Persist the resolved addresses so future retries don't need to look them up again
+            await updateHtlcSecretStatus(row.rfqId, row.status, {
+              counterpartyAddress: counterpartyAddress ?? undefined,
+            });
+            console.log(
+              `[HtlcSecretsMonitor] Resolved addresses from htlc_swaps for rfqId=${row.rfqId}: ` +
+              `initiator=${initiatorAddress?.slice(0, 8)}… counterparty=${counterpartyAddress?.slice(0, 8)}…`
+            );
           }
 
           const htlcIdA = deriveHtlcIdA(row.rfqId);
@@ -182,7 +204,7 @@ async function runHtlcSecretsCheck(): Promise<void> {
             const claimA = await claimSolanaHtlc({
               htlcId:           htlcIdA,
               secretHex:        row.secretHex,
-              recipientAddress: row.counterpartyAddress,
+              recipientAddress: counterpartyAddress,
               tokenSymbol:      tokenSymA,
             });
             claimATxSig = claimA.txSignature;
@@ -207,7 +229,7 @@ async function runHtlcSecretsCheck(): Promise<void> {
             const claimB = await claimSolanaHtlc({
               htlcId:           htlcIdB,
               secretHex:        row.secretHex,
-              recipientAddress: row.initiatorAddress,
+              recipientAddress: initiatorAddress,
               tokenSymbol:      tokenSymB,
             });
             claimBSuccess = true;

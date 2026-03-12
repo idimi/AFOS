@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS, htlcSecrets, HtlcSecret, InsertHtlcSecret } from "../drizzle/schema";
+import { InsertUser, users, peerReputation, PeerReputation, userSettings, UserSettings, DEFAULT_USER_SETTINGS, htlcSecrets, HtlcSecret, InsertHtlcSecret, htlcSwaps } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -389,7 +389,7 @@ export async function getHtlcSecret(rfqId: string): Promise<HtlcSecret | null> {
 export async function updateHtlcSecretStatus(
   rfqId: string,
   status: HtlcSecret["status"],
-  extra?: { lockTxId?: string; revealTxId?: string },
+  extra?: { lockTxId?: string; revealTxId?: string; counterpartyAddress?: string },
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;
@@ -404,6 +404,36 @@ export async function getActiveHtlcSecrets(): Promise<HtlcSecret[]> {
   if (!db) return [];
   return db.select().from(htlcSecrets)
     .where(sql`${htlcSecrets.status} IN ('locked', 'revealed')`);
+}
+
+/**
+ * Look up wallet addresses for a given rfqId from the htlc_swaps table.
+ * Used by the monitor as a fallback when counterpartyAddress is not stored in htlc_secrets.
+ * Returns { initiatorAddress, counterpartyAddress } — either may be null.
+ */
+export async function getHtlcSwapAddresses(
+  rfqId: string,
+): Promise<{ initiatorAddress: string | null; counterpartyAddress: string | null }> {
+  const db = await getDb();
+  if (!db) return { initiatorAddress: null, counterpartyAddress: null };
+  // Agent A's swap row: isAgentA=true, senderAddress = initiator
+  // Agent B's swap row: isAgentA=false, senderAddress = counterparty
+  const rows = await db.select({
+    senderAddress:    htlcSwaps.senderAddress,
+    recipientAddress: htlcSwaps.recipientAddress,
+    htlcId:           htlcSwaps.htlcId,
+  }).from(htlcSwaps)
+    .where(eq(htlcSwaps.rfqId, rfqId))
+    .limit(10);
+
+  // Agent A's row has htlcId starting with 'htlc_a_'; Agent B's starts with 'htlc_b_'
+  const rowA = rows.find(r => r.htlcId?.startsWith('htlc_a_'));
+  const rowB = rows.find(r => r.htlcId?.startsWith('htlc_b_'));
+
+  return {
+    initiatorAddress:    rowA?.senderAddress    ?? rows[0]?.senderAddress    ?? null,
+    counterpartyAddress: rowB?.senderAddress    ?? rowA?.recipientAddress    ?? null,
+  };
 }
 
 /** Get recently settled (completed/expired/refunded) HTLC secrets for the history panel */

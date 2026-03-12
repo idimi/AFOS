@@ -2775,3 +2775,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Investigate failed tx C22Nkioq8DfGdR6EkPB4CoaNGU7CVPKWE1u1M96Dp1LkcN8geu8hScaC2W51mvdpfYYV9wGyQT8xx5HL4s7dm2a on Solscan
 - [x] Fix buildSolanaHtlcRefundTx: was using lockTxId (tx signature) as PDA seed instead of htlcSeedId (htlc_a_rfq_... string)
+
+## Fix: HtlcSecretsMonitor auto-claim uses correct htlcSeedId
+
+- [x] Read HtlcSecretsMonitor to understand the auto-claim flow and wallet address lookup
+- [x] Fix monitor to pass htlcSeedId (PDA seed) and wallet addresses when auto-claiming Agent B's HTLC
