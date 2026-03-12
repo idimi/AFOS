@@ -2722,3 +2722,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Audit DB consistency: htlcMonitor does not overwrite pending records with fake txIds
 - [ ] Check Oracle/peer connectivity for live RFQ matching
 - [ ] Fix any issues found before first live swap
+
+## HTLC Claim Retry Mechanism
+
+- [x] Add server-side HTLC claim retry in htlcSecretsMonitor.ts: if a "revealed" HTLC stays unclaimed for >5 minutes, auto-retry claimSolanaHtlc (idempotent — treat already-claimed errors as success)

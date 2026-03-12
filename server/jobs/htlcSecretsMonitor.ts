@@ -8,17 +8,66 @@
  * On expiry it:
  *   1. Marks the row as 'expired' in the DB
  *   2. Sends an htlc_expired signaling message to both parties (if online)
- *   3. Notifies the project owner via the Manus notification service
  *
- * For rows that are 'revealed' but not yet 'completed' (Agent B has not claimed),
- * it sends a reminder signaling message so the browser can re-show the Claim button.
+ * For rows that are 'revealed' but not yet 'completed':
+ *   - Case 2: age < 5 minutes → sends a reminder signal to the browser (Agent B may still be online)
+ *   - Case 3: age ≥ 5 minutes → server auto-retries claimSolanaHtlc for both HTLCs
+ *             This ensures funds are always released even if the browser is closed or
+ *             the initial fire-and-forget claim in revealHtlcSecret failed silently.
+ *
+ * The claim retry is idempotent: if the HTLC is already claimed on-chain, the program
+ * returns an error which is treated as success (DB is marked completed).
  */
 
 import { getActiveHtlcSecrets, updateHtlcSecretStatus } from "../db";
 import { sendToPeer } from "../signaling";
+import { claimSolanaHtlc } from "../solanaHtlcClaim";
 
-const POLL_INTERVAL_MS = 60_000; // 1 minute
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 60_000;          // Check every 60 seconds
+const CLAIM_RETRY_AFTER_MS = 5 * 60_000; // Retry server-side claim after 5 minutes of being revealed
+
 let monitorInterval: ReturnType<typeof setInterval> | null = null;
+
+// ─── htlcId derivation ────────────────────────────────────────────────────────
+
+/**
+ * Derive Agent A's on-chain HTLC PDA seed from the rfqId.
+ * Matches the formula used in LightPeerContext and revealHtlcSecret.
+ */
+function deriveHtlcIdA(rfqId: string): string {
+  return `htlc_a_${rfqId.slice(0, 22)}`;
+}
+
+/**
+ * Derive Agent B's on-chain HTLC PDA seed from the rfqId.
+ */
+function deriveHtlcIdB(rfqId: string): string {
+  return `htlc_b_${rfqId.slice(0, 22)}`;
+}
+
+// ─── Error classification ─────────────────────────────────────────────────────
+
+/**
+ * Returns true if the error message indicates the HTLC was already claimed.
+ * Treat this as success — the funds are already released.
+ */
+function isAlreadyClaimedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  // Common Anchor / Solana program error messages for already-settled HTLCs
+  return (
+    msg.includes("already") ||
+    msg.includes("InvalidStatus") ||
+    msg.includes("AlreadyClaimed") ||
+    msg.includes("AlreadyRefunded") ||
+    msg.includes("0x1770") || // Custom Anchor error codes
+    msg.includes("0x1771") ||
+    msg.includes("0x1772")
+  );
+}
+
+// ─── Main Monitor Loop ────────────────────────────────────────────────────────
 
 async function runHtlcSecretsCheck(): Promise<void> {
   let rows;
@@ -42,10 +91,8 @@ async function runHtlcSecretsCheck(): Promise<void> {
           `(expired ${Math.round((Number(now) - Number(expiresAt)) / 1000)}s ago)`
         );
 
-        // Mark as expired in the DB
         await updateHtlcSecretStatus(row.rfqId, "expired");
 
-        // Notify both parties via signaling if they are online
         const expiredMsg = {
           type: "htlc_expired",
           rfqId: row.rfqId,
@@ -57,7 +104,6 @@ async function runHtlcSecretsCheck(): Promise<void> {
           message: "The HTLC swap window has expired. Both parties may now refund their locked funds.",
         };
 
-        // Notify Agent B (counterparty) so they can trigger refund UI
         if (row.counterpartyPeerId) {
           const sentToB = sendToPeer(row.counterpartyPeerId, expiredMsg);
           if (sentToB) {
@@ -65,33 +111,141 @@ async function runHtlcSecretsCheck(): Promise<void> {
           }
         }
 
-        // Notify Agent A (initiator) so their Refund button appears in the UI
         if (row.initiatorPeerId) {
           const sentToA = sendToPeer(row.initiatorPeerId, expiredMsg);
           if (sentToA) {
             console.log(`[HtlcSecretsMonitor] Sent htlc_expired to Agent A peer=${row.initiatorPeerId}`);
           }
         }
-
       }
 
-      // ── Case 2: revealed but not yet completed — send reminder ───────────────
-      if (row.status === "revealed" && expiresAt > now) {
-        // Secret was revealed (Agent A claimed) but Agent B hasn't claimed yet.
-        // Re-broadcast the secret so the browser can re-show the Claim button
-        // (handles page reloads or missed WebSocket messages).
-        if (row.counterpartyPeerId) {
-          const reminderMsg = {
-            type: "htlc_secret_reminder",
-            rfqId: row.rfqId,
-            secretHex: row.secretHex,
-            expiresAt: Number(expiresAt),
-            message: "Secret reminder: Agent A has already revealed the secret. Please claim your funds.",
-          };
-          const sent = sendToPeer(row.counterpartyPeerId, reminderMsg);
-          if (sent) {
+      // ── Case 2 & 3: revealed but not yet completed ───────────────────────────
+      if (row.status === "revealed") {
+        const revealedAgeMs = Number(now) - row.updatedAt.getTime();
+        const isStale = revealedAgeMs >= CLAIM_RETRY_AFTER_MS;
+
+        if (!isStale) {
+          // Case 2: recently revealed — send reminder signal so browser can show Claim button
+          if (row.counterpartyPeerId) {
+            const reminderMsg = {
+              type: "htlc_secret_reminder",
+              rfqId: row.rfqId,
+              secretHex: row.secretHex,
+              expiresAt: Number(expiresAt),
+              message: "Secret reminder: Agent A has already revealed the secret. Please claim your funds.",
+            };
+            const sent = sendToPeer(row.counterpartyPeerId, reminderMsg);
+            if (sent) {
+              console.log(
+                `[HtlcSecretsMonitor] Sent htlc_secret_reminder to Agent B peer=${row.counterpartyPeerId} rfqId=${row.rfqId}`
+              );
+            }
+          }
+        } else {
+          // Case 3: stale revealed HTLC (≥5 min) — server auto-retries on-chain claims
+          // This handles: browser closed, network blip, fire-and-forget failure, etc.
+          console.log(
+            `[HtlcSecretsMonitor] Stale revealed HTLC rfqId=${row.rfqId} ` +
+            `(revealed ${Math.round(revealedAgeMs / 60_000)}m ago) — retrying server-side claims`
+          );
+
+          // Only retry Solana claims for now (ETH/BTC claim retry is a future enhancement)
+          if (row.fromChain !== "solana" && row.toChain !== "solana") {
+            console.log(`[HtlcSecretsMonitor] Skipping non-Solana retry for rfqId=${row.rfqId}`);
+            continue;
+          }
+
+          // We need both wallet addresses to claim
+          if (!row.initiatorAddress || !row.counterpartyAddress) {
+            console.warn(
+              `[HtlcSecretsMonitor] Missing wallet addresses for rfqId=${row.rfqId} — cannot auto-claim`
+            );
+            continue;
+          }
+
+          const htlcIdA = deriveHtlcIdA(row.rfqId);
+          const htlcIdB = deriveHtlcIdB(row.rfqId);
+
+          // Determine SPL token symbols (undefined = native SOL)
+          const SPL_TOKENS = new Set(["USDT", "USDC"]);
+          const fromTokenSym = row.fromToken?.toUpperCase() ?? "SOL";
+          const toTokenSym   = row.toToken?.toUpperCase()   ?? "SOL";
+          const tokenSymA = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined;
+          const tokenSymB = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined;
+
+          let claimASuccess = false;
+          let claimBSuccess = false;
+          let claimATxSig: string | undefined;
+
+          // ── Claim A: release Agent A's locked fromToken → Agent B ────────────
+          try {
+            const claimA = await claimSolanaHtlc({
+              htlcId:           htlcIdA,
+              secretHex:        row.secretHex,
+              recipientAddress: row.counterpartyAddress,
+              tokenSymbol:      tokenSymA,
+            });
+            claimATxSig = claimA.txSignature;
+            claimASuccess = true;
             console.log(
-              `[HtlcSecretsMonitor] Sent htlc_secret_reminder to Agent B peer=${row.counterpartyPeerId} rfqId=${row.rfqId}`
+              `[HtlcSecretsMonitor] Retry claim A success: ${claimA.txSignature} | rfqId=${row.rfqId}`
+            );
+          } catch (errA) {
+            if (isAlreadyClaimedError(errA)) {
+              claimASuccess = true;
+              console.log(`[HtlcSecretsMonitor] Claim A already settled on-chain rfqId=${row.rfqId}`);
+            } else {
+              console.error(
+                `[HtlcSecretsMonitor] Retry claim A failed rfqId=${row.rfqId}:`,
+                errA instanceof Error ? errA.message : errA
+              );
+            }
+          }
+
+          // ── Claim B: release Agent B's locked toToken → Agent A ──────────────
+          try {
+            const claimB = await claimSolanaHtlc({
+              htlcId:           htlcIdB,
+              secretHex:        row.secretHex,
+              recipientAddress: row.initiatorAddress,
+              tokenSymbol:      tokenSymB,
+            });
+            claimBSuccess = true;
+            console.log(
+              `[HtlcSecretsMonitor] Retry claim B success: ${claimB.txSignature} | rfqId=${row.rfqId}`
+            );
+          } catch (errB) {
+            if (isAlreadyClaimedError(errB)) {
+              claimBSuccess = true;
+              console.log(`[HtlcSecretsMonitor] Claim B already settled on-chain rfqId=${row.rfqId}`);
+            } else {
+              console.error(
+                `[HtlcSecretsMonitor] Retry claim B failed rfqId=${row.rfqId}:`,
+                errB instanceof Error ? errB.message : errB
+              );
+            }
+          }
+
+          // ── Update DB if both sides are settled ───────────────────────────────
+          if (claimASuccess && claimBSuccess) {
+            await updateHtlcSecretStatus(row.rfqId, "completed", {
+              revealTxId: claimATxSig,
+            });
+            console.log(`[HtlcSecretsMonitor] Marked rfqId=${row.rfqId} as completed after retry`);
+
+            // Notify both parties via signaling so their UI updates
+            const completedMsg = {
+              type: "htlc_completed",
+              rfqId: row.rfqId,
+              message: "Swap completed — funds have been released to both parties.",
+            };
+            if (row.counterpartyPeerId) sendToPeer(row.counterpartyPeerId, completedMsg);
+            if (row.initiatorPeerId)    sendToPeer(row.initiatorPeerId, completedMsg);
+          } else {
+            // Partial success or both failed — will retry on next poll
+            console.warn(
+              `[HtlcSecretsMonitor] Partial retry for rfqId=${row.rfqId}: ` +
+              `claimA=${claimASuccess} claimB=${claimBSuccess} — will retry in ${POLL_INTERVAL_MS / 1000}s`
             );
           }
         }
@@ -102,6 +256,8 @@ async function runHtlcSecretsCheck(): Promise<void> {
   }
 }
 
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
+
 /**
  * Start the HTLC secrets expiry monitor.
  * Safe to call multiple times — only one interval is created.
@@ -109,7 +265,7 @@ async function runHtlcSecretsCheck(): Promise<void> {
 export function startHtlcSecretsMonitor(): void {
   if (monitorInterval) return;
 
-  console.log("[HtlcSecretsMonitor] Starting — polling every 60s");
+  console.log("[HtlcSecretsMonitor] Starting — polling every 60s (claim retry after 5 min)");
 
   // Run immediately on startup (after a short delay for DB pool warm-up)
   setTimeout(() => runHtlcSecretsCheck().catch(console.error), 5_000);
