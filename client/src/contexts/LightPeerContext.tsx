@@ -1011,7 +1011,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // the guard always passes. If spread < slippage the guard catches misconfigured spreads.
         const sseRateOk = quotedRate >= oracleRateSse * (1 - slippageFracSse);
         if (sseRateOk) {
-          submitQuote(incoming);
+          // Bug fix: use acceptRfq (not submitQuote) so the HTLC lock is actually triggered.
+          // submitQuote only sends a quote response without locking funds.
+          // acceptRfq handles the full flow: quote response + HTLC signing + lock.
+          void acceptRfq(rfq.rfqId, incoming);
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
           );
@@ -1221,30 +1224,38 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             // ── Pre-flight: verify Agent B has enough SPL token balance ──
             // Uses the server-side getSolanaBalanceByAddress endpoint which races multiple
             // reliable RPC endpoints (Helius + fallbacks) — avoids publicnode 403 issues.
+            // For USDT/USDC, the endpoint returns dedicated fields.
+            // For any other SPL token in TOKEN_MINTS, we fall through and let the tx fail
+            // on-chain (which gives a clear error) rather than blocking on a false negative.
             try {
-              const encoded = encodeURIComponent(JSON.stringify({ '0': { json: { address: senderPubkeyStr } } }));
-              const balRes = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
-                credentials: 'include',
-              });
-              if (balRes.ok) {
-                const batchResult = await balRes.json() as Array<{ result?: { data?: { json?: { usdtBalance?: number; usdcBalance?: number } } } }>;
-                const data = batchResult?.[0]?.result?.data?.json;
-                if (data) {
-                  const tokenKey = lockToken.toUpperCase() as 'USDT' | 'USDC';
-                  const balance = tokenKey === 'USDT' ? (data.usdtBalance ?? 0) : (data.usdcBalance ?? 0);
-                  console.log(`[HTLC] Pre-flight balance check: ${balance} ${lockToken} (need ${lockAmount}) for ${senderPubkeyStr.slice(0,8)}...`);
-                  if (balance < lockAmount) {
-                    const msg = balance === 0
-                      ? `You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`
-                      : `Insufficient ${lockToken} balance. You have ${balance} ${lockToken} but need ${lockAmount} ${lockToken}.`;
-                    setHtlcSigning({ rfqId, step: 'failed', error: msg });
-                    toast.error('Insufficient balance', { description: msg });
-                    return;
+              const tokenUpper = lockToken.toUpperCase();
+              if (tokenUpper === 'USDT' || tokenUpper === 'USDC') {
+                const encoded = encodeURIComponent(JSON.stringify({ '0': { json: { address: senderPubkeyStr } } }));
+                const balRes = await fetch(`/api/trpc/htlcWallet.getSolanaBalanceByAddress?batch=1&input=${encoded}`, {
+                  credentials: 'include',
+                });
+                if (balRes.ok) {
+                  const batchResult = await balRes.json() as Array<{ result?: { data?: { json?: { usdtBalance?: number; usdcBalance?: number } } } }>;
+                  const data = batchResult?.[0]?.result?.data?.json;
+                  if (data) {
+                    const balance = tokenUpper === 'USDT' ? (data.usdtBalance ?? 0) : (data.usdcBalance ?? 0);
+                    console.log(`[HTLC] Pre-flight balance check: ${balance} ${lockToken} (need ${lockAmount}) for ${senderPubkeyStr.slice(0,8)}...`);
+                    if (balance < lockAmount) {
+                      const msg = balance === 0
+                        ? `You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`
+                        : `Insufficient ${lockToken} balance. You have ${balance.toFixed(6)} ${lockToken} but need ${lockAmount} ${lockToken}.`;
+                      setHtlcSigning({ rfqId, step: 'failed', error: msg });
+                      toast.error('Insufficient balance', { description: msg });
+                      return;
+                    }
                   }
+                  // If data is missing, proceed anyway (don't block on check failure)
+                } else {
+                  console.warn('[HTLC] Balance pre-check HTTP error (proceeding):', balRes.status);
                 }
-                // If data is missing, proceed anyway (don't block on check failure)
               } else {
-                console.warn('[HTLC] Balance pre-check HTTP error (proceeding):', balRes.status);
+                // For other SPL tokens (future support): skip pre-check, let on-chain tx surface the error
+                console.log(`[HTLC] Pre-flight balance check skipped for ${lockToken} (not USDT/USDC) — proceeding to on-chain lock`);
               }
             } catch (balErr: unknown) {
               // If balance check itself fails (network error), proceed anyway
@@ -1675,7 +1686,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const { buildClaimInstruction, htlcIdToBytes } = await import("@/lib/afosHtlcProgram");
           const { Transaction, PublicKey: SolPublicKey } = await import("@solana/web3.js");
           const secretBytes = new Uint8Array(secretHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const claimSolPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
+          // Use live window.phantom.solana.publicKey to avoid stale phantomSolAddress
+          const livePhClaim = (window as unknown as { phantom?: { solana?: { publicKey?: { toString(): string } } } }).phantom?.solana;
+          const claimSolPubkeyStr = solPubkey?.toBase58() ?? livePhClaim?.publicKey?.toString() ?? phantomSolAddress;
           if (!claimSolPubkeyStr) throw new Error("No Solana wallet address available");
           const claimSolPubkey = new SolPublicKey(claimSolPubkeyStr);
           // Agent B is claiming Agent A's HTLC — htlcId is htlc_a_<rfqId first 22 chars>
