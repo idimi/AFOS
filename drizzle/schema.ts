@@ -58,10 +58,14 @@ export const htlcSwaps = mysqlTable("htlc_swaps", {
   /** Refund transaction ID (set when status = refunded) */
   refundTxId:     varchar("refundTxId", { length: 128 }),
   /** User's wallet address (sender) */
-  senderAddress:  varchar("senderAddress", { length: 128 }),
-  createdAt:      timestamp("createdAt").defaultNow().notNull(),
-  updatedAt:      timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  refundedAt:     timestamp("refundedAt"),
+  senderAddress:    varchar("senderAddress", { length: 128 }),
+  /** Recipient wallet address (counterparty who will receive funds on claim) */
+  recipientAddress: varchar("recipientAddress", { length: 128 }),
+  /** HTLC PDA seed used to derive the on-chain PDA (e.g. htlc_a_<rfqId slice>) */
+  htlcId:           varchar("htlcId", { length: 64 }),
+  createdAt:        timestamp("createdAt").defaultNow().notNull(),
+  updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  refundedAt:       timestamp("refundedAt"),
 });
 
 export type HtlcSwap = typeof htlcSwaps.$inferSelect;

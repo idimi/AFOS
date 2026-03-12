@@ -1141,6 +1141,38 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             transaction = result.transaction;
             escrowAddress = result.escrowAddress;
           } else if (TOKEN_MINTS[lockToken.toUpperCase()]) {
+            // ── Pre-flight: verify Agent B has enough SPL token balance ──
+            try {
+              const tokenMintAddr = TOKEN_MINTS[lockToken.toUpperCase()].mint;
+              const SPL_TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+              const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bRS');
+              const [senderAta] = PublicKey.findProgramAddressSync(
+                [senderPubkeyObj.toBuffer(), SPL_TOKEN_PROGRAM_ID.toBuffer(), new PublicKey(tokenMintAddr).toBuffer()],
+                ASSOCIATED_TOKEN_PROGRAM_ID
+              );
+              const ataInfo = await solConnection.getAccountInfo(senderAta);
+              if (!ataInfo) {
+                throw new Error(`You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`);
+              }
+              const balResp = await fetch(solConnection.rpcEndpoint, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getTokenAccountBalance', params: [senderAta.toBase58()] })
+              });
+              const balData = await balResp.json() as { result?: { value?: { uiAmount?: number } } };
+              const balance = balData.result?.value?.uiAmount ?? 0;
+              if (balance < lockAmount) {
+                throw new Error(`Insufficient ${lockToken} balance. You have ${balance} ${lockToken} but need ${lockAmount} ${lockToken}.`);
+              }
+            } catch (balErr: unknown) {
+              const msg = balErr instanceof Error ? balErr.message : String(balErr);
+              if (msg.includes('Insufficient') || msg.includes('no ' + lockToken)) {
+                setHtlcSigning({ rfqId, step: 'failed', error: msg });
+                toast.error('Insufficient balance', { description: msg });
+                return;
+              }
+              // If balance check itself fails (RPC error), proceed anyway
+              console.warn('[HTLC] Balance pre-check failed (proceeding):', msg);
+            }
             // ── SPL Token lock (Agent B in SOL→USDT locks USDT, etc.) ──
             const result = await buildSolanaTokenHtlcLockTx({
               senderPubkey:    senderPubkeyObj,

@@ -2733,3 +2733,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix revealHtlcSecret server: remove the FORBIDDEN check (or make it non-blocking) since the secret can only be retrieved by knowing the rfqId which is already private
 - [x] Fix lcDeposit 400: add htlcId and isAgentA optional fields to recordHtlcDeposit schema (Zod was rejecting unknown fields)
 - [x] Fix relay/announce 502: Oracle VM is healthy, 502 was transient network blip (no code fix needed)
+
+## Agent B Claim Visibility & DB Schema
+
+- [x] Investigated: Agent B had 0 USDT (no token account) — on-chain tx failed with ProgramAccountNotFound. Not a code bug — balance issue.
+- [x] Added pre-flight balance check in acceptRfq before SPL token lock — shows clear toast error if Agent B has insufficient balance.
+- [x] Added htlcId and recipientAddress columns to htlc_swaps table via SQL; updated recordHtlcDeposit to store both fields.
