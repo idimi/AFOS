@@ -173,6 +173,23 @@ export interface LightPeerState {
    * Calls the on-chain timelock-sweep path for the given chain.
    */
   refundHtlcFunds: (rfqId: string) => Promise<void>;
+  /**
+   * Rolling log of the last 50 Smart Auto-Accept decisions (accepted + rejected).
+   * Each entry mirrors IncomingRfq.autoDecision plus the pair and rfqId for display.
+   */
+  autoDecisionLog: Array<{
+    rfqId: string;
+    pair: string;
+    fromAmount: number;
+    fromToken: string;
+    toToken: string;
+    action: "accepted" | "rejected";
+    reason: string;
+    oracleRate?: number;
+    offeredRate?: number;
+    tradeUsd?: number;
+    timestamp: number;
+  }>;
 }
 
 // ─── Defaults ─────────────────────────────────────────────────────────────────
@@ -289,6 +306,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [refundableHtlcs, setRefundableHtlcs] = useState<Record<string, { fromChain: string; toChain: string; expiresAt: number }>>({})
   // rfqId → Unix ms when the HTLC lock was initiated (for countdown timer)
   // Persisted to localStorage so the countdown survives page reloads
+  const [autoDecisionLog, setAutoDecisionLog] = useState<LightPeerState["autoDecisionLog"]>([]);
+
   const [htlcLockedAt, setHtlcLockedAt] = useState<Record<string, number>>(() => {
     try {
       const stored = localStorage.getItem("afos_htlc_locked_at");
@@ -835,6 +854,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         setIncomingRfqs(prev =>
           prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: acceptedDecision } : r)
         );
+        setAutoDecisionLog(prev => [{
+          rfqId: rfq.rfqId,
+          pair: `${rfq.fromToken}/${rfq.toToken}`,
+          fromAmount: rfq.amount,
+          fromToken: rfq.fromToken,
+          toToken: rfq.toToken,
+          ...acceptedDecision,
+        }, ...prev].slice(0, 50));
         const autoAlias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
         toast.success(`Smart Auto-Accept: swap from ${autoAlias}`, {
           description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} · All guards passed`,
@@ -877,6 +904,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         setIncomingRfqs(prev =>
           prev.map(r => r.rfqId === rfq.rfqId ? { ...r, autoDecision: rejectedDecision } : r)
         );
+        setAutoDecisionLog(prev => [{
+          rfqId: rfq.rfqId,
+          pair: `${rfq.fromToken}/${rfq.toToken}`,
+          fromAmount: rfq.amount,
+          fromToken: rfq.fromToken,
+          toToken: rfq.toToken,
+          ...rejectedDecision,
+        }, ...prev].slice(0, 50));
         toast.warning(`Smart Auto-Accept blocked: bad rate from ${alias}`, {
           description: `Offered ${rfq.rate.toFixed(6)} vs oracle ${oracleRate.toFixed(6)} — exceeds ${(slippageFrac * 100).toFixed(2)}% slippage limit`,
           duration: 10000,
@@ -1084,6 +1119,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: sseAcceptedDecision } : r)
           );
+          setAutoDecisionLog(prev => [{
+            rfqId: rfq.rfqId ?? "",
+            pair: `${rfq.fromToken ?? "?"}/${rfq.toToken ?? "?"}`,
+            fromAmount: amount,
+            fromToken: rfq.fromToken ?? "",
+            toToken: rfq.toToken ?? "",
+            ...sseAcceptedDecision,
+          }, ...prev].slice(0, 50));
         } else {
           // Slippage guard triggered — stamp rejection and warn user
           const sseRejectedDecision: IncomingRfq["autoDecision"] = {
@@ -1098,6 +1141,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, autoDecision: sseRejectedDecision } : r)
           );
+          setAutoDecisionLog(prev => [{
+            rfqId: rfq.rfqId ?? "",
+            pair: `${rfq.fromToken ?? "?"}/${rfq.toToken ?? "?"}`,
+            fromAmount: amount,
+            fromToken: rfq.fromToken ?? "",
+            toToken: rfq.toToken ?? "",
+            ...sseRejectedDecision,
+          }, ...prev].slice(0, 50));
           toast.warning("Smart Auto-Accept blocked: rate outside slippage tolerance", {
             description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
             duration: 10000,
@@ -2126,6 +2177,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       refundableHtlcs,
       refundHtlcFunds,
       htlcLockedAt,
+      autoDecisionLog,
       solanaAddress: (solAdapterConnected && solPubkey ? solPubkey.toString() : null) ?? phantomSolAddress ?? null,
       ethereumAddress: ethereum?.address ?? null,
       bitcoinAddress: bitcoin?.address ?? null,

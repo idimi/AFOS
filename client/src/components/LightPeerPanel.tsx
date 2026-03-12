@@ -447,28 +447,98 @@ export default function LightPeerPanel() {
 
               {/* ── Smart Auto-Accept toggle ── */}
               {isWalletConnected && peer.prefs.enabled && (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white flex items-center gap-1.5">
-                      Smart Auto-Accept
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">GUARDED</span>
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      Only accepts if: pair is allowed · size within limits · rate within slippage
-                    </p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                        Smart Auto-Accept
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">GUARDED</span>
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        Only accepts if: pair is allowed · size within limits · rate within slippage
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => peer.setPrefs({ autoAccept: !peer.prefs.autoAccept })}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+                        peer.prefs.autoAccept
+                          ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                          : "bg-slate-500/10 border-slate-500/20 text-slate-400"
+                      }`}
+                    >
+                      {peer.prefs.autoAccept
+                        ? <><ToggleRight className="w-4 h-4" /> On</>
+                        : <><ToggleLeft className="w-4 h-4" /> Off</>}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => peer.setPrefs({ autoAccept: !peer.prefs.autoAccept })}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                      peer.prefs.autoAccept
-                        ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
-                        : "bg-slate-500/10 border-slate-500/20 text-slate-400"
-                    }`}
-                  >
-                    {peer.prefs.autoAccept
-                      ? <><ToggleRight className="w-4 h-4" /> On</>
-                      : <><ToggleLeft className="w-4 h-4" /> Off</>}
-                  </button>
+
+                  {/* Guard Settings quick-edit row — always visible when Smart Auto-Accept is shown */}
+                  <div className="rounded-lg border border-white/8 bg-white/3 px-3 py-2.5 space-y-2.5">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Guard Settings</p>
+
+                    {/* Slippage + trade size in one row */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[9px] text-slate-500 block mb-1">Slippage %</label>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number" min={0.01} max={5} step={0.01}
+                            value={(peer.prefs.spreadBps / 100).toFixed(2)}
+                            onChange={e => {
+                              const bps = Math.round(parseFloat(e.target.value) * 100);
+                              if (!isNaN(bps) && bps >= 1 && bps <= 500) peer.setPrefs({ spreadBps: bps });
+                            }}
+                            className="w-full px-1.5 py-1 rounded bg-white/8 border border-white/12 text-white text-[10px] font-mono focus:outline-none focus:border-cyan-500/50"
+                          />
+                          <span className="text-[9px] text-slate-500">%</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-500 block mb-1">Min USD</label>
+                        <input
+                          type="number" min={1}
+                          value={peer.prefs.minTradeUsd}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v >= 1) peer.setPrefs({ minTradeUsd: v });
+                          }}
+                          className="w-full px-1.5 py-1 rounded bg-white/8 border border-white/12 text-white text-[10px] font-mono focus:outline-none focus:border-cyan-500/50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-slate-500 block mb-1">Max USD</label>
+                        <input
+                          type="number" min={1}
+                          value={peer.prefs.maxTradeUsd}
+                          onChange={e => {
+                            const v = parseFloat(e.target.value);
+                            if (!isNaN(v) && v >= 1) peer.setPrefs({ maxTradeUsd: v });
+                          }}
+                          className="w-full px-1.5 py-1 rounded bg-white/8 border border-white/12 text-white text-[10px] font-mono focus:outline-none focus:border-cyan-500/50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Accepted pairs compact toggle row */}
+                    <div>
+                      <label className="text-[9px] text-slate-500 block mb-1.5">Accepted pairs</label>
+                      <div className="flex flex-wrap gap-1">
+                        {ALL_PAIRS.map(pair => (
+                          <button
+                            key={pair}
+                            onClick={() => togglePair(pair)}
+                            className={`text-[9px] font-mono px-1.5 py-0.5 rounded border transition-all ${
+                              peer.prefs.acceptedPairs.includes(pair)
+                                ? "bg-cyan-500/20 border-cyan-500/30 text-cyan-400"
+                                : "bg-white/5 border-white/10 text-slate-500 hover:text-slate-300"
+                            }`}
+                          >
+                            {pair}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
