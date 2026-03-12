@@ -1,0 +1,26 @@
+{
+  "query": "SELECT id, status, locktime, htlcAddress, rfqId, createdAt FROM htlc_swaps ORDER BY id DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, status, locktime, htlcAddress, rfqId, createdAt FROM htlc_swaps ORDER BY id DESC LIMIT 5;",
+  "rows": [
+    {
+      "id": "2",
+      "status": "pending",
+      "locktime": "1773287385",
+      "htlcAddress": "C6cFZfKkk1cwLVdwoRf5LTMe9SUVVenevMuwfxNdM9hK",
+      "rfqId": "rfq_1773283782213_lp-c",
+      "createdAt": "2026-03-12 03:32:02"
+    },
+    {
+      "id": "1",
+      "status": "refunded",
+      "locktime": "1773208949",
+      "htlcAddress": "45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ",
+      "rfqId": "rfq_1773205346880",
+      "createdAt": "2026-03-11 20:03:53"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tstatus\tlocktime\thtlcAddress\trfqId\tcreatedAt\n2\tpending\t1773287385\tC6cFZfKkk1cwLVdwoRf5LTMe9SUVVenevMuwfxNdM9hK\trfq_1773283782213_lp-c\t2026-03-12 03:32:02\n1\trefunded\t1773208949\t45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ\trfq_1773205346880\t2026-03-11 20:03:53\n",
+  "stderr": "",
+  "execution_time_ms": 363
+}

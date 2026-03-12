@@ -2752,3 +2752,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] localStorage retry fallback: if recordHtlcDeposit fails, store HTLC data in localStorage and retry on next page load
 - [x] Countdown timer on Refunds tab: show "Refundable in 14m 32s" for locked-but-not-yet-expired HTLCs
+
+## Bug: Countdown timer not showing — HTLC shows CLAIMABLE instead of LOCKED
+
+- [ ] Diagnose: locktime=1,773,287,385 is a Solana block height, not a Unix timestamp — but `> 1_000_000_000` check incorrectly treats it as Unix
+- [ ] Fix: use a higher threshold (e.g. > 1_700_000_000) to distinguish Unix timestamps from Solana block heights, OR use a different field to store the expiry
+- [ ] Alternatively: store the actual Unix expiry timestamp in a separate DB column
+- [ ] Update DB row's locktime to the correct Unix timestamp (timelock = 1741654185 from the original HTLC lock)

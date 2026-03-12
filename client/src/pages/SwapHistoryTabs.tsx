@@ -320,8 +320,14 @@ function HtlcDetailDrawer({ htlcId, onClose }: HtlcDetailDrawerProps) {
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">Locktime (block)</span>
-                  <span className="text-xs font-mono text-foreground/80">{data.locktime.toLocaleString()}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {data.locktime > 1_700_000_000 ? "Timelock Expiry" : "Locktime (block)"}
+                  </span>
+                  <span className="text-xs font-mono text-foreground/80">
+                    {data.locktime > 1_700_000_000
+                      ? new Date(data.locktime * 1000).toLocaleString()
+                      : data.locktime.toLocaleString()}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Created</span>
