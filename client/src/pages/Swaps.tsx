@@ -15,7 +15,7 @@ import {
   Lock, Unlock, ExternalLink, Copy,
   Activity, Users, Globe, BarChart3,
   Repeat, Timer, Filter, Rss, Play, Square, RotateCcw, GitMerge,
-  Bot, X as XIcon
+  Bot, X as XIcon, XCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { useHaptic } from "../hooks/useHaptic";
@@ -372,6 +372,24 @@ function SwapProgressTracker({ phase, fromToken, toToken, fromAmount, toAmount, 
           );
         })}
       </div>
+
+      {/* Error state */}
+      {phase === "error" && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="mt-4 p-3 rounded-xl flex items-center gap-3"
+          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}
+        >
+          <XCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-red-400">Swap execution failed</div>
+            <div className="text-[10px] text-slate-500 font-mono mt-0.5">
+              No on-chain transaction confirmed. Your funds were not moved.
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {/* Complete state */}
       {phase === "complete" && (
@@ -2901,12 +2919,12 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
             ? `P2P IntercomSwap (${rfqResult.p2pQuotes} quotes)`
             : `DEX fallback (${rfqResult.dexRoute || 'Jupiter'})`;
           if (execError && !realTxHash) {
-            // Real failure — no tx hash returned
-            setSwapPhase("complete"); // still advance UI but show warning toast
-            haptic.success();
-            toast.warning(`Swap routed (no on-chain confirmation)`, {
-              description: `${route} · Agent keys not configured — set SOL_AGENT_KEY to enable live execution. Error: ${execError.slice(0, 80)}`,
-              duration: 8000,
+            // Real failure — no tx hash returned → show error, NOT fake "complete"
+            setSwapPhase("error");
+            haptic.error();
+            toast.error(`Swap execution failed`, {
+              description: `${route} · ${execError.slice(0, 100)}`,
+              duration: 10000,
             });
           } else {
             setSwapPhase("complete");
@@ -2919,10 +2937,23 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
           }
         }, 1200);
       } else {
-        runSwapAnimation();
+        // No success result from submitRfq — show error instead of fake animation
+        setSwapPhase("error");
+        haptic.error();
+        toast.error("RFQ submission failed", {
+          description: "Could not get a quote from the network. Please try again.",
+          duration: 8000,
+        });
       }
-    } catch {
-      runSwapAnimation();
+    } catch (swapErr) {
+      // Network error or unexpected failure — show error state
+      const errMsg = swapErr instanceof Error ? swapErr.message : "Unknown error";
+      setSwapPhase("error");
+      haptic.error();
+      toast.error("Swap failed", {
+        description: errMsg.slice(0, 100),
+        duration: 8000,
+      });
     }
   };
 

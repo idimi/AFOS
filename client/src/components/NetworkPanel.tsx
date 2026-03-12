@@ -1211,15 +1211,16 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
                 <span className="text-sm font-bold text-foreground">HTLC Atomic Swap</span>
               </div>
               <div className="space-y-3 mb-5">
-                {(["signing", "locking", "revealing", "settled"] as HtlcStep[]).map((step, stepIdx) => {
-                  const steps: HtlcStep[] = ["signing", "locking", "revealing", "settled"];
+                {(["signing", "locking", "locked", "revealing", "settled"] as HtlcStep[]).map((step, stepIdx) => {
+                  const steps: HtlcStep[] = ["signing", "locking", "locked", "revealing", "settled"];
                   const currentIdx = steps.indexOf(peer.htlcSigning!.step);
                   const isDone = peer.htlcSigning!.step === "settled" || stepIdx < currentIdx;
                   const isActive = peer.htlcSigning!.step === step;
                   const labels: Record<string, string> = {
                     signing: "Sign HTLC lock transaction",
-                    locking: "Lock funds in escrow",
-                    revealing: "Reveal secret hash",
+                    locking: "Submitting lock to chain",
+                    locked: "Funds locked — waiting for counterparty",
+                    revealing: "Counterparty revealing secret",
                     settled: "Atomic settlement complete",
                   };
                   return (
@@ -1255,13 +1256,13 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
                   <div className="text-[10px] font-mono text-emerald-400 break-all">{peer.htlcSigning.txHash}</div>
                 </div>
               )}
-              {(peer.htlcSigning.step === "settled" || peer.htlcSigning.step === "failed") && (
+              {(peer.htlcSigning.step === "settled" || peer.htlcSigning.step === "locked" || peer.htlcSigning.step === "failed") && (
                 <button
                   onClick={peer.dismissHtlc}
                   className="w-full py-2 rounded-xl text-xs font-bold transition-all hover:opacity-80"
                   style={{ background: "rgba(6,182,212,0.15)", color: "#06b6d4", border: "1px solid rgba(6,182,212,0.3)" }}
                 >
-                  {peer.htlcSigning.step === "settled" ? "Done" : "Dismiss"}
+                  {peer.htlcSigning.step === "settled" ? "Done" : peer.htlcSigning.step === "locked" ? "Waiting for settlement…" : "Dismiss"}
                 </button>
               )}
             </motion.div>

@@ -85,7 +85,7 @@ export interface IncomingRfq {
   };
 }
 
-export type HtlcStep = "idle" | "signing" | "locking" | "revealing" | "settled" | "failed";
+export type HtlcStep = "idle" | "signing" | "locking" | "locked" | "revealing" | "settled" | "failed";
 
 export interface HtlcSigningState {
   rfqId: string;
@@ -431,6 +431,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Maps rfqId → Agent A's resolved wallet address, stored at initiateHtlcLock time.
   // This prevents a race condition where phantomSolAddress is null when htlc_locked fires.
   const agentAWalletByRfqRef = useRef<Record<string, string>>({});
+  // Stable ref to acceptRfq so the signaling handlers (agent_rfq, rfq_broadcast)
+  // always call the latest version — avoids stale closure where solConnected is false.
+  const acceptRfqRef = useRef<(rfqId: string, rfqOverride?: IncomingRfq) => Promise<void>>(() => Promise.resolve());
   // Stable ref to claimHtlcFunds so the htlc_secret handler can call it
   // without being re-created every render (avoids stale closure in the event listener).
   const claimHtlcFundsRef = useRef<(rfqId: string) => Promise<void>>(() => Promise.resolve());
@@ -612,6 +615,27 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         senderWallet?: string; htlcId?: string;
       };
       if (!rfqId) return;
+
+      // ── Echo guard: skip if this is our own lock notification bouncing back ──
+      // Only Agent A (the initiator) should call revealHtlcSecret.
+      // Agent B sends htlc_locked to Agent A; if Agent B also receives it (echo/broadcast),
+      // Agent B must NOT try to reveal — it would fail with FORBIDDEN because Agent B's
+      // wallet doesn't match the stored initiator address.
+      if (fromPeerId === peerId) {
+        console.log(`[HTLC] Ignoring own htlc_locked echo for rfqId=${rfqId.slice(0, 8)}`);
+        return;
+      }
+
+      // Additional guard: only proceed if we are the initiator for this RFQ.
+      // We know we're the initiator if we stored our wallet in agentAWalletByRfqRef.
+      const isInitiator = !!agentAWalletByRfqRef.current[rfqId];
+      if (!isInitiator) {
+        console.log(`[HTLC] Received htlc_locked but we are not the initiator for rfqId=${rfqId.slice(0, 8)} — skipping revealHtlcSecret`);
+        // Still dispatch the UI event so Agent B can see the lock status
+        window.dispatchEvent(new CustomEvent("afos:htlc-locked", { detail: { fromPeerId, rfqId, txHash, chain, amountLocked } }));
+        return;
+      }
+
       // Show toast so Agent A knows Agent B locked
       toast.info(`Counterparty locked their ${chain ?? ""} HTLC`, {
         description: `RFQ ${rfqId.slice(0, 8)}… · ${amountLocked?.toFixed(4) ?? ""} locked · Tx: ${(txHash ?? "").slice(0, 12)}…`,
@@ -827,7 +851,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           timestamp: Date.now(),
         };
         incoming.autoDecision = acceptedDecision_b;
-        void acceptRfq(r.rfqId!, incoming);
+        void acceptRfqRef.current(r.rfqId!, incoming);
         setIncomingRfqs(prev =>
           prev.map(x => x.rfqId === r.rfqId ? { ...x, status: "accepted", autoDecision: acceptedDecision_b } : x)
         );
@@ -957,7 +981,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           timestamp: Date.now(),
         };
         incoming.autoDecision = acceptedDecision;
-        void acceptRfq(rfq.rfqId, incoming);
+        void acceptRfqRef.current(rfq.rfqId, incoming);
         setIncomingRfqs(prev =>
           prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: acceptedDecision } : r)
         );
@@ -1222,7 +1246,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             timestamp: Date.now(),
           };
           incoming.autoDecision = sseAcceptedDecision;
-          void acceptRfq(rfq.rfqId, incoming);
+          void acceptRfqRef.current(rfq.rfqId, incoming);
           setIncomingRfqs(prev =>
             prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: sseAcceptedDecision } : r)
           );
@@ -1363,7 +1387,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             const slipFrac_p = parseFloat(String(prefs_p.slippagePct ?? "0.5")) / 100 || 0.005;
             const rateOk_p = oracleRate_p <= 0 || rfq.rate >= oracleRate_p * (1 - slipFrac_p);
             if (tradeUsd_p <= cap_p && rateOk_p) {
-              void acceptRfq(rfq.rfqId, incoming);
+              void acceptRfqRef.current(rfq.rfqId, incoming);
               setIncomingRfqs(prev => prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r));
             }
           }
@@ -1642,9 +1666,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
           }
 
-          setHtlcSigning({ rfqId, step: "revealing", txHash });
-          await new Promise(r => setTimeout(r, 800));
-          setHtlcSigning({ rfqId, step: "settled", txHash });
+          // HTLC lock tx submitted — mark as "locked" (not "settled").
+          // True settlement only happens after Agent A reveals the secret and both sides claim.
+          setHtlcSigning({ rfqId, step: "locked", txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1776,9 +1800,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               gas:   txGas,
             }],
           });
-          setHtlcSigning({ rfqId, step: "revealing", txHash });
-          await new Promise(r => setTimeout(r, 800));
-          setHtlcSigning({ rfqId, step: "settled", txHash });
+          // HTLC lock tx submitted — mark as "locked" (not "settled").
+          setHtlcSigning({ rfqId, step: "locked", txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1834,9 +1857,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             "mainnet",
             btcExistingHash,
           );
-          setHtlcSigning({ rfqId, step: "revealing", txHash: result.txid });
-          await new Promise(r => setTimeout(r, 800));
-          setHtlcSigning({ rfqId, step: "settled", txHash: result.txid });
+          // HTLC lock tx submitted — mark as "locked" (not "settled").
+          setHtlcSigning({ rfqId, step: "locked", txHash: result.txid });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1877,9 +1899,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             secretHash,
             timelockSeconds: 600, // 10 minutes default for TNK
           });
-          setHtlcSigning({ rfqId, step: "revealing", txHash: result.txHash });
-          await new Promise(r => setTimeout(r, 800));
-          setHtlcSigning({ rfqId, step: "settled", txHash: result.txHash });
+          // HTLC lock tx submitted — mark as "locked" (not "settled").
+          setHtlcSigning({ rfqId, step: "locked", txHash: result.txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1925,6 +1946,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       return prev;
     });
   }, [incomingRfqs, submitQuote, solConnected, signTransaction, sendSolTransaction, phantomSolAddress, ethereum, bitcoin, phantomMultiChain]);
+  // Keep the ref in sync so signaling handlers always call the latest version
+  acceptRfqRef.current = acceptRfq;
 
   // ── Initiate HTLC Lock (Agent A / Requester side) ──────────────────────────
   // Called after buildSwapTx returns P2P route — triggers wallet signing for the requester.
@@ -1990,8 +2013,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     });
     // Bug 5 fix: pass the synthetic RFQ directly to acceptRfq via rfqOverride
     // so it doesn't need to look it up from (stale) React state.
-    await acceptRfq(rfqId, syntheticRfq);
-  }, [acceptRfq]);
+    // Use acceptRfqRef.current to always get the latest version with current solConnected.
+    await acceptRfqRef.current(rfqId, syntheticRfq);
+  }, []);  // no deps needed — acceptRfqRef is a stable ref
 
   // ── Claim HTLC Funds (Agent B) ──────────────────────────────────────────────
   // Called when Agent B has received the secret from Agent A and wants to claim
