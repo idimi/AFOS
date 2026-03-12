@@ -298,6 +298,71 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     try { localStorage.setItem("afos_htlc_locked_at", JSON.stringify(htlcLockedAt)); } catch { /* ignore */ }
   }, [htlcLockedAt]);
 
+  // ── localStorage retry fallback for recordHtlcDeposit ──────────────────────
+  // If recordHtlcDeposit fails (network error, 400, etc.) the payload is saved
+  // to localStorage under "afos_pending_deposits" and retried on the next mount.
+  const PENDING_DEPOSITS_KEY = "afos_pending_deposits";
+
+  type DepositPayload = {
+    chain: string; txHash: string; senderAddress: string; recipientAddress: string;
+    escrowAddress: string; amountRaw: string; token: string; secretHash: string;
+    timelock: number; rfqId: string; peerId?: string; htlcId: string; isAgentA: boolean;
+    savedAt: number; // ms timestamp for TTL
+  };
+
+  const saveFailedDeposit = (payload: Omit<DepositPayload, "savedAt">) => {
+    try {
+      const stored = localStorage.getItem(PENDING_DEPOSITS_KEY);
+      const list: DepositPayload[] = stored ? (JSON.parse(stored) as DepositPayload[]) : [];
+      // Deduplicate by txHash
+      if (list.some(d => d.txHash === payload.txHash)) return;
+      list.push({ ...payload, savedAt: Date.now() });
+      localStorage.setItem(PENDING_DEPOSITS_KEY, JSON.stringify(list));
+    } catch { /* ignore */ }
+  };
+
+  const retryPendingDeposits = async () => {
+    try {
+      const stored = localStorage.getItem(PENDING_DEPOSITS_KEY);
+      if (!stored) return;
+      const list: DepositPayload[] = JSON.parse(stored) as DepositPayload[];
+      if (!list.length) return;
+      const now = Date.now();
+      const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+      const fresh = list.filter(d => now - d.savedAt < TTL_MS);
+      const remaining: DepositPayload[] = [];
+      for (const payload of fresh) {
+        try {
+          const res = await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              "0": { json: {
+                chain: payload.chain, txHash: payload.txHash,
+                senderAddress: payload.senderAddress, recipientAddress: payload.recipientAddress,
+                escrowAddress: payload.escrowAddress, amountRaw: payload.amountRaw,
+                token: payload.token, secretHash: payload.secretHash,
+                timelock: payload.timelock, rfqId: payload.rfqId,
+                peerId: payload.peerId, htlcId: payload.htlcId, isAgentA: payload.isAgentA,
+              }}
+            }),
+          });
+          if (!res.ok) {
+            remaining.push(payload); // keep for next retry
+          }
+          // success — don't push to remaining, it's been recorded
+        } catch {
+          remaining.push(payload); // network error — keep for next retry
+        }
+      }
+      if (remaining.length > 0) {
+        localStorage.setItem(PENDING_DEPOSITS_KEY, JSON.stringify(remaining));
+      } else {
+        localStorage.removeItem(PENDING_DEPOSITS_KEY);
+      }
+    } catch { /* ignore */ }
+  };
+
   // ── Seed claimedRfqIds + refundedRfqIds from DB on mount ─────────────────
   useEffect(() => {
     void fetch("/api/trpc/chat.getSettledHtlcs?batch=1&input=%7B%220%22%3A%7B%22json%22%3A%7B%22limit%22%3A500%7D%7D%7D", {
@@ -317,6 +382,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         if (refunded.size > 0) setRefundedRfqIds(prev => new Set([...Array.from(prev), ...Array.from(refunded)]));
       })
       .catch(() => { /* DB not available yet — localStorage values remain */ });
+  }, []);
+
+  // ── Retry pending deposits on mount (localStorage fallback) ────────────────
+  // Runs once on mount with a 3-second delay to let the server warm up.
+  useEffect(() => {
+    const t = setTimeout(() => { void retryPendingDeposits(); }, 3000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Signaling state ───────────────────────────────────────────────────────
@@ -1237,28 +1310,41 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               htlcId,           // Agent B's htlcId (PDA seed for the program)
             );
           }
-          // Record the HTLC deposit in the database for server-side monitoring
-          try {
-            await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                chain: "solana",
-                txHash,
-                senderAddress: senderPubkeyStr,
-                recipientAddress: recipientPubkey.toBase58(),
-                escrowAddress,
-                amountRaw: String(lockAmount),
-                token: lockToken,
-                secretHash: secretHashHex,
-                timelock,
-                rfqId,
-                peerId: rfq.requestorPeer ?? undefined,
-                htlcId,
-                isAgentA,
-              }),
-            });
-          } catch { /* non-critical — server will detect deposit via monitor */ }
+          // Record the HTLC deposit in the database for server-side monitoring.
+          // On failure, save to localStorage for retry on next mount.
+          {
+            const depositPayload = {
+              chain: "solana" as const,
+              txHash,
+              senderAddress: senderPubkeyStr,
+              recipientAddress: recipientPubkey.toBase58(),
+              escrowAddress,
+              amountRaw: String(lockAmount),
+              token: lockToken,
+              secretHash: secretHashHex,
+              timelock,
+              rfqId,
+              peerId: rfq.requestorPeer ?? undefined,
+              htlcId,
+              isAgentA,
+            };
+            try {
+              const res = await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ "0": { json: depositPayload } }),
+              });
+              if (!res.ok) {
+                // Save for retry on next page load
+                saveFailedDeposit(depositPayload);
+                console.warn("[HTLC] recordHtlcDeposit failed (", res.status, ") — saved to localStorage for retry");
+              }
+            } catch (recordErr) {
+              // Network error — save for retry
+              saveFailedDeposit(depositPayload);
+              console.warn("[HTLC] recordHtlcDeposit network error — saved to localStorage for retry", recordErr);
+            }
+          }
 
           toast.success(`${lockToken} HTLC locked`, {
             description: `Tx: ${txHash.slice(0, 20)}… · ${lockAmount} ${lockToken} locked in escrow (${escrowAddress.slice(0, 8)}…)`,

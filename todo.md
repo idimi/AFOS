@@ -2747,3 +2747,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Manually inserted DB row so autoRefund job can track and surface it in Refunds tab
 - [x] Fixed parseHtlcAccountData struct layout in autoRefund.ts: sender at offset 8 (not 40), htlcId at offset 72 (not 8)
 - [x] TypeScript: 0 errors
+
+## Reliability & UX Improvements
+
+- [x] localStorage retry fallback: if recordHtlcDeposit fails, store HTLC data in localStorage and retry on next page load
+- [x] Countdown timer on Refunds tab: show "Refundable in 14m 32s" for locked-but-not-yet-expired HTLCs

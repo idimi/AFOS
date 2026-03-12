@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
-  Wallet, Search, ExternalLink, Copy, Info, X, XCircle,
+  Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -189,6 +189,34 @@ function useBlockCountdown(chain: string, locktime: number): BlockCountdown {
     : null;
 
   return { currentBlock, blocksRemaining, secondsRemaining, loading };
+}
+
+// ─── Unix-timestamp countdown hook ──────────────────────────────────────────
+
+/**
+ * Counts down to a Unix timestamp (seconds). Returns human-readable string
+ * like "14m 32s" or "Expired" once the timestamp is in the past.
+ */
+function useTimeCountdown(expiryUnixSec: number): { label: string; expired: boolean } {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const remaining = expiryUnixSec - now;
+  if (remaining <= 0) return { label: "Expired", expired: true };
+
+  const h = Math.floor(remaining / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = remaining % 60;
+  const label = h > 0
+    ? `${h}h ${m}m ${s}s`
+    : m > 0
+    ? `${m}m ${s}s`
+    : `${s}s`;
+  return { label, expired: false };
 }
 
 // ─── HTLC Detail Drawer ───────────────────────────────────────────────────────
@@ -937,7 +965,7 @@ interface RefundRecord {
   peer: string;
   failReason: string;
   htlcExpiry: Date;
-  status: "claimable" | "claimed" | "refunded" | "expired";
+  status: "pending" | "claimable" | "claimed" | "refunded" | "expired";
   txHash: string;
   escrowPda: string;
   chain: string;
@@ -960,15 +988,26 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
   const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
   const usdValue = amount * price;
   // Map DB status to UI status:
-  //   pending   → claimable (user can claim it via Phantom)
+  //   pending   → pending (timelock not yet expired) OR claimable (timelock expired)
   //   completed → claimed   (user already claimed it on-chain)
   //   refunded  → refunded  (server refunded it on-chain)
   //   expired   → expired   (timelock expired, no action taken)
+  const nowSec = Math.floor(Date.now() / 1000);
+  // locktime > 1_000_000_000 means it's a Unix timestamp (Solana/ETH); otherwise block height
+  const isUnixTimelock = row.locktime > 1_000_000_000;
+  const timelockExpired = isUnixTimelock && row.locktime < nowSec;
   const status: RefundRecord["status"] =
     row.status === "completed" ? "claimed" :
     row.status === "refunded"  ? "refunded" :
     row.status === "expired"   ? "expired" :
-    "claimable";
+    timelockExpired            ? "claimable" :
+    isUnixTimelock             ? "pending" :
+    "claimable"; // block-height timelocks: always show as claimable (block check done elsewhere)
+
+  // htlcExpiry: use locktime Unix timestamp for Solana/ETH; fall back to updatedAt for block-height chains
+  const htlcExpiry = isUnixTimelock
+    ? new Date(row.locktime * 1000)
+    : (row.refundedAt ? new Date(row.refundedAt) : new Date(row.updatedAt));
 
   return {
     id: String(row.id),
@@ -979,7 +1018,7 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     usdValue,
     peer: row.peerId ?? "P2P Network",
     failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
-    htlcExpiry: row.refundedAt ? new Date(row.refundedAt) : new Date(row.updatedAt),
+    htlcExpiry,
     status,
     txHash: row.refundTxId ?? row.lockTxId ?? row.secretHash.slice(0, 16) + "...",
     escrowPda: row.htlcAddress.length > 20 ? row.htlcAddress.slice(0, 12) + "..." : row.htlcAddress,
@@ -1007,6 +1046,11 @@ function RefundCard({
   const agentRefundHtlc = trpc.history.agentRefundHtlc.useMutation();
   const utils = trpc.useUtils();
   const [claiming, setClaiming] = useState(false);
+  // Live countdown for pending (not-yet-expired) HTLCs
+  const isUnixTimelock = refund.locktime > 1_000_000_000;
+  const { label: countdownLabel, expired: countdownExpired } = useTimeCountdown(
+    isUnixTimelock ? refund.locktime : 0
+  );
 
   const claimRefund = useCallback(async () => {
     // Solana claim — the user's wallet is the on-chain sender (they locked the HTLC).
@@ -1242,22 +1286,34 @@ function RefundCard({
                 background: refund.status === "claimable" ? "rgba(245,158,11,0.12)" :
                             refund.status === "claimed"   ? "rgba(16,185,129,0.12)" :
                             refund.status === "refunded"  ? "rgba(6,182,212,0.12)" :
+                            refund.status === "pending"   ? "rgba(59,130,246,0.12)" :
                             "rgba(100,116,139,0.12)",
                 border: `1px solid ${
                   refund.status === "claimable" ? "rgba(245,158,11,0.3)" :
                   refund.status === "claimed"   ? "rgba(16,185,129,0.3)" :
                   refund.status === "refunded"  ? "rgba(6,182,212,0.3)" :
+                  refund.status === "pending"   ? "rgba(59,130,246,0.3)" :
                   "rgba(100,116,139,0.3)"}`,
                 color: refund.status === "claimable" ? "#f59e0b" :
                        refund.status === "claimed"   ? "#10b981" :
                        refund.status === "refunded"  ? "#06b6d4" :
+                       refund.status === "pending"   ? "#3b82f6" :
                        "#64748b",
               }}>
               {refund.status === "claimable" ? "CLAIMABLE" :
                refund.status === "claimed"   ? "CLAIMED" :
                refund.status === "refunded"  ? "REFUNDED" :
+               refund.status === "pending"   ? "LOCKED" :
                "EXPIRED"}
             </span>
+            {/* Live countdown for pending/locked HTLCs */}
+            {refund.status === "pending" && isUnixTimelock && !countdownExpired && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono"
+                style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: "#93c5fd" }}>
+                <Clock className="w-2.5 h-2.5" />
+                {countdownLabel}
+              </span>
+            )}
             <span className="text-[10px] font-mono text-muted-foreground">
               {refund.amount} {refund.fromSymbol} → {refund.toSymbol}
             </span>
@@ -1271,7 +1327,14 @@ function RefundCard({
               { label: "Reason", value: refund.failReason },
               { label: "Tx", value: refund.txHash },
               { label: "Escrow", value: refund.escrowPda },
-              { label: "HTLC Expiry", value: refund.htlcExpiry.toLocaleString() },
+              {
+                label: refund.status === "pending" && isUnixTimelock && !countdownExpired
+                  ? "Refundable In"
+                  : "HTLC Expiry",
+                value: refund.status === "pending" && isUnixTimelock && !countdownExpired
+                  ? countdownLabel
+                  : refund.htlcExpiry.toLocaleString(),
+              },
             ].map(item => (
               <div key={item.label}>
                 <div className="text-[9px] text-muted-foreground/60">{item.label}</div>
