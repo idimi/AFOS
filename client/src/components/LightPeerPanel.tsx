@@ -445,13 +445,16 @@ export default function LightPeerPanel() {
                 </div>
               )}
 
-              {/* ── Auto-accept toggle ── */}
+              {/* ── Smart Auto-Accept toggle ── */}
               {isWalletConnected && peer.prefs.enabled && (
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-white">Auto-Accept</p>
+                    <p className="text-sm font-medium text-white flex items-center gap-1.5">
+                      Smart Auto-Accept
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">GUARDED</span>
+                    </p>
                     <p className="text-[10px] text-slate-500">
-                      Automatically accept matching RFQs without confirmation
+                      Only accepts if: pair is allowed · size within limits · rate within slippage
                     </p>
                   </div>
                   <button

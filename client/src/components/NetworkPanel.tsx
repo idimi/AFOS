@@ -178,6 +178,28 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         Rate: 1 {rfq.fromToken} = {rfq.suggestedRate.toFixed(6)} {rfq.toToken}
         &nbsp;·&nbsp;{rfq.fromChain} → {rfq.toChain}
       </div>
+      {/* Smart Auto-Accept audit trail */}
+      {rfq.autoDecision && (
+        <div className={`rounded-md px-2.5 py-2 text-[10px] space-y-0.5 border ${
+          rfq.autoDecision.action === "accepted"
+            ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-400"
+            : "bg-red-500/5 border-red-500/20 text-red-400"
+        }`}>
+          <div className="flex items-center gap-1.5 font-semibold">
+            {rfq.autoDecision.action === "accepted"
+              ? <CheckCircle2 className="w-3 h-3" />
+              : <XCircle className="w-3 h-3" />}
+            Smart Auto-Accept: {rfq.autoDecision.action === "accepted" ? "Accepted" : "Blocked"}
+          </div>
+          <div className="text-slate-400">{rfq.autoDecision.reason}</div>
+          {rfq.autoDecision.oracleRate !== undefined && rfq.autoDecision.offeredRate !== undefined && (
+            <div className="text-slate-500">
+              Oracle: {rfq.autoDecision.oracleRate.toFixed(6)} · Offered: {rfq.autoDecision.offeredRate.toFixed(6)}
+              {rfq.autoDecision.tradeUsd !== undefined && ` · $${rfq.autoDecision.tradeUsd.toFixed(2)} USD`}
+            </div>
+          )}
+        </div>
+      )}
       {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
       {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
         <div className="pt-0.5">
@@ -372,12 +394,15 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
         </div>
       )}
 
-      {/* Auto-Accept */}
+      {/* Smart Auto-Accept */}
       {isWalletConnected && peer.prefs.enabled && (
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-white">Auto-Accept</p>
-            <p className="text-[10px] text-slate-500">Automatically accept matching RFQs without confirmation</p>
+            <p className="text-sm font-medium text-white flex items-center gap-1.5">
+              Smart Auto-Accept
+              <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">GUARDED</span>
+            </p>
+            <p className="text-[10px] text-slate-500">Only accepts if: pair allowed · size within limits · rate within slippage</p>
           </div>
           <button
             onClick={() => peer.setPrefs({ autoAccept: !peer.prefs.autoAccept })}

@@ -1751,7 +1751,27 @@ export default function ChatPage() {
             <Bot className="w-5 h-5 text-cyan-400" />
           </div>
           <div>
-            <p className="text-sm font-bold text-foreground">AFOS Agent</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-bold text-foreground">AFOS Agent</p>
+              {/* Agent Mode badge — green when both Smart Auto-Accept and Auto-Claim are active */}
+              {(() => {
+                const isAgentMode = lightPeer.prefs.autoAccept && lightPeer.prefs.autoClaim;
+                const isPartial = lightPeer.prefs.autoAccept || lightPeer.prefs.autoClaim;
+                if (isAgentMode) return (
+                  <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                    AGENT MODE
+                  </span>
+                );
+                if (isPartial) return (
+                  <span className="flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                    SEMI-AUTO
+                  </span>
+                );
+                return null;
+              })()}
+            </div>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[10px] text-muted-foreground">Autonomous · Gemini 2.5 Flash</span>

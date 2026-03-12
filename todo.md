@@ -2801,3 +2801,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Persist counterpartyAddress in htlc_swaps so HtlcSecretsMonitor can auto-claim without missing wallet addresses
 - [ ] Backfill counterpartyAddress for existing htlc_swaps rows via SQL join on rfqId
 - [ ] Audit and fix full agentic flow: RFQ → auto-accept → lock → reveal → auto-claim → settle (no manual steps)
+- [ ] Rename Auto-Accept toggle to "Smart Auto-Accept" in LightPeerPanel and NetworkPanel
+- [ ] Tighten auto-accept guard: enforce spreadBps, minTradeUsd, maxTradeUsd, acceptedPairs before accepting
+- [ ] Add rejection reason to RFQ card audit trail (why it was rejected/accepted)
+- [ ] Set autoClaim default to true (on by default, recommended)
+- [ ] Add Agent Mode badge in chat header (green when both Smart Auto-Accept and Auto-Claim are on)

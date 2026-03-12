@@ -73,6 +73,16 @@ export interface IncomingRfq {
   /** True when this RFQ was created by initiateHtlcLock (Agent A / requester).
    *  When false/undefined, this is Agent B (counterparty) who should lock the toToken. */
   isInitiator?: boolean;
+  /** Audit trail: why Smart Auto-Accept accepted or rejected this RFQ */
+  autoDecision?: {
+    action: "accepted" | "rejected";
+    reason: string;
+    oracleRate?: number;
+    offeredRate?: number;
+    tradeUsd?: number;
+    spreadBps?: number;
+    timestamp: number;
+  };
 }
 
 export type HtlcStep = "idle" | "signing" | "locking" | "revealing" | "settled" | "failed";
@@ -180,7 +190,7 @@ const DEFAULT_PREFS: LightPeerPrefs = {
     "TNK/USDT", "TNK/ETH", "TNK/SOL", "TNK/BTC",
   ],
   autoAccept: false,
-  autoClaim: false,
+  autoClaim: true,  // on by default — recommended for fully agentic swaps
 };
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -811,13 +821,23 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // Bug #4 fix: call acceptRfq (not submitQuote) so the HTLC lock is actually triggered.
         // submitQuote only sends a quote response without locking funds.
         // acceptRfq handles the full flow: quote response + HTLC signing + lock.
+        const acceptedDecision: IncomingRfq["autoDecision"] = {
+          action: "accepted",
+          reason: `All guards passed — pair accepted, $${tradeUsdEstimate.toFixed(2)} within size limits, rate within slippage tolerance`,
+          oracleRate,
+          offeredRate: rfq.rate,
+          tradeUsd: tradeUsdEstimate,
+          spreadBps: prefsRef.current.spreadBps,
+          timestamp: Date.now(),
+        };
+        incoming.autoDecision = acceptedDecision;
         void acceptRfq(rfq.rfqId, incoming);
         setIncomingRfqs(prev =>
-          prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
+          prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: acceptedDecision } : r)
         );
         const autoAlias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
-        toast.success(`Auto-accepted swap from ${autoAlias}`, {
-          description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken}`,
+        toast.success(`Smart Auto-Accept: swap from ${autoAlias}`, {
+          description: `${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken} · All guards passed`,
           duration: 8000,
         });
         // Write to swap_analytics audit log via tRPC mutation (fire-and-forget)
@@ -843,10 +863,22 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }),
         }).catch(() => { /* best-effort */ });
       } else if (autoAcceptEnabled && !rateOk) {
-        // Slippage guard triggered — notify user and fall through to manual review
+        // Slippage guard triggered — stamp rejection reason and notify user
         const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
-        toast.warning(`Auto-accept blocked: rate outside slippage tolerance`, {
-          description: `Peer offered ${rfq.rate.toFixed(6)} vs oracle ${oracleRate.toFixed(6)} (>${(slippageFrac * 100).toFixed(2)}% slip)`,
+        const rejectedDecision: IncomingRfq["autoDecision"] = {
+          action: "rejected",
+          reason: `Rate guard failed — peer offered ${rfq.rate.toFixed(6)} but oracle is ${oracleRate.toFixed(6)} (>${(slippageFrac * 100).toFixed(2)}% slippage)`,
+          oracleRate,
+          offeredRate: rfq.rate,
+          tradeUsd: tradeUsdEstimate,
+          spreadBps: prefsRef.current.spreadBps,
+          timestamp: Date.now(),
+        };
+        setIncomingRfqs(prev =>
+          prev.map(r => r.rfqId === rfq.rfqId ? { ...r, autoDecision: rejectedDecision } : r)
+        );
+        toast.warning(`Smart Auto-Accept blocked: bad rate from ${alias}`, {
+          description: `Offered ${rfq.rate.toFixed(6)} vs oracle ${oracleRate.toFixed(6)} — exceeds ${(slippageFrac * 100).toFixed(2)}% slippage limit`,
           duration: 10000,
         });
         toast(`Incoming swap from ${alias}`, {
@@ -1038,13 +1070,35 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Bug fix: use acceptRfq (not submitQuote) so the HTLC lock is actually triggered.
           // submitQuote only sends a quote response without locking funds.
           // acceptRfq handles the full flow: quote response + HTLC signing + lock.
+          const sseAcceptedDecision: IncomingRfq["autoDecision"] = {
+            action: "accepted",
+            reason: `All guards passed — pair accepted, $${tradeUsd.toFixed(2)} within size limits, rate within slippage tolerance`,
+            oracleRate: oracleRateSse,
+            offeredRate: quotedRate,
+            tradeUsd,
+            spreadBps: prefsRef.current.spreadBps,
+            timestamp: Date.now(),
+          };
+          incoming.autoDecision = sseAcceptedDecision;
           void acceptRfq(rfq.rfqId, incoming);
           setIncomingRfqs(prev =>
-            prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r)
+            prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted", autoDecision: sseAcceptedDecision } : r)
           );
         } else {
-          // Slippage guard triggered — warn user and fall through to manual review
-          toast.warning("Auto-accept blocked: quoted rate outside slippage tolerance", {
+          // Slippage guard triggered — stamp rejection and warn user
+          const sseRejectedDecision: IncomingRfq["autoDecision"] = {
+            action: "rejected",
+            reason: `Rate guard failed — quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slippage)`,
+            oracleRate: oracleRateSse,
+            offeredRate: quotedRate,
+            tradeUsd,
+            spreadBps: prefsRef.current.spreadBps,
+            timestamp: Date.now(),
+          };
+          setIncomingRfqs(prev =>
+            prev.map(r => r.rfqId === rfq.rfqId ? { ...r, autoDecision: sseRejectedDecision } : r)
+          );
+          toast.warning("Smart Auto-Accept blocked: rate outside slippage tolerance", {
             description: `Quoted ${quotedRate.toFixed(6)} vs oracle ${oracleRateSse.toFixed(6)} (>${(slippageFracSse * 100).toFixed(2)}% slip). Review manually.`,
             duration: 10000,
           });
