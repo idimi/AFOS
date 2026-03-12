@@ -1,0 +1,31 @@
+{
+  "query": "SELECT * FROM htlc_secrets WHERE rfqId = 'rfq_1773283782213_lp-c7de5' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT * FROM htlc_secrets WHERE rfqId = 'rfq_1773283782213_lp-c7de5' LIMIT 5;",
+  "rows": [
+    {
+      "id": "31",
+      "rfqId": "rfq_1773283782213_lp-c7de5",
+      "secretHex": "0ea5bf9092686f67c8e9c9155e15446b1047fbc199b7ccc7e17640743fe4eb54",
+      "secretHashHex": "263423d34ac36014cb84351f37a439a73552fe3efe61d25aecc9aeb2cb4ed6db",
+      "fromChain": "solana",
+      "toChain": "solana",
+      "counterpartyPeerId": "lp-c7de58616b",
+      "initiatorPeerId": "lp-43b495553d",
+      "expiresAt": "1773283842213",
+      "status": "revealed",
+      "lockTxId": "NULL",
+      "revealTxId": "NULL",
+      "createdAt": "2026-03-12 02:49:42",
+      "updatedAt": "2026-03-12 02:50:23",
+      "htlcId": "htlc_rfq_1773283782213_lp-c7d",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "NULL",
+      "fromToken": "SOL",
+      "toToken": "USDT"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\tsecretHex\tsecretHashHex\tfromChain\ttoChain\tcounterpartyPeerId\tinitiatorPeerId\texpiresAt\tstatus\tlockTxId\trevealTxId\tcreatedAt\tupdatedAt\thtlcId\tinitiatorAddress\tcounterpartyAddress\tfromToken\ttoToken\n31\trfq_1773283782213_lp-c7de5\t0ea5bf9092686f67c8e9c9155e15446b1047fbc199b7ccc7e17640743fe4eb54\t263423d34ac36014cb84351f37a439a73552fe3efe61d25aecc9aeb2cb4ed6db\tsolana\tsolana\tlp-c7de58616b\tlp-43b495553d\t1773283842213\trevealed\tNULL\tNULL\t2026-03-12 02:49:42\t2026-03-12 02:50:23\thtlc_rfq_1773283782213_lp-c7d\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\tSOL\tUSDT\n",
+  "stderr": "",
+  "execution_time_ms": 346
+}

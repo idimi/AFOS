@@ -48,6 +48,7 @@ export interface LightPeerPrefs {
   maxTradeUsd: number;        // maximum trade size in USD
   acceptedPairs: string[];    // e.g. ["SOL/USDT", "ETH/USDC"]
   autoAccept: boolean;        // auto-accept RFQs without user confirmation
+  autoClaim: boolean;          // auto-claim HTLC funds when the secret is received (Agent B)
 }
 
 export interface IncomingRfq {
@@ -179,6 +180,7 @@ const DEFAULT_PREFS: LightPeerPrefs = {
     "TNK/USDT", "TNK/ETH", "TNK/SOL", "TNK/BTC",
   ],
   autoAccept: false,
+  autoClaim: false,
 };
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -400,8 +402,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Maps rfqId → Agent A's resolved wallet address, stored at initiateHtlcLock time.
   // This prevents a race condition where phantomSolAddress is null when htlc_locked fires.
   const agentAWalletByRfqRef = useRef<Record<string, string>>({});
-
-  // ── Live prices ref (updated from SSE) ────────────────────────────────────
+  // Stable ref to claimHtlcFunds so the htlc_secret handler can call it
+  // without being re-created every render (avoids stale closure in the event listener).
+  const claimHtlcFundsRef = useRef<(rfqId: string) => Promise<void>>(() => Promise.resolve());
+  // ── Live prices ref (updated from SSE) ─────────────────────────────────────
   const pricesRef = useRef<Record<string, number>>({});
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prefsRef = useRef(prefs);
@@ -643,15 +647,35 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const { rfqId, secretHex } = data as { rfqId: string; secretHex: string };
       if (!rfqId || !secretHex) return;
       setHtlcRevealedSecrets(prev => ({ ...prev, [rfqId]: secretHex }));
-      toast.success("HTLC secret received — you can now claim your funds!", {
-        description: `Secret for RFQ ${rfqId.slice(0, 8)}… · Use this to call the claim function on-chain`,
-        duration: 30000,
-        action: {
-          label: "Copy Secret",
-          onClick: () => { void navigator.clipboard.writeText(secretHex); },
-        },
-      });
       window.dispatchEvent(new CustomEvent("afos:htlc-secret-received", { detail: { rfqId, secretHex } }));
+
+      // ── Auto-claim path ────────────────────────────────────────────────────
+      // When autoClaim is enabled, trigger the on-chain claim immediately without
+      // requiring a manual button click. The secret is already stored in state above.
+      if (prefsRef.current.autoClaim) {
+        toast.loading(`Auto-claiming HTLC funds for RFQ ${rfqId.slice(0, 8)}…`, { id: `auto-claim-${rfqId}`, duration: 60000 });
+        // Small delay to let React flush the setHtlcRevealedSecrets state update
+        // before claimHtlcFunds reads htlcRevealedSecrets[rfqId].
+        setTimeout(() => {
+          void claimHtlcFundsRef.current(rfqId).catch((err: unknown) => {
+            console.error("[HTLC] Auto-claim failed:", err);
+            toast.error("Auto-claim failed — please claim manually", {
+              id: `auto-claim-${rfqId}`,
+              description: String(err),
+              duration: 30000,
+            });
+          });
+        }, 300);
+      } else {
+        toast.success("HTLC secret received — you can now claim your funds!", {
+          description: `Secret for RFQ ${rfqId.slice(0, 8)}… · Use this to call the claim function on-chain`,
+          duration: 30000,
+          action: {
+            label: "Copy Secret",
+            onClick: () => { void navigator.clipboard.writeText(secretHex); },
+          },
+        });
+      }
     }));
 
     // Handle htlc_secret_reminder: server re-broadcasts the secret for Agent B who may have missed it
@@ -1853,6 +1877,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       toast.error("Claim failed", { id: `claim-${rfqId}`, description: msg.slice(0, 100) });
     }
   }, [htlcRevealedSecrets, incomingRfqs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain]);
+  // Keep the ref in sync so the htlc_secret handler always calls the latest version
+  claimHtlcFundsRef.current = claimHtlcFunds;
 
   // ── Reject RFQ ────────────────────────────────────────────────────────────
   const rejectRfq = useCallback((rfqId: string) => {

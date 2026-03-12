@@ -20,7 +20,7 @@
  */
 
 import { getActiveHtlcSecrets, updateHtlcSecretStatus, getHtlcSwapAddresses } from "../db";
-import { sendToPeer } from "../signaling";
+import { sendToPeer, getPeerWalletAddress } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -169,8 +169,26 @@ async function runHtlcSecretsCheck(): Promise<void> {
             counterpartyAddress = counterpartyAddress ?? fallback.counterpartyAddress;
 
             if (!initiatorAddress || !counterpartyAddress) {
+              // Tier 3: try live signaling registry — peer may still be online
+              if (!initiatorAddress && row.initiatorPeerId) {
+                const wallets = getPeerWalletAddress(row.initiatorPeerId);
+                initiatorAddress = wallets?.solana ?? null;
+                if (initiatorAddress) {
+                  console.log(`[HtlcSecretsMonitor] Resolved initiatorAddress from live peer registry for rfqId=${row.rfqId}`);
+                }
+              }
+              if (!counterpartyAddress && row.counterpartyPeerId) {
+                const wallets = getPeerWalletAddress(row.counterpartyPeerId);
+                counterpartyAddress = wallets?.solana ?? null;
+                if (counterpartyAddress) {
+                  console.log(`[HtlcSecretsMonitor] Resolved counterpartyAddress from live peer registry for rfqId=${row.rfqId}`);
+                }
+              }
+            }
+
+            if (!initiatorAddress || !counterpartyAddress) {
               console.warn(
-                `[HtlcSecretsMonitor] Still missing wallet addresses after htlc_swaps lookup for rfqId=${row.rfqId} — cannot auto-claim`
+                `[HtlcSecretsMonitor] Still missing wallet addresses after all fallbacks for rfqId=${row.rfqId} — cannot auto-claim`
               );
               continue;
             }

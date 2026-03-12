@@ -264,6 +264,16 @@ export function sendToPeer(peerId: string, message: object): boolean {
   return false;
 }
 
+/**
+ * Get the Solana wallet address for a peer if they are currently online.
+ * Returns null if the peer is offline or has not registered a Solana address.
+ * Used by HtlcSecretsMonitor as a last-resort address fallback.
+ */
+export function getPeerWalletAddress(peerId: string): { solana?: string; ethereum?: string; bitcoin?: string } | null {
+  const peer = peers.get(peerId);
+  return peer?.walletAddresses ?? null;
+}
+
 /** Remove a peer and notify others */
 function removePeer(peerId: string) {
   const existed = peers.delete(peerId);

@@ -1,0 +1,40 @@
+{
+  "query": "\nSELECT id, rfqId, htlcId, senderAddress, recipientAddress, counterpartyAddress, status, chain\nFROM htlc_swaps\nORDER BY createdAt DESC\nLIMIT 10;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT id, rfqId, htlcId, senderAddress, recipientAddress, counterpartyAddress, status, chain\nFROM htlc_swaps\nORDER BY createdAt DESC\nLIMIT 10;\n",
+  "rows": [
+    {
+      "id": "4",
+      "rfqId": "rfq_1773290772851_lp-c7de5",
+      "htlcId": "htlc_a_rfq_1773290772851_lp-c",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "status": "pending",
+      "chain": "solana"
+    },
+    {
+      "id": "2",
+      "rfqId": "rfq_1773283782213_lp-c",
+      "htlcId": "htlc_a_rfq_1773283782213_lp-c",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "NULL",
+      "counterpartyAddress": "NULL",
+      "status": "refunded",
+      "chain": "solana"
+    },
+    {
+      "id": "1",
+      "rfqId": "rfq_1773205346880",
+      "htlcId": "NULL",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "NULL",
+      "counterpartyAddress": "NULL",
+      "status": "refunded",
+      "chain": "solana"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\thtlcId\tsenderAddress\trecipientAddress\tcounterpartyAddress\tstatus\tchain\n4\trfq_1773290772851_lp-c7de5\thtlc_a_rfq_1773290772851_lp-c\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tpending\tsolana\n2\trfq_1773283782213_lp-c\thtlc_a_rfq_1773283782213_lp-c\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\tNULL\trefunded\tsolana\n1\trfq_1773205346880\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\tNULL\trefunded\tsolana\n",
+  "stderr": "",
+  "execution_time_ms": 454
+}

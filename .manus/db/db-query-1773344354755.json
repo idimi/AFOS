@@ -1,0 +1,25 @@
+{
+  "query": "SELECT id, rfqId, status, initiatorAddress, counterpartyAddress, secretHex, fromChain, toChain, fromToken, toToken, initiatorPeerId, counterpartyPeerId, lockTxId FROM htlc_secrets WHERE rfqId = 'rfq_1773283782213_lp-c7de5';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, rfqId, status, initiatorAddress, counterpartyAddress, secretHex, fromChain, toChain, fromToken, toToken, initiatorPeerId, counterpartyPeerId, lockTxId FROM htlc_secrets WHERE rfqId = 'rfq_1773283782213_lp-c7de5';",
+  "rows": [
+    {
+      "id": "31",
+      "rfqId": "rfq_1773283782213_lp-c7de5",
+      "status": "revealed",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "NULL",
+      "secretHex": "0ea5bf9092686f67c8e9c9155e15446b1047fbc199b7ccc7e17640743fe4eb54",
+      "fromChain": "solana",
+      "toChain": "solana",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "initiatorPeerId": "lp-43b495553d",
+      "counterpartyPeerId": "lp-c7de58616b",
+      "lockTxId": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\tstatus\tinitiatorAddress\tcounterpartyAddress\tsecretHex\tfromChain\ttoChain\tfromToken\ttoToken\tinitiatorPeerId\tcounterpartyPeerId\tlockTxId\n31\trfq_1773283782213_lp-c7de5\trevealed\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\t0ea5bf9092686f67c8e9c9155e15446b1047fbc199b7ccc7e17640743fe4eb54\tsolana\tsolana\tSOL\tUSDT\tlp-43b495553d\tlp-c7de58616b\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 348
+}

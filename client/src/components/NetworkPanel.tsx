@@ -394,6 +394,27 @@ function MyNodeTab({ tnkPeerCount = 0 }: { tnkPeerCount?: number }) {
         </div>
       )}
 
+      {/* Auto-Claim */}
+      {isWalletConnected && peer.prefs.enabled && (
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-white">Auto-Claim</p>
+            <p className="text-[10px] text-slate-500">Automatically claim HTLC funds when secret is received</p>
+          </div>
+          <button
+            onClick={() => peer.setPrefs({ autoClaim: !peer.prefs.autoClaim })}
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
+              peer.prefs.autoClaim
+                ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+                : "bg-slate-500/10 border-slate-500/20 text-slate-400"
+            }`}
+          >
+            {peer.prefs.autoClaim
+              ? <><ToggleRight className="w-4 h-4" /> On</>
+              : <><ToggleLeft className="w-4 h-4" /> Off</>}
+          </button>
+        </div>
+      )}
       {/* Quote Settings */}
       {isWalletConnected && peer.prefs.enabled && (
         <div>

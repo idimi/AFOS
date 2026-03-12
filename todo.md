@@ -2799,3 +2799,5 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Redesign Swap In Progress card: remove ⏱ icon overlap, premium AFOS aesthetic, connector lines, swap summary panel, elapsed timer, exchange rate, chain labels, HTLC ATOMIC badge
 - [x] Extend getSolanaBalanceByAddress with optional mint parameter for arbitrary SPL token pre-checks
 - [x] Persist counterpartyAddress in htlc_swaps so HtlcSecretsMonitor can auto-claim without missing wallet addresses
+- [ ] Backfill counterpartyAddress for existing htlc_swaps rows via SQL join on rfqId
+- [ ] Audit and fix full agentic flow: RFQ → auto-accept → lock → reveal → auto-claim → settle (no manual steps)

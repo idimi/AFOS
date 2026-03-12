@@ -1,0 +1,9 @@
+{
+  "query": "UPDATE htlc_secrets \nSET counterpartyAddress = 'CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW'\nWHERE rfqId = 'rfq_1773283782213_lp-c7de5'\n  AND status = 'revealed'\n  AND (counterpartyAddress IS NULL OR counterpartyAddress = '');",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute UPDATE htlc_secrets \nSET counterpartyAddress = 'CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW'\nWHERE rfqId = 'rfq_1773283782213_lp-c7de5'\n  AND status = 'revealed'\n  AND (counterpartyAddress IS NULL OR counterpartyAddress = '');",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 384
+}
