@@ -2712,3 +2712,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Simulation PASSED with this account order
 - [x] Reverted Claim button to use Phantom wallet directly (not server agent)
 - [x] TypeScript: 0 errors
+
+## Production Readiness Audit: SOL→USDT P2P Swap
+- [ ] Audit agent wallet balances (SOL_HTLC_KEY, SOL_AGENT_KEY)
+- [ ] Verify HTLC program is deployed and callable
+- [ ] Audit swap flow: secret generation, HTLC lock, peer matching, timelock values
+- [ ] Audit error recovery: refund path works end-to-end with correct account layout
+- [ ] Audit claim path: preimage stored correctly in htlc_secrets
+- [ ] Audit DB consistency: htlcMonitor does not overwrite pending records with fake txIds
+- [ ] Check Oracle/peer connectivity for live RFQ matching
+- [ ] Fix any issues found before first live swap

@@ -5,6 +5,12 @@
  * Uses SOL_HTLC_KEY to sign and submit the claim instruction to the
  * deployed AFOS HTLC program (XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW).
  *
+ * CRITICAL: The AFOS HTLC program ALWAYS requires token accounts in the claim
+ * instruction, even for native SOL HTLCs. This mirrors the refund path.
+ *
+ * Required accounts (always):
+ *   [caller(signer), htlcPda, vaultAta, recipientAta, tokenProgram, systemProgram]
+ *
  * The program automatically releases:
  *   - SOL/SPL tokens locked by Agent A → to Agent B's wallet
  *   - SOL/SPL tokens locked by Agent B → to Agent A's wallet
@@ -39,9 +45,14 @@ const SPL_ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
 );
 
 // Anchor discriminators (first 8 bytes of SHA256("global:<instruction_name>"))
+// claim = [62, 198, 214, 193, 213, 159, 108, 210]
 const CLAIM_DISCRIMINATOR = Buffer.from([62, 198, 214, 193, 213, 159, 108, 210]);
 
-// Well-known SPL token mints on mainnet
+// USDT mint — always used as the token account reference even for native SOL HTLCs
+// because the AFOS program's account layout always includes token accounts
+const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+
+// Well-known SPL token mints on mainnet (for non-SOL HTLCs)
 const TOKEN_MINTS: Record<string, { mint: string; decimals: number }> = {
   USDT: { mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
   USDC: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
@@ -65,7 +76,7 @@ function deriveAta(owner: PublicKey, mint: PublicKey): PublicKey {
   return ata;
 }
 
-function htlcIdToBytes(htlcId: string): Uint8Array {
+export function htlcIdToBytes(htlcId: string): Uint8Array {
   const bytes = new Uint8Array(32);
   const encoded = new TextEncoder().encode(htlcId.slice(0, 32));
   bytes.set(encoded);
@@ -117,10 +128,13 @@ export interface HtlcClaimResult {
  * The program verifies the preimage hash matches secretHash,
  * then releases the locked funds to the recipient.
  *
- * @param htlcId - The HTLC ID used as PDA seed (e.g., "htlc_rfq_1773...")
+ * IMPORTANT: Token accounts are ALWAYS included even for native SOL HTLCs.
+ * The AFOS program's account layout requires them unconditionally.
+ *
+ * @param htlcId - The HTLC ID used as PDA seed (e.g., "htlc_a_<rfqId first 22 chars>")
  * @param secretHex - The 32-byte preimage as hex string
  * @param recipientAddress - Solana wallet address of the recipient
- * @param tokenSymbol - Optional: "USDT" or "USDC" for SPL token claims
+ * @param tokenSymbol - Optional: "USDT" or "USDC" for SPL token claims (determines which mint ATA to use)
  */
 export async function claimSolanaHtlc(params: {
   htlcId: string;
@@ -137,39 +151,43 @@ export async function claimSolanaHtlc(params: {
   const preimage = hexToBytes(secretHex);
   const htlcPda = deriveHtlcPda(htlcIdBytes);
 
+  // Determine which mint to use for token accounts
+  // For native SOL HTLCs, we still use USDT as the reference mint
+  // because the program always expects token accounts in its account layout
+  let tokenMint = USDT_MINT;
+  if (tokenSymbol) {
+    const tokenInfo = TOKEN_MINTS[tokenSymbol.toUpperCase()];
+    if (tokenInfo) {
+      tokenMint = new PublicKey(tokenInfo.mint);
+    }
+  }
+
+  const vaultAta = deriveAta(htlcPda, tokenMint);
+  const recipientAta = deriveAta(recipient, tokenMint);
+
+  // Ensure recipient's ATA exists — create if needed (only relevant for SPL token claims)
+  if (tokenSymbol) {
+    await ensureAtaExists(connection, agentKeypair, recipient, tokenMint, recipientAta);
+  }
+
   // Build claim instruction data: discriminator[8] + preimage[32]
   const data = Buffer.alloc(8 + 32);
   CLAIM_DISCRIMINATOR.copy(data, 0);
   Buffer.from(preimage).copy(data, 8);
 
-  // Build account keys
+  // Account layout — ALWAYS includes token accounts (program requires them unconditionally)
+  // Matches the client-side buildClaimInstruction layout exactly:
+  //   [caller(signer), htlcPda, recipient, vaultAta, recipientAta, tokenProgram, systemProgram]
+  // Note: recipient is an explicit writable account (different from refund which uses senderAta)
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: agentKeypair.publicKey, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
     { pubkey: recipient, isSigner: false, isWritable: true },
+    { pubkey: vaultAta, isSigner: false, isWritable: true },
+    { pubkey: recipientAta, isSigner: false, isWritable: true },
+    { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
-
-  // Add SPL token accounts if this is a token claim
-  if (tokenSymbol) {
-    const tokenInfo = TOKEN_MINTS[tokenSymbol.toUpperCase()];
-    if (!tokenInfo) {
-      throw new Error(`Unknown token symbol: ${tokenSymbol}`);
-    }
-    const tokenMint = new PublicKey(tokenInfo.mint);
-    const vaultAta = deriveAta(htlcPda, tokenMint);
-    const recipientAta = deriveAta(recipient, tokenMint);
-
-    // Ensure recipient's ATA exists — create if needed
-    await ensureAtaExists(connection, agentKeypair, recipient, tokenMint, recipientAta);
-
-    keys.push(
-      { pubkey: tokenMint, isSigner: false, isWritable: false },
-      { pubkey: vaultAta, isSigner: false, isWritable: true },
-      { pubkey: recipientAta, isSigner: false, isWritable: true },
-      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
-    );
-  }
 
   const claimIx = new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,

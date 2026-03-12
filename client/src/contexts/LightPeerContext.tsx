@@ -1528,30 +1528,22 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         // The claim instruction reveals the secret to the HTLC program to release funds
         const htlcProgramId = import.meta.env.VITE_SOL_HTLC_PROGRAM_ID as string | undefined;
         if (htlcProgramId) {
-          // Real Anchor program: call the claim instruction
-          // Instruction: [8-byte discriminator][32-byte secret]
-          const CLAIM_DISCRIMINATOR = Buffer.from([0x3e, 0x1f, 0x2a, 0x8b, 0x4c, 0x7d, 0x9e, 0x5f]);
+          // Real Anchor program: use buildClaimInstruction with correct discriminator,
+          // PDA derivation (htlc_a_<rfqId>), and always-required token accounts
+          const { buildClaimInstruction, htlcIdToBytes } = await import("@/lib/afosHtlcProgram");
+          const { Transaction, PublicKey: SolPublicKey } = await import("@solana/web3.js");
           const secretBytes = new Uint8Array(secretHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const data = Buffer.concat([CLAIM_DISCRIMINATOR, Buffer.from(secretBytes)]);
-          const { Transaction, TransactionInstruction, PublicKey: SolPublicKey, SystemProgram } = await import("@solana/web3.js");
-          const programId = new SolPublicKey(htlcProgramId);
-          const secretHashBuf = await crypto.subtle.digest("SHA-256", secretBytes);
-          const secretHashBytes = new Uint8Array(secretHashBuf);
           const claimSolPubkeyStr = solPubkey?.toBase58() ?? phantomSolAddress;
           if (!claimSolPubkeyStr) throw new Error("No Solana wallet address available");
           const claimSolPubkey = new SolPublicKey(claimSolPubkeyStr);
-          const [escrowPda] = await SolPublicKey.findProgramAddress(
-            [Buffer.from("htlc"), Buffer.from(secretHashBytes), claimSolPubkey.toBuffer()],
-            programId
-          );
-          const claimIx = new TransactionInstruction({
-            programId,
-            keys: [
-              { pubkey: claimSolPubkey, isSigner: true, isWritable: true },
-              { pubkey: escrowPda, isSigner: false, isWritable: true },
-              { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
-            data,
+          // Agent B is claiming Agent A's HTLC — htlcId is htlc_a_<rfqId first 22 chars>
+          // Agent B's wallet is the on-chain recipient of Agent A's HTLC
+          const htlcIdA = `htlc_a_${rfqId.slice(0, 22)}`;
+          const claimIx = buildClaimInstruction({
+            caller: claimSolPubkey,
+            htlcId: htlcIdToBytes(htlcIdA),
+            preimage: secretBytes,
+            recipient: claimSolPubkey,
           });
           const { blockhash } = await solConnection.getLatestBlockhash("confirmed");
           const tx = new Transaction();

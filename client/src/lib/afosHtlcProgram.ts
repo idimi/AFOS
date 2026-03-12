@@ -162,14 +162,18 @@ export function buildLockTokenInstruction(params: {
 
 /**
  * Build a claim instruction — reveals the preimage to release funds
- * Called by the AFOS agent server after both sides have locked
+ * Called by anyone who knows the preimage (typically Agent B claiming Agent A's HTLC)
+ *
+ * IMPORTANT: The program always requires token accounts in the account list
+ * even for native SOL HTLCs (verified by on-chain simulation).
+ * Account order: caller, htlcPda, recipient, vaultAta, recipientAta, tokenProgram, systemProgram
  */
 export function buildClaimInstruction(params: {
-  caller: PublicKey;   // AFOS agent wallet
+  caller: PublicKey;    // Wallet signing the claim tx (can be anyone with the preimage)
   htlcId: Uint8Array;
   preimage: Uint8Array; // 32-byte secret
-  recipient: PublicKey;
-  tokenMint?: PublicKey; // Required for SPL token claims
+  recipient: PublicKey; // Must match the on-chain stored recipient
+  tokenMint?: PublicKey; // Optional override; defaults to USDT
 }): TransactionInstruction {
   const [htlcPda] = deriveHtlcPda(params.htlcId);
 
@@ -177,22 +181,20 @@ export function buildClaimInstruction(params: {
   DISCRIMINATORS.claim.copy(data, 0);
   Buffer.from(params.preimage).copy(data, 8);
 
+  // Always include token accounts — program requires them even for SOL HTLCs
+  const mint = params.tokenMint ?? DEFAULT_REFUND_TOKEN_MINT; // USDT by default
+  const vaultAta = deriveAta(htlcPda, mint);
+  const recipientAta = deriveAta(params.recipient, mint);
+
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: params.caller, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
     { pubkey: params.recipient, isSigner: false, isWritable: true },
+    { pubkey: vaultAta, isSigner: false, isWritable: true },
+    { pubkey: recipientAta, isSigner: false, isWritable: true },
+    { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
-
-  if (params.tokenMint) {
-    const vaultAta = deriveAta(htlcPda, params.tokenMint);
-    const recipientAta = deriveAta(params.recipient, params.tokenMint);
-    keys.push(
-      { pubkey: vaultAta, isSigner: false, isWritable: true },
-      { pubkey: recipientAta, isSigner: false, isWritable: true },
-      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
-    );
-  }
 
   return new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,
