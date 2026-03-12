@@ -2759,3 +2759,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Fix: use a higher threshold (e.g. > 1_700_000_000) to distinguish Unix timestamps from Solana block heights, OR use a different field to store the expiry
 - [ ] Alternatively: store the actual Unix expiry timestamp in a separate DB column
 - [ ] Update DB row's locktime to the correct Unix timestamp (timelock = 1741654185 from the original HTLC lock)
+
+## Refunds Tab UX Improvements
+
+- [x] Delete test HTLC row (rfq_test_countdown_demo) from DB
+- [x] Add live "Expired X ago" indicator to CLAIMABLE RefundCards (e.g. "Expired 6 minutes ago")

@@ -219,6 +219,27 @@ function useTimeCountdown(expiryUnixSec: number): { label: string; expired: bool
   return { label, expired: false };
 }
 
+/**
+ * Returns a human-readable "X ago" string for a past Unix timestamp (seconds).
+ * Updates every 10 seconds. Returns empty string if timestamp is 0 or in the future.
+ */
+function useTimeSince(pastUnixSec: number): string {
+  const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    if (!pastUnixSec) return;
+    const iv = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 10_000);
+    return () => clearInterval(iv);
+  }, [pastUnixSec]);
+
+  if (!pastUnixSec || pastUnixSec > now) return "";
+  const elapsed = now - pastUnixSec;
+  if (elapsed < 60)  return `${elapsed}s ago`;
+  if (elapsed < 3600) return `${Math.floor(elapsed / 60)}m ago`;
+  if (elapsed < 86400) return `${Math.floor(elapsed / 3600)}h ago`;
+  return `${Math.floor(elapsed / 86400)}d ago`;
+}
+
 // ─── HTLC Detail Drawer ───────────────────────────────────────────────────────
 
 interface HtlcDetailDrawerProps {
@@ -1052,11 +1073,13 @@ function RefundCard({
   const agentRefundHtlc = trpc.history.agentRefundHtlc.useMutation();
   const utils = trpc.useUtils();
   const [claiming, setClaiming] = useState(false);
-  // Live countdown for pending (not-yet-expired) HTLCs
+  // Live countdown for pending/locked HTLCs
   const isUnixTimelock = refund.locktime > 1_000_000_000;
   const { label: countdownLabel, expired: countdownExpired } = useTimeCountdown(
     isUnixTimelock ? refund.locktime : 0
   );
+  // "Expired X ago" for claimable HTLCs
+  const expiredAgoLabel = useTimeSince(isUnixTimelock ? refund.locktime : 0);
 
   const claimRefund = useCallback(async () => {
     // Solana claim — the user's wallet is the on-chain sender (they locked the HTLC).
@@ -1318,6 +1341,14 @@ function RefundCard({
                 style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.2)", color: "#93c5fd" }}>
                 <Clock className="w-2.5 h-2.5" />
                 {countdownLabel}
+              </span>
+            )}
+            {/* "Expired X ago" for claimable HTLCs */}
+            {refund.status === "claimable" && expiredAgoLabel && (
+              <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono"
+                style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: "#fbbf24" }}>
+                <Clock className="w-2.5 h-2.5" />
+                Expired {expiredAgoLabel}
               </span>
             )}
             <span className="text-[10px] font-mono text-muted-foreground">
