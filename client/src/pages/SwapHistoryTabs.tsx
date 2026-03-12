@@ -19,6 +19,7 @@ import { requestTnkHtlcRefund } from "@/lib/tnkHtlc";
 import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import type { SupportedChain } from "@shared/const";
+import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
@@ -444,6 +445,7 @@ function OpenTradeCard({
     useBlockCountdown(trade.chain, trade.locktime);
   const { publicKey, signTransaction } = useSolanaWallet();
   const { connection } = useConnection();
+  const { phantomMultiChain } = useMultiChainWallet();
   const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
   const utils = trpc.useUtils();
   const [earlyRefunding, setEarlyRefunding] = useState(false);
@@ -455,20 +457,35 @@ function OpenTradeCard({
 
     // ── Solana early refund ────────────────────────────────────────────────────
     if (trade.chain === "solana") {
-      if (!publicKey || !signTransaction) {
+      const phantomSolana = (
+        (window as unknown as { phantom?: { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } } }).phantom?.solana ||
+        (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana
+      );
+      const phantomSolAddr = phantomMultiChain?.solanaAddress;
+      const effectivePubkey = publicKey ?? (phantomSolAddr ? new PublicKey(phantomSolAddr) : null);
+
+      if (!effectivePubkey || (!signTransaction && !phantomSolana?.signAndSendTransaction)) {
         toast.error("Wallet not connected", { description: "Connect your Phantom wallet to cancel this trade." });
         setEarlyRefunding(false);
         return;
       }
       try {
         const { transaction } = await buildSolanaHtlcRefundTx({
-          senderPubkey: publicKey,
+          senderPubkey: effectivePubkey,
           htlcId: trade.htlcAddress ?? `htlc_${(trade.secretHash ?? '').slice(0, 16)}`,
           connection,
         });
-        const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
-        const rawTx = signed.serialize();
-        const txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        let txHash: string;
+        if (publicKey && signTransaction) {
+          const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+          const rawTx = signed.serialize();
+          txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false });
+        } else if (phantomSolana?.signAndSendTransaction) {
+          const result = await phantomSolana.signAndSendTransaction(transaction);
+          txHash = result.signature;
+        } else {
+          throw new Error("No signing method available — please reconnect your wallet");
+        }
         await connection.confirmTransaction(txHash, "confirmed");
         await updateHtlcRefund.mutateAsync({ htlcAddress: trade.htlcAddress, refundTxId: txHash });
         await utils.history.openTrades.invalidate();
@@ -983,14 +1000,28 @@ function RefundCard({
 }) {
   const { publicKey, signTransaction, sendTransaction } = useSolanaWallet();
   const { connection } = useConnection();
+  const { phantomMultiChain } = useMultiChainWallet();
   const updateHtlcRefund = trpc.history.updateHtlcRefund.useMutation();
   const utils = trpc.useUtils();
   const [claiming, setClaiming] = useState(false);
 
   const claimRefund = useCallback(async () => {
-    // Solana claim — uses wallet adapter sendTransaction for best RPC reliability
+    // Solana claim — supports both wallet adapter (Solflare/adapter flow) and
+    // direct window.solana (Phantom multi-chain flow where adapter publicKey is null)
     if (refund.chain === "solana") {
-      if (!publicKey || !signTransaction || !sendTransaction) {
+      // Determine which Solana signing path to use:
+      // 1. Wallet adapter (publicKey set) — use sendTransaction from adapter
+      // 2. window.solana / window.phantom.solana — use signAndSendTransaction directly
+      const phantomSolana = (
+        (window as unknown as { phantom?: { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } } }).phantom?.solana ||
+        (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana
+      );
+      const phantomSolAddr = phantomMultiChain?.solanaAddress;
+
+      // Resolve effective public key — prefer wallet adapter, fall back to phantomMultiChain
+      const effectivePubkey = publicKey ?? (phantomSolAddr ? new PublicKey(phantomSolAddr) : null);
+
+      if (!effectivePubkey || (!sendTransaction && !phantomSolana?.signAndSendTransaction)) {
         toast.error("Wallet not connected", { description: "Connect your Phantom wallet to claim the refund" });
         return;
       }
@@ -1000,25 +1031,33 @@ function RefundCard({
       try {
         const htlcId = refund.htlcAddress ?? `htlc_${(refund.secretHash ?? '').slice(0, 16)}`;
         const { transaction } = await buildSolanaHtlcRefundTx({
-          senderPubkey: publicKey,
+          senderPubkey: effectivePubkey,
           htlcId,
           connection,
           tokenSymbol: refund.fromSymbol !== "SOL" ? refund.fromSymbol : undefined,
         });
         toast.loading("Waiting for wallet signature…", { id: toastId });
-        // Prefer sendTransaction (Phantom handles RPC selection + retry internally)
         let txHash: string;
-        try {
-          txHash = await sendTransaction(transaction, connection, {
-            skipPreflight: false,
-            preflightCommitment: "confirmed",
-            maxRetries: 3,
-          });
-        } catch (sendErr) {
-          // Fallback: manual sign + sendRawTransaction if sendTransaction not available
-          const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
-          const rawTx = signed.serialize();
-          txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false, maxRetries: 3 });
+        if (publicKey && sendTransaction) {
+          // Path 1: wallet adapter sendTransaction (Solflare or adapter-connected Phantom)
+          try {
+            txHash = await sendTransaction(transaction, connection, {
+              skipPreflight: false,
+              preflightCommitment: "confirmed",
+              maxRetries: 3,
+            });
+          } catch {
+            // Fallback: manual sign + sendRawTransaction
+            const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
+            const rawTx = signed.serialize();
+            txHash = await connection.sendRawTransaction(rawTx, { skipPreflight: false, maxRetries: 3 });
+          }
+        } else if (phantomSolana?.signAndSendTransaction) {
+          // Path 2: window.solana / window.phantom.solana (Phantom multi-chain direct connection)
+          const result = await phantomSolana.signAndSendTransaction(transaction);
+          txHash = result.signature;
+        } else {
+          throw new Error("No signing method available — please reconnect your wallet");
         }
         toast.loading("Confirming on-chain…", { id: toastId });
         // Use confirmTransaction with timeout

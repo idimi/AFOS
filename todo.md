@@ -2697,3 +2697,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] DB record confirmed as status=pending (persisted from previous session)
 - [x] Server logs confirm: AutoRefund sees 1 user-claimable HTLC visible in Refunds tab
 - [x] Verified in browser: Refunds tab shows 1 CLAIMABLE with working Claim button
+
+## Bug: Claim button shows "Wallet not connected" even when wallet is connected
+- [x] Found root cause: Claim button used wallet adapter publicKey (null for multi-chain Phantom) instead of window.phantom.solana
+- [x] Fixed RefundCard.claimRefund: falls back to window.phantom.solana.signAndSendTransaction when adapter publicKey is null
+- [x] Fixed OpenTradeCard.executeEarlyRefund: same dual-path fix for consistency
+- [x] TypeScript: 0 errors
