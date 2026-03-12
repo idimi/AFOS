@@ -761,6 +761,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     // Handle RFQ broadcasts
     unsubs.push(client.on("rfq_broadcast", (data) => {
+      console.log("[LightPeer] rfq_broadcast received", data);
       const { fromPeerId, rfq } = data as { fromPeerId: string; rfq: unknown };
       // Dispatch to Live Order Book (Swaps page)
       window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: { fromPeerId, ...(rfq as object) } }));
@@ -872,6 +873,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     // Handle agent-dispatched RFQs (agent matched this peer with a requester)
     unsubs.push(client.on("agent_rfq", (data) => {
+      console.log("[LightPeer] agent_rfq received", data);
       const rfq = data as {
         rfqId: string;
         fromToken: string;
@@ -1289,6 +1291,91 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
     return unsub;
   }, [peerId, prefs.enabled]);
+
+  // ── Poll server inbox for missed agent_rfq messages (fallback) ────────────
+  // WebSocket delivery can be unreliable (tab switching, reconnection races,
+  // multiple tabs). This polls the server every 5s to catch any missed RFQs.
+  useEffect(() => {
+    if (!peerId) return;
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `/api/trpc/chat.pollInbox?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { peerId } } }))}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const body = await res.json() as unknown;
+        const items = (body as { result?: { data?: { json?: Array<{
+          rfqId: string; fromToken: string; toToken: string; fromChain: string; toChain: string;
+          amount: number; outAmount: number; rate: number; requesterAlias?: string;
+          requesterPeerId?: string; requesterWallet?: string; expiresAt: number;
+          secretHashHex?: string; timestamp: number;
+        }> } } }[])?.[0]?.result?.data?.json;
+        if (!Array.isArray(items) || items.length === 0) return;
+        console.log("[LightPeer] pollInbox returned", items.length, "missed RFQs");
+        for (const rfq of items) {
+          if (!rfq.rfqId || !rfq.fromToken || !rfq.toToken) continue;
+          if (rfq.expiresAt < Date.now()) continue;
+          // Echo-filter
+          if (rfq.requesterPeerId && rfq.requesterPeerId === peerId) continue;
+          const incoming: IncomingRfq = {
+            rfqId: rfq.rfqId,
+            fromToken: rfq.fromToken,
+            toToken: rfq.toToken,
+            amount: rfq.amount,
+            fromChain: rfq.fromChain ?? "solana",
+            toChain: rfq.toChain ?? "solana",
+            requestorPeer: rfq.requesterPeerId ?? rfq.requesterAlias ?? "unknown",
+            expiresAt: rfq.expiresAt,
+            suggestedRate: rfq.rate,
+            suggestedOutAmount: rfq.outAmount,
+            status: "pending",
+            receivedAt: Date.now(),
+            secretHashHex: rfq.secretHashHex,
+            counterpartyAddress: rfq.requesterWallet,
+            requesterWallet: rfq.requesterWallet,
+          };
+          setIncomingRfqs(prev => {
+            if (prev.some(r => r.rfqId === rfq.rfqId)) return prev;
+            return [incoming, ...prev].slice(0, 20);
+          });
+          // Dispatch to chat page
+          window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: rfq }));
+          // Dispatch to Live Order Book
+          window.dispatchEvent(new CustomEvent("afos:signaling-rfq", { detail: rfq }));
+          toast(`Incoming swap: ${rfq.amount.toFixed(4)} ${rfq.fromToken} → ${rfq.outAmount.toFixed(4)} ${rfq.toToken}`, {
+            description: `From ${rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "peer"} · recovered via polling`,
+            duration: 15000,
+            action: {
+              label: "View in Agent",
+              onClick: () => { window.dispatchEvent(new CustomEvent("afos:open-agent-chat")); },
+            },
+          });
+          // Run auto-accept guards on polled RFQs too
+          const prefs_p = prefsRef.current as LightPeerPrefs & { autoAcceptRfq?: boolean; autoAcceptMaxUsd?: number; slippagePct?: string | number };
+          const autoEnabled_p = prefs_p.autoAcceptRfq ?? prefs_p.autoAccept;
+          if (autoEnabled_p) {
+            const fromPrice_p = pricesRef.current[(rfq.fromToken ?? "").toUpperCase()] ?? 0;
+            const toPrice_p = pricesRef.current[(rfq.toToken ?? "").toUpperCase()] ?? 0;
+            const tradeUsd_p = fromPrice_p > 0 ? rfq.amount * fromPrice_p : rfq.outAmount * rfq.rate;
+            const cap_p = (prefs_p.autoAcceptMaxUsd && prefs_p.autoAcceptMaxUsd > 0) ? prefs_p.autoAcceptMaxUsd : prefs_p.maxTradeUsd;
+            const oracleRate_p = (fromPrice_p > 0 && toPrice_p > 0) ? fromPrice_p / toPrice_p : 0;
+            const slipFrac_p = parseFloat(String(prefs_p.slippagePct ?? "0.5")) / 100 || 0.005;
+            const rateOk_p = oracleRate_p <= 0 || rfq.rate >= oracleRate_p * (1 - slipFrac_p);
+            if (tradeUsd_p <= cap_p && rateOk_p) {
+              void acceptRfq(rfq.rfqId, incoming);
+              setIncomingRfqs(prev => prev.map(r => r.rfqId === rfq.rfqId ? { ...r, status: "accepted" } : r));
+            }
+          }
+        }
+      } catch { /* polling is best-effort */ }
+    };
+    // Poll immediately on mount, then every 5 seconds
+    void poll();
+    const timer = setInterval(poll, 5000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peerId]);
 
   // ── Expire stale RFQs ─────────────────────────────────────────────────────
   useEffect(() => {

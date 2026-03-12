@@ -2806,3 +2806,4 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Add rejection reason to RFQ card audit trail (why it was rejected/accepted)
 - [ ] Set autoClaim default to true (on by default, recommended)
 - [ ] Add Agent Mode badge in chat header (green when both Smart Auto-Accept and Auto-Claim are on)
+- [x] Fix: Broadcast RFQs from Agent A still not appearing in Agent B Incoming RFQs panel — root cause: WebSocket delivery unreliable due to tab switching/reconnection races. Fix: (1) Added server-side peer inbox (storePeerInboxRfq) that stores every agent_rfq as a polling fallback, (2) Added pollInbox tRPC endpoint that drains the inbox, (3) Added 5-second polling in LightPeerContext that catches missed RFQs and processes them with full auto-accept guard logic, (4) Added debug logging to both rfq_broadcast and agent_rfq handlers

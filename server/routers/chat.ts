@@ -34,7 +34,7 @@ import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
 import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
-import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq } from "../signaling";
+import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq, storePeerInboxRfq, drainPeerInbox } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
@@ -455,6 +455,7 @@ function sendAgentRfqToPeer(params: {
   /** SHA-256 hash of the HTLC secret (hex). Agent B MUST lock to this hash so the swap is atomic. */
   secretHashHex?: string;
 }): boolean {
+  const now = Date.now();
   const delivered = sendToPeer(params.targetPeerId, {
     type:            "agent_rfq",
     rfqId:           params.rfqId,
@@ -471,7 +472,25 @@ function sendAgentRfqToPeer(params: {
     expiresAt:       params.expiresAt,
     // Critical for atomicity: Agent B must lock to this exact hash
     secretHashHex:   params.secretHashHex,
-    timestamp:       Date.now(),
+    timestamp:       now,
+  });
+  // ALWAYS store in peer inbox as polling fallback — WebSocket delivery can be unreliable
+  // (tab switching, reconnection races, multiple tabs, etc.)
+  storePeerInboxRfq(params.targetPeerId, {
+    rfqId:           params.rfqId,
+    fromToken:       params.fromToken,
+    toToken:         params.toToken,
+    fromChain:       params.fromChain,
+    toChain:         params.toChain,
+    amount:          params.amount,
+    outAmount:       params.outAmount,
+    rate:            params.rate,
+    requesterAlias:  params.requesterAlias ?? "Anonymous",
+    requesterPeerId: params.requesterPeerId,
+    requesterWallet: params.requesterWallet,
+    expiresAt:       params.expiresAt,
+    secretHashHex:   params.secretHashHex,
+    timestamp:       now,
   });
   // Push notification for swap activity (gated by preference)
   void getOwnerNotifyPrefs().then(prefs => {
@@ -2529,6 +2548,17 @@ export const chatRouter = router({
   getActiveRfqs: publicProcedure.query(() => {
     return getActiveRfqs();
   }),
+
+  /**
+   * Poll the peer inbox for agent_rfq messages that may have been missed via WebSocket.
+   * Returns and clears all pending RFQs for the given peerId.
+   * Called every 5s by LightPeerContext as a fallback delivery mechanism.
+   */
+  pollInbox: publicProcedure
+    .input(z.object({ peerId: z.string() }))
+    .query(({ input }) => {
+      return drainPeerInbox(input.peerId);
+    }),
 
   /**
    * Remove an RFQ from the order book (e.g. after acceptance or cancellation).

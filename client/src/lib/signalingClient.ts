@@ -502,6 +502,7 @@ export class SignalingClient {
         break;
 
       case "rfq_broadcast":
+        console.log("[SignalingClient] Received rfq_broadcast from server", msg);
         this.emit("rfq_broadcast", {
           fromPeerId: msg.fromPeerId,
           rfq: msg.rfq,
@@ -510,6 +511,7 @@ export class SignalingClient {
 
       case "agent_rfq":
         // Agent-dispatched RFQ — server pushes this directly to the matched peer
+        console.log("[SignalingClient] Received agent_rfq from server", msg);
         this.emit("agent_rfq", msg);
         break;
 

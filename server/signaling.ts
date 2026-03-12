@@ -182,6 +182,62 @@ export function getActiveRfqs(): ActiveRfq[] {
   return result;
 }
 
+// ─── Peer-Targeted RFQ Inbox ─────────────────────────────────────────────────
+// Stores agent_rfq messages per target peer so they can be polled as a fallback
+// when WebSocket delivery is unreliable (e.g., tab switching, reconnection races).
+
+export interface PeerInboxRfq {
+  rfqId: string;
+  fromToken: string;
+  toToken: string;
+  fromChain: string;
+  toChain: string;
+  amount: number;
+  outAmount: number;
+  rate: number;
+  requesterAlias?: string;
+  requesterPeerId?: string;
+  requesterWallet?: string;
+  expiresAt: number;
+  secretHashHex?: string;
+  timestamp: number;
+}
+
+const peerInbox = new Map<string, PeerInboxRfq[]>();
+
+/** Store an agent_rfq in the target peer's inbox for polling fallback */
+export function storePeerInboxRfq(targetPeerId: string, rfq: PeerInboxRfq): void {
+  const existing = peerInbox.get(targetPeerId) ?? [];
+  // Dedup by rfqId
+  if (existing.some(r => r.rfqId === rfq.rfqId)) return;
+  existing.push(rfq);
+  peerInbox.set(targetPeerId, existing);
+  // Auto-remove after expiry
+  const ttl = Math.max(0, rfq.expiresAt - Date.now());
+  setTimeout(() => {
+    const inbox = peerInbox.get(targetPeerId);
+    if (inbox) {
+      const filtered = inbox.filter(r => r.rfqId !== rfq.rfqId);
+      if (filtered.length === 0) peerInbox.delete(targetPeerId);
+      else peerInbox.set(targetPeerId, filtered);
+    }
+  }, ttl + 2000);
+}
+
+/** Retrieve and clear all pending RFQs for a peer (poll endpoint) */
+export function drainPeerInbox(peerId: string): PeerInboxRfq[] {
+  const now = Date.now();
+  const inbox = peerInbox.get(peerId) ?? [];
+  peerInbox.delete(peerId);
+  return inbox.filter(r => r.expiresAt > now);
+}
+
+/** Peek at pending RFQs without clearing (for debugging) */
+export function peekPeerInbox(peerId: string): PeerInboxRfq[] {
+  const now = Date.now();
+  return (peerInbox.get(peerId) ?? []).filter(r => r.expiresAt > now);
+}
+
 /** Get a sanitised peer list (no WebSocket refs) for broadcasting */
 function getPeerList() {
   return Array.from(peers.values()).map((p) => ({
