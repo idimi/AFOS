@@ -324,6 +324,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [signalingConnected, setSignalingConnected] = useState(false);
   const [directPeerCount, setDirectPeerCount] = useState(0);
   const signalingRef = useRef<SignalingClient | null>(null);
+  // Maps rfqId → Agent A's resolved wallet address, stored at initiateHtlcLock time.
+  // This prevents a race condition where phantomSolAddress is null when htlc_locked fires.
+  const agentAWalletByRfqRef = useRef<Record<string, string>>({});
 
   // ── Live prices ref (updated from SSE) ────────────────────────────────────
   const pricesRef = useRef<Record<string, number>>({});
@@ -515,8 +518,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // what was saved in the DB by buildSwapTx (userPublicKey). Use solPubkey or phantomSolAddress.
       void (async () => {
         try {
-          // Resolve Agent A's wallet address for the auth check
-          const agentAWallet = solPubkey?.toBase58() ?? phantomSolAddress ?? peerId ?? "";
+          // Resolve Agent A's wallet address for the auth check.
+          // Priority: (1) stored ref set at initiateHtlcLock time (most reliable),
+          // (2) live solPubkey from adapter, (3) phantomSolAddress, (4) peerId fallback.
+          const agentAWallet =
+            agentAWalletByRfqRef.current[rfqId] ??
+            solPubkey?.toBase58() ??
+            phantomSolAddress ??
+            peerId ?? "";
+          console.log(`[HTLC] revealHtlcSecret agentAWallet=${agentAWallet.slice(0,8)}... rfqId=${rfqId.slice(0,8)}`);
           // Compute Agent A's htlcId (same rfqId-based formula)
           const agentAHtlcId = `htlc_a_${rfqId.slice(0, 22)}`;
           const res = await fetch("/api/trpc/chat.revealHtlcSecret?batch=1", {
@@ -533,7 +543,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             } } }),
           });
           if (!res.ok) {
-            console.warn("[HTLC] revealHtlcSecret failed:", res.status);
+            const errText = await res.text().catch(() => "");
+            console.warn("[HTLC] revealHtlcSecret failed:", res.status, errText);
             return;
           }
           const json = await res.json();
@@ -1467,6 +1478,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     const { rfqId, fromToken, toToken, fromChain, toChain, amount, outAmount, rate, counterpartyPeerId, counterpartyWallet } = params;
     console.error("[HTLC-DEBUG] initiateHtlcLock called", { rfqId, fromChain, toChain, amount, counterpartyWallet, secretHashHex: params.secretHashHex?.slice(0, 16) });
     toast.info(`[HTLC-DEBUG] initiateHtlcLock rfqId=${rfqId?.slice(0,8)} chain=${fromChain}`);
+    // Store Agent A's wallet address NOW (before any async work) so the htlc_locked
+    // handler can reliably retrieve it even if phantomSolAddress is null at that time.
+    const agentAResolvedWallet = solPubkey?.toBase58() ?? phantomSolAddress ?? "";
+    if (agentAResolvedWallet) {
+      agentAWalletByRfqRef.current[rfqId] = agentAResolvedWallet;
+      console.log(`[HTLC] Stored agentAWallet=${agentAResolvedWallet.slice(0,8)}... for rfqId=${rfqId.slice(0,8)}`);
+    }
     // Build a synthetic IncomingRfq for Agent A (the requester).
     // Agent A locks their SOURCE tokens (fromToken on fromChain).
     // acceptRfq uses rfq.fromChain to determine which chain to lock on,

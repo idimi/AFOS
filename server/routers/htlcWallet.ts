@@ -571,6 +571,9 @@ export const htlcWalletRouter = router({
       timelock: z.number(),
       rfqId: z.string().optional(),
       peerId: z.string().optional(),
+      // Additional monitoring fields sent by the client
+      htlcId: z.string().optional(),
+      isAgentA: z.boolean().optional(),
     }))
     .mutation(async ({ input }) => {
       try {

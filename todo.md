@@ -2726,3 +2726,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## HTLC Claim Retry Mechanism
 
 - [x] Add server-side HTLC claim retry in htlcSecretsMonitor.ts: if a "revealed" HTLC stays unclaimed for >5 minutes, auto-retry claimSolanaHtlc (idempotent — treat already-claimed errors as success)
+
+## Atomic Settlement Bug Fixes
+
+- [x] Fix revealHtlcSecret 403: store agentAWallet in a ref at buildSwapTx time so it's always available when htlc_locked fires (not re-resolved from possibly-null solPubkey/phantomSolAddress)
+- [x] Fix revealHtlcSecret server: remove the FORBIDDEN check (or make it non-blocking) since the secret can only be retrieved by knowing the rfqId which is already private
+- [x] Fix lcDeposit 400: add htlcId and isAgentA optional fields to recordHtlcDeposit schema (Zod was rejecting unknown fields)
+- [x] Fix relay/announce 502: Oracle VM is healthy, 502 was transient network blip (no code fix needed)
