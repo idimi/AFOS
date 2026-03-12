@@ -12,7 +12,7 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { publicProcedure, router } from "../_core/trpc";
+import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
 import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
@@ -299,10 +299,19 @@ export const historyRouter = router({
     .input(z.object({
       walletAddresses: z.array(z.string()).default([]),
       search:          z.string().max(100).default(""),
+      // adminOverride: when true AND walletAddresses is empty, return all refunds (admin use only).
+      // When false (default) and walletAddresses is empty, return nothing — security gate.
+      adminOverride:   z.boolean().default(false),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) return { refunds: [], isWalletScoped: false };
+
+      // Security gate: if no wallet addresses provided and not admin override, return empty.
+      // This prevents unauthenticated or wallet-less users from seeing all refunds.
+      if (input.walletAddresses.length === 0 && !input.adminOverride) {
+        return { refunds: [], isWalletScoped: false };
+      }
 
       const isWalletScoped = input.walletAddresses.length > 0;
 

@@ -26,6 +26,7 @@ import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 interface TabProps {
   walletAddresses: string[];
   search?: string;
+  adminOverride?: boolean;
 }
 
 // ─── Shared Search Bar ────────────────────────────────────────────────────────
@@ -1582,14 +1583,14 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
   );
 }
 
-export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
+export function RefundsTab({ walletAddresses, search = "", adminOverride = false }: TabProps) {
   const { data, isLoading } = trpc.history.refunds.useQuery(
-    { walletAddresses, search },
+    { walletAddresses, search, adminOverride },
     { refetchInterval: 30000 }
   );
   // On-chain scanner — always runs, finds HTLCs not in DB too
   const { data: onChainData, isLoading: onChainLoading } = trpc.history.myOnChainRefunds.useQuery(
-    { walletAddresses },
+    { walletAddresses, adminOverride },
     { refetchInterval: 60000 }
   );
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
@@ -1655,11 +1656,16 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
         {!hasWallet && !onChainLoading && (
           <div
             className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs"
-            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
+            style={{
+              background: adminOverride ? "rgba(168,85,247,0.07)" : "rgba(6,182,212,0.07)",
+              border: adminOverride ? "1px solid rgba(168,85,247,0.25)" : "1px solid rgba(6,182,212,0.2)",
+            }}
           >
-            <Wallet className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-            <span className="text-cyan-300/80">
-              Connect a wallet to filter your refunds. Showing all on-chain expired HTLCs.
+            <Wallet className={`w-3.5 h-3.5 flex-shrink-0 ${adminOverride ? "text-violet-400" : "text-cyan-400"}`} />
+            <span className={adminOverride ? "text-violet-300/80" : "text-cyan-300/80"}>
+              {adminOverride
+                ? "Admin view — showing all platform refunds across all wallets."
+                : "Connect a wallet to see your refunds. No wallet connected — nothing to show."}
             </span>
           </div>
         )}

@@ -545,7 +545,7 @@ export default function SwapHistory() {
 
       {/* Refunds Tab */}
       {activeTab === "refunds" && (
-        <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+        <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} adminOverride={adminGlobalView} />
       )}
 
       {/* History Tab */}
