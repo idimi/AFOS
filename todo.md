@@ -2770,3 +2770,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add "Claim All" button to Refunds tab header (visible only when 2+ CLAIMABLE HTLCs)
 - [x] Sequential claim with progress indicator (e.g. "Claiming 1/3…")
 - [x] Skip already-claimed/failed items and show summary toast at the end
+
+## Bug: Solana HTLC Refund Claim Fails
+
+- [x] Investigate failed tx C22Nkioq8DfGdR6EkPB4CoaNGU7CVPKWE1u1M96Dp1LkcN8geu8hScaC2W51mvdpfYYV9wGyQT8xx5HL4s7dm2a on Solscan
+- [x] Fix buildSolanaHtlcRefundTx: was using lockTxId (tx signature) as PDA seed instead of htlcSeedId (htlc_a_rfq_... string)

@@ -70,6 +70,8 @@ interface HtlcSwapRow {
   htlcAddress: string;
   secretHash: string;
   lockTxId: string | null;
+  /** PDA seed string used to derive the on-chain HTLC PDA (e.g. htlc_a_rfq_1773...) */
+  htlcId: string | null;
   amountRaw: string;
   amountHuman: string;
   locktime: number;
@@ -1002,6 +1004,8 @@ interface RefundRecord {
   amountHuman: string;
   locktime: number;
   lockTxId: string | null;
+  /** PDA seed string (e.g. htlc_a_rfq_1773...) — used to derive the on-chain PDA for refund */
+  htlcSeedId: string | null;
 }
 
 const PRICE_ESTIMATES: Record<string, number> = {
@@ -1056,6 +1060,7 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     amountHuman: row.amountHuman,
     locktime: row.locktime,
     lockTxId: row.lockTxId,
+    htlcSeedId: row.htlcId,
   };
 }
 
@@ -1099,8 +1104,9 @@ function RefundCard({
 
       setClaiming(true);
       const toastId = "sol-refund-" + refund.htlcAddress.slice(0, 8);
-      // The htlcId (PDA seed) is stored in lockTxId field (e.g. "htlc_a_rfq_1773205346880_lp-3")
-      const htlcId = refund.lockTxId ?? refund.htlcAddress;
+      // Use htlcSeedId (the PDA seed string like "htlc_a_rfq_1773...") to derive the correct PDA.
+      // lockTxId is the Solana tx signature — NOT the PDA seed. Using it would derive the wrong account.
+      const htlcId = refund.htlcSeedId ?? refund.htlcAddress;
       toast.loading("Waiting for Phantom signature…", { id: toastId });
       try {
         const { transaction } = await buildSolanaHtlcRefundTx({
@@ -1471,7 +1477,8 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
             failed++;
             continue;
           }
-          const htlcId = refund.lockTxId ?? refund.htlcAddress;
+          // Use htlcSeedId (PDA seed string) — lockTxId is the tx signature, NOT the PDA seed
+          const htlcId = refund.htlcSeedId ?? refund.htlcAddress;
           const toastId = `claim-all-sol-${i}`;
           toast.loading(`Claiming ${i + 1}/${claimable.length} — waiting for Phantom…`, { id: toastId });
           const { transaction } = await buildSolanaHtlcRefundTx({
@@ -1614,6 +1621,7 @@ export function RefundsTab({ walletAddresses, search = "" }: TabProps) {
       amountHuman: h.amountHuman,
       locktime: h.timelockExpiry ?? 0,
       lockTxId: h.htlcId,
+      htlcSeedId: h.htlcId, // on-chain htlcId IS the PDA seed
     }));
 
   const refunds = [...dbRefunds, ...onChainRefunds];
