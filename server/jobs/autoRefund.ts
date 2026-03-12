@@ -42,12 +42,22 @@ async function parseHtlcAccountData(raw: Buffer, pdaAddress: string): Promise<On
   try {
     if (raw.length < 153) return null;
 
-    const htlcIdRaw = raw.slice(8, 40);
+    // Verified on-chain struct layout (from mainnet account data):
+    // [0-8]:    discriminator (8 bytes)
+    // [8-40]:   sender pubkey (32 bytes)
+    // [40-72]:  recipient pubkey (32 bytes)
+    // [72-104]: htlcId string (32 bytes, null-padded UTF-8)
+    // [104-136]: secretHash (32 bytes)
+    // [136-144]: timelock i64 LE (8 bytes)
+    // [144-152]: amount u64 LE lamports (8 bytes)
+    // [152]:    status u8 (0=active, 1=claimed, 2=refunded)
+    const { PublicKey } = await import("@solana/web3.js");
+    const sender = new PublicKey(raw.slice(8, 40)).toBase58();
+
+    const htlcIdRaw = raw.slice(72, 104);
     const nullIdx = htlcIdRaw.indexOf(0);
     const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
 
-    const { PublicKey } = await import("@solana/web3.js");
-    const sender = new PublicKey(raw.slice(40, 72)).toBase58();
     const secretHashHex = raw.slice(104, 136).toString("hex");
     const timelock = Number(raw.readBigInt64LE(136));
     const amountLamports = raw.readBigUInt64LE(144);

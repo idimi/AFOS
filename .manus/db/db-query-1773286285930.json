@@ -1,0 +1,32 @@
+{
+  "query": "SELECT * FROM htlc_swaps ORDER BY id DESC LIMIT 3;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT * FROM htlc_swaps ORDER BY id DESC LIMIT 3;",
+  "rows": [
+    {
+      "id": "1",
+      "chain": "solana",
+      "htlcAddress": "45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ",
+      "secretHash": "5a6a54b18a34f72035ff750851a588b3afc1e2bbdd62759ff18a6438dc3b293e",
+      "lockTxId": "htlc_a_rfq_1773205346880_lp-3",
+      "amountRaw": "25000000",
+      "amountHuman": "0.025000",
+      "locktime": "1773208949",
+      "status": "refunded",
+      "peerId": "NULL",
+      "rfqId": "rfq_1773205346880",
+      "toToken": "USDT",
+      "toChain": "ethereum",
+      "refundTxId": "36dAtaoCAs2umg3k3mddnpN9cWw5ZxN5fjDimSKMUxN3AZbX83K12tyVMS8Gku4U3uR2XDKNQExHKQL8ZJWL9PAU",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-11 20:03:53",
+      "updatedAt": "2026-03-12 01:45:01",
+      "refundedAt": "2026-03-12 01:45:01",
+      "recipientAddress": "NULL",
+      "htlcId": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tchain\thtlcAddress\tsecretHash\tlockTxId\tamountRaw\tamountHuman\tlocktime\tstatus\tpeerId\trfqId\ttoToken\ttoChain\trefundTxId\tsenderAddress\tcreatedAt\tupdatedAt\trefundedAt\trecipientAddress\thtlcId\n1\tsolana\t45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ\t5a6a54b18a34f72035ff750851a588b3afc1e2bbdd62759ff18a6438dc3b293e\thtlc_a_rfq_1773205346880_lp-3\t25000000\t0.025000\t1773208949\trefunded\tNULL\trfq_1773205346880\tUSDT\tethereum\t36dAtaoCAs2umg3k3mddnpN9cWw5ZxN5fjDimSKMUxN3AZbX83K12tyVMS8Gku4U3uR2XDKNQExHKQL8ZJWL9PAU\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-11 20:03:53\t2026-03-12 01:45:01\t2026-03-12 01:45:01\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 359
+}

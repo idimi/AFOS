@@ -2739,3 +2739,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Investigated: Agent B had 0 USDT (no token account) — on-chain tx failed with ProgramAccountNotFound. Not a code bug — balance issue.
 - [x] Added pre-flight balance check in acceptRfq before SPL token lock — shows clear toast error if Agent B has insufficient balance.
 - [x] Added htlcId and recipientAddress columns to htlc_swaps table via SQL; updated recordHtlcDeposit to store both fields.
+
+## Agent A SOL Refund Recovery
+
+- [x] Investigated: SOL still locked on-chain (0.01 SOL in PDA C6cFZfKk...), timelock expires 03:49:45 UTC
+- [x] Root cause: recordHtlcDeposit returned 400 (Zod schema bug, already fixed), so no DB row was created
+- [x] Manually inserted DB row so autoRefund job can track and surface it in Refunds tab
+- [x] Fixed parseHtlcAccountData struct layout in autoRefund.ts: sender at offset 8 (not 40), htlcId at offset 72 (not 8)
+- [x] TypeScript: 0 errors

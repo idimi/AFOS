@@ -1,0 +1,70 @@
+{
+  "query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_swaps' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'htlc_swaps' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "chain"
+    },
+    {
+      "COLUMN_NAME": "htlcAddress"
+    },
+    {
+      "COLUMN_NAME": "secretHash"
+    },
+    {
+      "COLUMN_NAME": "lockTxId"
+    },
+    {
+      "COLUMN_NAME": "amountRaw"
+    },
+    {
+      "COLUMN_NAME": "amountHuman"
+    },
+    {
+      "COLUMN_NAME": "locktime"
+    },
+    {
+      "COLUMN_NAME": "status"
+    },
+    {
+      "COLUMN_NAME": "peerId"
+    },
+    {
+      "COLUMN_NAME": "rfqId"
+    },
+    {
+      "COLUMN_NAME": "toToken"
+    },
+    {
+      "COLUMN_NAME": "toChain"
+    },
+    {
+      "COLUMN_NAME": "refundTxId"
+    },
+    {
+      "COLUMN_NAME": "senderAddress"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "updatedAt"
+    },
+    {
+      "COLUMN_NAME": "refundedAt"
+    },
+    {
+      "COLUMN_NAME": "recipientAddress"
+    },
+    {
+      "COLUMN_NAME": "htlcId"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nchain\nhtlcAddress\nsecretHash\nlockTxId\namountRaw\namountHuman\nlocktime\nstatus\npeerId\nrfqId\ntoToken\ntoChain\nrefundTxId\nsenderAddress\ncreatedAt\nupdatedAt\nrefundedAt\nrecipientAddress\nhtlcId\n",
+  "stderr": "",
+  "execution_time_ms": 368
+}

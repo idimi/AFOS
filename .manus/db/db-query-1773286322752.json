@@ -1,0 +1,9 @@
+{
+  "query": "INSERT INTO htlc_swaps (chain, htlcAddress, secretHash, lockTxId, amountRaw, amountHuman, locktime, status, peerId, rfqId, toToken, toChain, senderAddress, htlcId, createdAt, updatedAt)\nVALUES (\n  'solana',\n  'C6cFZfKkk1cwLVdwoRf5LTMe9SUVVenevMuwfxNdM9hK',\n  '263423d34ac36014cb84351f37a439a73552fe3efe61d25aecc9aeb2cb4ed6db',\n  '3n8UotKG3iUCC45wmpnGxdYgpxmhZwNT2Vtx5zD8cKbStW9GWoBJFB7Ja7eshyBMaiQjMvVz1QB9DRQP3x8GF3Bz',\n  '10000000',\n  '0.01',\n  1773287385,\n  'pending',\n  'lp-c7de58616b',\n  'rfq_1773283782213_lp-c',\n  'USDT',\n  'solana',\n  'AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk',\n  'htlc_a_rfq_1773283782213_lp-c',\n  NOW(),\n  NOW()\n);",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute INSERT INTO htlc_swaps (chain, htlcAddress, secretHash, lockTxId, amountRaw, amountHuman, locktime, status, peerId, rfqId, toToken, toChain, senderAddress, htlcId, createdAt, updatedAt)\nVALUES (\n  'solana',\n  'C6cFZfKkk1cwLVdwoRf5LTMe9SUVVenevMuwfxNdM9hK',\n  '263423d34ac36014cb84351f37a439a73552fe3efe61d25aecc9aeb2cb4ed6db',\n  '3n8UotKG3iUCC45wmpnGxdYgpxmhZwNT2Vtx5zD8cKbStW9GWoBJFB7Ja7eshyBMaiQjMvVz1QB9DRQP3x8GF3Bz',\n  '10000000',\n  '0.01',\n  1773287385,\n  'pending',\n  'lp-c7de58616b',\n  'rfq_1773283782213_lp-c',\n  'USDT',\n  'solana',\n  'AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk',\n  'htlc_a_rfq_1773283782213_lp-c',\n  NOW(),\n  NOW()\n);",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 365
+}
