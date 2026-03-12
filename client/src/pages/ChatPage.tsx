@@ -11,7 +11,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, Send, Wallet, ArrowLeftRight, CheckCircle2,
   Loader2, ExternalLink, AlertTriangle, Zap, RefreshCw,
-  TrendingUp, X, ChevronDown, Sparkles, ShieldAlert, Settings
+  TrendingUp, X, ChevronDown, Sparkles, ShieldAlert, Settings,
+  Clock, ArrowRight, Shield, Activity, Lock
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -430,14 +431,37 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
 
 // // ─── Swap Progress Card (shown in chat when P2P swap is in progress) ──────────────
 const SWAP_PHASES = [
-  { key: "broadcasting", label: "Broadcasting RFQ", desc: "Sending request-for-quote to P2P network" },
-  { key: "negotiating",  label: "Peer Negotiation",  desc: "Peer accepted — confirming terms" },
-  { key: "locking",      label: "HTLC Lock",         desc: "Locking funds in atomic escrow" },
-  { key: "settling",     label: "Atomic Settlement",  desc: "Releasing secret — claiming funds" },
-  { key: "confirmed",    label: "Confirmed",          desc: "Swap complete — funds in your wallet" },
+  { key: "broadcasting", label: "Broadcasting RFQ",  desc: "Sending request-for-quote to P2P network",  icon: "broadcast" },
+  { key: "negotiating",  label: "Peer Negotiation",   desc: "Peer accepted — confirming terms",           icon: "negotiate" },
+  { key: "locking",      label: "HTLC Lock",          desc: "Locking funds in atomic escrow",            icon: "lock" },
+  { key: "settling",     label: "Atomic Settlement",  desc: "Releasing secret — claiming funds",         icon: "settle" },
+  { key: "confirmed",    label: "Confirmed",           desc: "Swap complete — funds in your wallet",     icon: "done" },
 ] as const;
 
 type SwapPhase = "broadcasting" | "negotiating" | "locking" | "settling" | "confirmed" | "failed" | "expired";
+
+const CHAIN_COLORS: Record<string, string> = {
+  solana:       "#9945FF",
+  ethereum:     "#627EEA",
+  bitcoin:      "#F7931A",
+  trac_network: "#F97316",
+};
+
+const CHAIN_LABELS: Record<string, string> = {
+  solana:       "SOL",
+  ethereum:     "ETH",
+  bitcoin:      "BTC",
+  trac_network: "TNK",
+};
+
+function getExplorerUrl(chain: string | undefined, txHash: string): string {
+  switch ((chain ?? "solana").toLowerCase()) {
+    case "ethereum":     return `https://etherscan.io/tx/${txHash}`;
+    case "bitcoin":      return `https://mempool.space/tx/${txHash}`;
+    case "trac_network": return `https://explorer.trac.network/tx/${txHash}`;
+    default:             return `https://solscan.io/tx/${txHash}`;
+  }
+}
 
 function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgressData"]> }) {
   const [now, setNow] = useState(Date.now());
@@ -450,123 +474,256 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
   const currentIdx = SWAP_PHASES.findIndex(p => p.key === data.phase);
   const isDone = data.phase === "confirmed";
   const isFailed = data.phase === "failed" || data.phase === "expired";
+  const isExpired = data.phase === "expired";
 
-  // Expiry countdown
-  const expiryLabel = (() => {
-    if (!data.expiresAt || isDone || isFailed) return null;
-    const diff = data.expiresAt - now;
-    if (diff <= 0) return "Expired";
+  // Elapsed time since swap started
+  const elapsedLabel = (() => {
+    if (!data.startedAt) return null;
+    const diff = now - data.startedAt;
     const totalSecs = Math.floor(diff / 1000);
     const m = Math.floor(totalSecs / 60);
     const s = totalSecs % 60;
     return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
   })();
 
+  // Expiry countdown
+  const expiryInfo = (() => {
+    if (!data.expiresAt || isDone || isFailed) return null;
+    const diff = data.expiresAt - now;
+    if (diff <= 0) return { label: "Expired", urgent: true };
+    const totalSecs = Math.floor(diff / 1000);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    const label = m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+    return { label, urgent: totalSecs < 60 };
+  })();
+
+  // Accent color based on state
+  const accent = isFailed ? "#f87171" : isDone ? "#34d399" : "#818cf8";
+  const accentBorder = isFailed ? "rgba(239,68,68,0.2)" : isDone ? "rgba(16,185,129,0.2)" : "rgba(99,102,241,0.2)";
+
+  // Exchange rate display
+  const rateDisplay = (() => {
+    if (!data.rate && data.fromAmount > 0 && data.toAmount > 0) {
+      return (data.toAmount / data.fromAmount).toFixed(4);
+    }
+    return data.rate ? data.rate.toFixed(4) : null;
+  })();
+
+  const fromChainColor = CHAIN_COLORS[data.fromChain ?? "solana"] ?? "#aaa";
+  const toChainColor   = CHAIN_COLORS[data.toChain   ?? "solana"] ?? "#aaa";
+  const fromChainLabel = CHAIN_LABELS[data.fromChain ?? "solana"] ?? (data.fromChain?.toUpperCase() ?? "SOL");
+  const toChainLabel   = CHAIN_LABELS[data.toChain   ?? "solana"] ?? (data.toChain?.toUpperCase()   ?? "SOL");
+  const isCrossChain   = data.fromChain && data.toChain && data.fromChain !== data.toChain;
+
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="w-full mt-2 rounded-2xl p-4 space-y-3"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="w-full mt-2 overflow-hidden"
       style={{
-        background: isFailed ? "rgba(239,68,68,0.07)" : isDone ? "rgba(16,185,129,0.07)" : "rgba(99,102,241,0.08)",
-        border: `1px solid ${isFailed ? "rgba(239,68,68,0.25)" : isDone ? "rgba(16,185,129,0.25)" : "rgba(99,102,241,0.25)"}`,
+        borderRadius: "16px",
+        background: "rgba(10,10,18,0.85)",
+        border: `1px solid ${accentBorder}`,
+        boxShadow: `0 0 0 1px rgba(255,255,255,0.04) inset, 0 4px 24px rgba(0,0,0,0.4)`,
       }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isDone ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          ) : isFailed ? (
-            <span className="text-sm">\u26A0\uFE0F</span>
-          ) : (
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-              className="w-4 h-4 rounded-full border-2 border-transparent"
-              style={{ borderTopColor: "#818cf8", borderRightColor: "rgba(129,140,248,0.3)" }}
-            />
-          )}
-          <span className="text-xs font-bold" style={{ color: isFailed ? "#f87171" : isDone ? "#34d399" : "#818cf8" }}>
-            {isDone ? "Swap Complete" : isFailed ? (data.phase === "expired" ? "HTLC Expired" : "Swap Failed") : "Swap In Progress"}
-          </span>
-        </div>
-        <span className="text-[10px] font-mono" style={{ color: "var(--muted-foreground)" }}>
-          {data.fromAmount.toFixed(4)} {data.fromToken} \u2192 {data.toAmount.toFixed(4)} {data.toToken}
-        </span>
-      </div>
+      {/* Top accent bar */}
+      <div style={{ height: "2px", background: `linear-gradient(90deg, ${accent}60, ${accent}20, transparent)` }} />
 
-      {/* Peer + expiry row */}
-      {(data.peerAlias || expiryLabel) && (
-        <div className="flex items-center justify-between text-[11px]" style={{ color: "var(--muted-foreground)" }}>
-          {data.peerAlias && <span>Peer: <span className="font-semibold text-foreground">@{data.peerAlias}</span></span>}
-          {expiryLabel && (
-            <span className="flex items-center gap-1" style={{ color: expiryLabel === "Expired" ? "#f87171" : "#f59e0b" }}>
-              \u23F1 HTLC expires in {expiryLabel}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Step tracker */}
-      {!isFailed && (
-        <div className="space-y-1.5">
-          {SWAP_PHASES.map((phase, idx) => {
-            const isActive = idx === currentIdx;
-            const isDoneStep = isDone || idx < currentIdx;
-            const isPending = idx > currentIdx;
-            return (
-              <div key={phase.key} className="flex items-start gap-2.5">
-                <div className="mt-0.5 shrink-0">
-                  {isDoneStep ? (
-                    <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: "rgba(16,185,129,0.2)", border: "1px solid rgba(16,185,129,0.5)" }}>
-                      <span className="text-[9px]">\u2713</span>
-                    </div>
-                  ) : isActive ? (
-                    <motion.div
-                      animate={{ scale: [1, 1.15, 1] }}
-                      transition={{ duration: 1.2, repeat: Infinity }}
-                      className="w-4 h-4 rounded-full"
-                      style={{ background: "rgba(99,102,241,0.3)", border: "2px solid #818cf8" }}
-                    />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }} />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[11px] font-semibold leading-tight" style={{ color: isDoneStep ? "#34d399" : isActive ? "#a5b4fc" : "var(--muted-foreground)", opacity: isPending ? 0.5 : 1 }}>
-                    {phase.label}
-                  </p>
-                  {(isActive || isDoneStep) && (
-                    <p className="text-[10px] leading-tight mt-0.5" style={{ color: "var(--muted-foreground)" }}>
-                      {phase.desc}
-                    </p>
-                  )}
-                </div>
+      <div className="p-4 space-y-3.5">
+        {/* ── Header row ── */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            {isDone ? (
+              <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.4)" }}>
+                <CheckCircle2 className="w-3 h-3" style={{ color: "#34d399" }} />
               </div>
-            );
-          })}
+            ) : isFailed ? (
+              <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)" }}>
+                <AlertTriangle className="w-3 h-3" style={{ color: "#f87171" }} />
+              </div>
+            ) : (
+              <div className="relative w-5 h-5 shrink-0">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-2 border-transparent"
+                  style={{ borderTopColor: accent, borderRightColor: `${accent}40` }}
+                />
+              </div>
+            )}
+            <div>
+              <p className="text-xs font-semibold tracking-wide" style={{ color: accent }}>
+                {isDone ? "Swap Complete" : isFailed ? (isExpired ? "HTLC Expired" : "Swap Failed") : "Swap In Progress"}
+              </p>
+              {!isDone && !isFailed && elapsedLabel && (
+                <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Running {elapsedLabel}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Route badge */}
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)" }}>
+            <Shield className="w-2.5 h-2.5" style={{ color: "#818cf8" }} />
+            <span className="text-[9px] font-semibold tracking-wider" style={{ color: "#818cf8" }}>HTLC ATOMIC</span>
+          </div>
         </div>
-      )}
 
-      {/* Error / expired message */}
-      {isFailed && data.errorMsg && (
-        <p className="text-xs" style={{ color: "#f87171" }}>{data.errorMsg}</p>
-      )}
+        {/* ── Swap summary row ── */}
+        <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <div className="flex items-center justify-between">
+            {/* From */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>You send</span>
+              <span className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.95)" }}>
+                {data.fromAmount.toFixed(4)}
+                <span className="ml-1 text-xs font-semibold" style={{ color: fromChainColor }}>{data.fromToken}</span>
+              </span>
+              {isCrossChain && (
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${fromChainColor}18`, color: fromChainColor }}>{fromChainLabel}</span>
+              )}
+            </div>
 
-      {/* Tx hash */}
-      {data.txHash && (
-        <a
-          href={`https://solscan.io/tx/${data.txHash}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] font-mono"
-          style={{ color: "#67e8f9" }}
-        >
-          <ExternalLink className="w-3 h-3" />
-          {data.txHash.slice(0, 16)}\u2026
-        </a>
-      )}
+            {/* Arrow */}
+            <div className="flex flex-col items-center gap-0.5">
+              <ArrowRight className="w-3.5 h-3.5" style={{ color: "rgba(255,255,255,0.2)" }} />
+              {rateDisplay && (
+                <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.3)" }}>1:{rateDisplay}</span>
+              )}
+            </div>
+
+            {/* To */}
+            <div className="flex flex-col gap-0.5 items-end">
+              <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>You receive</span>
+              <span className="text-sm font-bold" style={{ color: isDone ? "#34d399" : "rgba(255,255,255,0.95)" }}>
+                {data.toAmount.toFixed(4)}
+                <span className="ml-1 text-xs font-semibold" style={{ color: toChainColor }}>{data.toToken}</span>
+              </span>
+              {isCrossChain && (
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${toChainColor}18`, color: toChainColor }}>{toChainLabel}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Meta row: peer + expiry ── */}
+        <div className="flex items-center justify-between">
+          {data.peerAlias ? (
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#34d399" }} />
+              <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Peer</span>
+              <span className="text-[11px] font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>@{data.peerAlias}</span>
+            </div>
+          ) : <div />}
+
+          {expiryInfo && (
+            <div className="flex items-center gap-1" style={{ color: expiryInfo.urgent ? "#f87171" : "#f59e0b" }}>
+              <Clock className="w-3 h-3" />
+              <span className="text-[10px] font-mono font-medium">HTLC {expiryInfo.label}</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Step tracker ── */}
+        {!isFailed && (
+          <div className="space-y-0">
+            {SWAP_PHASES.map((phase, idx) => {
+              const isActive  = idx === currentIdx;
+              const isDoneStep = isDone || idx < currentIdx;
+              const isLast     = idx === SWAP_PHASES.length - 1;
+              return (
+                <div key={phase.key} className="flex items-stretch gap-3">
+                  {/* Left: connector line + dot */}
+                  <div className="flex flex-col items-center" style={{ width: "16px", flexShrink: 0 }}>
+                    {/* Top connector */}
+                    {idx > 0 && (
+                      <div className="w-px flex-none" style={{
+                        height: "6px",
+                        background: isDoneStep ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)",
+                      }} />
+                    )}
+                    {/* Dot */}
+                    {isDoneStep ? (
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.5)" }}>
+                        <span className="text-[8px] font-bold" style={{ color: "#34d399" }}>✓</span>
+                      </div>
+                    ) : isActive ? (
+                      <motion.div
+                        animate={{ scale: [1, 1.2, 1], opacity: [0.8, 1, 0.8] }}
+                        transition={{ duration: 1.4, repeat: Infinity }}
+                        className="w-4 h-4 rounded-full shrink-0"
+                        style={{ background: `${accent}25`, border: `2px solid ${accent}` }}
+                      />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full shrink-0" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)" }} />
+                    )}
+                    {/* Bottom connector */}
+                    {!isLast && (
+                      <div className="w-px flex-1" style={{
+                        minHeight: "6px",
+                        background: isDoneStep ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)",
+                      }} />
+                    )}
+                  </div>
+
+                  {/* Right: label + desc */}
+                  <div className="flex-1 min-w-0 pb-2.5">
+                    <p
+                      className="text-[11px] font-semibold leading-none"
+                      style={{
+                        color: isDoneStep ? "#34d399" : isActive ? accent : "rgba(255,255,255,0.25)",
+                        marginTop: idx === 0 ? "0" : "1px",
+                      }}
+                    >
+                      {phase.label}
+                      {isActive && !isDone && (
+                        <motion.span
+                          animate={{ opacity: [1, 0.3, 1] }}
+                          transition={{ duration: 1.2, repeat: Infinity }}
+                          className="ml-1.5 text-[9px] font-normal"
+                          style={{ color: `${accent}90` }}
+                        >
+                          ●
+                        </motion.span>
+                      )}
+                    </p>
+                    {(isActive || isDoneStep) && (
+                      <p className="text-[10px] mt-0.5 leading-snug" style={{ color: "rgba(255,255,255,0.3)" }}>
+                        {phase.desc}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── Error / expired message ── */}
+        {isFailed && (
+          <div className="rounded-lg px-3 py-2" style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)" }}>
+            <p className="text-[11px]" style={{ color: "#f87171" }}>
+              {data.errorMsg ?? (isExpired ? "HTLC window expired. Funds will be refunded automatically." : "Swap could not be completed.")}
+            </p>
+          </div>
+        )}
+
+        {/* ── Tx hash ── */}
+        {data.txHash && (
+          <a
+            href={getExplorerUrl(data.fromChain, data.txHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[10px] font-mono group"
+            style={{ color: "rgba(103,232,249,0.7)" }}
+          >
+            <ExternalLink className="w-3 h-3 group-hover:opacity-100" style={{ opacity: 0.7 }} />
+            <span className="group-hover:underline">{data.txHash.slice(0, 20)}…</span>
+          </a>
+        )}
+      </div>
     </motion.div>
   );
 }
@@ -1472,6 +1629,10 @@ export default function ChatPage() {
             phase: "locking" as const,
             peerAlias: peerLabel,
             expiresAt: htlcExpiry,
+            rate: p2p?.rate ?? quoteData.rate,
+            fromChain: (quoteData.fromChain as string) ?? "solana",
+            toChain: (quoteData.toChain as string) ?? "solana",
+            startedAt: Date.now(),
           },
         }]);
         setExecutingId(null);

@@ -56,6 +56,10 @@ export interface ChatMessage {
     txHash?: string;
     expiresAt?: number; // unix ms — HTLC lock expiry
     errorMsg?: string;
+    rate?: number;       // exchange rate (toAmount / fromAmount)
+    fromChain?: string; // source chain
+    toChain?: string;   // destination chain
+    startedAt?: number; // unix ms — when the swap started
   };
   incomingRfqData?: {
     rfqId: string;
