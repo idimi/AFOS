@@ -513,7 +513,7 @@ function getExplorerInfo(txHash: string, chain: string) {
   };
 }
 
-function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain, balancesAfterSwap, onSwapAgain }: {
+function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain, balancesAfterSwap, signedBy, onSwapAgain }: {
   txHash: string;
   fromToken: string;
   toToken: string;
@@ -521,6 +521,8 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
   toAmount: number;
   fromChain?: string;
   balancesAfterSwap?: Array<{ symbol: string; amount: string; usdValue: number }>;
+  /** Wallet that signed the swap — shown for audit trail */
+  signedBy?: { name: string; address: string };
   onSwapAgain?: () => void;
 }) {
   const chain = fromChain?.toLowerCase() ?? (fromToken === "BTC" ? "bitcoin" : fromToken === "ETH" ? "ethereum" : "solana");
@@ -642,28 +644,44 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
         </motion.div>
       )}
 
-      {/* Footer: explorer link + swap again */}
-      <div className="px-4 py-2.5 flex items-center justify-between border-t"
+      {/* Footer: explorer link + signed-by + swap again */}
+      <div className="px-4 py-2.5 flex flex-col gap-1.5 border-t"
         style={{ borderColor: "rgba(16,185,129,0.15)", background: "rgba(0,0,0,0.1)" }}
       >
-        <a
-          href={explorerUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" />
-          {explorerLabel}
-        </a>
-        {onSwapAgain && (
-          <button
-            onClick={onSwapAgain}
-            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all hover:opacity-80"
-            style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
+        <div className="flex items-center justify-between">
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
           >
-            <ArrowLeftRight className="w-3 h-3" />
-            Swap again
-          </button>
+            <ExternalLink className="w-3 h-3" />
+            {explorerLabel}
+          </a>
+          {onSwapAgain && (
+            <button
+              onClick={onSwapAgain}
+              className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all hover:opacity-80"
+              style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
+            >
+              <ArrowLeftRight className="w-3 h-3" />
+              Swap again
+            </button>
+          )}
+        </div>
+        {/* Signed-by audit trail — shown when the signing wallet is known */}
+        {signedBy && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="text-[10px] text-muted-foreground"
+          >
+            Signed by{" "}
+            <span className="font-semibold text-foreground">{signedBy.name}</span>
+            {" "}
+            <span className="font-mono opacity-70">{signedBy.address}</span>
+          </motion.p>
         )}
       </div>
 
@@ -1296,6 +1314,7 @@ function MessageBubble({
             toAmount={msg.quoteData.toAmount}
             fromChain={msg.quoteData.fromChain}
             balancesAfterSwap={msg.balancesAfterSwap}
+            signedBy={msg.signedBy}
             onSwapAgain={onSwapAgain}
           />
         )}
@@ -1689,6 +1708,29 @@ export default function ChatPage() {
 
     setExecutingId(msgId);
 
+    // ── Derive the signing wallet for the audit trail in TxSuccessCard ──────────
+    const signingWalletForAudit: { name: string; address: string } | undefined = (() => {
+      const chain = fromChainNorm;
+      if (chain === "bitcoin" || chain === "trac_network") {
+        if (preferredBtcWallet === "tap" && bitcoinTap?.connected) {
+          return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
+        }
+        if (bitcoin?.connected) return { name: bitcoin.walletName, address: bitcoin.shortAddress };
+        return undefined;
+      }
+      if (chain === "ethereum") {
+        if (ethereum?.connected) return { name: ethereum.walletName, address: ethereum.shortAddress };
+        return undefined;
+      }
+      // Solana
+      const solAddr = phantomMultiChain?.solanaAddress
+        ? `${phantomMultiChain.solanaAddress.slice(0, 4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`
+        : (publicKey ? `${publicKey.toString().slice(0, 4)}\u2026${publicKey.toString().slice(-4)}` : undefined);
+      const solName = phantomMultiChain?.solanaAddress ? "Phantom" : "Solana Wallet";
+      if (solAddr) return { name: solName, address: solAddr };
+      return undefined;
+    })();
+
     try {
       // ── BTC swaps: use executeBtcSwap (agent HTLC) or btcSignPsbt (browser light peer) ──
       if (quoteData.fromChain === "bitcoin" || quoteData.toChain === "bitcoin") {
@@ -1717,7 +1759,7 @@ export default function ChatPage() {
 
           setMessages(prev => prev.map(m =>
             m.id === msgId
-              ? { ...m, type: "tx_success" as const, txHash: result.txid ?? "" }
+              ? { ...m, type: "tx_success" as const, txHash: result.txid ?? "", signedBy: signingWalletForAudit }
               : m
           ));
 
@@ -1772,7 +1814,7 @@ export default function ChatPage() {
           const p2pQ = ethResult.p2pQuote as { peerId?: string; rfqId?: string } | null | undefined;
           toast.success("P2P peer matched!", { description: `Peer: ${p2pQ?.peerId ?? "unknown"}` });
           setMessages(prev => prev.map(m =>
-            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2pQ?.rfqId ?? "p2p" } : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2pQ?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
           ));
           addMessage({
             role: "assistant",
@@ -1813,6 +1855,7 @@ export default function ChatPage() {
                     txHash,
                     // ETH balances not tracked in WalletContext — show card without balance section
                     balancesAfterSwap: [],
+                    signedBy: signingWalletForAudit,
                   }
                 : m
             ));
@@ -1865,7 +1908,7 @@ export default function ChatPage() {
           });
           setMessages(prev => prev.map(m =>
             m.id === msgId
-              ? { ...m, type: "tx_success" as const, txHash: tnkResult.txHash ?? "pending" }
+              ? { ...m, type: "tx_success" as const, txHash: tnkResult.txHash ?? "pending", signedBy: signingWalletForAudit }
               : m
           ));
           addMessage({
@@ -1909,7 +1952,7 @@ export default function ChatPage() {
         toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} — signing HTLC lock…` });
         // Update the quote card to tx_success state
         setMessages(prev => prev.map(m =>
-          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p" } : m
+          m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
         ));
         // Inject a live swap progress card so the user can track the flow inside chat
         const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
@@ -2029,6 +2072,7 @@ export default function ChatPage() {
                 amount: b.amount,
                 usdValue: b.usdValue,
               })),
+              signedBy: signingWalletForAudit,
             }
           : m
       ));

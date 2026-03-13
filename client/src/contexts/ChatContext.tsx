@@ -40,6 +40,8 @@ export interface ChatMessage {
   limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
   /** Updated balances to show after a swap completes */
   balancesAfterSwap?: Array<{ symbol: string; amount: string; usdValue: number }>;
+  /** Wallet that signed the swap — shown in TxSuccessCard for audit trail */
+  signedBy?: { name: string; address: string };
   /** Badge shown on quote_card: 'p2p' | 'dex' | undefined */
   routeBadge?: "p2p" | "dex";
   /** Matched peer alias for P2P quote cards */

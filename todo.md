@@ -2944,9 +2944,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add chain coverage badges to ConnectWalletModal: Phantom (SOL·ETH·BTC), MetaMask (SOL·ETH·BTC), Tap Wallet (BTC·TNK)
 - [x] Add BTC wallet picker to swap quote card when both Phantom/MetaMask and Tap Wallet are connected
 - [x] Add destination wallet check to handleConfirmSwap (e.g. TNK→SOL requires Phantom/MetaMask for destination)
-- [ ] Push updated code to GitHub after checkpoint
+- [x] Push updated code to GitHub after checkpoint
 
 ## BTC Wallet Preference Persistence + UX (Session 2026-03-13 #10)
 - [x] Persist preferredBtcWallet to localStorage (survives page refresh)
 - [x] Show active BTC wallet address in QuoteCard confirmation ("Signing with Tap Wallet bc1q…")
+- [x] Push code to GitHub after checkpoint
+
+## Wallet UX Polish (Session 2026-03-13 #11)
+- [x] Auto-clear preferredBtcWallet when Tap Wallet or BTC wallet disconnects (fall back to remaining wallet)
+- [x] Add signed-by hint to TxSuccessCard for audit trail (all swap paths)
+- [x] Extend destination wallet validation to executeAgentSwap path (already covered by existing check)
 - [ ] Push code to GitHub after checkpoint
