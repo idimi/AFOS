@@ -503,21 +503,28 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const json = await res.json();
       const batchResult = Array.isArray(json) ? json[0] : json;
       const secretHex = batchResult?.result?.data?.json?.secretHex;
+      const isReplay  = batchResult?.result?.data?.json?.replay === true;
       if (!secretHex) {
         console.warn(`[AutoReveal] No secretHex in response (attempt ${attempt})`);
         const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
         revealRetryTimersRef.current[rfqId] = setTimeout(() => void triggerAutoReveal(row), backoffMs);
         return;
       }
-      // Success — send secret to Agent B
+      // Always send the secret to Agent B so they can claim even after a page refresh.
       const targetPeerId = counterpartyPeerId ?? agentAWalletByRfqRef.current[rfqId] ?? "";
       if (targetPeerId && signalingRef.current) {
         signalingRef.current.sendHtlcSecret(targetPeerId, rfqId, secretHex);
       }
-      toast.success("[Auto] HTLC secret revealed autonomously", {
-        description: `RFQ ${rfqId.slice(0, 8)}… secret sent to counterparty`,
-        duration: 10000,
-      });
+      // Only show the toast for genuinely new reveals — suppress it for replays
+      // (replay = secret was already revealed in a previous session; status was 'revealed'/'completed').
+      if (!isReplay) {
+        toast.success("[Auto] HTLC secret revealed autonomously", {
+          description: `RFQ ${rfqId.slice(0, 8)}… secret sent to counterparty`,
+          duration: 10000,
+        });
+      } else {
+        console.log(`[AutoReveal] Replay for rfqId=${rfqId.slice(0,8)} — secret re-sent silently (no toast)`);
+      }
       window.dispatchEvent(new CustomEvent("afos:htlc-secret-sent", { detail: { rfqId, secretHex } }));
       // Clear retry counter on success
       delete revealRetryCountRef.current[rfqId];

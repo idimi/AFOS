@@ -32,7 +32,7 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
-import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets, getLockedHtlcsForInitiator } from "../db";
+import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets, getLockedHtlcsForInitiator, healStaleHtlcSecret } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq, storePeerInboxRfq, drainPeerInbox } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
@@ -2412,6 +2412,24 @@ export const chatRouter = router({
       }
       if (row.status === "expired" || row.status === "refunded") {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: `HTLC is ${row.status} — cannot reveal` });
+      }
+      // Guard against re-triggering for already-completed swaps.
+      // 'revealed' means the secret was already sent to the counterparty in a previous session.
+      // 'completed' means on-chain claims already settled.
+      // In both cases, return the secret silently so the client can re-send it to the counterparty
+      // if needed, but do NOT update the status or fire any side-effects again.
+      if (row.status === "revealed" || row.status === "completed") {
+        // Return the secret so the client can re-send to counterparty if the P2P message was lost,
+        // but mark this as a replay so the client knows not to show the toast again.
+        return { secretHex: row.secretHex, replay: true };
+      }
+      // Also handle stale 'locked' rows where the swap was actually completed but the status
+      // was never updated (e.g. DB write failed, legacy rows). Detect by checking htlcSwaps.
+      // If htlcSwaps shows 'completed' or 'refunded' for this rfqId, treat as replay and
+      // heal the stale status so it won't re-trigger on the next wallet connect.
+      const healed = await healStaleHtlcSecret(input.rfqId);
+      if (healed) {
+        return { secretHex: row.secretHex, replay: true };
       }
       // Mark as revealed — also persist counterpartyAddress so the monitor can auto-claim on retry
       await updateHtlcSecretStatus(input.rfqId, "revealed", {

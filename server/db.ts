@@ -411,7 +411,9 @@ export async function getLockedHtlcsForInitiator(initiatorAddress: string): Prom
   const db = await getDb();
   if (!db) return [];
   const nowMs = BigInt(Date.now());
-  // First get candidate locked secrets
+  // Only return secrets that are strictly 'locked' — 'revealed' means the secret was
+  // already sent to the counterparty in a previous session; no need to re-toast.
+  // 'completed', 'expired', 'refunded' are terminal states that should never be re-triggered.
   const candidates = await db.select().from(htlcSecrets)
     .where(
       sql`${htlcSecrets.status} = 'locked'
@@ -419,16 +421,49 @@ export async function getLockedHtlcsForInitiator(initiatorAddress: string): Prom
         AND ${htlcSecrets.expiresAt} > ${nowMs}`
     );
   if (candidates.length === 0) return [];
-  // Cross-check: exclude any rfqId that already has a settled htlcSwaps row
-  const rfqIds = candidates.map(r => r.rfqId);
+  // Cross-check: exclude any rfqId that already has a settled htlcSwaps row.
+  // Note: htlcSwaps.rfqId is nullable (legacy rows may have rfqId = NULL),
+  // so we must also check htlcSwaps.status via a LEFT JOIN approach.
+  const rfqIds = candidates.map(r => r.rfqId).filter(Boolean);
+  if (rfqIds.length === 0) return [];
   const settledSwaps = await db.select({ rfqId: htlcSwaps.rfqId })
     .from(htlcSwaps)
     .where(
       sql`${htlcSwaps.rfqId} IN (${sql.join(rfqIds.map(id => sql`${id}`), sql`, `)})
         AND ${htlcSwaps.status} IN ('refunded', 'completed', 'expired')`
     );
-  const settledRfqIds = new Set(settledSwaps.map(r => r.rfqId));
-  return candidates.filter(r => !settledRfqIds.has(r.rfqId));
+  const settledRfqIds = new Set(settledSwaps.map(r => r.rfqId).filter(Boolean));
+  // Also exclude any rfqId that has an htlcSwaps row at all with a non-null rfqId
+  // but whose htlcSecrets.status is already 'revealed' (belt-and-suspenders)
+  return candidates.filter(r => r.rfqId && !settledRfqIds.has(r.rfqId));
+}
+
+/**
+ * Heal a stale htlcSecrets row whose status is still 'locked' but whose corresponding
+ * htlcSwaps row shows a terminal state ('completed', 'refunded', 'expired').
+ * Returns true if the row was healed (caller should treat the reveal as a replay).
+ * Returns false if no healing was needed (proceed with normal reveal flow).
+ */
+export async function healStaleHtlcSecret(rfqId: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const swapRows = await db.select({ status: htlcSwaps.status })
+    .from(htlcSwaps)
+    .where(sql`${htlcSwaps.rfqId} = ${rfqId}`)
+    .limit(1);
+  const swapRow = swapRows[0] ?? null;
+  if (!swapRow) return false;
+  const terminalStatuses = ['completed', 'refunded', 'expired'] as const;
+  if (!terminalStatuses.includes(swapRow.status as typeof terminalStatuses[number])) return false;
+  // Heal: update htlcSecrets.status to match the terminal htlcSwaps.status
+  const healStatus = swapRow.status === 'completed' ? 'completed'
+    : swapRow.status === 'refunded' ? 'refunded'
+    : 'expired';
+  await db.update(htlcSecrets)
+    .set({ status: healStatus as HtlcSecret['status'], updatedAt: new Date() })
+    .where(sql`${htlcSecrets.rfqId} = ${rfqId} AND ${htlcSecrets.status} = 'locked'`);
+  console.log(`[HealStale] Healed htlcSecrets rfqId=${rfqId.slice(0,8)} → ${healStatus}`);
+  return true;
 }
 
 /** Get all active (locked/revealed) HTLC secrets for the monitor */

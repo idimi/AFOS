@@ -2979,3 +2979,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Bug Fix: Spurious HTLC Secret Toast After Refund (2026-03-13)
 - [x] Investigate why "[Auto] HTLC secret revealed autonomously" toast fires after claiming a refund
 - [x] Fix the incorrect trigger condition (server: cross-check htlcSwaps status; client: ref-based guard + stale closure fix)
+
+## Bug Fix: HTLC Secret Toast on Unrelated Incoming Transfers (2026-03-13)
+- [x] Investigate why "[Auto] HTLC secret revealed autonomously" fires on ANY incoming wallet transfer
+- [x] Fix: server returns replay:true for already-revealed/completed secrets; client suppresses toast for replays
+- [x] Fix: new healStaleHtlcSecret helper in db.ts heals stale 'locked' rows by cross-checking htlcSwaps terminal status
+- [x] Fix: getLockedHtlcsForInitiator now filters null rfqIds to prevent false positives from legacy rows
