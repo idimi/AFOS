@@ -1,11 +1,23 @@
 /**
  * ChatContext — Shared conversation state between MiniChatWidget (Overview) and ChatPage (Agent).
  * Both views read/write from the same messages array so the conversation is persistent and synced.
+ *
+ * Persistence: messages are serialised to localStorage under CHAT_STORAGE_KEY on every change
+ * and rehydrated on mount. This means signedBy, txHash, balancesAfterSwap, and all other
+ * message fields survive page refreshes.
+ *
+ * Storage limits: we keep at most MAX_STORED_MESSAGES recent messages and prune older ones
+ * automatically to avoid hitting the ~5 MB localStorage quota.
  */
-import { createContext, useContext, useState, useCallback, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 
 import type { SupportedChain } from "@/lib/afosApi";
 export type { SupportedChain } from "@/lib/afosApi";
+
+// ─── Storage constants ────────────────────────────────────────────────────────
+const CHAT_STORAGE_KEY = "afos_chat_history";
+/** Maximum number of messages to persist (older ones are pruned) */
+const MAX_STORED_MESSAGES = 200;
 
 export interface QuoteData {
   fromToken: string;
@@ -80,6 +92,34 @@ export interface ChatMessage {
   };
 }
 
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+function loadMessages(): ChatMessage[] | null {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ChatMessage[];
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveMessages(msgs: ChatMessage[]): void {
+  try {
+    // Keep only the most recent MAX_STORED_MESSAGES to avoid quota issues
+    const toStore = msgs.length > MAX_STORED_MESSAGES
+      ? msgs.slice(msgs.length - MAX_STORED_MESSAGES)
+      : msgs;
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(toStore));
+  } catch {
+    // Quota exceeded or private browsing — silently ignore
+  }
+}
+
+// ─── Welcome message factory ──────────────────────────────────────────────────
+
 export function makeWelcomeMessage(connected: boolean): ChatMessage {
   return {
     id: "welcome",
@@ -91,6 +131,8 @@ export function makeWelcomeMessage(connected: boolean): ChatMessage {
     timestamp: Date.now(),
   };
 }
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 interface ChatContextValue {
   messages: ChatMessage[];
@@ -107,9 +149,18 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([makeWelcomeMessage(false)]);
+  // Initialise from localStorage on first render; fall back to welcome message
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const stored = loadMessages();
+    return stored ?? [makeWelcomeMessage(false)];
+  });
   const [isTyping, setIsTyping] = useState(false);
   const welcomeShownRef = useRef(false);
+
+  // Persist messages to localStorage whenever they change
+  useEffect(() => {
+    saveMessages(messages);
+  }, [messages]);
 
   const addMessage = useCallback((msg: Omit<ChatMessage, "id" | "timestamp">) => {
     const newMsg: ChatMessage = {
@@ -122,7 +173,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const clearMessages = useCallback((connected = false) => {
     welcomeShownRef.current = false;
-    setMessages([makeWelcomeMessage(connected)]);
+    const welcome = makeWelcomeMessage(connected);
+    setMessages([welcome]);
+    // Also clear storage so the next load starts fresh
+    try { localStorage.removeItem(CHAT_STORAGE_KEY); } catch { /* ignore */ }
   }, []);
 
   return (

@@ -155,6 +155,40 @@ export function showWalletDisconnectedToast(walletName: string, chains: ChainTab
   );
 }
 
+/** Fire a "BTC wallet switched" toast when preferredBtcWallet auto-falls-back on disconnect */
+export function showBtcWalletSwitchedToast(newWalletName: string) {
+  toast.custom(
+    () => (
+      <div
+        className="w-full max-w-sm rounded-xl px-4 py-3 shadow-lg"
+        style={{
+          background: "var(--popover)",
+          border: "1px solid rgba(245,158,11,0.35)",
+          boxShadow: "0 4px 24px rgba(245,158,11,0.12), 0 1px 4px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5"
+            style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.3)" }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1 }}>₿</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold" style={{ color: "var(--foreground)" }}>
+              BTC wallet switched
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--muted-foreground)" }}>
+              Now signing with <span className="font-semibold" style={{ color: "#f59e0b" }}>{newWalletName}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    ),
+    { duration: 3500 }
+  );
+}
+
 /** Fire a rich wallet-connected toast — shows all connected chain addresses in one card */
 export function showWalletConnectedToast(walletName: string, chainAddresses: ChainAddress[]) {
   toast.custom(

@@ -2955,4 +2955,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Auto-clear preferredBtcWallet when Tap Wallet or BTC wallet disconnects (fall back to remaining wallet)
 - [x] Add signed-by hint to TxSuccessCard for audit trail (all swap paths)
 - [x] Extend destination wallet validation to executeAgentSwap path (already covered by existing check)
+- [ ] Push code to GitHub after checkpoint (auth token needs refresh — use Settings → GitHub panel in Management UI)
+
+## Wallet UX Polish Session #12 (2026-03-13)
+- [x] Add wallet-changed toast when preferredBtcWallet auto-falls-back on disconnect
+- [x] Persist signedBy in chat history via localStorage (up to 200 messages, auto-pruned)
+- [x] Show destination wallet address in QuoteCard for cross-chain swaps
 - [ ] Push code to GitHub after checkpoint

@@ -207,34 +207,46 @@ function QuoteCard({
 
   // ── "Signing with" wallet label for the confirm button ──────────────────────
   // Derive which wallet + address will sign the swap so users know before confirming
-  const { ethereum: activeEthereum, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum: activeEthereum, tracNetwork: activeTnk, phantomMultiChain } = useMultiChainWallet();
   const { shortAddress: solShortAddress } = useWallet();
-  const signingWallet: { name: string; address: string } | null = (() => {
-    const chain = data.fromChain ?? "solana";
-    if (chain === "bitcoin" || chain === "trac_network") {
-      // BTC/TNK: use preferred wallet if set, otherwise active bitcoin
-      if (preferredBtcWallet === "tap" && bitcoinTap?.connected) {
+
+  /** Derive wallet info for a given chain */
+  const deriveWalletForChain = (chain: SupportedChain | undefined): { name: string; address: string } | null => {
+    const c = chain ?? "solana";
+    if (c === "bitcoin") {
+      if (preferredBtcWallet === "tap" && bitcoinTap?.connected)
         return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
-      }
-      if (activeBitcoin?.connected) {
+      if (activeBitcoin?.connected)
         return { name: activeBitcoin.walletName, address: activeBitcoin.shortAddress };
-      }
       return null;
     }
-    if (chain === "ethereum") {
-      if (activeEthereum?.connected) {
+    if (c === "trac_network") {
+      if (activeTnk?.connected)
+        return { name: activeTnk.walletName, address: activeTnk.shortAddress };
+      // Fall back to Tap Wallet BTC address as proxy
+      if (bitcoinTap?.connected)
+        return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
+      return null;
+    }
+    if (c === "ethereum") {
+      if (activeEthereum?.connected)
         return { name: activeEthereum.walletName, address: activeEthereum.shortAddress };
-      }
       return null;
     }
     // Solana
     const solAddr = phantomMultiChain?.solanaAddress
-      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
+      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`
       : solShortAddress;
     const solName = phantomMultiChain?.solanaAddress ? "Phantom" : "Solana Wallet";
     if (solAddr) return { name: solName, address: solAddr };
     return null;
-  })();
+  };
+
+  const signingWallet = deriveWalletForChain(data.fromChain);
+
+  // Destination wallet — only shown for cross-chain swaps where fromChain ≠ toChain
+  const isCrossChain = data.fromChain && data.toChain && data.fromChain !== data.toChain;
+  const destinationWallet = isCrossChain ? deriveWalletForChain(data.toChain) : null;
 
   return (
     <motion.div
@@ -424,8 +436,15 @@ function QuoteCard({
             {/* Signing wallet hint — shown when a wallet is identified */}
             {signingWallet && !isExecuting && (
               <p className="text-center text-[10px] text-muted-foreground truncate">
-                Signing with <span className="font-semibold text-foreground">{signingWallet.name}</span>
+                Sending from <span className="font-semibold text-foreground">{signingWallet.name}</span>
                 {" "}<span className="font-mono opacity-70">{signingWallet.address}</span>
+              </p>
+            )}
+            {/* Destination wallet hint — shown for cross-chain swaps */}
+            {destinationWallet && !isExecuting && (
+              <p className="text-center text-[10px] text-muted-foreground truncate">
+                Receiving to <span className="font-semibold text-foreground">{destinationWallet.name}</span>
+                {" "}<span className="font-mono opacity-70">{destinationWallet.address}</span>
               </p>
             )}
             {isExecuting && signingWallet && (

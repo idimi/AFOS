@@ -23,7 +23,7 @@ import React, {
   ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { showWalletConnectedToast, showWalletDisconnectedToast } from "../components/ConnectWalletModal";
+import { showWalletConnectedToast, showWalletDisconnectedToast, showBtcWalletSwitchedToast } from "../components/ConnectWalletModal";
 import type { SupportedChain } from "@shared/const";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1012,7 +1012,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           setBitcoin(prev => {
             const remaining = prev as ChainWallet | null;
             const phantomOrMm = remaining?.connected && remaining.walletName !== "Tap Wallet";
-            setPreferredBtcWallet(phantomOrMm ? (remaining?.isPhantom ? "phantom" : "metamask") : null);
+            const newPrefEvt1 = phantomOrMm ? (remaining?.isPhantom ? "phantom" : "metamask") : null;
+            setPreferredBtcWallet(newPrefEvt1);
+            if (newPrefEvt1) showBtcWalletSwitchedToast(remaining?.walletName ?? (remaining?.isPhantom ? "Phantom" : "MetaMask"));
             return prev;
           });
           clearWalletSession();
@@ -1136,11 +1138,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         // Tap Wallet BTC disconnected — fall back to Phantom/MetaMask BTC if still connected
         // (bitcoin state here is the active wallet; if it’s Tap Wallet, check if Phantom/MetaMask BTC exists)
         const phantomOrMmBtc = bitcoin?.walletName !== "Tap Wallet" && bitcoin?.connected;
-        setPreferredBtcWallet(phantomOrMmBtc ? (bitcoin?.isPhantom ? "phantom" : "metamask") : null);
+        const newPrefA = phantomOrMmBtc ? (bitcoin?.isPhantom ? "phantom" : "metamask") : null;
+        setPreferredBtcWallet(newPrefA);
+        if (newPrefA) showBtcWalletSwitchedToast(bitcoin?.walletName ?? (bitcoin?.isPhantom ? "Phantom" : "MetaMask"));
       } else {
         // Phantom/MetaMask BTC disconnected — fall back to Tap Wallet BTC if still connected
         const tapStillConnected = (bitcoinTap as ChainWallet | null)?.connected ?? false;
-        setPreferredBtcWallet(tapStillConnected ? "tap" : null);
+        const newPrefB = tapStillConnected ? "tap" : null;
+        setPreferredBtcWallet(newPrefB);
+        if (newPrefB) showBtcWalletSwitchedToast("Tap Wallet");
       }
       setBitcoin(null);
       clearWalletSession();
@@ -1160,7 +1166,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     // Fall back to Phantom/MetaMask BTC if still connected, otherwise clear
     const remainingBtc = (bitcoin as ChainWallet | null);
     const phantomOrMmStillConnected = remainingBtc?.connected && remainingBtc.walletName !== "Tap Wallet";
-    setPreferredBtcWallet(phantomOrMmStillConnected ? (remainingBtc?.isPhantom ? "phantom" : "metamask") : null);
+    const newPrefTnk = phantomOrMmStillConnected ? (remainingBtc?.isPhantom ? "phantom" : "metamask") : null;
+    setPreferredBtcWallet(newPrefTnk);
+    if (newPrefTnk) showBtcWalletSwitchedToast(remainingBtc?.walletName ?? (remainingBtc?.isPhantom ? "Phantom" : "MetaMask"));
     clearWalletSession();
     showWalletDisconnectedToast("Tap Wallet", isTap ? ["bitcoin", "trac_network"] : ["trac_network"]);
   }, [tracNetwork, bitcoin]);
@@ -1272,7 +1280,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
           setBitcoin(prev => {
             const remaining = prev as ChainWallet | null;
             const phantomOrMm = remaining?.connected && remaining.walletName !== "Tap Wallet";
-            setPreferredBtcWallet(phantomOrMm ? (remaining?.isPhantom ? "phantom" : "metamask") : null);
+            const newPrefEvt2 = phantomOrMm ? (remaining?.isPhantom ? "phantom" : "metamask") : null;
+            setPreferredBtcWallet(newPrefEvt2);
+            if (newPrefEvt2) showBtcWalletSwitchedToast(remaining?.walletName ?? (remaining?.isPhantom ? "Phantom" : "MetaMask"));
             return prev;
           });
           clearWalletSession();
