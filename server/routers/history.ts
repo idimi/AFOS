@@ -474,7 +474,22 @@ export const historyRouter = router({
             });
             const json = await resp.json() as { result?: { value?: { data: [string, string] } | null } };
             const accValue = json.result?.value;
-            if (!accValue) continue; // account closed (already refunded/redeemed)
+            if (!accValue) {
+              // PDA is closed on-chain (already refunded or claimed) but DB still shows pending.
+              // Auto-update the DB so the UI stops showing a Claim button for this HTLC.
+              try {
+                const db2 = await getDb();
+                if (db2) {
+                  await db2.update(htlcSwaps)
+                    .set({ status: "refunded", refundTxId: "auto-detected-closed" })
+                    .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
+                  console.log(`[myOnChainRefunds] Auto-marked HTLC ${row.htlcAddress.slice(0,8)} as refunded (PDA closed on-chain)`);
+                }
+              } catch (dbErr) {
+                console.warn(`[myOnChainRefunds] Failed to auto-mark HTLC ${row.htlcAddress.slice(0,8)} as refunded:`, dbErr);
+              }
+              continue;
+            }
             const raw = Buffer.from(accValue.data[0], "base64");
             const parsed = parseHtlcAccount(raw, row.htlcAddress);
             if (parsed) {

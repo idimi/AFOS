@@ -1,0 +1,64 @@
+{
+  "query": "SELECT id, htlcAddress, htlcId, status, lockTxId, toToken, chain FROM htlc_swaps WHERE status = 'pending' ORDER BY createdAt DESC LIMIT 6;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, htlcAddress, htlcId, status, lockTxId, toToken, chain FROM htlc_swaps WHERE status = 'pending' ORDER BY createdAt DESC LIMIT 6;",
+  "rows": [
+    {
+      "id": "11",
+      "htlcAddress": "8o4UZpRzeRjvuqs1Rh5Pqc48eAuq9bSioh2hR1u4QvZU",
+      "htlcId": "htlc_b_rfq_1773368673516_lp-c",
+      "status": "pending",
+      "lockTxId": "2JW7a1CYT12fbpHqceR2iJEvbQZeaDqYy3iPByQW6wqwJB4d82ZXn6Hm5aWGaQHb54GJGY96hxn8KQpBELBS2vdo",
+      "toToken": "USDT",
+      "chain": "solana"
+    },
+    {
+      "id": "10",
+      "htlcAddress": "7hbBBmV43mi7o7s1JKEXe2DMwmsixp5jGCbZs1WkrvL1",
+      "htlcId": "htlc_a_rfq_1773368673516_lp-c",
+      "status": "pending",
+      "lockTxId": "3QKReYodnM56Q8BZjbLT9468fN3UtQyNKpBujti7bxYyV8Uzz7y1agudLykG5CM2AEJdM67pTmqMTw3qJoafy7Bm",
+      "toToken": "SOL",
+      "chain": "solana"
+    },
+    {
+      "id": "9",
+      "htlcAddress": "4MtWjuQm5RLuMcJABF8nxAQvkB8ac3weZ5MQhbUpLj4r",
+      "htlcId": "htlc_b_rfq_1773365303738_lp-c",
+      "status": "pending",
+      "lockTxId": "41yEWUyAo2iV6zRFG3Tp8qoQiW3vK4SgaM7SVJDFkUVUQGFKQvv51hcdWJ4t5nMC8idUXQFVrcByipB98BMBkfJ5",
+      "toToken": "USDT",
+      "chain": "solana"
+    },
+    {
+      "id": "8",
+      "htlcAddress": "8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf",
+      "htlcId": "htlc_a_rfq_1773365303738_lp-c",
+      "status": "pending",
+      "lockTxId": "4bKF2SCDxxCZvqHqwy5VzQQGyvQKAhp16oNLJDb1E7EoKbZB4YkcfMxaWmdnyHyt34TKyfBTqhgHH5XShwFP1erW",
+      "toToken": "SOL",
+      "chain": "solana"
+    },
+    {
+      "id": "6",
+      "htlcAddress": "4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6",
+      "htlcId": "htlc_a_rfq_1773359544103_lp-c",
+      "status": "pending",
+      "lockTxId": "3rPJU7QaGYFisUaRHWXuPinEtVkRgM1ovbiBaZbK8js5fzEe2pSREwkMHnysGc71q8rVgsj5PJdCzofhqWTMuJD6",
+      "toToken": "SOL",
+      "chain": "solana"
+    },
+    {
+      "id": "5",
+      "htlcAddress": "5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX",
+      "htlcId": "htlc_a_rfq_1773357484712_lp-c",
+      "status": "pending",
+      "lockTxId": "4WVCjSHYRn5Yb3dqpYhzR9YV4TPvAmPY33j2biPpNPQ63SSAgwWW7gvFvfcYtiE5nuDMKHhPBth1iz7wVx7fdun7",
+      "toToken": "SOL",
+      "chain": "solana"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\thtlcAddress\thtlcId\tstatus\tlockTxId\ttoToken\tchain\n11\t8o4UZpRzeRjvuqs1Rh5Pqc48eAuq9bSioh2hR1u4QvZU\thtlc_b_rfq_1773368673516_lp-c\tpending\t2JW7a1CYT12fbpHqceR2iJEvbQZeaDqYy3iPByQW6wqwJB4d82ZXn6Hm5aWGaQHb54GJGY96hxn8KQpBELBS2vdo\tUSDT\tsolana\n10\t7hbBBmV43mi7o7s1JKEXe2DMwmsixp5jGCbZs1WkrvL1\thtlc_a_rfq_1773368673516_lp-c\tpending\t3QKReYodnM56Q8BZjbLT9468fN3UtQyNKpBujti7bxYyV8Uzz7y1agudLykG5CM2AEJdM67pTmqMTw3qJoafy7Bm\tSOL\tsolana\n9\t4MtWjuQm5RLuMcJABF8nxAQvkB8ac3weZ5MQhbUpLj4r\thtlc_b_rfq_1773365303738_lp-c\tpending\t41yEWUyAo2iV6zRFG3Tp8qoQiW3vK4SgaM7SVJDFkUVUQGFKQvv51hcdWJ4t5nMC8idUXQFVrcByipB98BMBkfJ5\tUSDT\tsolana\n8\t8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf\thtlc_a_rfq_1773365303738_lp-c\tpending\t4bKF2SCDxxCZvqHqwy5VzQQGyvQKAhp16oNLJDb1E7EoKbZB4YkcfMxaWmdnyHyt34TKyfBTqhgHH5XShwFP1erW\tSOL\tsolana\n6\t4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6\thtlc_a_rfq_1773359544103_lp-c\tpending\t3rPJU7QaGYFisUaRHWXuPinEtVkRgM1ovbiBaZbK8js5fzEe2pSREwkMHnysGc71q8rVgsj5PJdCzofhqWTMuJD6\tSOL\tsolana\n5\t5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX\thtlc_a_rfq_1773357484712_lp-c\tpending\t4WVCjSHYRn5Yb3dqpYhzR9YV4TPvAmPY33j2biPpNPQ63SSAgwWW7gvFvfcYtiE5nuDMKHhPBth1iz7wVx7fdun7\tSOL\tsolana\n",
+  "stderr": "",
+  "execution_time_ms": 345
+}

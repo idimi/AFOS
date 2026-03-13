@@ -1928,56 +1928,38 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }
 
           // ── Confirm the tx on-chain before recording ──────────────────────
-          // Solana transactions can fail silently (e.g. ProgramAccountNotFound).
-          // We must wait for confirmation and check for errors before recording in DB.
+          // Poll getSignatureStatus every 3s for up to 90s — far more reliable than
+          // confirmTransaction which hard-times-out at 30s on congested mainnet.
+          console.log("[HTLC] Waiting for lock tx confirmation:", txHash);
+          const MAX_POLLS_LOCK = 30; // 30 × 3s = 90s
           let txConfirmed = false;
-          try {
-            const confirmation = await solConnection.confirmTransaction(txHash, "confirmed");
-            if (confirmation.value.err) {
-              const errStr = JSON.stringify(confirmation.value.err);
+          for (let poll = 0; poll < MAX_POLLS_LOCK; poll++) {
+            await new Promise(r => setTimeout(r, 3000));
+            const statusResp = await solConnection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            const txStatus = statusResp?.value;
+            if (txStatus?.err) {
+              const errStr = JSON.stringify(txStatus.err);
               console.error("[HTLC] Lock tx failed on-chain:", errStr);
               throw new Error(`HTLC lock transaction failed on-chain: ${errStr}`);
             }
-            txConfirmed = true;
-          } catch (confirmErr) {
-            const confirmMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
-            // If confirmTransaction itself throws (timeout/network), still try to record
-            // but flag it as unconfirmed so the user knows
-            if (confirmMsg.includes("failed on-chain")) {
-              // Definitive failure — do NOT record in DB, throw to outer catch
-              throw confirmErr;
-            }
-            // Timeout or network error — NEVER proceed optimistically.
-            // A failed tx would trigger false-positive settlement (USDT never moves).
-            // Verify the actual tx status via getSignatureStatus before continuing.
-            console.warn("[HTLC] confirmTransaction timed out — verifying tx status on-chain:", confirmMsg);
-            try {
-              const statusResp = await solConnection.getSignatureStatus(txHash, { searchTransactionHistory: true });
-              const txStatus = statusResp?.value;
-              if (!txStatus) {
-                throw new Error("HTLC lock transaction not found on-chain after timeout — please retry");
-              }
-              if (txStatus.err) {
-                const errStr = JSON.stringify(txStatus.err);
-                console.error("[HTLC] Lock tx confirmed FAILED on-chain:", errStr);
-                throw new Error(`HTLC lock transaction failed on-chain: ${errStr}`);
-              }
-              // Status exists and no error — tx succeeded
-              console.log("[HTLC] Tx verified on-chain after timeout:", txHash);
+            if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+              console.log("[HTLC] Lock tx confirmed on-chain after", (poll + 1) * 3, "s:", txHash);
               txConfirmed = true;
-            } catch (verifyErr) {
-              const verifyMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
-              if (verifyMsg.includes("failed on-chain") || verifyMsg.includes("not found on-chain")) {
-                throw verifyErr; // Definitive failure — propagate to outer catch
-              }
-              // getSignatureStatus itself failed (network) — still do not proceed optimistically
-              console.error("[HTLC] Could not verify tx status after timeout:", verifyMsg);
-              throw new Error(`HTLC lock could not be verified on-chain: ${verifyMsg}`);
+              break;
             }
           }
-
           if (!txConfirmed) {
-            throw new Error("HTLC lock transaction could not be confirmed on-chain");
+            // Final check after 90s
+            const finalResp = await solConnection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            if (finalResp?.value?.err) {
+              throw new Error(`HTLC lock transaction failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+            }
+            if (!finalResp?.value) {
+              throw new Error("HTLC lock transaction not found on-chain after 90s — please retry");
+            }
+            // Has a status with no error — treat as confirmed
+            console.log("[HTLC] Lock tx found on-chain after 90s (no error):", txHash);
+            txConfirmed = true;
           }
 
           // HTLC lock tx submitted — mark as "locked" (not "settled").

@@ -546,20 +546,23 @@ function OpenTradeCard({
         } else {
           throw new Error("No signing method available — please reconnect your wallet");
         }
-        // Confirm on-chain — with fallback to getSignatureStatus if confirmTransaction times out.
-        try {
-          const confirmation = await connection.confirmTransaction(txHash, "confirmed");
-          if (confirmation.value.err) {
-            throw new Error(`Early refund tx failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          const confirmMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
-          if (confirmMsg.includes("failed on-chain")) throw confirmErr;
-          // Timeout — verify actual status before proceeding
+        // Poll getSignatureStatus every 3s for up to 90s — avoids the 30s hard timeout of confirmTransaction
+        const MAX_POLLS_EARLY = 30; // 30 × 3s = 90s
+        let confirmedEarly = false;
+        for (let poll = 0; poll < MAX_POLLS_EARLY; poll++) {
+          await new Promise(r => setTimeout(r, 3000));
           const statusResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
           const txStatus = statusResp?.value;
-          if (!txStatus) throw new Error("Early refund tx not found on-chain after timeout — please retry");
-          if (txStatus.err) throw new Error(`Early refund tx failed on-chain: ${JSON.stringify(txStatus.err)}`);
+          if (txStatus?.err) throw new Error(`Early refund tx failed on-chain: ${JSON.stringify(txStatus.err)}`);
+          if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+            confirmedEarly = true;
+            break;
+          }
+        }
+        if (!confirmedEarly) {
+          const finalResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+          if (finalResp?.value?.err) throw new Error(`Early refund tx failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+          if (!finalResp?.value) throw new Error(`Tx not confirmed after 90s — check Solscan: ${txHash.slice(0,16)}…`);
         }
         await updateHtlcRefund.mutateAsync({ htlcAddress: trade.htlcAddress, refundTxId: txHash });
         await utils.history.openTrades.invalidate();
@@ -1149,23 +1152,29 @@ function RefundCard({
         } else {
           throw new Error("No signing method available — please reconnect your wallet");
         }
-        // Confirm on-chain — with fallback to getSignatureStatus if confirmTransaction times out.
-        // NEVER proceed optimistically: a failed tx would mark the refund as done incorrectly.
-        try {
-          const confirmation = await connection.confirmTransaction(txHash, "confirmed");
-          if (confirmation.value.err) {
-            throw new Error(`Refund transaction failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-          }
-        } catch (confirmErr) {
-          const confirmMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
-          if (confirmMsg.includes("failed on-chain")) throw confirmErr;
-          // Timeout — verify actual status
-          toast.loading("Confirming on-chain…", { id: toastId });
+        // Poll getSignatureStatus every 3s for up to 90s — far more reliable than
+        // confirmTransaction which hard-times-out at 30s on congested mainnet.
+        toast.loading("Waiting for on-chain confirmation…", { id: toastId });
+        const MAX_POLLS = 30; // 30 × 3s = 90s
+        let confirmed = false;
+        for (let poll = 0; poll < MAX_POLLS; poll++) {
+          await new Promise(r => setTimeout(r, 3000));
           const statusResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
           const txStatus = statusResp?.value;
-          if (!txStatus) throw new Error("Refund transaction not found on-chain after timeout — please retry");
-          if (txStatus.err) throw new Error(`Refund transaction failed on-chain: ${JSON.stringify(txStatus.err)}`);
-          // Status exists, no error — tx succeeded
+          if (txStatus?.err) {
+            throw new Error(`Refund transaction failed on-chain: ${JSON.stringify(txStatus.err)}`);
+          }
+          if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+            confirmed = true;
+            break;
+          }
+        }
+        if (!confirmed) {
+          // After 90s still not confirmed — check one final time with searchTransactionHistory
+          const finalResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+          if (finalResp?.value?.err) throw new Error(`Refund transaction failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+          if (!finalResp?.value) throw new Error(`Refund transaction not confirmed after 90s. Signature: ${txHash.slice(0,16)}… — check Solscan to verify and retry if needed.`);
+          // Has a status (even 'processed') — treat as success
         }
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
@@ -1182,7 +1191,24 @@ function RefundCard({
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
-        toast.error("Refund failed", { id: toastId, description: msg });
+        // Custom 6005 = AlreadyRefunded, Custom 6004 = AlreadyClaimed
+        // The funds are already back in the wallet — treat as success and update DB.
+        const isAlreadySettled = msg.includes("Custom\":6005") || msg.includes("Custom\":6004") ||
+          msg.includes("Custom: 6005") || msg.includes("Custom: 6004") ||
+          msg.includes("AlreadyRefunded") || msg.includes("AlreadyClaimed");
+        if (isAlreadySettled) {
+          try {
+            await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: "already-settled" });
+            await utils.history.refunds.invalidate();
+            await utils.history.myOnChainRefunds.invalidate();
+          } catch { /* ignore DB update errors */ }
+          toast.success("Already refunded on-chain", {
+            id: toastId,
+            description: "This HTLC was already settled. Your wallet balance is up to date.",
+          });
+        } else {
+          toast.error("Refund failed", { id: toastId, description: msg });
+        }
       } finally {
         setClaiming(false);
       }
@@ -1537,21 +1563,25 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
           } else {
             throw new Error("No signing method available");
           }
-          // Confirm on-chain — with fallback to getSignatureStatus if confirmTransaction times out.
-          try {
-            const confirmation = await connection.confirmTransaction(txHash, "confirmed");
-            if (confirmation.value.err) {
-              throw new Error(`Refund tx failed on-chain: ${JSON.stringify(confirmation.value.err)}`);
-            }
-          } catch (confirmErr) {
-            const confirmMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
-            if (confirmMsg.includes("failed on-chain")) throw confirmErr;
-            // Timeout — verify actual status before marking as success
-            toast.loading(`Verifying ${i + 1}/${claimable.length} on-chain…`, { id: toastId });
+          // Poll getSignatureStatus every 3s for up to 90s — avoids the 30s hard timeout of confirmTransaction
+          toast.loading(`Confirming ${i + 1}/${claimable.length} on-chain…`, { id: toastId });
+          const MAX_POLLS_ALL = 30; // 30 × 3s = 90s
+          let confirmedAll = false;
+          for (let poll = 0; poll < MAX_POLLS_ALL; poll++) {
+            await new Promise(r => setTimeout(r, 3000));
             const statusResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
             const txStatus = statusResp?.value;
-            if (!txStatus) throw new Error("Refund tx not found on-chain after timeout — please retry individually");
-            if (txStatus.err) throw new Error(`Refund tx failed on-chain: ${JSON.stringify(txStatus.err)}`);
+            if (txStatus?.err) throw new Error(`Refund tx failed on-chain: ${JSON.stringify(txStatus.err)}`);
+            if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+              confirmedAll = true;
+              break;
+            }
+          }
+          if (!confirmedAll) {
+            const finalResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            if (finalResp?.value?.err) throw new Error(`Refund tx failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+            if (!finalResp?.value) throw new Error(`Tx not confirmed after 90s — check Solscan: ${txHash.slice(0,16)}…`);
+            // Has a status — treat as success
           }
           await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
           toast.dismiss(toastId);
@@ -1587,11 +1617,21 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
-        toast.error(`Claim ${i + 1}/${claimable.length} failed`, { description: msg });
-        failed++;
+        // Custom 6005 = AlreadyRefunded, Custom 6004 = AlreadyClaimed — treat as success
+        const isAlreadySettled = msg.includes("Custom\":6005") || msg.includes("Custom\":6004") ||
+          msg.includes("Custom: 6005") || msg.includes("Custom: 6004") ||
+          msg.includes("AlreadyRefunded") || msg.includes("AlreadyClaimed");
+        if (isAlreadySettled) {
+          try {
+            await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: "already-settled" });
+          } catch { /* ignore */ }
+          succeeded++; // Count as success — funds already back in wallet
+        } else {
+          toast.error(`Claim ${i + 1}/${claimable.length} failed`, { description: msg });
+          failed++;
+        }
       }
     }
-
     setProgress({ done: claimable.length, total: claimable.length });
     await utils.history.refunds.invalidate();
     await utils.history.myOnChainRefunds.invalidate();

@@ -2876,3 +2876,24 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] BUG: Server-side refundSolanaHtlc had only 3 accounts (sender, htlcPda, SystemProgram) but Anchor program requires 6 accounts always
 - [x] FIX: solanaHtlcRefund.ts now always includes all 6 accounts (sender, htlcPda, vaultAta, senderAta, tokenProgram, systemProgram) matching the client-side buildRefundInstruction
 - [x] FIX: DEFAULT_REFUND_MINT (USDT) used as fallback for native SOL HTLCs — consistent with client-side DEFAULT_REFUND_TOKEN_MINT
+
+## Bug: Refund Fails with Custom Error 6005 (Session 2026-03-13 #6)
+- [ ] BUG: "Refund transaction failed on-chain: InstructionError 2, Custom 6005" when clicking Claim
+- [ ] INVESTIGATE: What is Custom error 6005 in the AFOS HTLC Anchor program?
+- [ ] INVESTIGATE: Are these HTLCs already claimed/refunded on-chain but DB shows pending?
+- [ ] INVESTIGATE: Is the htlcId (PDA seed) being passed correctly to buildSolanaHtlcRefundTx?
+
+## Bug: Refund Fails with Custom 6005 (AlreadyRefunded) — Session 2026-03-13 #5
+- [x] INVESTIGATE: "Refund transaction failed on-chain: InstructionError[2, Custom:6005]" — Custom 6005 = AlreadyRefunded
+- [x] ROOT CAUSE: HTLC PDA already closed on-chain (already refunded) but DB still shows status=pending, so UI keeps showing Claim button
+- [x] ROOT CAUSE: When "Claim All" runs, the already-refunded HTLC returns 6005, causing the whole batch to fail
+- [x] FIX: claimRefund (single) — when Custom:6005 or Custom:6004 is returned, treat as success and update DB to refunded
+- [x] FIX: ClaimAllButton — same AlreadyRefunded/AlreadyClaimed detection, count as succeeded instead of failed
+- [x] FIX: myOnChainRefunds scanner — when getAccountInfo returns null (PDA closed), auto-update DB to status=refunded instead of silently skipping
+- [x] BONUS: DB auto-sync — next time the Refunds tab loads, closed PDAs will be auto-detected and removed from the Claimable list
+
+## Bug: Claim All UI Not Updating After Successful On-Chain Refund — Session 2026-03-13 #6
+- [ ] BUG: 3 refund txs succeeded on-chain but UI showed failure / did not update to Claimed
+- [ ] ROOT CAUSE: confirmTransaction timeout causes error before getSignatureStatus fallback can verify success
+- [ ] FIX: Replace confirmTransaction with polling-based confirmation that retries getSignatureStatus until confirmed or definitively failed
+- [ ] FIX: After any on-chain success (even via fallback), immediately call updateHtlcRefund and invalidate cache
