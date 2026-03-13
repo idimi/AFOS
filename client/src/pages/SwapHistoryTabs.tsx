@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
-  Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap,
+  Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap, RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -1678,16 +1678,29 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
 }
 
 export function RefundsTab({ walletAddresses, search = "", adminOverride = false }: TabProps) {
-  const { data, isLoading } = trpc.history.refunds.useQuery(
+  const { data, isLoading, refetch: refetchDb } = trpc.history.refunds.useQuery(
     { walletAddresses, search, adminOverride },
     { refetchInterval: 30000 }
   );
   // On-chain scanner — always runs, finds HTLCs not in DB too
-  const { data: onChainData, isLoading: onChainLoading } = trpc.history.myOnChainRefunds.useQuery(
+  const { data: onChainData, isLoading: onChainLoading, refetch: refetchOnChain } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses, adminOverride },
     { refetchInterval: 60000 }
   );
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleResync = async () => {
+    setIsSyncing(true);
+    try {
+      await Promise.all([refetchDb(), refetchOnChain()]);
+      toast.success("Re-synced from chain", { description: "HTLC states refreshed from on-chain data" });
+    } catch {
+      toast.error("Re-sync failed", { description: "Could not fetch on-chain state. Try again." });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Merge DB refunds with on-chain scanner results (deduplicate by htlcId)
   const dbRefunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
@@ -1779,12 +1792,25 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
           ))}
         </div>
 
-        {/* Claim All batch button — only shown when 2+ CLAIMABLE HTLCs */}
-        {claimable.length >= 2 && (
-          <div className="flex justify-end">
-            <ClaimAllButton claimable={claimable} />
-          </div>
-        )}
+        {/* Header row: Re-sync button + Claim All */}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={handleResync}
+            disabled={isSyncing || onChainLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+            style={{
+              background: isSyncing ? "rgba(6,182,212,0.15)" : "rgba(6,182,212,0.07)",
+              border: "1px solid rgba(6,182,212,0.25)",
+              color: "rgb(103,232,249)",
+              opacity: isSyncing ? 0.7 : 1,
+            }}
+            title="Re-scan all chains for unclaimed HTLCs"
+          >
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+            {isSyncing ? "Syncing..." : "Re-sync from chain"}
+          </button>
+          {claimable.length >= 2 && <ClaimAllButton claimable={claimable} />}
+        </div>
 
         {refunds.length === 0 && (
           <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>

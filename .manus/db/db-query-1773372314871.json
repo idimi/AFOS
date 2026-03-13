@@ -1,0 +1,31 @@
+{
+  "query": "SELECT id, htlcAddress, status, refundTxId, refundedAt FROM htlc_swaps WHERE htlcAddress IN ('8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf', '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6', '5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX') LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, htlcAddress, status, refundTxId, refundedAt FROM htlc_swaps WHERE htlcAddress IN ('8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf', '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6', '5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX') LIMIT 10;",
+  "rows": [
+    {
+      "id": "5",
+      "htlcAddress": "5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX",
+      "status": "refunded",
+      "refundTxId": "auto-detected-already-refunded",
+      "refundedAt": "2026-03-13 03:24:55"
+    },
+    {
+      "id": "6",
+      "htlcAddress": "4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6",
+      "status": "refunded",
+      "refundTxId": "auto-detected-already-refunded",
+      "refundedAt": "2026-03-13 03:24:55"
+    },
+    {
+      "id": "8",
+      "htlcAddress": "8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf",
+      "status": "refunded",
+      "refundTxId": "auto-detected-already-refunded",
+      "refundedAt": "2026-03-13 03:24:55"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\thtlcAddress\tstatus\trefundTxId\trefundedAt\n5\t5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX\trefunded\tauto-detected-already-refunded\t2026-03-13 03:24:55\n6\t4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6\trefunded\tauto-detected-already-refunded\t2026-03-13 03:24:55\n8\t8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf\trefunded\tauto-detected-already-refunded\t2026-03-13 03:24:55\n",
+  "stderr": "",
+  "execution_time_ms": 350
+}

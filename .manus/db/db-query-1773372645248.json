@@ -1,0 +1,9 @@
+{
+  "query": "\n-- ID 6: 4gKNVtZ4... — on-chain ACTIVE (status byte=0), funds still locked — revert to pending so Claim button shows\nUPDATE htlc_swaps \nSET status = 'pending', refundTxId = NULL \nWHERE id = 6 AND htlcAddress = '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6';\n\n-- ID 7: 9hCF3qiW... — PDA closed on-chain but DB says 'expired' — fix to refunded\nUPDATE htlc_swaps \nSET status = 'refunded', refundTxId = 'auto-detected-closed' \nWHERE id = 7 AND status = 'expired';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \n-- ID 6: 4gKNVtZ4... — on-chain ACTIVE (status byte=0), funds still locked — revert to pending so Claim button shows\nUPDATE htlc_swaps \nSET status = 'pending', refundTxId = NULL \nWHERE id = 6 AND htlcAddress = '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6';\n\n-- ID 7: 9hCF3qiW... — PDA closed on-chain but DB says 'expired' — fix to refunded\nUPDATE htlc_swaps \nSET status = 'refunded', refundTxId = 'auto-detected-closed' \nWHERE id = 7 AND status = 'expired';\n",
+  "rows": [],
+  "messages": [],
+  "stdout": "",
+  "stderr": "",
+  "execution_time_ms": 409
+}

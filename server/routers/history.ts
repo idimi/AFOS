@@ -438,8 +438,11 @@ export const historyRouter = router({
 
         // Helper to parse a single HTLC account buffer
         const parseHtlcAccount = (raw: Buffer, pubkey: string) => {
-          if (raw.length < 153) return null;
-          // Layout: discriminator(8) + htlcId_fixed(32) + sender(32) + receiver(32) + secretHash(32) + timelock(8) + amount(8) + status(1)
+          // Correct layout (verified from on-chain hex dumps, 219 bytes total):
+          // discriminator(8) + htlcId_fixed32(32) + sender(32) + receiver(32) +
+          // secretHash(32) + timelock_i64(8) + amount_u64(8) + padding(33) + status(1)
+          // Status byte is at offset 185, NOT 152.
+          if (raw.length < 186) return null;
           const htlcIdRaw = raw.slice(8, 40);
           const nullIdx = htlcIdRaw.indexOf(0);
           const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
@@ -447,8 +450,8 @@ export const historyRouter = router({
           const secretHashHex = raw.slice(104, 136).toString("hex");
           const timelock = Number(raw.readBigInt64LE(136));
           const amountLamports = raw.readBigUInt64LE(144);
-          const status = raw[152];
-          if (status !== 0) return null; // 0 = active/locked only
+          const status = raw[185]; // 0=active, 1=refunded, 2=claimed
+          if (status !== 0) return null; // only return active/locked HTLCs
           const amountSol = Number(amountLamports) / 1e9;
           return {
             htlcId, pdaAddress: pubkey, senderAddress: sender,
