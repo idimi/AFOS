@@ -94,13 +94,36 @@ export const historyRouter = router({
         .from(swapAnalytics)
         .where(where);
 
-      const rows = await db
+      const rawRows = await db
         .select()
         .from(swapAnalytics)
         .where(where)
         .orderBy(desc(swapAnalytics.createdAt))
         .limit(input.limit)
         .offset(input.offset);
+
+      // Enrich with settledVia from htlc_secrets (join on rfqId)
+      const rfqIds = rawRows.map(r => r.rfqId).filter(Boolean) as string[];
+      let secretsMap: Record<string, { settledVia: string | null; settledAt: Date | null }> = {};
+      if (rfqIds.length > 0) {
+        const secrets = await db
+          .select({
+            rfqId: htlcSecrets.rfqId,
+            settledVia: htlcSecrets.settledVia,
+            settledAt: htlcSecrets.settledAt,
+          })
+          .from(htlcSecrets)
+          .where(inArray(htlcSecrets.rfqId, rfqIds));
+        for (const s of secrets) {
+          secretsMap[s.rfqId] = { settledVia: s.settledVia, settledAt: s.settledAt };
+        }
+      }
+
+      const rows = rawRows.map(r => ({
+        ...r,
+        settledVia: r.rfqId ? (secretsMap[r.rfqId]?.settledVia ?? null) : null,
+        settledAt:  r.rfqId ? (secretsMap[r.rfqId]?.settledAt ?? null) : null,
+      }));
 
       return {
         rows,
@@ -891,9 +914,10 @@ export const historyRouter = router({
       // Mark htlc_secrets as completed if all succeeded
       const allOk = results.every(r => r.success);
       if (allOk) {
+        const now = new Date();
         await db
           .update(htlcSecrets)
-          .set({ status: 'completed', updatedAt: new Date() })
+          .set({ status: 'completed', settledAt: now, settledVia: 'admin_force_claim', updatedAt: now })
           .where(eq(htlcSecrets.rfqId, input.rfqId));
       }
 

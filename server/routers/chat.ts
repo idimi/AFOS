@@ -2454,6 +2454,8 @@ export const chatRouter = router({
 
             await updateHtlcSecretStatus(input.rfqId, "completed", {
               revealTxId: claimA.txSignature,
+              settledAt: new Date(),
+              settledVia: "browser_notify",
             });
           } catch (claimErr) {
             console.error("[HTLC] On-chain claim failed:", claimErr instanceof Error ? claimErr.message : claimErr);
@@ -2493,18 +2495,27 @@ export const chatRouter = router({
     .input(z.object({ limit: z.number().int().min(1).max(500).default(50) }).optional())
     .query(async ({ input }) => {
       const rows = await getSettledHtlcSecrets(input?.limit ?? 50);
-      return rows.map(r => ({
-        rfqId:              r.rfqId,
-        fromChain:          r.fromChain,
-        toChain:            r.toChain,
-        status:             r.status,
-        lockTxId:           r.lockTxId ?? null,
-        revealTxId:         r.revealTxId ?? null,
-        counterpartyPeerId: r.counterpartyPeerId ?? null,
-        expiresAt:          Number(r.expiresAt),
-        updatedAt:          r.updatedAt,
-        createdAt:          r.createdAt,
-      }));
+      return rows.map(r => {
+        // Compute settlement time in milliseconds (settledAt - createdAt)
+        const settledAtMs = r.settledAt ? new Date(r.settledAt).getTime() : null;
+        const createdAtMs = new Date(r.createdAt).getTime();
+        const settlementMs = settledAtMs ? settledAtMs - createdAtMs : null;
+        return {
+          rfqId:              r.rfqId,
+          fromChain:          r.fromChain,
+          toChain:            r.toChain,
+          status:             r.status,
+          lockTxId:           r.lockTxId ?? null,
+          revealTxId:         r.revealTxId ?? null,
+          counterpartyPeerId: r.counterpartyPeerId ?? null,
+          expiresAt:          Number(r.expiresAt),
+          updatedAt:          r.updatedAt,
+          createdAt:          r.createdAt,
+          settledAt:          r.settledAt ?? null,
+          settledVia:         r.settledVia ?? null,
+          settlementMs,
+        };
+      });
     }),
 
   // ── Notify owner of swap completion (claim or refund) ──────────────────────
@@ -2680,8 +2691,10 @@ export const chatRouter = router({
 
           await updateHtlcSecretStatus(rfqId, "completed", {
             revealTxId: claimA.txSignature,
+            settledAt: new Date(),
+            settledVia: "browser_notify",
           });
-          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed successfully`);
+          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed successfully (browser_notify)`);
         } catch (err) {
           // Non-fatal: HtlcSecretsMonitor will retry after 5 minutes
           console.error(`[AgentBWebhook] Auto-claim failed for rfqId=${rfqId.slice(0, 12)}:`, err instanceof Error ? err.message : err);

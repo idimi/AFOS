@@ -2897,3 +2897,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] ROOT CAUSE: confirmTransaction timeout causes error before getSignatureStatus fallback can verify success
 - [ ] FIX: Replace confirmTransaction with polling-based confirmation that retries getSignatureStatus until confirmed or definitively failed
 - [ ] FIX: After any on-chain success (even via fallback), immediately call updateHtlcRefund and invalidate cache
+- [x] Helius webhook endpoint for AFOS HTLC program events (auto-claim on lock confirmation)
+- [x] Register Helius webhook with HTLC program address via Helius API
+- [x] Time-to-settle indicator on Completed tab (shows settlement speed per swap)
+- [x] Added settledAt and settledVia columns to htlc_secrets schema
+- [x] Helius webhook auto-claims both Agent A and Agent B HTLCs on lock detection
+- [x] Settlement speed badge (Fast/Normal/Slow) with settledVia source (Webhook/Browser/Monitor/Admin)
+- [x] All claim paths (webhook, browser_notify, monitor_fallback, admin_force_claim) now set settledAt/settledVia

@@ -280,8 +280,10 @@ async function runHtlcSecretsCheck(): Promise<void> {
           if (claimASuccess && claimBSuccess) {
             await updateHtlcSecretStatus(row.rfqId, "completed", {
               revealTxId: claimATxSig,
+              settledAt: new Date(),
+              settledVia: "monitor_fallback",
             });
-            console.log(`[HtlcSecretsMonitor] Marked rfqId=${row.rfqId} as completed after retry`);
+            console.log(`[HtlcSecretsMonitor] Marked rfqId=${row.rfqId} as completed after retry (monitor_fallback)`);
 
             // Notify both parties via signaling so their UI updates
             const completedMsg = {

@@ -44,6 +44,7 @@ interface SwapRecord {
   txHash: string;
   fee: number;
   settlementTime: number; // ms
+  settledVia: string | null; // 'helius_webhook' | 'browser_notify' | 'monitor_fallback' | 'admin_force_claim'
   agentExecuted: boolean;
 }
 
@@ -88,6 +89,7 @@ function mapDbRowToSwapRecord(row: {
   outAmount: string | null;
   walletAddress: string | null;
   createdAt: Date;
+  settledVia?: string | null;
 }): SwapRecord {
   const fromSymbol = row.fromToken;
   const toSymbol = row.toToken;
@@ -120,6 +122,7 @@ function mapDbRowToSwapRecord(row: {
     txHash,
     fee,
     settlementTime,
+    settledVia: row.settledVia ?? null,
     agentExecuted: true,
   };
 }
@@ -165,6 +168,40 @@ function StatusBadge({ status }: { status: SwapStatus }) {
     >
       {config.icon}
       {config.label}
+    </span>
+  );
+}
+
+// ─── Settlement Speed Badge ──────────────────────────────────────────────────
+
+function SettlementBadge({ ms, via }: { ms: number; via: string | null }) {
+  // Determine speed tier based on settlement time
+  if (ms === 0 && !via) return null;
+
+  const isFast = ms > 0 && ms < 30_000; // < 30s = webhook-fast
+  const isMedium = ms >= 30_000 && ms < 300_000; // 30s–5min
+  // > 5min = slow (monitor fallback)
+
+  // Map settledVia to a human-readable label
+  const viaLabel = via === "helius_webhook" ? "Webhook"
+    : via === "browser_notify" ? "Browser"
+    : via === "monitor_fallback" ? "Monitor"
+    : via === "admin_force_claim" ? "Admin"
+    : null;
+
+  const speedConfig = isFast
+    ? { label: "Fast", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.35)", color: "#10b981", icon: "⚡" }
+    : isMedium
+    ? { label: "Normal", bg: "rgba(59,130,246,0.12)", border: "rgba(59,130,246,0.35)", color: "#3b82f6", icon: "⏱" }
+    : { label: "Slow", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.35)", color: "#f59e0b", icon: "🐢" };
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold"
+      style={{ background: speedConfig.bg, border: `1px solid ${speedConfig.border}`, color: speedConfig.color }}
+      title={viaLabel ? `Settled via: ${viaLabel}` : `Settlement: ${formatSettlement(ms)}`}
+    >
+      {speedConfig.icon} {viaLabel ?? speedConfig.label}
     </span>
   );
 }
@@ -796,7 +833,10 @@ export default function SwapHistory() {
                             </div>
                             <div>
                               <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Settlement</div>
-                              <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-mono text-foreground">{formatSettlement(swap.settlementTime)}</span>
+                                <SettlementBadge ms={swap.settlementTime} via={swap.settledVia} />
+                              </div>
                             </div>
                             <div>
                               <div className="text-[9px] font-mono text-slate-600 uppercase tracking-widest mb-1">Rate</div>

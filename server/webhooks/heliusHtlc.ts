@@ -1,16 +1,19 @@
 /**
  * Helius Webhook Integration for AFOS HTLC Program
  *
- * Registers a Helius "enhanced transactions" webhook on the AFOS HTLC program
- * address so the server receives real-time notifications when a lock, claim, or
- * refund instruction executes on-chain — eliminating the need for constant polling.
+ * Registers a Helius "raw" webhook on the AFOS HTLC program address so the
+ * server receives real-time notifications when a lock, claim, or refund
+ * instruction executes on-chain — eliminating the need for constant polling.
  *
  * Webhook lifecycle:
  *  - On startup: calls `ensureHeliusWebhook()` which creates or updates the
  *    webhook to point at `POST /api/webhooks/helius-htlc` on the live domain.
- *  - On each event: `handleHeliusHtlcWebhook()` parses the payload, identifies
- *    the instruction type via Anchor discriminator, and updates the htlc_swaps
- *    DB record accordingly.
+ *  - On each event: `processHtlcEvent()` parses the payload, identifies the
+ *    instruction type via Anchor discriminator, and:
+ *      • For lock events: looks up the htlc_secrets row by rfqId and triggers
+ *        immediate auto-claims (same logic as notifyAgentBLocked) when both
+ *        sides are locked.
+ *      • For claim/refund events: updates the htlc_swaps DB record.
  *
  * Security: Helius sends an `authorization` header with the webhook secret.
  *   Set HELIUS_WEBHOOK_SECRET in env; if unset, signature check is skipped
@@ -19,8 +22,8 @@
 
 import type { Express, Request, Response } from "express";
 import { getDb } from "../db.js";
-import { htlcSwaps } from "../../drizzle/schema.js";
-import { eq } from "drizzle-orm";
+import { htlcSwaps, htlcSecrets } from "../../drizzle/schema.js";
+import { eq, and } from "drizzle-orm";
 import { ENV } from "../_core/env.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -89,8 +92,7 @@ export async function ensureHeliusWebhook(appBaseUrl: string): Promise<void> {
       const alreadyCorrect =
         match.webhookURL === webhookUrl &&
         (match.accountAddresses ?? []).includes(AFOS_HTLC_PROGRAM_ID) &&
-        // Also check that the authHeader is set correctly (update if secret was added/changed)
-        (!secret || (match as any).authHeader === secret);
+        (!secret || (match as unknown as Record<string, unknown>).authHeader === secret);
       if (alreadyCorrect) {
         setWebhookId(match.webhookID, webhookUrl);
         console.log(`[HeliusWebhook] Webhook already configured (id: ${match.webhookID}) → ${webhookUrl}`);
@@ -136,11 +138,17 @@ const webhookStatus = {
   lastEventAt: null as number | null,
   lastEventSig: null as string | null,
   totalEventsReceived: 0,
+  totalClaimsTriggered: 0,
+  lastClaimTriggeredAt: null as number | null,
 };
 
 export function setWebhookId(id: string, url: string): void {
   webhookStatus.webhookId = id;
   webhookStatus.registeredUrl = url;
+}
+
+export function getWebhookStatus() {
+  return { ...webhookStatus };
 }
 
 // ── Express route handler ─────────────────────────────────────────────────────
@@ -163,6 +171,8 @@ export function registerHeliusWebhookRoute(app: Express): void {
         : null,
       lastEventSig: webhookStatus.lastEventSig,
       totalEventsReceived: webhookStatus.totalEventsReceived,
+      totalClaimsTriggered: webhookStatus.totalClaimsTriggered,
+      lastClaimTriggeredAt: webhookStatus.lastClaimTriggeredAt,
       secretConfigured: !!process.env.HELIUS_WEBHOOK_SECRET,
     });
   });
@@ -210,7 +220,7 @@ async function processHtlcEvent(event: HeliusRawEvent): Promise<void> {
 
   // Only process successful transactions
   if (event.transactionError) {
-    console.log(`[HeliusWebhook] Skipping failed tx: ${sig}`);
+    console.log(`[HeliusWebhook] Skipping failed tx: ${sig.slice(0, 16)}…`);
     return;
   }
 
@@ -230,7 +240,7 @@ async function processHtlcEvent(event: HeliusRawEvent): Promise<void> {
 
     const database = await getDb();
     if (!database) {
-      console.warn("[HeliusWebhook] No DB connection — cannot update HTLC status");
+      console.warn("[HeliusWebhook] No DB connection — cannot process HTLC event");
       return;
     }
 
@@ -254,7 +264,175 @@ async function processHtlcEvent(event: HeliusRawEvent): Promise<void> {
         .set({ lockTxId: sig, updatedAt: new Date() })
         .where(eq(htlcSwaps.htlcAddress, htlcPda));
       console.log(`[HeliusWebhook] Recorded lock tx for HTLC ${htlcPda.slice(0, 12)}… (tx: ${sig.slice(0, 16)}…)`);
+
+      // ── AUTO-CLAIM TRIGGER ──────────────────────────────────────────────
+      // When we detect a lock event, check if this is Agent B's lock.
+      // If so, both HTLCs are now locked and we can trigger immediate claims.
+      // This is the key feature: settlement happens even if Agent B's browser is closed.
+      await tryAutoClaimOnLock(database, htlcPda, sig);
     }
+  }
+}
+
+// ── Auto-claim logic ──────────────────────────────────────────────────────────
+
+/**
+ * After detecting a lock event on-chain, look up the htlc_swaps row by PDA
+ * address to find the rfqId, then check htlc_secrets to see if both sides
+ * are locked and the secret is available. If so, trigger immediate claims.
+ *
+ * This mirrors the logic in `notifyAgentBLocked` (chat.ts) but is triggered
+ * by on-chain events via Helius instead of Agent B's browser.
+ */
+async function tryAutoClaimOnLock(
+  database: Awaited<ReturnType<typeof getDb>>,
+  htlcPda: string,
+  lockTxSig: string,
+): Promise<void> {
+  if (!database) return;
+
+  try {
+    // 1. Find the htlc_swaps row for this PDA
+    const [swapRow] = await database
+      .select()
+      .from(htlcSwaps)
+      .where(eq(htlcSwaps.htlcAddress, htlcPda))
+      .limit(1);
+
+    if (!swapRow?.rfqId) {
+      console.log(`[HeliusWebhook] No htlc_swaps row found for PDA ${htlcPda.slice(0, 12)}… — skipping auto-claim`);
+      return;
+    }
+
+    const rfqId = swapRow.rfqId;
+
+    // 2. Check if this is Agent B's HTLC (htlcId starts with "htlc_b_")
+    const isAgentB = swapRow.htlcId?.startsWith("htlc_b_");
+    if (!isAgentB) {
+      console.log(`[HeliusWebhook] Lock event for Agent A's HTLC (rfqId=${rfqId.slice(0, 12)}…) — waiting for Agent B`);
+      return;
+    }
+
+    // 3. Look up the htlc_secrets row for this rfqId
+    const [secretRow] = await database
+      .select()
+      .from(htlcSecrets)
+      .where(eq(htlcSecrets.rfqId, rfqId))
+      .limit(1);
+
+    if (!secretRow) {
+      console.log(`[HeliusWebhook] No htlc_secrets row for rfqId=${rfqId.slice(0, 12)}… — cannot auto-claim`);
+      return;
+    }
+
+    // 4. Guard: only fire if the swap is still in progress
+    if (secretRow.status === "completed" || secretRow.status === "refunded" || secretRow.status === "expired") {
+      console.log(`[HeliusWebhook] rfqId=${rfqId.slice(0, 12)}… already ${secretRow.status} — skipping`);
+      return;
+    }
+
+    // 5. Resolve wallet addresses
+    const initiatorAddress = secretRow.initiatorAddress ?? "";
+    const counterpartyAddress = secretRow.counterpartyAddress ?? swapRow.senderAddress ?? "";
+
+    if (!initiatorAddress) {
+      console.warn(`[HeliusWebhook] Missing initiatorAddress for rfqId=${rfqId.slice(0, 12)}… — cannot auto-claim`);
+      return;
+    }
+    if (!counterpartyAddress) {
+      console.warn(`[HeliusWebhook] Missing counterpartyAddress for rfqId=${rfqId.slice(0, 12)}… — cannot auto-claim`);
+      return;
+    }
+
+    // 6. Update status to 'revealed' and persist counterpartyAddress
+    await database.update(htlcSecrets)
+      .set({
+        status: "revealed",
+        counterpartyAddress,
+        lockTxId: lockTxSig,
+        updatedAt: new Date(),
+      })
+      .where(eq(htlcSecrets.rfqId, rfqId));
+
+    console.log(`[HeliusWebhook] Agent B locked on-chain — triggering immediate claims for rfqId=${rfqId.slice(0, 12)}…`);
+
+    // 7. Derive HTLC IDs
+    const htlcIdA = `htlc_a_${rfqId.slice(0, 22)}`;
+    const htlcIdB = `htlc_b_${rfqId.slice(0, 22)}`;
+
+    // 8. Determine token symbols
+    const SPL_TOKENS = new Set(["USDT", "USDC"]);
+    const fromTokenSym = secretRow.fromToken?.toUpperCase() ?? "SOL";
+    const toTokenSym   = secretRow.toToken?.toUpperCase()   ?? "SOL";
+    const tokenSymA    = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined;
+    const tokenSymB    = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined;
+
+    // Track claim trigger
+    webhookStatus.totalClaimsTriggered++;
+    webhookStatus.lastClaimTriggeredAt = Date.now();
+
+    // 9. Fire-and-forget: trigger both claims immediately
+    void (async () => {
+      try {
+        const { claimSolanaHtlc } = await import("../solanaHtlcClaim.js");
+
+        // Claim Agent A's lock → release to Agent B
+        const claimA = await claimSolanaHtlc({
+          htlcId:           htlcIdA,
+          secretHex:        secretRow.secretHex,
+          recipientAddress: counterpartyAddress,
+          tokenSymbol:      tokenSymA,
+        });
+        console.log(`[HeliusWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+
+        // Claim Agent B's lock → release to Agent A
+        const claimB = await claimSolanaHtlc({
+          htlcId:           htlcIdB,
+          secretHex:        secretRow.secretHex,
+          recipientAddress: initiatorAddress,
+          tokenSymbol:      tokenSymB,
+        });
+        console.log(`[HeliusWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+
+        // Mark as completed with settledAt timestamp
+        const now = new Date();
+        await database!.update(htlcSecrets)
+          .set({
+            status: "completed",
+            revealTxId: claimA.txSignature,
+            settledAt: now,
+            settledVia: "helius_webhook",
+            updatedAt: now,
+          })
+          .where(eq(htlcSecrets.rfqId, rfqId));
+
+        // Also update both htlc_swaps rows
+        await database!.update(htlcSwaps)
+          .set({ status: "completed", updatedAt: now })
+          .where(eq(htlcSwaps.rfqId, rfqId));
+
+        const settlementMs = now.getTime() - new Date(secretRow.createdAt).getTime();
+        console.log(`[HeliusWebhook] Swap rfqId=${rfqId.slice(0, 12)}… completed via Helius webhook in ${(settlementMs / 1000).toFixed(1)}s`);
+      } catch (err) {
+        // Non-fatal: HtlcSecretsMonitor will retry after 5 minutes
+        const msg = err instanceof Error ? err.message : String(err);
+        // Check if already claimed/refunded — treat as success
+        if (msg.includes("already") || msg.includes("0x1774") || msg.includes("0x1775") ||
+            msg.includes("Custom: 6004") || msg.includes("Custom: 6005")) {
+          console.log(`[HeliusWebhook] HTLC already settled on-chain for rfqId=${rfqId.slice(0, 12)}… — marking completed`);
+          await database!.update(htlcSecrets)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(htlcSecrets.rfqId, rfqId));
+          await database!.update(htlcSwaps)
+            .set({ status: "completed", updatedAt: new Date() })
+            .where(eq(htlcSwaps.rfqId, rfqId));
+        } else {
+          console.error(`[HeliusWebhook] Auto-claim failed for rfqId=${rfqId.slice(0, 12)}…:`, msg);
+        }
+      }
+    })();
+  } catch (err) {
+    console.error("[HeliusWebhook] tryAutoClaimOnLock error:", err);
   }
 }
 
@@ -379,3 +557,8 @@ interface HeliusRawEvent {
     };
   };
 }
+
+// ── Exported for testing ──────────────────────────────────────────────────────
+
+export { identifyInstruction, extractProgramInstructions, processHtlcEvent, tryAutoClaimOnLock };
+export type { HeliusRawEvent, HeliusInstruction };
