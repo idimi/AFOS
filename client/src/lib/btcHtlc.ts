@@ -1,11 +1,10 @@
 /**
  * btcHtlc.ts — Bitcoin HTLC (Hash Time-Locked Contract) utilities
  *
- * Supports all four Bitcoin wallet providers:
- *   - Phantom       → window.phantom.bitcoin.signPSBT(bytes)
- *   - Xverse        → window.XverseProviders.BitcoinProvider.signPsbt(base64, opts)
- *   - Tap Wallet    → window.tracnetwork.signPsbt(hex)
- *   - MetaMask      → wallet_invokeSnap (BTC snap)
+ * Supports three Bitcoin wallet providers (Xverse removed):
+ *   - Phantom    → window.phantom.bitcoin.signPSBT(bytes)
+ *   - Tap Wallet → window.tapprotocol.signPsbt(hex)
+ *   - MetaMask   → wallet_invokeSnap (BTC snap, CAIP-25)
  *
  * Uses bitcoinjs-lib for PSBT construction and P2WSH script encoding.
  * The HTLC script follows BIP-199 (HTLC for atomic swaps):
@@ -25,7 +24,7 @@ import { bytesToHex, hexToBytes } from "@noble/hashes/utils.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type BtcWalletProvider = "phantom" | "xverse" | "tap" | "metamask" | "unknown";
+export type BtcWalletProvider = "phantom" | "tap" | "metamask" | "unknown";  // Xverse removed
 
 export interface HtlcParams {
   /** SHA256 hash of the atomic swap secret (32 bytes hex) */
@@ -62,13 +61,13 @@ export interface BroadcastResult {
 
 /**
  * Detect which Bitcoin wallet provider is currently active in the browser.
- * Priority: Phantom > Xverse > Tap Wallet > MetaMask BTC Snap
+ * Priority: Phantom > Tap Wallet > MetaMask BTC Snap
+ * Xverse removed — not supported in AFOS 3-wallet architecture.
  */
 export function detectBtcProvider(): BtcWalletProvider {
   if (typeof window === "undefined") return "unknown";
   if ((window as any).phantom?.bitcoin?.isPhantom) return "phantom";
-  if ((window as any).XverseProviders?.BitcoinProvider) return "xverse";
-  if ((window as any).tracnetwork?.signPsbt) return "tap";
+  if ((window as any).tapprotocol?.signPsbt || (window as any).tracnetwork?.signPsbt) return "tap";
   if ((window as any).ethereum?.isMetaMask) return "metamask";
   return "unknown";
 }
@@ -89,15 +88,7 @@ export async function getBtcAddress(provider: BtcWalletProvider): Promise<string
         ) ?? accounts[0];
         return paymentAcc?.address ?? null;
       }
-      case "xverse": {
-        const xverse = (window as any).XverseProviders?.BitcoinProvider;
-        if (!xverse) return null;
-        const resp = await xverse.request("getAccounts", {
-          purposes: ["payment"],
-          message: "AFOS HTLC swap",
-        });
-        return resp?.result?.addresses?.[0]?.address ?? null;
-      }
+      // xverse case removed
       case "tap": {
         const tap = (window as any).tracnetwork;
         if (!tap) return null;
@@ -287,22 +278,6 @@ export async function signPsbtWithWallet(
         inputsToSign: inputsToSign?.map(i => ({ signingIndexes: [i] })),
       });
       return Buffer.from(signedBytes).toString("base64");
-    }
-
-    case "xverse": {
-      const xverse = (window as any).XverseProviders?.BitcoinProvider;
-      if (!xverse) throw new Error("Xverse Bitcoin provider not found");
-      // Xverse signPsbt takes base64 and returns { psbt: base64 }
-      const result = await xverse.request("signPsbt", {
-        psbt: psbtBase64,
-        message: "Sign HTLC lock transaction for atomic swap",
-        broadcast: false,
-        inputsToSign: inputsToSign?.map(i => ({
-          address: "", // Xverse fills this from the PSBT
-          signingIndexes: [i],
-        })),
-      });
-      return result?.result?.psbt ?? psbtBase64;
     }
 
     case "tap": {

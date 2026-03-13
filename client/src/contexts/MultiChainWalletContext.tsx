@@ -1,16 +1,17 @@
 /**
  * MultiChainWalletContext
  * Manages wallet connections for four chains:
- *   - Solana: via @solana/wallet-adapter-react (Phantom, Solflare)
- *   - Ethereum: via EIP-1193 window.ethereum or window.phantom.ethereum (MetaMask, Coinbase, Phantom)
- *   - Bitcoin: via MetaMask Multichain API (CAIP-25), window.tapprotocol (Tap Wallet), or window.phantom.bitcoin (Phantom)
- *   - Trac Network (TNK): via window.tracnetwork (Tap Wallet)
+ *   - Solana:        Phantom (window.phantom.solana) or MetaMask (window.ethereum)
+ *   - Ethereum:      Phantom (window.phantom.ethereum) or MetaMask (window.ethereum EIP-1193)
+ *   - Bitcoin:       Phantom (window.phantom.bitcoin), MetaMask CAIP-25, or Tap Wallet (window.tapprotocol)
+ *   - Trac Network:  Tap Wallet only (window.tracnetwork)
  *
- * Phantom is a multi-chain wallet: connecting it once unlocks Solana, Ethereum, and Bitcoin simultaneously.
- * MetaMask → Ethereum + native Bitcoin via wallet_createSession (CAIP-25 bip122 scope).
- * Coinbase Wallet → Ethereum only.
- * Tap Wallet → Bitcoin (window.tapprotocol) + TNK (window.tracnetwork) simultaneously.
- * Solflare → Solana only (handled by @solana/wallet-adapter).
+ * Conflict-free namespace isolation:
+ *   Phantom  → always reads from window.phantom.* (never window.bitcoin)
+ *   MetaMask → EIP-1193 window.ethereum + CAIP-25 bip122 scope for BTC
+ *   Tap Wallet → window.tapprotocol (BTC) + window.tracnetwork (TNK) — never touches window.bitcoin
+ *
+ * Removed: Solflare, Coinbase Wallet, Xverse (not supported in AFOS 3-wallet architecture)
  */
 
 import React, {
@@ -28,8 +29,8 @@ import type { SupportedChain } from "@shared/const";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type Chain = SupportedChain;
-export type EthProviderType = "metamask" | "coinbase" | "phantom";
-export type BtcProviderType = "metamask" | "tap" | "phantom" | "xverse";
+export type EthProviderType = "metamask" | "phantom";
+export type BtcProviderType = "metamask" | "tap" | "phantom";
 
 export interface ChainWallet {
   chain: Chain;
@@ -92,7 +93,7 @@ interface MultiChainWalletContextValue {
   phantomConnecting: boolean;
   /**
    * Unified BTC PSBT signing helper — auto-routes to whichever wallet is connected.
-   * Supports: Phantom, Xverse, Tap Wallet (window.tapprotocol), MetaMask (Bitcoin Snap).
+   * Supports: Phantom, Tap Wallet (window.tapprotocol), MetaMask (Bitcoin Snap). Xverse removed.
    * @param psbtBase64 - Base64-encoded PSBT string
    * @param inputsToSign - Array of input indices to sign
    * @returns Signed PSBT as base64 string
@@ -147,7 +148,6 @@ function shortAddr(addr: string): string {
 
 interface EthProvider {
   isMetaMask?: boolean;
-  isCoinbaseWallet?: boolean;
   providers?: EthProvider[];
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -186,13 +186,7 @@ declare global {
       on?: (event: string, handler: (...args: unknown[]) => void) => void;
       off?: (event: string, handler: (...args: unknown[]) => void) => void;
     };
-    XverseProviders?: {
-      BitcoinProvider?: {
-        connect: (opts?: { purposes?: string[]; message?: string }) => Promise<{ addresses: { address: string; publicKey: string; purpose: string }[] }>;
-        signPsbt: (request: { psbt: string; inputsToSign: { address: string; signingIndexes: number[] }[] }) => Promise<{ psbt: string }>;
-        getBalance: () => Promise<{ confirmed: number; unconfirmed: number; total: number }>;
-      };
-    };
+    // Xverse removed — not supported in AFOS 3-wallet architecture
     phantom?: {
       solana?: {
         isPhantom?: boolean;
@@ -210,20 +204,18 @@ declare global {
   }
 }
 
-// Pick the right EIP-1193 provider from window.ethereum (handles multi-wallet injection)
+  // Pick the right EIP-1193 provider from window.ethereum (handles multi-wallet injection)
 function getEthProvider(type: EthProviderType): EthProvider | null {
   // Phantom has its own ethereum provider
   if (type === "phantom") {
     return window.phantom?.ethereum ?? null;
   }
+  // MetaMask: prefer the MetaMask provider when multiple wallets inject into window.ethereum
   const eth = window.ethereum as EthWindowProvider | undefined;
   if (!eth) return null;
   if (eth.providers) {
-    if (type === "metamask") return eth.providers.find((p: EthProvider) => p.isMetaMask && !p.isCoinbaseWallet) ?? null;
-    if (type === "coinbase") return eth.providers.find((p: EthProvider) => p.isCoinbaseWallet) ?? null;
+    return eth.providers.find((p: EthProvider) => p.isMetaMask) ?? eth.providers[0] ?? null;
   }
-  if (type === "metamask" && eth.isMetaMask) return eth;
-  if (type === "coinbase" && eth.isCoinbaseWallet) return eth;
   return eth;
 }
 
@@ -414,8 +406,8 @@ async function fetchSolanaBalancesForAddress(
 const WALLET_SESSION_KEY = "afos_wallet_session";
 
 type WalletSession = {
-  eth?: EthProviderType;   // "metamask" | "coinbase" — Phantom is handled by phantom key
-  btc?: BtcProviderType;   // "metamask" | "tap" | "xverse" — Phantom is handled by phantom key
+  eth?: EthProviderType;   // "metamask" | "phantom" — Phantom is handled by phantom key
+  btc?: BtcProviderType;   // "metamask" | "tap" | "phantom" — Phantom is handled by phantom key
   phantom?: true;          // Phantom multi-chain was connected
 };
 
@@ -649,12 +641,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     try {
       const provider = getEthProvider(providerType);
       if (!provider) {
-        const installUrl = providerType === "metamask"
-          ? "https://metamask.io/download/"
-          : "https://www.coinbase.com/wallet/downloads";
-        toast.error(`${providerType === "metamask" ? "MetaMask" : "Coinbase Wallet"} not detected`, {
-          description: "Please install the wallet extension and refresh.",
-          action: { label: "Install", onClick: () => window.open(installUrl, "_blank") },
+        toast.error("MetaMask not detected", {
+          description: "Please install MetaMask and refresh.",
+          action: { label: "Install", onClick: () => window.open("https://metamask.io/download/", "_blank") },
         });
         return;
       }
@@ -676,7 +665,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       ]);
       setErc20Balances({ usdc: usdcBalance, usdt: usdtBalance });
 
-      const walletName = providerType === "metamask" ? "MetaMask" : "Coinbase Wallet";
+      const walletName = providerType === "metamask" ? "MetaMask" : "Phantom";
       setEthereum({
         chain: "ethereum",
         walletName,
@@ -1006,50 +995,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, [waitForTracNetwork]);
 
-  // ── Xverse Bitcoin Connect ────────────────────────────────────────────────
-  const connectXverseBitcoin = useCallback(async () => {
-    const xverse = window.XverseProviders?.BitcoinProvider;
-    if (!xverse) {
-      toast.error("Xverse not detected", {
-        description: "Please install the Xverse browser extension.",
-        action: { label: "Install", onClick: () => window.open("https://www.xverse.app/download", "_blank") },
-      });
-      return;
-    }
-    try {
-      const result = await xverse.connect({ purposes: ["payment", "ordinals"], message: "AFOS needs access to your Bitcoin wallet" });
-      const paymentAddr = result.addresses.find(a => a.purpose === "payment");
-      const addr = paymentAddr?.address ?? result.addresses[0]?.address;
-      if (!addr) throw new Error("No Bitcoin address returned from Xverse");
-      const [btcResult, priceUsd] = await Promise.all([
-        fetchBtcBalanceFromMempool(addr),
-        fetchBtcPriceUsd(),
-      ]);
-      const btc = btcResult?.btc ?? "0.00000000";
-      const sats = btcResult?.sats ?? 0;
-      const balanceUsd = (sats / 1e8) * priceUsd;
-      setBitcoin({
-        chain: "bitcoin",
-        walletName: "Xverse",
-        address: addr,
-        shortAddress: shortAddr(addr),
-        balance: `${btc} BTC`,
-        balanceUsd,
-        symbol: "BTC",
-        connected: true,
-        connecting: false,
-        isPhantom: false,
-      });
-      saveWalletSession({ btc: "xverse" });
-      showWalletConnectedToast("Xverse", [{ chain: "bitcoin", address: shortAddr(addr) }]);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      if (!msg.includes("cancel") && !msg.includes("reject")) {
-        toast.error("Xverse connection failed", { description: msg });
-      }
-    }
-  }, []);
-
   const connectBitcoin = useCallback(async (provider: BtcProviderType) => {
     // Route Phantom to the multi-chain connector
     if (provider === "phantom") {
@@ -1059,12 +1004,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     setBtcConnecting(true);
     try {
       if (provider === "metamask") await connectMetaMaskBitcoin();
-      else if (provider === "xverse") await connectXverseBitcoin();
-      else await connectTapWallet();
+      else await connectTapWallet(); // "tap" — Tap Wallet
     } finally {
       setBtcConnecting(false);
     }
-  }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain, connectXverseBitcoin]);
+  }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain]);
 
   // ── Unified BTC PSBT signing ─────────────────────────────────────────────────
   // Auto-routes to whichever BTC wallet is currently connected.
@@ -1081,18 +1025,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         inputsToSign: inputsToSign?.map(i => ({ index: i, sighashTypes: [0x01] })),
       });
       return btoa(Array.from(signedBytes).map(b => String.fromCharCode(b)).join(""));
-    }
-
-    // ── Xverse ───────────────────────────────────────────────────────────────
-    if (walletName === "Xverse") {
-      const xverse = window.XverseProviders?.BitcoinProvider;
-      if (!xverse) throw new Error("Xverse provider not available");
-      const address = bitcoin?.address ?? "";
-      const result = await xverse.signPsbt({
-        psbt: psbtBase64,
-        inputsToSign: [{ address, signingIndexes: inputsToSign ?? [0] }],
-      });
-      return result.psbt;
     }
 
     // ── Tap Wallet (uses window.tapprotocol for BTC signing) ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1138,7 +1070,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       setBitcoin(null);
       clearWalletSession();
       // For Tap Wallet: show ONE combined toast with both chains.
-      // For other BTC wallets (Xverse): show BTC-only toast.
+      // For MetaMask BTC: show BTC-only toast.
       if (isTap) {
         showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
       } else {
@@ -1276,7 +1208,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   // For Phantom: checks window.phantom.solana.isConnected (already approved, no prompt).
   // For ETH: uses eth_accounts (read-only, no popup) to verify the session is still valid.
   // For BTC Tap Wallet: uses getAddress() (read-only, no popup) via silentRestoreTapWallet.
-  // For BTC Xverse/MetaMask: calls connect functions which handle their own silent checks.
+  // For BTC MetaMask: calls connect functions which handle their own silent checks.
   useEffect(() => {
     const session = loadWalletSession();
     if (!session) return;
@@ -1312,7 +1244,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
               // Tap Wallet: use silent restore with getAddress() (no popup)
               await silentRestoreTapWallet();
             } else {
-              // Xverse/MetaMask BTC: attempt reconnect via their connect functions
+              // MetaMask BTC: attempt reconnect via its connect function
               await connectBitcoinRef.current?.(session.btc);
             }
           }

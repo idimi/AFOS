@@ -1,6 +1,6 @@
 /**
- * WalletContext — Real Solana wallet integration via @solana/wallet-adapter-react
- * Supports: Phantom, Solflare, Backpack
+ * WalletContext — Solana wallet integration via @solana/wallet-adapter-react
+ * Supports: Phantom (multi-chain: SOL + ETH + BTC)
  * Fetches real on-chain balances from Solana RPC via AFOS backend proxy
  */
 
@@ -21,10 +21,7 @@ import {
   useConnection,
 } from "@solana/wallet-adapter-react";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { clusterApiUrl, PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useMemo } from "react";
 
@@ -238,13 +235,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-    ],
-    []
-  );
+  // Only Phantom is supported for Solana — MetaMask and Tap Wallet are handled
+  // by MultiChainWalletContext via their own namespaced providers.
+  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>

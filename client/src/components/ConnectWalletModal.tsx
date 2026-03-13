@@ -1,21 +1,21 @@
 /**
  * ConnectWalletModal — Multi-chain wallet connection
  *
- * Chain support matrix:
- * ┌─────────────────┬────────┬──────────┬─────────┐
- * │ Wallet          │ Solana │ Ethereum │ Bitcoin │
- * ├─────────────────┼────────┼──────────┼─────────┤
- * │ Phantom         │   ✅   │    ✅    │   ✅    │
- * │ MetaMask        │ ✅ WS  │    ✅    │ ✅ BTC  │
- * │ Coinbase Wallet │   —    │    ✅    │   —     │
- * │ Solflare        │   ✅   │    —     │   —     │
- * │ Tap Wallet      │   —    │    —     │ ✅ +TNK │
- * └─────────────────┴────────┴──────────┴─────────┘
- * WS = Wallet Standard (handled by @solana/wallet-adapter automatically)
- * BTC = MetaMask native Bitcoin via Multichain API (CAIP-25 wallet_createSession)
+ * AFOS supports exactly 3 wallets:
+ * ┌────────────┬────────┬──────────┬─────────┬────────────┐
+ * │ Wallet     │ Solana │ Ethereum │ Bitcoin │ Trac/TNK   │
+ * ├────────────┼────────┼──────────┼─────────┼────────────┤
+ * │ Phantom    │   ✅   │    ✅    │   ✅    │     —      │
+ * │ MetaMask   │   ✅   │    ✅    │   ✅    │     —      │
+ * │ Tap Wallet │   —    │    —     │   ✅    │     ✅      │
+ * └────────────┴────────┴──────────┴─────────┴────────────┘
  *
- * UX: Phantom appears on all 3 tabs with a "Multi-chain" badge.
- * Clicking Phantom on any tab connects all available chains simultaneously.
+ * Conflict-free namespace isolation:
+ *   Phantom   → window.phantom.{solana,ethereum,bitcoin}
+ *   MetaMask  → window.ethereum (EIP-1193) + CAIP-25 bip122 for BTC
+ *   Tap Wallet → window.tapprotocol (BTC) + window.tracnetwork (TNK)
+ *
+ * Removed: Coinbase Wallet, Solflare, Xverse
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -31,10 +31,8 @@ import type { SupportedChain } from "@shared/const";
 // ─── Wallet logos ─────────────────────────────────────────────────────────────
 
 const PHANTOM_ICON = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDgiIGhlaWdodD0iMTA4IiB2aWV3Qm94PSIwIDAgMTA4IDEwOCIgZmlsbD0ibm9uZSI+CjxyZWN0IHdpZHRoPSIxMDgiIGhlaWdodD0iMTA4IiByeD0iMjYiIGZpbGw9IiNBQjlGRjIiLz4KPHBhdGggZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiIGQ9Ik00Ni41MjY3IDY5LjkyMjlDNDIuMDA1NCA3Ni44NTA5IDM0LjQyOTIgODUuNjE4MiAyNC4zNDggODUuNjE4MkMxOS41ODI0IDg1LjYxODIgMTUgODMuNjU2MyAxNSA3NS4xMzQyQzE1IDUzLjQzMDUgNDQuNjMyNiAxOS44MzI3IDcyLjEyNjggMTkuODMyN0M4Ny43NjggMTkuODMyNyA5NCAzMC42ODQ2IDk0IDQzLjAwNzlDOTQgNTguODI1OCA4My43MzU1IDc2LjkxMjIgNzMuNTMyMSA3Ni45MTIyQzcwLjI5MzkgNzYuOTEyMiA2OC43MDUzIDc1LjEzNDIgNjguNzA1MyA3Mi4zMTRDNjguNzA1MyA3MS41NzgzIDY4LjgyNzUgNzAuNzgxMiA2OS4wNzE5IDY5LjkyMjlDNjUuNTg5MyA3NS44Njk5IDU4Ljg2ODUgODEuMzg3OCA1Mi41NzU0IDgxLjM4NzhDNDcuOTkzIDgxLjM4NzggNDUuNjcxMyA3OC41MDYzIDQ1LjY3MTMgNzQuNDU5OEM0NS42NzEzIDcyLjk4ODQgNDUuOTc2OCA3MS40NTU2IDQ2LjUyNjcgNjkuOTIyOVpNODMuNjc2MSA0Mi41Nzk0QzgzLjY3NjEgNDYuMTcwNCA4MS41NTc1IDQ3Ljk2NTggNzkuMTg3NSA0Ny45NjU4Qzc2Ljc4MTYgNDcuOTY1OCA3NC42OTg5IDQ2LjE3MDQgNzQuNjk4OSA0Mi41Nzk0Qzc0LjY5ODkgMzguOTg4NSA3Ni43ODE2IDM3LjE5MzEgNzkuMTg3NSAzNy4xOTMxQzgxLjU1NzUgMzcuMTkzMSA4My42NzYxIDM4Ljk4ODUgODMuNjc2MSA0Mi41Nzk0Wk03MC4yMTAzIDQyLjU3OTVDNzAuMjEwMyA0Ni4xNzA0IDY4LjA5MTYgNDcuOTY1OCA2NS43MjE2IDQ3Ljk2NThDNjMuMzE1NyA0Ny45NjU4IDYxLjIzMyA0Ni4xNzA0IDYxLjIzMyA0Mi41Nzk1QzYxLjIzMyAzOC45ODg1IDYzLjMxNTcgMzcuMTkzMSA2NS43MjE2IDM3LjE5MzFDNjguMDkxNiAzNy4xOTMxIDcwLjIxMDMgMzguOTg4NSA3MC4yMTAzIDQyLjU3OTVaIiBmaWxsPSIjRkZGREY4Ii8+Cjwvc3ZnPg==";
-const SOLFLARE_ICON = "data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48c3ZnIGlkPSJTIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MCA1MCI+PGRlZnM+PHN0eWxlPi5jbHMtMXtmaWxsOiMwMjA1MGE7c3Ryb2tlOiNmZmVmNDY7c3Ryb2tlLW1pdGVybGltaXQ6MTA7c3Ryb2tlLXdpZHRoOi41cHg7fS5jbHMtMntmaWxsOiNmZmVmNDY7fTwvc3R5bGU+PC9kZWZzPjxyZWN0IGNsYXNzPSJjbHMtMiIgeD0iMCIgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiByeD0iMTIiIHJ5PSIxMiIvPjxwYXRoIGNsYXNzPSJjbHMtMSIgZD0iTTI0LjIzLDI2LjQybDIuNDYtMi4zOCw0LjU5LDEuNWMzLjAxLDEsNC41MSwyLjg0LDQuNTEsNS40MywwLDEuOTYtLjc1LDMuMjYtMi4yNSw0LjkzbC0uNDYuNS4xNy0xLjE3Yy42Ny00LjI2LS41OC02LjA5LTQuNzItNy40M2wtNC4zLTEuMzhoMFpNMTguMDUsMTEuODVsMTIuNTIsNC4xNy0yLjcxLDIuNTktNi41MS0yLjE3Yy0yLjI1LS43NS0zLjAxLTEuOTYtMy4zLTQuNTF2LS4wOGgwWk0xNy4zLDMzLjA2bDIuODQtMi43MSw1LjM0LDEuNzVjMi44LjkyLDMuNzYsMi4xMywzLjQ2LDUuMThsLTExLjY1LTQuMjJoMFpNMTMuNzEsMjAuOTVjMC0uNzkuNDItMS41NCwxLjEzLTIuMTcuNzUsMS4wOSwyLjA1LDIuMDUsNC4wOSwyLjcxbDQuNDIsMS40Ni0yLjQ2LDIuMzgtNC4zNC0xLjQyYy0yLS42Ny0yLjg0LTEuNjctMi44NC0yLjk2TTI2LjgyLDQyLjg3YzkuMTgtNi4wOSwxNC4xMS0xMC4yMywxNC4xMS0xNS4zMiwwLTMuMzgtMi01LjI2LTYuNDMtNi43MmwtMy4zNC0xLjEzLDkuMTQtOC43Ny0xLjg0LTEuOTYtMi43MSwyLjM4LTEyLjgxLTQuMjJjLTMuOTcsMS4yOS04Ljk3LDUuMDktOC45Nyw4Ljg5LDAsLjQyLjA0LjgzLjE3LDEuMjktMy4zLDEuODgtNC42MywzLjYzLTQuNjMsNS44LDAsMi4wNSwxLjA5LDQuMDksNC41NSw1LjIybDIuNzUuOTItOS41Miw5LjE0LDEuODQsMS45NiwyLjk2LTIuNzEsMTQuNzMsNS4yMmgwWiIvPjwvc3ZnPg==";
+// Removed: SOLFLARE_ICON, COINBASE_ICON, XVERSE_ICON
 const METAMASK_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/metamask-fox-v3_3ab72414.png";
-const COINBASE_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/coinbase-wallet_71c9bfd2.png";
-const XVERSE_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/xverse_ec7494c8.jpg";
 const TAP_ICON = "https://d2xsxph8kpxj0f.cloudfront.net/87744282/Cv4Jvx35N7jGsqrM8y5HAD/tap-wallet-official_fa717684.png";
 
 // ─── Chain config ─────────────────────────────────────────────────────────────
@@ -635,20 +633,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       onClick={handleSolanaConnect}
                     />
 
-                    {/* Solflare — Solana only */}
-                    <WalletButton
-                      icon={SOLFLARE_ICON}
-                      name="Solflare"
-                      desc="Native Solana wallet"
-                      chains={["solana"]}
-                      customChips={[
-                        { label: "SOL", color: "#9945FF" },
-                      ]}
-                      bg="rgba(255,239,70,0.08)"
-                      border="rgba(255,239,70,0.2)"
-                      onClick={handleSolanaConnect}
-                    />
-
                     <PrimaryCTA
                       label="Connect Solana Wallet"
                       gradient="linear-gradient(135deg,#9945FF 0%,#14F195 100%)"
@@ -694,21 +678,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       border="rgba(246,133,27,0.25)"
                       loading={ethConnecting}
                       onClick={() => connectEthereum("metamask")}
-                    />
-
-                    {/* Coinbase Wallet */}
-                    <WalletButton
-                      icon={COINBASE_ICON}
-                      name="Coinbase Wallet"
-                      desc="Easy self-custody by Coinbase"
-                      chains={["ethereum"]}
-                      customChips={[
-                        { label: "ETH", color: "#627EEA" },
-                      ]}
-                      bg="rgba(0,82,255,0.08)"
-                      border="rgba(0,82,255,0.2)"
-                      loading={ethConnecting}
-                      onClick={() => connectEthereum("coinbase")}
                     />
 
                     <PrimaryCTA

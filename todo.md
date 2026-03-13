@@ -2923,3 +2923,19 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Replace plain text follow-up message with rich TxSuccessCard (celebration + balances + Swap again button)
 - [x] refreshBalances() now returns new balances directly for synchronous embedding in completion card
 - [x] onSwapAgain button pre-fills input with 'swap ' and focuses the chat input
+
+## Wallet Simplification: 3-Wallet Architecture (Session 2026-03-13 #8)
+- [x] Remove Solflare, Coinbase Wallet, Xverse from @solana/wallet-adapter-wallets and package.json
+- [x] Remove all UI references to Solflare, Coinbase, Xverse in ConnectWalletModal and WalletContext
+- [x] Fix MultiChainWalletContext: Phantom BTC reads from window.phantom.bitcoin only (already correct)
+- [x] Fix MultiChainWalletContext: MetaMask BTC reads from MetaMask CAIP-25 / EIP-6963 only (already correct)
+- [x] Fix MultiChainWalletContext: Tap Wallet reads from window.tapprotocol + window.tracnetwork only (BTC+TNK)
+- [x] Update ConnectWalletModal to show only 3 wallet options (Phantom, MetaMask, Tap Wallet)
+- [x] Update shared/const.ts SUPPORTED_WALLETS_TEXT to reflect new 3-wallet list
+- [x] Update all error messages in LightPeerContext, ChatPage, SwapHistoryTabs, chat.ts router
+- [x] Remove isCoinbaseWallet from EthProvider interface
+- [x] Replace @solana/wallet-adapter-wallets with @solana/wallet-adapter-phantom (lighter dep)
+- [ ] Add chain coverage badges: Phantom (SOL+ETH+BTC), MetaMask (SOL+ETH+BTC), Tap Wallet (BTC+TNK) — future
+- [ ] Update ChatPage handleConfirmSwap: check both source AND destination wallet — future
+- [ ] Add BTC wallet picker when both Phantom/MetaMask and Tap Wallet are connected for BTC swaps — future
+- [ ] Push updated code to GitHub after checkpoint

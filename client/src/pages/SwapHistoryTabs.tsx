@@ -655,7 +655,7 @@ function OpenTradeCard({
         const btcLib = await import("@/lib/btcHtlc");
         const provider = btcLib.detectBtcProvider();
         if (provider === "unknown") {
-          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, Tap Wallet, or Xverse." });
+          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, MetaMask, or Tap Wallet." });
           setEarlyRefunding(false);
           return;
         }
@@ -1346,14 +1346,14 @@ function RefundCard({
       return;
     }
 
-    // Bitcoin — build CLTV-timeout refund PSBT and sign via Phantom / Tap / Xverse
+    // Bitcoin — build CLTV-timeout refund PSBT and sign via Phantom / MetaMask / Tap Wallet
     if (refund.chain === "bitcoin") {
       setClaiming(true);
       try {
         const btcLib = await import("@/lib/btcHtlc");
         const provider = btcLib.detectBtcProvider();
         if (provider === "unknown") {
-          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, Tap Wallet, or Xverse to claim BTC refunds." });
+          toast.error("No Bitcoin wallet detected", { description: "Connect Phantom, MetaMask, or Tap Wallet to claim BTC refunds." });
           setClaiming(false);
           return;
         }

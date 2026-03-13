@@ -1924,7 +1924,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             const { signature } = await phantomProvider.signAndSendTransaction(transaction);
             txHash = signature;
           } else {
-            throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
+            throw new Error("No Solana wallet found. Please connect Phantom or MetaMask to sign HTLC transactions.");
           }
 
           // ── Confirm the tx on-chain before recording ──────────────────────
@@ -2076,7 +2076,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         }
       } else if ((chain === "ethereum" || chain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
         // Ethereum HTLC: ABI-encoded lockETH() / lockToken() via HTLC.sol
-        // Accepts: MetaMask, Coinbase Wallet, Phantom multi-chain ethereum, or any EIP-1193 provider
+        // Accepts: MetaMask, Phantom multi-chain ethereum, or any EIP-1193 provider
         setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
         const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum
           ?? (window as any).phantom?.ethereum;
@@ -2170,7 +2170,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         try {
           const btcProvider: BtcWalletProvider = detectBtcProvider();
           if (btcProvider === "unknown") {
-            throw new Error("No Bitcoin wallet provider detected. Please connect Phantom, Xverse, or Tap Wallet.");
+            throw new Error("No Bitcoin wallet provider detected. Please connect Phantom, MetaMask, or Tap Wallet.");
           }
           // Agent A locks fromToken amount; Agent B locks toToken amount
           const isAgentABtc = !!rfq.isInitiator;
@@ -2458,7 +2458,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               return solConnection.sendRawTransaction(signedTxBytes, { skipPreflight: false, preflightCommitment: "confirmed" });
             } else {
               const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
-              if (!phantom?.signAndSendTransaction) throw new Error("No Solana wallet found. Please connect Phantom or Solflare.");
+              if (!phantom?.signAndSendTransaction) throw new Error("No Solana wallet found. Please connect Phantom or MetaMask.");
               const { signature } = await phantom.signAndSendTransaction(tx);
               return signature;
             }

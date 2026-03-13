@@ -1592,7 +1592,7 @@ export default function ChatPage() {
       if (quoteData.fromChain === "ethereum" || quoteData.toChain === "ethereum") {
         const ethAddress = ethereum?.address ?? "";
         if (!ethAddress) {
-          toast.error("Ethereum wallet not connected", { description: "Please connect an Ethereum wallet (MetaMask, Phantom ETH, or Coinbase) to execute ETH swaps." });
+          toast.error("Ethereum wallet not connected", { description: "Please connect an Ethereum wallet (MetaMask or Phantom ETH) to execute ETH swaps." });
           setExecutingId(null);
           return;
         }

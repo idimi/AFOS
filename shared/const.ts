@@ -14,4 +14,4 @@ export const NOT_ADMIN_ERR_MSG = 'You do not have required permission (10002)';
 export const IS_BETA = true;
 
 /** Canonical list of supported wallet names shown in connect prompts across the app. */
-export const SUPPORTED_WALLETS_TEXT = "Phantom, MetaMask, Coinbase, Solflare, Tap Wallet";
+export const SUPPORTED_WALLETS_TEXT = "Phantom, MetaMask, Tap Wallet";

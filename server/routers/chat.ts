@@ -1328,7 +1328,7 @@ export const chatRouter = router({
    * In agent mode (ETH_AGENT_ADDRESS set): returns the calldata with a hint
    * to sign and broadcast server-side.
    *
-   * The browser light peer path (MetaMask, Phantom ETH, Coinbase) calls
+   * The browser light peer path (MetaMask, Phantom ETH) calls
    * eth_sendTransaction directly with the returned { to, data, value }.
    */
   executeEthSwap: publicProcedure
@@ -1592,7 +1592,7 @@ export const chatRouter = router({
    * In production mode, delegates to trpc.btcHtlc.htlcLock which builds
    * and broadcasts the real P2WSH HTLC lock transaction.
    *
-   * The browser light peer path (Phantom/Xverse/Tap Wallet) uses the
+   * The browser light peer path (Phantom/MetaMask/Tap Wallet) uses the
    * client-side btcHtlc.ts utilities and calls this only for the agent wallet.
    */
   executeBtcSwap: publicProcedure

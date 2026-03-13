@@ -3,7 +3,7 @@
  * Watches wallet connection state and fires exactly one toast per connection event.
  *
  * This component is the single source of truth for wallet-connected toasts
- * for Phantom, Solflare, MetaMask, Coinbase, and Xverse.
+ * for Phantom, MetaMask, and Tap Wallet.
  *
  * Tap Wallet connect/disconnect toasts are handled DIRECTLY in
  * MultiChainWalletContext (connectTapWallet, disconnectBitcoin,
@@ -57,7 +57,7 @@ export function WalletToastManager() {
     }
   }, [phantomMultiChain?.connected]);
 
-  // ── Solana-only (non-Phantom, e.g. Solflare) ─────────────────────────────
+  // ── Solana-only (non-Phantom) ─────────────────────────────────────────────
   const prevSolRef = useRef(solConnected);
   useEffect(() => {
     const was = prevSolRef.current;
@@ -84,7 +84,7 @@ export function WalletToastManager() {
     }
   }, [ethereum?.connected]);
 
-  // ── Bitcoin-only (non-Phantom, non-Tap Wallet, e.g. Xverse) ──────────────
+  // ── Bitcoin-only (non-Phantom, non-Tap Wallet, e.g. MetaMask BTC) ─────────
   const prevBtcRef = useRef(bitcoin?.connected ?? false);
   useEffect(() => {
     const was = prevBtcRef.current;
