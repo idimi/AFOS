@@ -510,10 +510,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         revealRetryTimersRef.current[rfqId] = setTimeout(() => void triggerAutoReveal(row), backoffMs);
         return;
       }
-      // Always send the secret to Agent B so they can claim even after a page refresh.
-      const targetPeerId = counterpartyPeerId ?? agentAWalletByRfqRef.current[rfqId] ?? "";
+      // Send the secret to Agent B via P2P signaling so they can claim.
+      // Only use counterpartyPeerId — never fall back to a wallet address (agentAWalletByRfqRef
+      // stores Agent A's wallet, not Agent B's peerId, so using it as a target is wrong).
+      // If counterpartyPeerId is missing, the server-side notifyAgentBLocked already handles
+      // on-chain claims, so skipping the P2P signal is safe.
+      const targetPeerId = counterpartyPeerId ?? null;
       if (targetPeerId && signalingRef.current) {
         signalingRef.current.sendHtlcSecret(targetPeerId, rfqId, secretHex);
+      } else if (!targetPeerId) {
+        console.log(`[AutoReveal] No counterpartyPeerId for rfqId=${rfqId.slice(0,8)} — skipping P2P signal (server handles on-chain claims)`);
       }
       // Only show the toast for genuinely new reveals — suppress it for replays
       // (replay = secret was already revealed in a previous session; status was 'revealed'/'completed').
@@ -2072,6 +2078,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                   const webhookJson = await webhookRes.json();
                   const triggered = (webhookJson as Array<{ result?: { data?: { json?: { triggered?: boolean } } } }>)?.[0]?.result?.data?.json?.triggered;
                   console.log(`[AgentBWebhook] notifyAgentBLocked → triggered=${triggered}`);
+                  if (triggered) {
+                    // Server is handling on-chain claims — dispatch completion so ChatPage can show success
+                    window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: "solana" } }));
+                  }
                 } else {
                   console.warn("[AgentBWebhook] notifyAgentBLocked failed:", webhookRes.status);
                 }
@@ -2495,6 +2505,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }).catch(() => {});
           setHtlcSigning(prev => prev ? { ...prev, step: "settled", claimTxHash: txHash } : prev);
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
+          // Dispatch completion event so ChatPage can show success message with new balance
+          window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, txHash, chain: "solana" } }));
         } else {
           // Demo mode: no program deployed — show the secret and instruct user
           toast.success("HTLC Secret Ready", {

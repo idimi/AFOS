@@ -1597,6 +1597,43 @@ export default function ChatPage() {
     return () => window.removeEventListener("afos:htlc-expired", handler);
   }, [setMessages]);
 
+  // ── HTLC completed: atomic settlement finished, both parties received funds ────────────
+  useEffect(() => {
+    const handler = async (e: Event) => {
+      const data = (e as CustomEvent).detail as { rfqId?: string; txHash?: string; chain?: string };
+      if (!data?.rfqId) return;
+      // Refresh balances to show updated amounts
+      let freshBalances = balances;
+      try {
+        const updated = await refreshBalances();
+        if (updated && updated.length > 0) freshBalances = updated;
+      } catch { /* non-critical */ }
+      // Update the swap_progress card to confirmed phase
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx !== -1) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
+          // Append a success text message with new balance
+          const balanceLine = freshBalances.length > 0
+            ? `\n\n**Your new balances:** ${freshBalances.map(b => `${parseFloat(b.amount).toFixed(4)} ${b.symbol}`).join(' · ')}`
+            : "";
+          const successMsg = {
+            id: `htlc-done-${Date.now()}`,
+            role: "assistant" as const,
+            type: "text" as const,
+            content: `✅ **Swap complete!** Atomic settlement confirmed on-chain. Both parties have received their funds.${balanceLine}`,
+            timestamp: Date.now(),
+          };
+          return [...updated, successMsg];
+        }
+        return prev;
+      });
+    };
+    window.addEventListener("afos:htlc-completed", (e) => void handler(e));
+    return () => window.removeEventListener("afos:htlc-completed", (e) => void handler(e));
+  }, [setMessages, balances, refreshBalances]);
+
   const handleSend = useCallback(async (text?: string) => {
     const messageText = (text || input).trim();
     if (!messageText || isTyping) return;

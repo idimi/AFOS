@@ -1222,7 +1222,7 @@ export const chatRouter = router({
           expiresAt:          BigInt(expiresAt),
           status:             "locked",
           // On-chain HTLC tracking
-          htlcId:             `htlc_${p2pQuote.rfqId.slice(0, 24)}`,
+          htlcId:             `htlc_a_${p2pQuote.rfqId.slice(0, 22)}`,
           initiatorAddress:   userPublicKey ?? undefined,
           counterpartyAddress: p2pQuote.counterpartyPubKey ?? undefined, // Agent B's Solana wallet — needed for auto-claim
           fromToken:          (fromToken ?? "SOL").toUpperCase(),
@@ -2668,8 +2668,12 @@ export const chatRouter = router({
         lockTxId: lockTxHash ?? row.lockTxId ?? undefined,
       });
 
-      // Resolve htlcIdA from the stored row (htlcId column holds Agent A's seed)
-      const htlcIdA = row.htlcId ?? `htlc_a_${rfqId.slice(0, 22)}`;
+      // Always derive htlcIdA from rfqId using the canonical format.
+      // Do NOT use row.htlcId as fallback — old rows may have the legacy 'htlc_rfq_...' format
+      // which derives a different PDA and causes AlreadyClaimed errors.
+      const htlcIdA = row.htlcId?.startsWith('htlc_a_')
+        ? row.htlcId
+        : `htlc_a_${rfqId.slice(0, 22)}`;
       const initiatorAddress = row.initiatorAddress ?? "";
 
       if (!initiatorAddress) {
