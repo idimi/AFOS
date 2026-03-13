@@ -1,0 +1,33 @@
+{
+  "query": "SELECT * FROM htlc_swaps WHERE lockTxId LIKE '67QTT%' LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT * FROM htlc_swaps WHERE lockTxId LIKE '67QTT%' LIMIT 1;",
+  "rows": [
+    {
+      "id": "7",
+      "chain": "solana",
+      "htlcAddress": "9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd",
+      "secretHash": "90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5",
+      "lockTxId": "67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U",
+      "amountRaw": "0.8684953000000001",
+      "amountHuman": "0.8684953000000001",
+      "locktime": "1773363167",
+      "status": "pending",
+      "peerId": "lp-43b495553d",
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "toToken": "USDT",
+      "toChain": "NULL",
+      "refundTxId": "NULL",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "createdAt": "2026-03-12 23:52:56",
+      "updatedAt": "2026-03-12 23:52:56",
+      "refundedAt": "NULL",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "htlcId": "htlc_b_rfq_1773359544103_lp-c",
+      "counterpartyAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tchain\thtlcAddress\tsecretHash\tlockTxId\tamountRaw\tamountHuman\tlocktime\tstatus\tpeerId\trfqId\ttoToken\ttoChain\trefundTxId\tsenderAddress\tcreatedAt\tupdatedAt\trefundedAt\trecipientAddress\thtlcId\tcounterpartyAddress\n7\tsolana\t9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd\t90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5\t67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U\t0.8684953000000001\t0.8684953000000001\t1773363167\tpending\tlp-43b495553d\trfq_1773359544103_lp-c7de5\tUSDT\tNULL\tNULL\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t2026-03-12 23:52:56\t2026-03-12 23:52:56\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\thtlc_b_rfq_1773359544103_lp-c\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n",
+  "stderr": "",
+  "execution_time_ms": 362
+}

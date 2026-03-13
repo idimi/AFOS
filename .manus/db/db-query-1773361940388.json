@@ -1,0 +1,25 @@
+{
+  "query": "SELECT id, chain, lockTxId, amountHuman, toToken, toChain, status, peerId, senderAddress, htlcAddress, htlcId, counterpartyAddress, createdAt FROM htlc_swaps WHERE lockTxId LIKE '67QTT%' OR lockTxId LIKE '67QTTsgW%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, chain, lockTxId, amountHuman, toToken, toChain, status, peerId, senderAddress, htlcAddress, htlcId, counterpartyAddress, createdAt FROM htlc_swaps WHERE lockTxId LIKE '67QTT%' OR lockTxId LIKE '67QTTsgW%' LIMIT 5;",
+  "rows": [
+    {
+      "id": "7",
+      "chain": "solana",
+      "lockTxId": "67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U",
+      "amountHuman": "0.8684953000000001",
+      "toToken": "USDT",
+      "toChain": "NULL",
+      "status": "pending",
+      "peerId": "lp-43b495553d",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "htlcAddress": "9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd",
+      "htlcId": "htlc_b_rfq_1773359544103_lp-c",
+      "counterpartyAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "createdAt": "2026-03-12 23:52:56"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tchain\tlockTxId\tamountHuman\ttoToken\ttoChain\tstatus\tpeerId\tsenderAddress\thtlcAddress\thtlcId\tcounterpartyAddress\tcreatedAt\n7\tsolana\t67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U\t0.8684953000000001\tUSDT\tNULL\tpending\tlp-43b495553d\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd\thtlc_b_rfq_1773359544103_lp-c\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t2026-03-12 23:52:56\n",
+  "stderr": "",
+  "execution_time_ms": 369
+}

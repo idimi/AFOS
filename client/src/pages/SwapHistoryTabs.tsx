@@ -462,8 +462,10 @@ const PHASE_COLORS = {
 
 function mapHtlcToOpenTrade(row: HtlcSwapRow): OpenTrade {
   const ageMs = Date.now() - new Date(row.createdAt).getTime();
-  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
-  const toSymbol = row.toToken ?? "USDT";
+  const nativeToken = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
+  // fromSymbol = the token actually locked (may be an SPL token like USDT, not the native token)
+  const fromSymbol = (row.toToken && row.toToken.toUpperCase() !== nativeToken) ? row.toToken.toUpperCase() : nativeToken;
+  const toSymbol = fromSymbol === nativeToken ? (row.toToken ?? "USDT") : nativeToken;
   const fromAmount = parseFloat(row.amountHuman);
   const isBuy = toSymbol === "BTC";
 
@@ -1014,8 +1016,14 @@ const PRICE_ESTIMATES: Record<string, number> = {
 };
 
 function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
-  const fromSymbol = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
-  const toSymbol = row.toToken ?? "USDT";
+  // The native token for this chain
+  const nativeToken = row.chain === "bitcoin" ? "BTC" : row.chain === "ethereum" ? "ETH" : row.chain === "trac_network" ? "TNK" : "SOL";
+  // toToken stores the actual locked token (e.g. USDT when Agent B locked USDT on Solana).
+  // If toToken differs from the native token, the locked asset is an SPL/ERC-20 token.
+  // fromSymbol = what was actually locked (the token the user needs to refund).
+  const fromSymbol = (row.toToken && row.toToken.toUpperCase() !== nativeToken) ? row.toToken.toUpperCase() : nativeToken;
+  // toSymbol = what the user would have received (the counterpart token)
+  const toSymbol = fromSymbol === nativeToken ? (row.toToken ?? "USDT") : nativeToken;
   const amount = parseFloat(row.amountHuman);
   const price = PRICE_ESTIMATES[fromSymbol] ?? 1;
   const usdValue = amount * price;

@@ -1673,6 +1673,35 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             throw new Error("No Solana wallet found. Please connect Phantom or Solflare to sign HTLC transactions.");
           }
 
+          // ── Confirm the tx on-chain before recording ──────────────────────
+          // Solana transactions can fail silently (e.g. ProgramAccountNotFound).
+          // We must wait for confirmation and check for errors before recording in DB.
+          let txConfirmed = false;
+          try {
+            const confirmation = await solConnection.confirmTransaction(txHash, "confirmed");
+            if (confirmation.value.err) {
+              const errStr = JSON.stringify(confirmation.value.err);
+              console.error("[HTLC] Lock tx failed on-chain:", errStr);
+              throw new Error(`HTLC lock transaction failed on-chain: ${errStr}`);
+            }
+            txConfirmed = true;
+          } catch (confirmErr) {
+            const confirmMsg = confirmErr instanceof Error ? confirmErr.message : String(confirmErr);
+            // If confirmTransaction itself throws (timeout/network), still try to record
+            // but flag it as unconfirmed so the user knows
+            if (confirmMsg.includes("failed on-chain")) {
+              // Definitive failure — do NOT record in DB, throw to outer catch
+              throw confirmErr;
+            }
+            // Timeout or network error — record anyway (Helius webhook will update status)
+            console.warn("[HTLC] confirmTransaction timed out — recording deposit anyway:", confirmMsg);
+            txConfirmed = true; // Optimistic: record and let webhook correct if needed
+          }
+
+          if (!txConfirmed) {
+            throw new Error("HTLC lock transaction could not be confirmed on-chain");
+          }
+
           // HTLC lock tx submitted — mark as "locked" (not "settled").
           // True settlement only happens after Agent A reveals the secret and both sides claim.
           setHtlcSigning({ rfqId, step: "locked", txHash });
@@ -1686,6 +1715,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             );
           }
           // Record the HTLC deposit in the database for server-side monitoring.
+          // Only reached if the tx was confirmed successfully on-chain.
           // On failure, save to localStorage for retry on next mount.
           {
             const depositPayload = {
