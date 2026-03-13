@@ -222,11 +222,17 @@ function WalletInner({ children }: { children: ReactNode }) {
 // ─── Public WalletProvider ─────────────────────────────────────────────────────
 export function WalletProvider({ children }: { children: ReactNode }) {
   const network = WalletAdapterNetwork.Mainnet;
-  // Use Solana mainnet RPC — configurable via VITE_SOL_RPC_URL env var.
-  // The public api.mainnet-beta.solana.com returns 403 Forbidden from browser
-  // origins, so we default to a CORS-friendly free RPC (Allnodes publicnode).
+  // Use server-side Solana RPC proxy (/api/sol-rpc) which routes through Helius.
+  // This keeps the Helius API key server-side and provides a reliable, CORS-friendly
+  // endpoint. Falls back to VITE_SOL_RPC_URL or publicnode if the proxy is unavailable.
   const endpoint = useMemo(
-    () => import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com",
+    () => {
+      // Prefer the server-side proxy which uses Helius (premium RPC)
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      if (origin) return `${origin}/api/sol-rpc`;
+      // Fallback for SSR or when origin is unavailable
+      return import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
+    },
     []
   );
 

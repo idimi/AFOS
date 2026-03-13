@@ -1666,7 +1666,8 @@ export default function ChatPage() {
       const transaction = VersionedTransaction.deserialize(txBytes);
 
       // Send to wallet for signing and submission
-      const solRpcUrl = import.meta.env.VITE_SOL_RPC_URL || "https://solana-rpc.publicnode.com";
+      // Use server-side Solana RPC proxy (routes through Helius) for reliable tx submission
+      const solRpcUrl = `${window.location.origin}/api/sol-rpc`;
       const connection = new Connection(solRpcUrl, "confirmed");
       let txHash: string;
       if (sendTransaction && connected) {

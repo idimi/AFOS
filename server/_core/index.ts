@@ -62,6 +62,26 @@ async function startServer() {
     })
   );
 
+  // ── Solana RPC Proxy ────────────────────────────────────────────────────
+  // Proxies browser Solana JSON-RPC calls through the server-side Helius RPC
+  // so the API key stays secret and the client gets a reliable, CORS-friendly endpoint.
+  app.post("/api/sol-rpc", async (req, res) => {
+    try {
+      const { ENV } = await import("./env");
+      const targetUrl = ENV.solRpcUrl; // Helius if key set, else fallback
+      const upstream = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req.body),
+      });
+      const data = await upstream.text();
+      res.status(upstream.status).set("Content-Type", "application/json").send(data);
+    } catch (err: unknown) {
+      console.error("[Sol RPC Proxy] Error:", err);
+      res.status(502).json({ error: "Solana RPC proxy failed" });
+    }
+  });
+
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // Helius HTLC webhook — MUST be before Vite middleware
