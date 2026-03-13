@@ -1,0 +1,44 @@
+{
+  "query": "SELECT * FROM admin_config LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT * FROM admin_config LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "feeEnabled": "1",
+      "swapFeeBps": "20",
+      "expressFeeBps": "5",
+      "botFeeCents": "10",
+      "minTradeUsdCents": "1000",
+      "maxTradeUsdCents": "100000",
+      "treasuryWallets": "[]",
+      "createdAt": "2026-03-06 03:30:43",
+      "updatedAt": "2026-03-08 05:48:43",
+      "feeAlertThresholdCents": "0",
+      "feeAlertLastNotifiedDate": "NULL",
+      "lastOracleSyncAt": "2026-03-08 05:48:43",
+      "lastSyncInserted": "0",
+      "oracleSyncEnabled": "0"
+    },
+    {
+      "id": "30001",
+      "feeEnabled": "1",
+      "swapFeeBps": "20",
+      "expressFeeBps": "5",
+      "botFeeCents": "10",
+      "minTradeUsdCents": "1000",
+      "maxTradeUsdCents": "100000",
+      "treasuryWallets": "NULL",
+      "createdAt": "2026-03-06 21:55:48",
+      "updatedAt": "2026-03-06 21:55:48",
+      "feeAlertThresholdCents": "100",
+      "feeAlertLastNotifiedDate": "NULL",
+      "lastOracleSyncAt": "NULL",
+      "lastSyncInserted": "0",
+      "oracleSyncEnabled": "0"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tfeeEnabled\tswapFeeBps\texpressFeeBps\tbotFeeCents\tminTradeUsdCents\tmaxTradeUsdCents\ttreasuryWallets\tcreatedAt\tupdatedAt\tfeeAlertThresholdCents\tfeeAlertLastNotifiedDate\tlastOracleSyncAt\tlastSyncInserted\toracleSyncEnabled\n1\t1\t20\t5\t10\t1000\t100000\t[]\t2026-03-06 03:30:43\t2026-03-08 05:48:43\t0\tNULL\t2026-03-08 05:48:43\t0\t0\n30001\t1\t20\t5\t10\t1000\t100000\tNULL\t2026-03-06 21:55:48\t2026-03-06 21:55:48\t100\tNULL\tNULL\t0\t0\n",
+  "stderr": "",
+  "execution_time_ms": 375
+}

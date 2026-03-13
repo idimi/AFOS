@@ -43,6 +43,23 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  // ── Oracle VM stub routes ────────────────────────────────────────────────
+  // These intercept specific Oracle VM endpoints BEFORE the proxy so that
+  // the dashboard always shows clean/empty state when the Oracle VM is off.
+  // The proxy below still handles all other /api/afos/* routes (quotes, RFQs, etc.).
+  app.get("/api/afos/api/swaps", (_req, res) => {
+    res.json({ pending: [], completed: [] });
+  });
+  app.get("/api/afos/api/stats", (_req, res) => {
+    res.json({ totalSwaps: 0, totalVolume: 0, p2pRatio: 0, avgSettlementMs: 0 });
+  });
+  app.get("/api/afos/api/agent/status", (_req, res) => {
+    res.json({ status: "idle", uptime: 0 });
+  });
+  app.get("/api/afos/api/agent/log", (_req, res) => {
+    res.json({ entries: [] });
+  });
+
   // Oracle VM API proxy — all /api/afos/* requests are forwarded to the Oracle VM backend
   // This avoids the browser mixed-content block (HTTPS frontend → HTTP Oracle VM)
   app.use(
