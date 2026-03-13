@@ -32,7 +32,7 @@ import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { executeEthAgentSwap } from "../agentSwapEth";
 import { executeBtcAgentSwap, executeTnkAgentSwap } from "../agentSwapBtc";
-import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets } from "../db";
+import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus, getSettledHtlcSecrets, getLockedHtlcsForInitiator } from "../db";
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq, storePeerInboxRfq, drainPeerInbox } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
@@ -2568,5 +2568,31 @@ export const chatRouter = router({
     .mutation(({ input }) => {
       removeActiveRfq(input.rfqId);
       return { ok: true };
+    }),
+
+  /**
+   * Returns all HTLC secrets in 'locked' status for the given initiator wallet.
+   * Used by the autonomous retry-reveal on page load / wallet connect.
+   * secretHex is intentionally excluded — the reveal procedure handles the actual claim.
+   */
+  getPendingRevealHtlcs: publicProcedure
+    .input(z.object({ initiatorAddress: z.string() }))
+    .query(async ({ input }) => {
+      const rows = await getLockedHtlcsForInitiator(input.initiatorAddress);
+      // Return safe fields only — never expose secretHex to the client
+      return rows.map(r => ({
+        rfqId:               r.rfqId,
+        fromChain:           r.fromChain,
+        toChain:             r.toChain,
+        fromToken:           r.fromToken,
+        toToken:             r.toToken,
+        htlcId:              r.htlcId,
+        initiatorAddress:    r.initiatorAddress,
+        counterpartyAddress: r.counterpartyAddress,
+        counterpartyPeerId:  r.counterpartyPeerId ?? null,
+        expiresAt:           r.expiresAt,
+        lockTxId:            r.lockTxId,
+        createdAt:           r.createdAt,
+      }));
     }),
 });

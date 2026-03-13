@@ -2838,3 +2838,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix setHtlcSigning intermediate calls to preserve rich state fields using spread pattern
 - [x] Add revealing/settled state transitions in claimHtlcFunds for all chains
 - [x] Fix Dashboard.tsx and SwapHistoryTabs.tsx to use sol-rpc proxy instead of direct RPC
+
+## Autonomous HTLC Reveal & On-Chain Polling (Session 2026-03-13 #2)
+- [ ] Autonomous retry-reveal: auto-trigger revealHtlcSecret on page load for any pending htlc_secrets in "locked" state
+- [ ] Autonomous retry-reveal: auto-retry on failure with exponential backoff (no user intervention needed)
+- [ ] On-chain HTLC state polling: poll htlcPda every 30s to detect Agent B lock even if P2P message dropped
+- [ ] On-chain polling: update swap progress card when Agent B lock detected on-chain
+
+## Autonomous HTLC Reveal & On-Chain Polling — Completed (Session 2026-03-13 #3)
+- [x] Autonomous retry-reveal: triggerAutoReveal() callback with exponential backoff (5s→15s→45s→2min→5min, max 5 attempts)
+- [x] Autonomous retry-reveal: useEffect on solWalletAddress change queries getPendingRevealHtlcs, restores agentAWalletByRfqRef from localStorage, auto-triggers reveal for each pending row
+- [x] Autonomous retry-reveal: revealRetryCountRef + revealRetryTimersRef prevent duplicate retries and track attempt counts
+- [x] On-chain HTLC state polling: htlcPollingRef interval every 30s checks Agent B htlcPda via checkAgentBHtlcLocked
+- [x] On-chain polling: when Agent B lock detected on-chain, triggers triggerAutoReveal as fallback for dropped P2P htlc_locked messages
+- [x] On-chain polling: skips already-revealed rfqs (htlcRevealedSecrets check) to avoid double-reveal
+- [x] agentAWalletByRfqRef persisted to localStorage and restored on wallet connect for page-refresh resilience

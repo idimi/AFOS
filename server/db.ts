@@ -398,6 +398,23 @@ export async function updateHtlcSecretStatus(
     .where(eq(htlcSecrets.rfqId, rfqId));
 }
 
+/**
+ * Get all HTLC secrets in 'locked' status where the given wallet is the initiator.
+ * Used by the autonomous retry-reveal on page load / wallet connect.
+ * Only returns non-expired rows (expiresAt > now).
+ */
+export async function getLockedHtlcsForInitiator(initiatorAddress: string): Promise<HtlcSecret[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const nowMs = BigInt(Date.now());
+  return db.select().from(htlcSecrets)
+    .where(
+      sql`${htlcSecrets.status} = 'locked'
+        AND LOWER(${htlcSecrets.initiatorAddress}) = LOWER(${initiatorAddress})
+        AND ${htlcSecrets.expiresAt} > ${nowMs}`
+    );
+}
+
 /** Get all active (locked/revealed) HTLC secrets for the monitor */
 export async function getActiveHtlcSecrets(): Promise<HtlcSecret[]> {
   const db = await getDb();

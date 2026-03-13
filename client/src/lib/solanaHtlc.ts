@@ -238,6 +238,33 @@ export async function checkHtlcProgramDeployed(
 }
 
 /**
+ * Check if Agent B's HTLC PDA exists on-chain.
+ * Used for autonomous 30-second polling to detect Agent B's lock even if the
+ * P2P htlc_locked message was dropped (network hiccup, page refresh, etc.).
+ *
+ * @param connection - Solana Connection (or any object with getAccountInfo)
+ * @param htlcIdB    - Agent B's HTLC ID string (e.g. "htlc_b_rfq_..._lp-...")
+ * @returns true if the PDA account exists on-chain (Agent B has locked)
+ */
+export async function checkAgentBHtlcLocked(
+  connection: Connection,
+  htlcIdB: string,
+): Promise<boolean> {
+  try {
+    const { htlcIdToBytes: toBytes } = await import('./afosHtlcProgram');
+    const idBytes = toBytes(htlcIdB);
+    const [htlcPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from('htlc'), idBytes],
+      AFOS_HTLC_PROGRAM_ID,
+    );
+    const info = await connection.getAccountInfo(htlcPda, 'confirmed');
+    return info !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Build a Solana HTLC refund transaction.
  * Calls the program's refund instruction — only succeeds after timelock expires.
  * The sender gets their funds back automatically.

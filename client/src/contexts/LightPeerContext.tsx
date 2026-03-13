@@ -32,7 +32,7 @@ import {
   executeBtcHtlcLock,
   type BtcWalletProvider,
 } from "../lib/btcHtlc";
-import { buildSolanaHtlcLockTx, generateHtlcSecret, checkHtlcProgramDeployed } from "../lib/solanaHtlc";
+import { buildSolanaHtlcLockTx, generateHtlcSecret, checkHtlcProgramDeployed, checkAgentBHtlcLocked } from "../lib/solanaHtlc";
 import { buildSolanaTokenHtlcLockTx, TOKEN_MINTS } from "../lib/solanaTokenHtlc";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
@@ -433,13 +433,196 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       .catch(() => { /* DB not available yet — localStorage values remain */ });
   }, []);
 
-  // ── Retry pending deposits on mount (localStorage fallback) ────────────────
+   // ── Retry pending deposits on mount (localStorage fallback) ────────────────
   // Runs once on mount with a 3-second delay to let the server warm up.
   useEffect(() => {
     const t = setTimeout(() => { void retryPendingDeposits(); }, 3000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Autonomous retry-reveal: re-trigger revealHtlcSecret on wallet connect ─
+  // If Agent A locked their HTLC but the page was refreshed before the secret
+  // was revealed (e.g. Agent B locked while Agent A was offline), this effect
+  // autonomously re-triggers the reveal as soon as the wallet reconnects.
+  // Uses exponential backoff: 5s → 15s → 45s → 2min → 5min (max 5 attempts).
+  const revealRetryCountRef = useRef<Record<string, number>>({});
+  const revealRetryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const triggerAutoReveal = useCallback(async (row: {
+    rfqId: string;
+    htlcId: string | null;
+    initiatorAddress: string | null;
+    counterpartyAddress: string | null;
+    counterpartyPeerId: string | null;
+    fromChain: string;
+    expiresAt: bigint;
+  }) => {
+    const { rfqId, initiatorAddress, counterpartyAddress, counterpartyPeerId, fromChain } = row;
+    if (!initiatorAddress) return;
+    // Don't retry if already expired
+    if (Number(row.expiresAt) < Date.now()) {
+      console.log(`[AutoReveal] rfqId=${rfqId.slice(0,8)} expired — skipping`);
+      return;
+    }
+    const attempt = (revealRetryCountRef.current[rfqId] ?? 0) + 1;
+    revealRetryCountRef.current[rfqId] = attempt;
+    const maxAttempts = 5;
+    if (attempt > maxAttempts) {
+      console.warn(`[AutoReveal] rfqId=${rfqId.slice(0,8)} exceeded max retry attempts`);
+      return;
+    }
+    console.log(`[AutoReveal] Attempting reveal for rfqId=${rfqId.slice(0,8)} (attempt ${attempt}/${maxAttempts})`);
+    try {
+      const agentAHtlcId = `htlc_a_${rfqId.slice(0, 22)}`;
+      const agentBHtlcId = `htlc_b_${rfqId.slice(0, 22)}`;
+      const res = await fetch("/api/trpc/chat.revealHtlcSecret?batch=1", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ "0": { json: {
+          rfqId,
+          initiatorAddress,
+          counterpartyAddress: counterpartyAddress ?? undefined,
+          htlcIdA: agentAHtlcId,
+          htlcIdB: agentBHtlcId,
+          chain: fromChain,
+        } } }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        console.warn(`[AutoReveal] revealHtlcSecret failed (attempt ${attempt}):`, res.status, errText);
+        // Schedule retry with exponential backoff
+        const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
+        revealRetryTimersRef.current[rfqId] = setTimeout(() => void triggerAutoReveal(row), backoffMs);
+        return;
+      }
+      const json = await res.json();
+      const batchResult = Array.isArray(json) ? json[0] : json;
+      const secretHex = batchResult?.result?.data?.json?.secretHex;
+      if (!secretHex) {
+        console.warn(`[AutoReveal] No secretHex in response (attempt ${attempt})`);
+        const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
+        revealRetryTimersRef.current[rfqId] = setTimeout(() => void triggerAutoReveal(row), backoffMs);
+        return;
+      }
+      // Success — send secret to Agent B
+      const targetPeerId = counterpartyPeerId ?? agentAWalletByRfqRef.current[rfqId] ?? "";
+      if (targetPeerId && signalingRef.current) {
+        signalingRef.current.sendHtlcSecret(targetPeerId, rfqId, secretHex);
+      }
+      toast.success("[Auto] HTLC secret revealed autonomously", {
+        description: `RFQ ${rfqId.slice(0, 8)}… secret sent to counterparty`,
+        duration: 10000,
+      });
+      window.dispatchEvent(new CustomEvent("afos:htlc-secret-sent", { detail: { rfqId, secretHex } }));
+      // Clear retry counter on success
+      delete revealRetryCountRef.current[rfqId];
+      delete revealRetryTimersRef.current[rfqId];
+    } catch (e) {
+      console.error(`[AutoReveal] Error on attempt ${attempt}:`, e);
+      const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
+      revealRetryTimersRef.current[rfqId] = setTimeout(() => void triggerAutoReveal(row), backoffMs);
+    }
+  }, [toast]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trigger auto-reveal when wallet connects (or on mount if already connected)
+  const solWalletAddress = solPubkey?.toBase58() ?? phantomSolAddress ?? null;
+  useEffect(() => {
+    if (!solWalletAddress) return;
+    // Restore agentAWalletByRfqRef from localStorage on wallet connect
+    // (it's already initialized from localStorage in the useRef initializer,
+    //  but we also need to handle the case where the wallet connects after mount)
+    const stored = localStorage.getItem("afos_agent_a_wallet_map");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as Record<string, string>;
+        Object.assign(agentAWalletByRfqRef.current, parsed);
+      } catch { /* ignore */ }
+    }
+    // Query the server for any locked htlc_secrets where this wallet is the initiator
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/trpc/chat.getPendingRevealHtlcs?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { initiatorAddress: solWalletAddress } } }))}`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const json = await res.json();
+        const batchResult = Array.isArray(json) ? json[0] : json;
+        const rows = batchResult?.result?.data?.json as Array<{
+          rfqId: string;
+          htlcId: string | null;
+          initiatorAddress: string | null;
+          counterpartyAddress: string | null;
+          counterpartyPeerId: string | null;
+          fromChain: string;
+          expiresAt: bigint;
+        }> | undefined;
+        if (!rows?.length) return;
+        console.log(`[AutoReveal] Found ${rows.length} pending reveal(s) for wallet ${solWalletAddress.slice(0,8)}`);
+        for (const row of rows) {
+          // Restore the agentAWalletByRfqRef mapping
+          if (row.initiatorAddress) {
+            agentAWalletByRfqRef.current[row.rfqId] = row.initiatorAddress;
+          }
+          // Trigger autonomous reveal with a small stagger to avoid hammering the server
+          const staggerMs = rows.indexOf(row) * 2000;
+          setTimeout(() => void triggerAutoReveal(row), staggerMs);
+        }
+      } catch (e) {
+        console.warn("[AutoReveal] Failed to query pending reveals:", e);
+      }
+    }, 5000); // 5s delay to let signaling connect first
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [solWalletAddress]);
+
+  // ── On-chain HTLC state polling (every 30s) ────────────────────────────────
+  // Polls Agent B's htlcPda every 30s for swaps where Agent A is waiting.
+  // This is the fallback for when the P2P htlc_locked message was dropped.
+  const htlcPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (htlcPollingRef.current) clearInterval(htlcPollingRef.current);
+    htlcPollingRef.current = setInterval(async () => {
+      // Only poll if we have active swaps where Agent A locked but Agent B hasn't confirmed
+      const pendingRfqIds = Object.keys(htlcLockedAt).filter(rfqId => {
+        // Only poll for rfqs where we are the initiator (Agent A)
+        return !!agentAWalletByRfqRef.current[rfqId];
+      });
+      if (!pendingRfqIds.length) return;
+      for (const rfqId of pendingRfqIds) {
+        const agentBHtlcId = `htlc_b_${rfqId.slice(0, 22)}`;
+        try {
+          const isLocked = await checkAgentBHtlcLocked(solConnection, agentBHtlcId);
+          if (isLocked) {
+            console.log(`[OnChainPoll] Agent B htlcPda found for rfqId=${rfqId.slice(0,8)} — triggering reveal`);
+            // Agent B has locked — trigger the reveal as if we received htlc_locked P2P message
+            const initiatorAddress = agentAWalletByRfqRef.current[rfqId];
+            if (!initiatorAddress) continue;
+            // Check if already revealed (avoid double-reveal)
+            const alreadyRevealed = htlcRevealedSecrets[rfqId];
+            if (alreadyRevealed) continue;
+            // Trigger auto-reveal
+            void triggerAutoReveal({
+              rfqId,
+              htlcId: `htlc_a_${rfqId.slice(0, 22)}`,
+              initiatorAddress,
+              counterpartyAddress: null,
+              counterpartyPeerId: null,
+              fromChain: "solana",
+              expiresAt: BigInt(Date.now() + 3_600_000),
+            });
+          }
+        } catch (e) {
+          console.warn(`[OnChainPoll] Error polling rfqId=${rfqId.slice(0,8)}:`, e);
+        }
+      }
+    }, 30_000); // poll every 30 seconds
+    return () => {
+      if (htlcPollingRef.current) clearInterval(htlcPollingRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [htlcLockedAt, solConnection]);
 
   // ── Signaling state ───────────────────────────────────────────────────────
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
@@ -448,7 +631,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const signalingRef = useRef<SignalingClient | null>(null);
   // Maps rfqId → Agent A's resolved wallet address, stored at initiateHtlcLock time.
   // This prevents a race condition where phantomSolAddress is null when htlc_locked fires.
-  const agentAWalletByRfqRef = useRef<Record<string, string>>({});
+  const agentAWalletByRfqRef = useRef<Record<string, string>>(
+    (() => {
+      try {
+        const stored = localStorage.getItem("afos_agent_a_wallet_map");
+        return stored ? (JSON.parse(stored) as Record<string, string>) : {};
+      } catch { return {}; }
+    })()
+  );
+  // Persist agentAWalletByRfqRef to localStorage whenever it changes
+  const persistAgentAWalletMap = useCallback(() => {
+    try {
+      localStorage.setItem("afos_agent_a_wallet_map", JSON.stringify(agentAWalletByRfqRef.current));
+    } catch { /* ignore */ }
+  }, []);
   // Stable ref to acceptRfq so the signaling handlers (agent_rfq, rfq_broadcast)
   // always call the latest version — avoids stale closure where solConnected is false.
   const acceptRfqRef = useRef<(rfqId: string, rfqOverride?: IncomingRfq) => Promise<void>>(() => Promise.resolve());
@@ -2062,6 +2258,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     const agentAResolvedWallet = solPubkey?.toBase58() ?? livePhA?.publicKey?.toString() ?? phantomSolAddress ?? "";
     if (agentAResolvedWallet) {
       agentAWalletByRfqRef.current[rfqId] = agentAResolvedWallet;
+      persistAgentAWalletMap(); // persist so auto-reveal works after page refresh
       console.log(`[HTLC] Stored agentAWallet=${agentAResolvedWallet.slice(0,8)}... for rfqId=${rfqId.slice(0,8)}`);
     }
     // Build a synthetic IncomingRfq for Agent A (the requester).
