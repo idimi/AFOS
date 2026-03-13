@@ -51,7 +51,7 @@ interface WalletContextValue {
   // Actions
   connect: () => void;
   disconnect: () => void;
-  refreshBalances: () => Promise<void>;
+  refreshBalances: () => Promise<WalletBalance[]>;
   // For signing Jupiter transactions
   signTransaction: ((tx: unknown) => Promise<unknown>) | null;
   sendTransaction: ((tx: unknown, connection: unknown) => Promise<string>) | null;
@@ -109,10 +109,10 @@ function WalletInner({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
-  const fetchBalances = useCallback(async () => {
+  const fetchBalances = useCallback(async (): Promise<WalletBalance[]> => {
     if (!publicKey || !connected) {
       setBalances([]);
-      return;
+      return [];
     }
     setBalancesLoading(true);
     try {
@@ -155,9 +155,11 @@ function WalletInner({ children }: { children: ReactNode }) {
       }
 
       setBalances(newBalances);
+      return newBalances;
     } catch (err) {
       console.error("[WalletContext] Failed to fetch balances:", err);
       toast.error("Could not fetch wallet balances");
+      return [];
     } finally {
       setBalancesLoading(false);
     }

@@ -32,12 +32,14 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching" | "swap_progress";
+  type?: "text" | "quote_card" | "tx_success" | "swap_complete" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching" | "swap_progress";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
   limitWarning?: string;
   limitExceededData?: { blockedAmountUsd: number; limitUsd: number };
+  /** Updated balances to show after a swap completes */
+  balancesAfterSwap?: Array<{ symbol: string; amount: string; usdValue: number }>;
   /** Badge shown on quote_card: 'p2p' | 'dex' | undefined */
   routeBadge?: "p2p" | "dex";
   /** Matched peer alias for P2P quote cards */

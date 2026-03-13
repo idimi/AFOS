@@ -2915,3 +2915,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix Dashboard.tsx Jupiter swap: replaced confirmTransaction with polling-based getSignatureStatus
 - [x] Fix ChatPage.tsx Jupiter swap: replaced confirmTransaction with polling-based getSignatureStatus
 - [x] Added 26 new vitest tests for webhookHealth router (315 total, all passing)
+
+## Celebratory Swap Completion Message (Session 2026-03-13 #8)
+- [x] Build SwapCompletionMessage component: animated celebration, swap summary (from→to amounts), updated balances after swap
+- [x] Refresh wallet balances after swap confirmation and include in completion message
+- [x] Wire into Jupiter (Solana) and ETH 1inch swap completion paths
+- [x] Replace plain text follow-up message with rich TxSuccessCard (celebration + balances + Swap again button)
+- [x] refreshBalances() now returns new balances directly for synchronous embedding in completion card
+- [x] onSwapAgain button pre-fills input with 'swap ' and focuses the chat input

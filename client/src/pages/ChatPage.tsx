@@ -368,63 +368,205 @@ function LimitExceededCard({ blockedAmountUsd, limitUsd }: { blockedAmountUsd: n
 }
 
 // ─── Tx Success Card ──────────────────────────────────────────────────────────
-function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain }: {
+// Celebratory messages — randomly selected on each swap completion
+const SWAP_CELEBRATION_MESSAGES = [
+  (from: string, fromAmt: number, to: string, toAmt: number) =>
+    `🎉 Nailed it! ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} just became ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}. Atomic, trustless, done.`,
+  (from: string, fromAmt: number, to: string, toAmt: number) =>
+    `⚡ Swap complete! ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} → ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to} — settled on-chain in seconds. No bridges, no custodians.`,
+  (from: string, fromAmt: number, to: string, toAmt: number) =>
+    `🚀 Done! Your ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} is now ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}, sitting in your wallet. Ready for the next one?`,
+  (from: string, fromAmt: number, to: string, toAmt: number) =>
+    `✅ Swap confirmed on-chain! ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} exchanged for ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to}. Your balances are updated below.`,
+  (from: string, fromAmt: number, to: string, toAmt: number) =>
+    `💸 That's a wrap! ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} out, ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to} in. Fully on-chain, fully yours.`,
+];
+
+function getExplorerInfo(txHash: string, chain: string) {
+  if (chain === "bitcoin") {
+    const isTxid = /^[0-9a-f]{64}$/i.test(txHash);
+    return {
+      explorerUrl: isTxid ? `https://mempool.space/tx/${txHash}` : `https://mempool.space`,
+      explorerLabel: isTxid ? `mempool.space: ${txHash.slice(0, 8)}…${txHash.slice(-8)}` : "View on mempool.space",
+    };
+  }
+  if (chain === "ethereum") {
+    const isTxHash = /^0x[0-9a-f]{64}$/i.test(txHash);
+    return {
+      explorerUrl: isTxHash ? `https://etherscan.io/tx/${txHash}` : `https://etherscan.io`,
+      explorerLabel: isTxHash ? `Etherscan: ${txHash.slice(0, 10)}…${txHash.slice(-8)}` : "View on Etherscan",
+    };
+  }
+  return {
+    explorerUrl: `https://solscan.io/tx/${txHash}`,
+    explorerLabel: `Solscan: ${txHash.slice(0, 8)}…${txHash.slice(-8)}`,
+  };
+}
+
+function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain, balancesAfterSwap, onSwapAgain }: {
   txHash: string;
   fromToken: string;
   toToken: string;
   fromAmount: number;
   toAmount: number;
   fromChain?: string;
+  balancesAfterSwap?: Array<{ symbol: string; amount: string; usdValue: number }>;
+  onSwapAgain?: () => void;
 }) {
-  // Determine explorer URL and label based on chain
   const chain = fromChain?.toLowerCase() ?? (fromToken === "BTC" ? "bitcoin" : fromToken === "ETH" ? "ethereum" : "solana");
-  const { explorerUrl, explorerLabel } = (() => {
-    if (chain === "bitcoin") {
-      // mempool.space for BTC txids; rfqIds won't be valid txids but show gracefully
-      const isTxid = /^[0-9a-f]{64}$/i.test(txHash);
-      return {
-        explorerUrl: isTxid ? `https://mempool.space/tx/${txHash}` : `https://mempool.space`,
-        explorerLabel: isTxid ? `View on mempool.space: ${txHash.slice(0, 8)}…${txHash.slice(-8)}` : "View on mempool.space",
-      };
-    }
-    if (chain === "ethereum") {
-      const isTxHash = /^0x[0-9a-f]{64}$/i.test(txHash);
-      return {
-        explorerUrl: isTxHash ? `https://etherscan.io/tx/${txHash}` : `https://etherscan.io`,
-        explorerLabel: isTxHash ? `View on Etherscan: ${txHash.slice(0, 10)}…${txHash.slice(-8)}` : "View on Etherscan",
-      };
-    }
-    // Solana default
-    return {
-      explorerUrl: `https://solscan.io/tx/${txHash}`,
-      explorerLabel: `View on Solscan: ${txHash.slice(0, 8)}…${txHash.slice(-8)}`,
-    };
-  })();
+  const { explorerUrl, explorerLabel } = getExplorerInfo(txHash, chain);
+
+  // Pick a celebration message deterministically from the txHash so it stays stable on re-render
+  const msgIdx = txHash.charCodeAt(0) % SWAP_CELEBRATION_MESSAGES.length;
+  const celebrationMsg = SWAP_CELEBRATION_MESSAGES[msgIdx](fromToken, fromAmount, toToken, toAmount);
+
+  // Only show balances for the two tokens involved in the swap
+  const relevantBalances = balancesAfterSwap?.filter(
+    b => b.symbol === fromToken || b.symbol === toToken
+  ) ?? [];
+
+  const fromColor = TOKEN_COLORS[fromToken] ?? { bg: "rgba(100,100,100,0.15)", text: "#aaa", border: "rgba(100,100,100,0.3)" };
+  const toColor   = TOKEN_COLORS[toToken]   ?? { bg: "rgba(100,100,100,0.15)", text: "#aaa", border: "rgba(100,100,100,0.3)" };
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="rounded-2xl p-4 mt-2"
-      style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)" }}
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="rounded-2xl overflow-hidden mt-2"
+      style={{ border: "1px solid rgba(16,185,129,0.3)" }}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-        <span className="text-sm font-bold text-emerald-400">Swap Confirmed!</span>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Swapped {fromAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })} <strong className="text-foreground">{fromToken}</strong> {"→"}{" "}
-        {toAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })} <strong className="text-foreground">{toToken}</strong>
-      </p>
-      <a
-        href={explorerUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-1.5 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+      {/* Header band */}
+      <div className="flex items-center gap-2.5 px-4 py-3"
+        style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(16,185,129,0.06) 100%)" }}
       >
-        <ExternalLink className="w-3.5 h-3.5" />
-        {explorerLabel}
-      </a>
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.15, type: "spring", stiffness: 400, damping: 15 }}
+        >
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+        </motion.div>
+        <span className="text-sm font-bold text-emerald-400">Swap Confirmed!</span>
+        <motion.span
+          initial={{ opacity: 0, x: 6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.25 }}
+          className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(16,185,129,0.15)", color: "#10b981" }}
+        >
+          ON-CHAIN
+        </motion.span>
+      </div>
+
+      {/* Swap summary row */}
+      <div className="px-4 py-3" style={{ background: "rgba(16,185,129,0.04)" }}>
+        <div className="flex items-center gap-2 justify-center">
+          <div className="flex flex-col items-center gap-0.5">
+            <span className="text-lg font-bold" style={{ color: fromColor.text }}>
+              {fromAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            </span>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: fromColor.bg, color: fromColor.text, border: `1px solid ${fromColor.border}` }}>
+              {fromToken}
+            </span>
+          </div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+            style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)" }}
+          >
+            <ArrowRight className="w-4 h-4 text-emerald-400" />
+          </motion.div>
+          <div className="flex flex-col items-center gap-0.5">
+            <motion.span
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3, type: "spring", stiffness: 300 }}
+              className="text-lg font-bold"
+              style={{ color: toColor.text }}
+            >
+              {toAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+            </motion.span>
+            <span className="text-xs font-bold px-2 py-0.5 rounded-full"
+              style={{ background: toColor.bg, color: toColor.text, border: `1px solid ${toColor.border}` }}>
+              {toToken}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Updated balances */}
+      {relevantBalances.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          transition={{ delay: 0.4 }}
+          className="px-4 py-2.5 border-t"
+          style={{ borderColor: "rgba(16,185,129,0.15)", background: "rgba(0,0,0,0.15)" }}
+        >
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Updated Balances</p>
+          <div className="flex gap-3 flex-wrap">
+            {relevantBalances.map(b => {
+              const c = TOKEN_COLORS[b.symbol] ?? { bg: "rgba(100,100,100,0.1)", text: "#aaa", border: "rgba(100,100,100,0.2)" };
+              return (
+                <div key={b.symbol} className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                    style={{ background: c.bg, color: c.text }}>
+                    {b.symbol}
+                  </span>
+                  <span className="text-xs font-semibold text-foreground">
+                    {parseFloat(b.amount).toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                  </span>
+                  {b.usdValue > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      (${b.usdValue.toLocaleString(undefined, { maximumFractionDigits: 2 })})
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Footer: explorer link + swap again */}
+      <div className="px-4 py-2.5 flex items-center justify-between border-t"
+        style={{ borderColor: "rgba(16,185,129,0.15)", background: "rgba(0,0,0,0.1)" }}
+      >
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1 text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 transition-colors"
+        >
+          <ExternalLink className="w-3 h-3" />
+          {explorerLabel}
+        </a>
+        {onSwapAgain && (
+          <button
+            onClick={onSwapAgain}
+            className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-all hover:opacity-80"
+            style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
+          >
+            <ArrowLeftRight className="w-3 h-3" />
+            Swap again
+          </button>
+        )}
+      </div>
+
+      {/* Celebration message from agent */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        className="px-4 py-3 border-t"
+        style={{ borderColor: "rgba(16,185,129,0.15)", background: "rgba(16,185,129,0.03)" }}
+      >
+        <p className="text-xs text-muted-foreground leading-relaxed">{celebrationMsg}</p>
+      </motion.div>
     </motion.div>
   );
 }
@@ -811,6 +953,7 @@ function MessageBubble({
   htlcLockedAt,
   tnkPeerCount,
   anyWalletConnected,
+  onSwapAgain,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -830,6 +973,8 @@ function MessageBubble({
   tnkPeerCount?: number;
   /** Whether ANY wallet (SOL, ETH, BTC, TNK) is connected — passed to QuoteCard */
   anyWalletConnected?: boolean;
+  /** Called when user clicks "Swap again" on the completion card */
+  onSwapAgain?: () => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -1028,6 +1173,8 @@ function MessageBubble({
             fromAmount={msg.quoteData.fromAmount}
             toAmount={msg.quoteData.toAmount}
             fromChain={msg.quoteData.fromChain}
+            balancesAfterSwap={msg.balancesAfterSwap}
+            onSwapAgain={onSwapAgain}
           />
         )}
 
@@ -1042,7 +1189,7 @@ function MessageBubble({
 
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
-  const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction } = useWallet();
+  const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction, refreshBalances } = useWallet();
   const { bitcoin, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
   const { user } = useAuth();
   const openId = user?.openId;
@@ -1509,13 +1656,16 @@ export default function ChatPage() {
             toast.dismiss("eth-sign");
             toast.success("ETH swap submitted!", { description: `Tx: ${txHash.slice(0, 12)}…` });
             setMessages(prev => prev.map(m =>
-              m.id === msgId ? { ...m, type: "tx_success" as const, txHash } : m
+              m.id === msgId
+                ? {
+                    ...m,
+                    type: "tx_success" as const,
+                    txHash,
+                    // ETH balances not tracked in WalletContext — show card without balance section
+                    balancesAfterSwap: [],
+                  }
+                : m
             ));
-            addMessage({
-              role: "assistant",
-              content: `✅ ETH swap submitted via 1inch: ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toToken}. Tx: ${txHash.slice(0, 16)}…`,
-              type: "text",
-            });
           } catch (ethErr: unknown) {
             toast.dismiss("eth-sign");
             const msg = ethErr instanceof Error ? ethErr.message : String(ethErr);
@@ -1707,19 +1857,31 @@ export default function ChatPage() {
       toast.dismiss("swap-confirm");
       toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}…` });
 
-      // Update the message to show success
+      // Refresh balances so the completion card shows updated amounts
+      // refreshBalances() returns the new balances directly so we don't need to wait for state update
+      let freshBalances = balances;
+      try {
+        const updated = await refreshBalances();
+        if (updated.length > 0) freshBalances = updated;
+      } catch {
+        // Non-critical — card will show without balance section
+      }
+
+      // Update the message to show success with updated balances embedded
       setMessages(prev => prev.map(m =>
         m.id === msgId
-          ? { ...m, type: "tx_success" as const, txHash }
+          ? {
+              ...m,
+              type: "tx_success" as const,
+              txHash,
+              balancesAfterSwap: freshBalances.map(b => ({
+                symbol: b.symbol,
+                amount: b.amount,
+                usdValue: b.usdValue,
+              })),
+            }
           : m
       ));
-
-      // Add a follow-up message
-      addMessage({
-        role: "assistant",
-        content: `✅ Your swap of ${quoteData.fromAmount} ${quoteData.fromToken} → ${quoteData.toAmount.toFixed(6)} ${quoteData.toToken} is confirmed on-chain. Would you like to make another swap?`,
-        type: "text",
-      });
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1877,6 +2039,10 @@ export default function ChatPage() {
               refundableHtlcs={lightPeer.refundableHtlcs}
               refundedRfqIds={lightPeer.refundedRfqIds}
               htlcLockedAt={lightPeer.htlcLockedAt}
+              onSwapAgain={() => {
+                setInput("swap ");
+                setTimeout(() => inputRef.current?.focus(), 50);
+              }}
             />
           ) : null
         ))}
