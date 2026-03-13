@@ -22,6 +22,7 @@ import { getDb } from "./db";
 import { htlcSwaps, swapAnalytics } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
+import { refundSolanaHtlc } from "./solanaHtlcRefund";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // Helius webhooks handle real-time HTLC events (claim/refund/lock).
@@ -166,15 +167,29 @@ async function triggerSolRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
     return null; // null = no DB update, leave as pending
   }
 
-  // Server has the HTLC key — attempt to submit the actual on-chain refund tx.
-  // TODO: implement real on-chain refund using @solana/web3.js + AFOS HTLC program.
-  // For now, log the expiry and return null so the DB is NOT falsely updated.
-  console.log(
-    `[HTLC Monitor] [SOL] HTLC PDA ${htlc.htlcAddress} expired. ` +
-    `Server key available but on-chain refund not yet implemented in monitor. ` +
-    `User must claim manually from the Refunds tab. SecretHash: ${htlc.secretHash.slice(0, 16)}…`
-  );
-  return null; // null = no DB update until real tx succeeds
+  // Server has the HTLC key — attempt the actual on-chain refund tx via refundSolanaHtlc.
+  // htlcId is stored in htlc.htlcId (the PDA seed string, e.g. "htlc_a_rfq_1773...").
+  // tokenSymbol is derived from toToken if it differs from the native SOL.
+  const htlcId = htlc.htlcId ?? htlc.htlcAddress;
+  const nativeToken = "SOL";
+  const tokenSymbol = (htlc.toToken && htlc.toToken.toUpperCase() !== nativeToken)
+    ? htlc.toToken.toUpperCase()
+    : undefined;
+
+  try {
+    console.log(
+      `[HTLC Monitor] [SOL] Triggering server-side refund for HTLC ${htlcId}` +
+      (tokenSymbol ? ` (token: ${tokenSymbol})` : "") + "…"
+    );
+    const result = await refundSolanaHtlc({ htlcId, tokenSymbol });
+    console.log(`[HTLC Monitor] [SOL] Refund tx confirmed: ${result.txSignature} | htlcId=${htlcId}`);
+    return result.txSignature;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[HTLC Monitor] [SOL] Server-side refund failed for HTLC ${htlcId}: ${msg}`);
+    // Leave as pending — user can still claim manually from the Refunds tab
+    return null;
+  }
 }
 
 // ─── Main poll cycle ──────────────────────────────────────────────────────────

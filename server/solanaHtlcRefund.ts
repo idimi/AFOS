@@ -44,6 +44,10 @@ const TOKEN_MINTS: Record<string, string> = {
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
 };
 
+// The Anchor program ALWAYS requires token accounts in the refund instruction,
+// even for native SOL HTLCs. Use USDT as the default mint when none is specified.
+const DEFAULT_REFUND_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function deriveHtlcPda(htlcIdBytes: Uint8Array): PublicKey {
@@ -123,30 +127,28 @@ export async function refundSolanaHtlc(params: {
   // Build refund instruction data: just the discriminator (no args needed)
   const data = Buffer.from(REFUND_DISCRIMINATOR);
 
-  // Build account keys
+  // The Anchor program ALWAYS requires token accounts in the refund instruction,
+  // even for native SOL HTLCs. Use the specified token mint or fall back to USDT.
+  let tokenMint: PublicKey;
+  if (tokenSymbol) {
+    const mintAddress = TOKEN_MINTS[tokenSymbol.toUpperCase()];
+    if (!mintAddress) throw new Error(`Unknown token symbol: ${tokenSymbol}`);
+    tokenMint = new PublicKey(mintAddress);
+  } else {
+    tokenMint = DEFAULT_REFUND_MINT;
+  }
+  const vaultAta = deriveAta(htlcPda, tokenMint);
+  const senderAta = deriveAta(agentKeypair.publicKey, tokenMint);
+
+  // Account order must match the Anchor program: sender, htlcPda, vaultAta, senderAta, tokenProgram, systemProgram
   const keys: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[] = [
     { pubkey: agentKeypair.publicKey, isSigner: true, isWritable: true },
     { pubkey: htlcPda, isSigner: false, isWritable: true },
+    { pubkey: vaultAta, isSigner: false, isWritable: true },
+    { pubkey: senderAta, isSigner: false, isWritable: true },
+    { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ];
-
-  // Add SPL token accounts if this is a token refund
-  if (tokenSymbol) {
-    const mintAddress = TOKEN_MINTS[tokenSymbol.toUpperCase()];
-    if (!mintAddress) {
-      throw new Error(`Unknown token symbol: ${tokenSymbol}`);
-    }
-    const tokenMint = new PublicKey(mintAddress);
-    const vaultAta = deriveAta(htlcPda, tokenMint);
-    const senderAta = deriveAta(agentKeypair.publicKey, tokenMint);
-
-    keys.push(
-      { pubkey: tokenMint, isSigner: false, isWritable: false },
-      { pubkey: vaultAta, isSigner: false, isWritable: true },
-      { pubkey: senderAta, isSigner: false, isWritable: true },
-      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false }
-    );
-  }
 
   const refundIx = new TransactionInstruction({
     programId: AFOS_HTLC_PROGRAM_ID,

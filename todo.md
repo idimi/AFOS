@@ -2864,3 +2864,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] FIX: Wrong ATA program ID fixed in all 3 files — SPL token HTLC lock/claim/refund will now derive correct ATAs
 - [x] FIX: confirmTransaction timeout no longer records deposit optimistically — verifies on-chain status first
 - [x] FIX: Pre-flight SOL balance check added — clear error shown before tx if insufficient funds
+
+## Critical Bug: Claim Fails with "Transaction was not confirmed in 30.00 seconds" (Session 2026-03-13 #5)
+- [x] BUG: Claim All fails — "Transaction was not confirmed in 30.00 seconds" — root cause: confirmTransaction timeout with no fallback
+- [x] BUG: 403 Forbidden on rpc.unlock-protocol.com — these are Phantom's internal wallet calls, not our app (cannot control)
+- [x] INVESTIGATE: claimRefund (single) and ClaimAllButton both used confirmTransaction with no fallback
+- [x] FIX: claimRefund (single) — added getSignatureStatus verification after timeout, never proceeds optimistically
+- [x] FIX: ClaimAllButton — added getSignatureStatus verification after timeout for each claim in the batch
+- [x] FIX: Server-side auto-refund wired up — htlcMonitor.ts now calls refundSolanaHtlc() instead of logging TODO and returning null
+- [x] FIX: 403 on rpc.unlock-protocol.com is Phantom's own background calls — our connection correctly uses /api/sol-rpc proxy
+- [x] BUG: Server-side refundSolanaHtlc had only 3 accounts (sender, htlcPda, SystemProgram) but Anchor program requires 6 accounts always
+- [x] FIX: solanaHtlcRefund.ts now always includes all 6 accounts (sender, htlcPda, vaultAta, senderAta, tokenProgram, systemProgram) matching the client-side buildRefundInstruction
+- [x] FIX: DEFAULT_REFUND_MINT (USDT) used as fallback for native SOL HTLCs — consistent with client-side DEFAULT_REFUND_TOKEN_MINT
