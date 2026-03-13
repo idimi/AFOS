@@ -14,8 +14,8 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
-import { swapAnalytics, htlcSwaps } from "../../drizzle/schema";
-import { eq, and, gte, desc, count, inArray, or, sql, like } from "drizzle-orm";
+import { swapAnalytics, htlcSwaps, htlcSecrets } from "../../drizzle/schema";
+import { eq, and, gte, desc, count, inArray, or, sql, like, lt } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -745,5 +745,158 @@ export const historyRouter = router({
         .where(eq(htlcSwaps.htlcAddress, input.htlcAddress));
 
       return { success: true, txSignature: result.txSignature };
+    }),
+
+  /**
+   * List htlc_secrets rows in 'revealed' state older than 10 minutes.
+   * These are swaps where the secret was revealed but the claim never completed.
+   * Admin-only.
+   */
+  getStuckSwaps: protectedProcedure
+    .query(async ({ ctx }) => {
+      if (ctx.user.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin only' });
+      }
+      const db = await getDb();
+      if (!db) return { swaps: [] };
+
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+      const rows = await db
+        .select()
+        .from(htlcSecrets)
+        .where(
+          and(
+            eq(htlcSecrets.status, 'revealed'),
+            lt(htlcSecrets.updatedAt, tenMinutesAgo),
+          )
+        )
+        .orderBy(desc(htlcSecrets.updatedAt))
+        .limit(50);
+
+      // Enrich with htlc_swaps data for each rfqId
+      const enriched = await Promise.all(rows.map(async (row) => {
+        const swapRows = await db
+          .select({
+            htlcId:         htlcSwaps.htlcId,
+            htlcAddress:    htlcSwaps.htlcAddress,
+            senderAddress:  htlcSwaps.senderAddress,
+            status:         htlcSwaps.status,
+            toToken:        htlcSwaps.toToken,
+          })
+          .from(htlcSwaps)
+          .where(eq(htlcSwaps.rfqId, row.rfqId))
+          .limit(2);
+
+        const minutesStuck = Math.floor((Date.now() - new Date(row.updatedAt).getTime()) / 60_000);
+
+        return {
+          id:                  row.id,
+          rfqId:               row.rfqId,
+          secretHex:           row.secretHex,
+          secretHashHex:       row.secretHashHex,
+          fromChain:           row.fromChain,
+          toChain:             row.toChain,
+          fromToken:           row.fromToken,
+          toToken:             row.toToken,
+          initiatorAddress:    row.initiatorAddress,
+          counterpartyAddress: row.counterpartyAddress,
+          htlcId:              row.htlcId,
+          status:              row.status,
+          updatedAt:           row.updatedAt,
+          minutesStuck,
+          htlcSwaps:           swapRows,
+        };
+      }));
+
+      return { swaps: enriched };
+    }),
+
+  /**
+   * Force-claim a stuck swap by rfqId.
+   * Triggers immediate server-side claims for both Agent A and Agent B HTLCs.
+   * Admin-only.
+   */
+  forceClaimSwap: protectedProcedure
+    .input(z.object({
+      rfqId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin only' });
+      }
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'DB unavailable' });
+
+      // Get the htlc_secret row
+      const [secretRow] = await db
+        .select()
+        .from(htlcSecrets)
+        .where(eq(htlcSecrets.rfqId, input.rfqId))
+        .limit(1);
+
+      if (!secretRow) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `No htlc_secret found for rfqId ${input.rfqId}` });
+      }
+
+      if (secretRow.status === 'completed') {
+        return { success: true, message: 'Already completed', results: [] };
+      }
+
+      // Get the two htlc_swaps rows
+      const swapRows = await db
+        .select()
+        .from(htlcSwaps)
+        .where(eq(htlcSwaps.rfqId, input.rfqId))
+        .limit(2);
+
+      if (swapRows.length === 0) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `No htlc_swaps found for rfqId ${input.rfqId}` });
+      }
+
+      // Import the claim executor
+      const { claimSolanaHtlc } = await import('../solanaHtlcClaim.js');
+
+      const results: Array<{ htlcId: string; chain: string; success: boolean; txSignature?: string; error?: string }> = [];
+
+      for (const swap of swapRows) {
+        if (!swap.htlcId) continue;
+        if (swap.status === 'completed') {
+          results.push({ htlcId: swap.htlcId, chain: swap.chain, success: true });
+          continue;
+        }
+        if (swap.chain !== 'solana') {
+          results.push({ htlcId: swap.htlcId, chain: swap.chain, success: false, error: 'Non-Solana force-claim not yet supported' });
+          continue;
+        }
+        try {
+          const result = await claimSolanaHtlc({
+            htlcId:      swap.htlcId,
+            secretHex:   secretRow.secretHex,
+            tokenSymbol: swap.toToken ?? 'SOL',
+            recipientAddress: swap.counterpartyAddress ?? swap.senderAddress ?? '',
+          });
+          // Update DB
+          await db
+            .update(htlcSwaps)
+            .set({ status: 'completed', updatedAt: new Date() })
+            .where(eq(htlcSwaps.id, swap.id));
+          results.push({ htlcId: swap.htlcId, chain: swap.chain, success: true, txSignature: result.txSignature });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          results.push({ htlcId: swap.htlcId, chain: swap.chain, success: false, error: msg });
+        }
+      }
+
+      // Mark htlc_secrets as completed if all succeeded
+      const allOk = results.every(r => r.success);
+      if (allOk) {
+        await db
+          .update(htlcSecrets)
+          .set({ status: 'completed', updatedAt: new Date() })
+          .where(eq(htlcSecrets.rfqId, input.rfqId));
+      }
+
+      return { success: allOk, message: allOk ? 'All claims succeeded' : 'Some claims failed', results };
     }),
 });

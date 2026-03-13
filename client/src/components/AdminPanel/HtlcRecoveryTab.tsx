@@ -53,6 +53,157 @@ function formatCountdown(timelockExpiry: number): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// ─── Stuck Swaps sub-component ──────────────────────────────────────────────
+
+function StuckSwapsSection() {
+  const { data, isLoading, refetch, isFetching } = trpc.history.getStuckSwaps.useQuery(
+    undefined,
+    { refetchInterval: 60_000 }
+  );
+
+  const forceClaimMut = trpc.history.forceClaimSwap.useMutation({
+    onSuccess: (res) => {
+      if (res.success) {
+        toast.success(`Force claim succeeded: ${res.results.map(r => r.txSignature?.slice(0, 8) + '…').join(', ')}`);
+      } else {
+        toast.warning(`Partial success: ${res.message}`);
+      }
+      refetch();
+    },
+    onError: (err) => toast.error(`Force claim failed: ${err.message}`),
+  });
+
+  const swaps = data?.swaps ?? [];
+
+  return (
+    <div className="rounded-2xl overflow-hidden mt-4" style={{ border: "1px solid rgba(239,68,68,0.25)" }}>
+      {/* Section header */}
+      <div
+        className="flex items-center gap-2 px-4 py-3"
+        style={{ background: "rgba(239,68,68,0.08)", borderBottom: "1px solid rgba(239,68,68,0.2)" }}
+      >
+        <Zap className="w-4 h-4 text-red-400" />
+        <p className="text-sm font-bold text-red-300">Stuck Swaps — Secret Revealed but Not Claimed</p>
+        <span
+          className="ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full"
+          style={{ background: "rgba(239,68,68,0.2)", color: "#ef4444" }}
+        >
+          {isLoading ? '…' : swaps.length}
+        </span>
+        <button
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all ml-2"
+          style={{ background: "var(--muted)", border: "1px solid var(--border)", color: "var(--muted-foreground)" }}
+        >
+          <RefreshCw className={`w-3 h-3 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-8 gap-2">
+          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Loading stuck swaps…</span>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!isLoading && swaps.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-8 gap-2">
+          <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          <p className="text-xs text-muted-foreground">No stuck swaps — all secrets have been claimed.</p>
+        </div>
+      )}
+
+      {/* Stuck swap rows */}
+      {swaps.length > 0 && (
+        <div className="divide-y" style={{ borderColor: "rgba(239,68,68,0.1)" }}>
+          {swaps.map((swap) => (
+            <div key={swap.rfqId} className="px-4 py-3 space-y-2">
+              {/* Row header */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(239,68,68,0.15)", color: "#f87171" }}
+                    >
+                      {swap.minutesStuck}m stuck
+                    </span>
+                    <span className="text-xs font-mono text-muted-foreground truncate">
+                      {swap.rfqId.slice(0, 30)}…
+                    </span>
+                    <button
+                      onClick={() => { navigator.clipboard.writeText(swap.rfqId); toast.success('rfqId copied'); }}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                    <span>{swap.fromChain} → {swap.toChain}</span>
+                    <span>{swap.fromToken ?? '?'} → {swap.toToken ?? '?'}</span>
+                    {swap.htlcId && (
+                      <a
+                        href={`https://solscan.io/account/${swap.htlcId}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-0.5 text-blue-400 hover:text-blue-300"
+                      >
+                        <ExternalLink className="w-2.5 h-2.5" />
+                        HTLC
+                      </a>
+                    )}
+                  </div>
+                  {/* HTLC swap rows */}
+                  {swap.htlcSwaps.length > 0 && (
+                    <div className="flex gap-2 mt-1 flex-wrap">
+                      {swap.htlcSwaps.map((s, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                          style={{
+                            background: s.status === 'completed' ? 'rgba(52,211,153,0.1)' : 'rgba(251,191,36,0.1)',
+                            color: s.status === 'completed' ? '#34d399' : '#fbbf24',
+                            border: `1px solid ${s.status === 'completed' ? 'rgba(52,211,153,0.2)' : 'rgba(251,191,36,0.2)'}`,
+                          }}
+                        >
+                          {s.htlcId?.slice(0, 8)}… · {s.status} · {s.toToken ?? '?'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Force Claim button */}
+                <button
+                  onClick={() => forceClaimMut.mutate({ rfqId: swap.rfqId })}
+                  disabled={forceClaimMut.isPending}
+                  className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                  style={{
+                    background: forceClaimMut.isPending ? 'rgba(239,68,68,0.1)' : 'rgba(239,68,68,0.15)',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    color: '#f87171',
+                  }}
+                >
+                  {forceClaimMut.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Zap className="w-3 h-3" />
+                  )}
+                  Force Claim
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function HtlcRecoveryTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -405,6 +556,9 @@ function HtlcRow({ htlc, expanded, onToggle, onMarkRefunded }: HtlcRowProps) {
           )}
         </div>
       )}
+
+      {/* ── Stuck Swaps section ── */}
+      <StuckSwapsSection />
     </div>
   );
 }
