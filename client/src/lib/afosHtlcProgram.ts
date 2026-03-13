@@ -268,9 +268,10 @@ export async function buildLockSolTx(
 }
 
 /**
- * Build a complete lock_token transaction ready for wallet signing
- * Note: The vault ATA must be created before calling this.
- * Use createVaultAtaIfNeeded() first.
+ * Build a complete lock_token transaction ready for wallet signing.
+ * Atomically includes vault ATA creation if it doesn't exist yet.
+ * The vault ATA must exist before the lock_token instruction runs —
+ * the program does NOT use init_if_needed for the vault ATA.
  */
 export async function buildLockTokenTx(
   connection: Connection,
@@ -281,6 +282,25 @@ export async function buildLockTokenTx(
   const tx = new Transaction();
   tx.recentBlockhash = blockhash;
   tx.feePayer = params.sender;
+
+  // Always pre-create the vault ATA atomically in the same tx.
+  // The lock_token instruction requires the vault ATA to already exist;
+  // it does NOT use init_if_needed. If the ATA already exists, this
+  // instruction is a no-op (createAssociatedTokenAccountIdempotent).
+  const createVaultAtaIx = new TransactionInstruction({
+    programId: SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
+    keys: [
+      { pubkey: params.sender, isSigner: true, isWritable: true },
+      { pubkey: vaultAta, isSigner: false, isWritable: true },
+      { pubkey: htlcPda, isSigner: false, isWritable: false },
+      { pubkey: params.tokenMint, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+    ],
+    // Using instruction 1 = createAssociatedTokenAccountIdempotent (no-op if exists)
+    data: Buffer.from([1]),
+  });
+  tx.add(createVaultAtaIx);
   tx.add(instruction);
   return { transaction: tx, htlcPda, vaultAta };
 }
