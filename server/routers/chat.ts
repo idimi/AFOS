@@ -2418,10 +2418,13 @@ export const chatRouter = router({
       // 'completed' means on-chain claims already settled.
       // In both cases, return the secret silently so the client can re-send it to the counterparty
       // if needed, but do NOT update the status or fire any side-effects again.
-      if (row.status === "revealed" || row.status === "completed") {
-        // Return the secret so the client can re-send to counterparty if the P2P message was lost,
-        // but mark this as a replay so the client knows not to show the toast again.
-        return { secretHex: row.secretHex, replay: true };
+      if (row.status === "completed") {
+        // Already fully settled — return completed flag so client can show success message
+        return { secretHex: row.secretHex, replay: true, completed: true };
+      }
+      if (row.status === "revealed") {
+        // Secret was sent but on-chain claims may still be in-flight — return replay only
+        return { secretHex: row.secretHex, replay: true, completed: false };
       }
       // Also handle stale 'locked' rows where the swap was actually completed but the status
       // was never updated (e.g. DB write failed, legacy rows). Detect by checking htlcSwaps.
@@ -2429,7 +2432,7 @@ export const chatRouter = router({
       // heal the stale status so it won't re-trigger on the next wallet connect.
       const healed = await healStaleHtlcSecret(input.rfqId);
       if (healed) {
-        return { secretHex: row.secretHex, replay: true };
+        return { secretHex: row.secretHex, replay: true, completed: true };
       }
       // Mark as revealed — also persist counterpartyAddress so the monitor can auto-claim on retry
       await updateHtlcSecretStatus(input.rfqId, "revealed", {
@@ -2482,7 +2485,10 @@ export const chatRouter = router({
         })();
       }
 
-      return { secretHex: row.secretHex, secretHashHex: row.secretHashHex };
+      // Return triggered:true when on-chain claims are being fired so Agent A's UI can
+      // dispatch afos:htlc-completed after a short delay (claims take ~5-10s to land).
+      const triggeredClaims = chain === "solana" && !!(input.htlcIdA && input.htlcIdB && input.counterpartyAddress);
+      return { secretHex: row.secretHex, secretHashHex: row.secretHashHex, triggered: triggeredClaims };
     }),
   /**
    * Mark an HTLC swap as completed or refunded (called after on-chain confirmation).

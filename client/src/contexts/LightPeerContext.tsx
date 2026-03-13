@@ -449,8 +449,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // was revealed (e.g. Agent B locked while Agent A was offline), this effect
   // autonomously re-triggers the reveal as soon as the wallet reconnects.
   // Uses exponential backoff: 5s → 15s → 45s → 2min → 5min (max 5 attempts).
-  const revealRetryCountRef = useRef<Record<string, number>>({});
-  const revealRetryTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const revealRetryCountRef    = useRef<Record<string, number>>({});
+  const revealRetryTimersRef   = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Maps rfqId → interval ID for polling htlc_secrets status until "completed"
+  const completionPollingRef   = useRef<Record<string, ReturnType<typeof setInterval>>>({}); 
 
   const triggerAutoReveal = useCallback(async (row: {
     rfqId: string;
@@ -501,9 +503,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         return;
       }
       const json = await res.json();
-      const batchResult = Array.isArray(json) ? json[0] : json;
-      const secretHex = batchResult?.result?.data?.json?.secretHex;
-      const isReplay  = batchResult?.result?.data?.json?.replay === true;
+      const batchResult  = Array.isArray(json) ? json[0] : json;
+      const secretHex    = batchResult?.result?.data?.json?.secretHex;
+      const isReplay     = batchResult?.result?.data?.json?.replay === true;
+      const isCompleted  = batchResult?.result?.data?.json?.completed === true;
+      const isTriggered  = batchResult?.result?.data?.json?.triggered === true;
       if (!secretHex) {
         console.warn(`[AutoReveal] No secretHex in response (attempt ${attempt})`);
         const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
@@ -521,6 +525,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       } else if (!targetPeerId) {
         console.log(`[AutoReveal] No counterpartyPeerId for rfqId=${rfqId.slice(0,8)} — skipping P2P signal (server handles on-chain claims)`);
       }
+      // If the swap was already fully completed (status=completed in DB), dispatch htlc-completed
+      // so Agent A's UI can show the success message even after a page reload.
+      if (isCompleted) {
+        console.log(`[AutoReveal] rfqId=${rfqId.slice(0,8)} already completed — dispatching afos:htlc-completed`);
+        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain } }));
+        // Clear retry counter on success
+        delete revealRetryCountRef.current[rfqId];
+        delete revealRetryTimersRef.current[rfqId];
+        return;
+      }
       // Only show the toast for genuinely new reveals — suppress it for replays
       // (replay = secret was already revealed in a previous session; status was 'revealed'/'completed').
       if (!isReplay) {
@@ -532,6 +546,39 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         console.log(`[AutoReveal] Replay for rfqId=${rfqId.slice(0,8)} — secret re-sent silently (no toast)`);
       }
       window.dispatchEvent(new CustomEvent("afos:htlc-secret-sent", { detail: { rfqId, secretHex } }));
+      // If the server is firing on-chain claims (triggered=true), start polling the DB
+      // status every 5s until it becomes "completed", then dispatch afos:htlc-completed.
+      // This ensures Agent A's UI shows the success message after both HTLCs are claimed.
+      if (isTriggered && !completionPollingRef.current[rfqId]) {
+        console.log(`[AutoReveal] rfqId=${rfqId.slice(0,8)} claims triggered — polling for completion`);
+        let pollCount = 0;
+        const maxPolls = 24; // 24 × 5s = 2 minutes max
+        completionPollingRef.current[rfqId] = setInterval(async () => {
+          pollCount++;
+          if (pollCount > maxPolls) {
+            clearInterval(completionPollingRef.current[rfqId]);
+            delete completionPollingRef.current[rfqId];
+            console.warn(`[CompletionPoll] rfqId=${rfqId.slice(0,8)} timed out waiting for completion`);
+            return;
+          }
+          try {
+            const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, {
+              credentials: "include",
+            });
+            if (!pollRes.ok) return;
+            const pollJson = await pollRes.json();
+            const status = (pollJson as Array<{ result?: { data?: { json?: { status?: string } } } }>)?.[0]?.result?.data?.json?.status;
+            if (status === "completed") {
+              clearInterval(completionPollingRef.current[rfqId]);
+              delete completionPollingRef.current[rfqId];
+              console.log(`[CompletionPoll] rfqId=${rfqId.slice(0,8)} completed — dispatching afos:htlc-completed`);
+              window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain } }));
+            }
+          } catch (pollErr) {
+            console.warn(`[CompletionPoll] rfqId=${rfqId.slice(0,8)} poll error:`, pollErr);
+          }
+        }, 5_000);
+      }
       // Clear retry counter on success
       delete revealRetryCountRef.current[rfqId];
       delete revealRetryTimersRef.current[rfqId];
@@ -925,6 +972,31 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             duration: 10000,
           });
           window.dispatchEvent(new CustomEvent("afos:htlc-secret-sent", { detail: { rfqId, secretHex } }));
+          // Start polling for completion so Agent A's UI shows success when both claims land.
+          if (!completionPollingRef.current[rfqId]) {
+            const fromChainLocal = chain ?? "solana";
+            let pollCount = 0;
+            const maxPolls = 24;
+            completionPollingRef.current[rfqId] = setInterval(async () => {
+              pollCount++;
+              if (pollCount > maxPolls) {
+                clearInterval(completionPollingRef.current[rfqId]);
+                delete completionPollingRef.current[rfqId];
+                return;
+              }
+              try {
+                const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
+                if (!pollRes.ok) return;
+                const pollJson = await pollRes.json();
+                const pollStatus = (pollJson as Array<{ result?: { data?: { json?: { status?: string } } } }>)?.[0]?.result?.data?.json?.status;
+                if (pollStatus === "completed") {
+                  clearInterval(completionPollingRef.current[rfqId]);
+                  delete completionPollingRef.current[rfqId];
+                  window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChainLocal } }));
+                }
+              } catch { /* non-critical */ }
+            }, 5_000);
+          }
         } catch (e) {
           console.error("[HTLC] Error revealing secret:", e);
         }

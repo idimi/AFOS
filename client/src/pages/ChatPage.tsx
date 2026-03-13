@@ -1630,8 +1630,9 @@ export default function ChatPage() {
         return prev;
       });
     };
-    window.addEventListener("afos:htlc-completed", (e) => void handler(e));
-    return () => window.removeEventListener("afos:htlc-completed", (e) => void handler(e));
+    const wrappedHandler = (e: Event) => void handler(e);
+    window.addEventListener("afos:htlc-completed", wrappedHandler);
+    return () => window.removeEventListener("afos:htlc-completed", wrappedHandler);
   }, [setMessages, balances, refreshBalances]);
 
   const handleSend = useCallback(async (text?: string) => {
