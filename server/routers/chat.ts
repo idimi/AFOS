@@ -2596,4 +2596,98 @@ export const chatRouter = router({
         createdAt:           r.createdAt,
       }));
     }),
+
+  /**
+   * Webhook called by Agent B's browser immediately after their HTLC lock tx is confirmed
+   * on-chain. This allows the server to trigger auto-claim without waiting for the 5-minute
+   * stale timer in HtlcSecretsMonitor.
+   *
+   * Flow:
+   *   1. Agent B's lock tx confirms on-chain
+   *   2. Agent B's browser calls this endpoint with rfqId, htlcIdB, senderWallet, lockTxHash
+   *   3. Server looks up the htlc_secrets row (must be in 'locked' or 'revealed' status)
+   *   4. Server immediately fires claimSolanaHtlc for both sides (fire-and-forget)
+   *   5. Returns { triggered: true } so Agent B's UI can show "Settlement in progress"
+   */
+  notifyAgentBLocked: publicProcedure
+    .input(z.object({
+      rfqId:          z.string(),          // Full rfqId (e.g. rfq_1773375728714_lp-c7de5)
+      htlcIdB:        z.string(),          // Agent B's PDA seed (htlc_b_...)
+      senderWallet:   z.string(),          // Agent B's wallet address (for auth + claim routing)
+      lockTxHash:     z.string().optional(), // On-chain lock tx signature (for logging)
+      chain:          z.string().optional(), // "solana" | "ethereum" etc.
+    }))
+    .mutation(async ({ input }) => {
+      const { rfqId, htlcIdB, senderWallet, lockTxHash, chain = "solana" } = input;
+
+      // Look up the htlc_secrets row for this rfqId
+      const row = await getHtlcSecret(rfqId);
+      if (!row) {
+        console.warn(`[AgentBWebhook] No htlc_secrets row for rfqId=${rfqId.slice(0, 12)} — ignoring`);
+        return { triggered: false, reason: "no_secret" };
+      }
+
+      // Guard: only fire if the swap is still in progress (locked or revealed)
+      if (row.status === "completed" || row.status === "refunded" || row.status === "expired") {
+        console.log(`[AgentBWebhook] rfqId=${rfqId.slice(0, 12)} already ${row.status} — skipping`);
+        return { triggered: false, reason: row.status };
+      }
+
+      // Persist Agent B's lock details so HtlcSecretsMonitor has them if we crash
+      await updateHtlcSecretStatus(rfqId, "revealed", {
+        counterpartyAddress: senderWallet,
+        lockTxId: lockTxHash ?? row.lockTxId ?? undefined,
+      });
+
+      // Resolve htlcIdA from the stored row (htlcId column holds Agent A's seed)
+      const htlcIdA = row.htlcId ?? `htlc_a_${rfqId.slice(0, 22)}`;
+      const initiatorAddress = row.initiatorAddress ?? "";
+
+      if (!initiatorAddress) {
+        console.warn(`[AgentBWebhook] Missing initiatorAddress for rfqId=${rfqId.slice(0, 12)} — cannot auto-claim`);
+        return { triggered: false, reason: "no_initiator" };
+      }
+
+      console.log(`[AgentBWebhook] Agent B locked — triggering immediate claims for rfqId=${rfqId.slice(0, 12)}`);
+
+      // Determine token symbols
+      const SPL_TOKENS = new Set(["USDT", "USDC"]);
+      const fromTokenSym = row.fromToken?.toUpperCase() ?? "SOL";
+      const toTokenSym   = row.toToken?.toUpperCase()   ?? "SOL";
+      const tokenSymA    = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined;
+      const tokenSymB    = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined;
+
+      // Fire-and-forget: trigger both claims immediately
+      void (async () => {
+        try {
+          // Claim Agent A's lock → release to Agent B
+          const claimA = await claimSolanaHtlc({
+            htlcId:           htlcIdA,
+            secretHex:        row.secretHex,
+            recipientAddress: senderWallet,
+            tokenSymbol:      tokenSymA,
+          });
+          console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+
+          // Claim Agent B's lock → release to Agent A
+          const claimB = await claimSolanaHtlc({
+            htlcId:           htlcIdB,
+            secretHex:        row.secretHex,
+            recipientAddress: initiatorAddress,
+            tokenSymbol:      tokenSymB,
+          });
+          console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+
+          await updateHtlcSecretStatus(rfqId, "completed", {
+            revealTxId: claimA.txSignature,
+          });
+          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed successfully`);
+        } catch (err) {
+          // Non-fatal: HtlcSecretsMonitor will retry after 5 minutes
+          console.error(`[AgentBWebhook] Auto-claim failed for rfqId=${rfqId.slice(0, 12)}:`, err instanceof Error ? err.message : err);
+        }
+      })();
+
+      return { triggered: true };
+    }),
 });

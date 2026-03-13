@@ -2032,6 +2032,39 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               onClick: () => window.open(`https://solscan.io/tx/${txHash}`, "_blank"),
             },
           });
+
+          // ── Webhook: notify server immediately so it can trigger auto-claim ──
+          // Agent B calls this after their lock is confirmed. The server fires both
+          // claims (Agent A's lock → Agent B, Agent B's lock → Agent A) without
+          // waiting for the 5-minute HtlcSecretsMonitor stale timer.
+          if (!isAgentA) {
+            void (async () => {
+              try {
+                const webhookRes = await fetch("/api/trpc/chat.notifyAgentBLocked?batch=1", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ "0": { json: {
+                    rfqId,
+                    htlcIdB:      htlcId,
+                    senderWallet: senderPubkeyStr,
+                    lockTxHash:   txHash,
+                    chain:        "solana",
+                  } } }),
+                });
+                if (webhookRes.ok) {
+                  const webhookJson = await webhookRes.json();
+                  const triggered = (webhookJson as Array<{ result?: { data?: { json?: { triggered?: boolean } } } }>)?.[0]?.result?.data?.json?.triggered;
+                  console.log(`[AgentBWebhook] notifyAgentBLocked → triggered=${triggered}`);
+                } else {
+                  console.warn("[AgentBWebhook] notifyAgentBLocked failed:", webhookRes.status);
+                }
+              } catch (webhookErr) {
+                // Non-fatal: HtlcSecretsMonitor will retry after 5 minutes
+                console.warn("[AgentBWebhook] notifyAgentBLocked network error:", webhookErr);
+              }
+            })();
+          }
         } catch (solErr: unknown) {
           const msg = solErr instanceof Error ? solErr.message : String(solErr);
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
