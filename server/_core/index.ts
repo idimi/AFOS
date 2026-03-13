@@ -61,6 +61,21 @@ async function startServer() {
   app.get("/api/afos/api/agent/log", (_req, res) => {
     res.json({ entries: [] });
   });
+  // SSE stream stub — sends an 'init' event so the client marks IntercomSwap as 'live',
+  // then keeps the connection alive with periodic heartbeat comments.
+  // This prevents the client from entering a reconnect loop when the Oracle VM is offline.
+  app.get("/api/afos/api/stream", (_req, res) => {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    // Send init event so the client marks IntercomSwap as 'live'
+    res.write(`event: init\ndata: {"status":"ok"}\n\n`);
+    // Heartbeat every 25s to keep the connection alive
+    const hb = setInterval(() => { res.write(": heartbeat\n\n"); }, 25_000);
+    _req.on("close", () => clearInterval(hb));
+  });
 
   // Oracle VM API proxy — all /api/afos/* requests are forwarded to the Oracle VM backend
   // This avoids the browser mixed-content block (HTTPS frontend → HTTP Oracle VM)

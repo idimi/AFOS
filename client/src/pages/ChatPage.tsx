@@ -1536,7 +1536,7 @@ export default function ChatPage() {
     return () => window.removeEventListener("afos:htlc-locked", handler);
   }, [setMessages]);
 
-  // ── HTLC secret sent: we revealed the secret to counterparty ────────────────
+    // ── HTLC secret sent: we revealed the secret to counterparty ────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail as { rfqId?: string; secretHex?: string };
@@ -1548,7 +1548,9 @@ export default function ChatPage() {
           updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "settling" } };
           return updated;
         }
-        return [...prev, { id: `htlc-secret-sent-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\u2705 **HTLC secret revealed** \u2014 counterparty can now claim. Your swap is settling.`, timestamp: Date.now() }];
+        // No matching swap card in this session — this rfqId belongs to a previous session.
+        // Silently ignore to avoid ghost "HTLC secret revealed" messages.
+        return prev;
       });
     };
     window.addEventListener("afos:htlc-secret-sent", handler);
@@ -1567,7 +1569,8 @@ export default function ChatPage() {
           updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
           return updated;
         }
-        return [...prev, { id: `htlc-secret-rcv-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\uD83D\uDD13 **HTLC secret received** \u2014 claiming your funds from escrow now.`, timestamp: Date.now() }];
+            // No matching swap card — ghost event from a previous session. Suppress silently.
+        return prev;
       });
     };
     window.addEventListener("afos:htlc-secret-received", handler);
@@ -1586,7 +1589,8 @@ export default function ChatPage() {
           updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "expired", errorMsg: "HTLC window expired. Funds will be refunded automatically." } };
           return updated;
         }
-        return [...prev, { id: `htlc-expired-${Date.now()}`, role: "assistant" as const, type: "text" as const, content: `\u26A0\uFE0F **HTLC expired**${data.chain ? ` on ${data.chain}` : ""}. Locked funds will be refunded automatically.`, timestamp: Date.now() }];
+          // No matching swap card — ghost event from a previous session. Suppress silently.
+        return prev;
       });
     };
     window.addEventListener("afos:htlc-expired", handler);
