@@ -1,0 +1,49 @@
+{
+  "query": "SELECT id, rfqId, status, chain, htlcAddress, lockTxId, refundTxId, senderAddress, recipientAddress, amountHuman, createdAt FROM htlc_swaps WHERE rfqId LIKE '%rfq_1773375728714%' OR rfqId LIKE '%rfq_1773374809360%' ORDER BY id DESC LIMIT 10;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, rfqId, status, chain, htlcAddress, lockTxId, refundTxId, senderAddress, recipientAddress, amountHuman, createdAt FROM htlc_swaps WHERE rfqId LIKE '%rfq_1773375728714%' OR rfqId LIKE '%rfq_1773374809360%' ORDER BY id DESC LIMIT 10;",
+  "rows": [
+    {
+      "id": "14",
+      "rfqId": "rfq_1773375728714_lp-c7de5",
+      "status": "pending",
+      "chain": "solana",
+      "htlcAddress": "F4dURpRk6qfM8WMsToCssXwZuqmvGBYRSJ8D917jbJb9",
+      "lockTxId": "2c6Gqkh9K3xK9qgaSEc1rKbUSpM9z2Wd2tqoEwnpkqs5pMHG2ndJWTirrgiJPtBNFcCYR2UmTDVXgMpbKH69y1MX",
+      "refundTxId": "NULL",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "amountHuman": "0.89235945",
+      "createdAt": "2026-03-13 04:22:44"
+    },
+    {
+      "id": "13",
+      "rfqId": "rfq_1773375728714_lp-c7de5",
+      "status": "pending",
+      "chain": "solana",
+      "htlcAddress": "7n2BWJUeAdspNPrAQ4CsjfsAzC5giX4k9N89rUGQuHZn",
+      "lockTxId": "227ALQWPisaGFfozpKe92BEZ6kitX9TXrzMKERYmikj1m7LPBWF2CK5p3XaWjfuCoxS6aUVPWxtXWobUkhuj4f3b",
+      "refundTxId": "NULL",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "amountHuman": "0.01",
+      "createdAt": "2026-03-13 04:22:23"
+    },
+    {
+      "id": "12",
+      "rfqId": "rfq_1773374809360_lp-c7de5",
+      "status": "pending",
+      "chain": "solana",
+      "htlcAddress": "gDGWLWBZ7J7cKc9RRvDz8sUx5Qw9PEFCFUYszNStTcb",
+      "lockTxId": "UwQRxgMkKu1JEMyYLPqobyPzEFsYFxam87WGCubtqUKMUiZKjC4kYV7y17Xv1W3CSu8biGYZqU6p1w2zQ5n17Rn",
+      "refundTxId": "NULL",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "amountHuman": "0.01",
+      "createdAt": "2026-03-13 04:07:04"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\tstatus\tchain\thtlcAddress\tlockTxId\trefundTxId\tsenderAddress\trecipientAddress\tamountHuman\tcreatedAt\n14\trfq_1773375728714_lp-c7de5\tpending\tsolana\tF4dURpRk6qfM8WMsToCssXwZuqmvGBYRSJ8D917jbJb9\t2c6Gqkh9K3xK9qgaSEc1rKbUSpM9z2Wd2tqoEwnpkqs5pMHG2ndJWTirrgiJPtBNFcCYR2UmTDVXgMpbKH69y1MX\tNULL\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t0.89235945\t2026-03-13 04:22:44\n13\trfq_1773375728714_lp-c7de5\tpending\tsolana\t7n2BWJUeAdspNPrAQ4CsjfsAzC5giX4k9N89rUGQuHZn\t227ALQWPisaGFfozpKe92BEZ6kitX9TXrzMKERYmikj1m7LPBWF2CK5p3XaWjfuCoxS6aUVPWxtXWobUkhuj4f3b\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t0.01\t2026-03-13 04:22:23\n12\trfq_1773374809360_lp-c7de5\tpending\tsolana\tgDGWLWBZ7J7cKc9RRvDz8sUx5Qw9PEFCFUYszNStTcb\tUwQRxgMkKu1JEMyYLPqobyPzEFsYFxam87WGCubtqUKMUiZKjC4kYV7y17Xv1W3CSu8biGYZqU6p1w2zQ5n17Rn\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t0.01\t2026-03-13 04:07:04\n",
+  "stderr": "",
+  "execution_time_ms": 378
+}

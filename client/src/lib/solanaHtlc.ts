@@ -147,7 +147,7 @@ export async function buildSolanaHtlcLockTx(
     // because the ATA owner (htlcPda) doesn't exist yet at that point.
     return {
       transaction,
-      escrowAddress: vaultAta.toBase58(),
+      escrowAddress: htlcPda.toBase58(), // HTLC PDA (state account), NOT the vault ATA
       secretHash,
       timelock,
       htlcId,

@@ -1224,6 +1224,7 @@ export const chatRouter = router({
           // On-chain HTLC tracking
           htlcId:             `htlc_${p2pQuote.rfqId.slice(0, 24)}`,
           initiatorAddress:   userPublicKey ?? undefined,
+          counterpartyAddress: p2pQuote.counterpartyPubKey ?? undefined, // Agent B's Solana wallet — needed for auto-claim
           fromToken:          (fromToken ?? "SOL").toUpperCase(),
           toToken:            (toToken ?? "USDT").toUpperCase(),
         }).catch(() => {/* non-fatal */});
