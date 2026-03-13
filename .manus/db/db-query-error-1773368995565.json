@@ -1,0 +1,8 @@
+{
+  "query": "SELECT rfq_id, status, expires_at, from_chain, from_token, to_token, lock_tx_id, initiator_address, counterparty_address, counterparty_peer_id, created_at FROM htlc_secrets WHERE rfq_id LIKE 'rfq_1773368%' ORDER BY created_at DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfq_id, status, expires_at, from_chain, from_token, to_token, lock_tx_id, initiator_address, counterparty_address, counterparty_peer_id, created_at FROM htlc_secrets WHERE rfq_id LIKE 'rfq_1773368%' ORDER BY created_at DESC LIMIT 5;",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 1: Unknown column 'rfq_id' in 'where clause'"
+  ]
+}

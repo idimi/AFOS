@@ -30,8 +30,9 @@ const SPL_TOKEN_PROGRAM_ID = new PublicKey(
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 );
 
+// CRITICAL: Canonical Associated Token Program ID — wrong address = wrong ATA = InvalidAccountData
 const SPL_ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bE"
+  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 );
 
 // Anchor discriminator for refund instruction: SHA256("global:refund")[0..8]

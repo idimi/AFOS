@@ -1790,6 +1790,30 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           let escrowAddress: string;
 
           if (isNativeSol) {
+            // ── Pre-flight: verify sender has enough SOL to cover lock + rent + fee ──
+            // InsufficientFundsForRent happens when:
+            //   balance < lockAmount + PDA_rent (~0.00114 SOL) + tx_fee (~0.00008 SOL) + sender_rent_exempt_min (~0.00089 SOL)
+            // Total overhead ≈ 0.00211 SOL. We use 0.005 SOL as a safe buffer.
+            const SOL_LOCK_OVERHEAD_LAMPORTS = 5_000_000; // 0.005 SOL buffer for rent + fees
+            try {
+              const senderBalance = await solConnection.getBalance(senderPubkeyObj, "confirmed");
+              const lockLamports = Math.round(lockAmount * 1e9);
+              const needed = lockLamports + SOL_LOCK_OVERHEAD_LAMPORTS;
+              if (senderBalance < needed) {
+                const haveSol = (senderBalance / 1e9).toFixed(4);
+                const needSol = (needed / 1e9).toFixed(4);
+                const msg = `Insufficient SOL. You have ${haveSol} SOL but need at least ${needSol} SOL (${lockAmount} SOL to lock + 0.005 SOL for rent & fees).`;
+                console.error("[HTLC] Pre-flight balance check failed:", msg);
+                setHtlcSigning(prev => prev ? { ...prev, step: 'failed', error: msg } : { rfqId, step: 'failed', error: msg });
+                toast.error('Insufficient SOL balance', { description: msg });
+                return;
+              }
+              console.log(`[HTLC] Pre-flight balance check: ${senderBalance} lamports (need ${needed}) for ${senderPubkeyStr.slice(0,8)}...`);
+            } catch (balErr) {
+              // If balance check fails (network), proceed and let the tx fail naturally
+              console.warn("[HTLC] Pre-flight SOL balance check failed (network), proceeding:", balErr);
+            }
+
             // ── Native SOL lock (Agent A in SOL→USDT, or Agent B in USDT→SOL) ──
             const result = await buildSolanaHtlcLockTx({
               senderPubkey:    senderPubkeyObj,
@@ -1923,9 +1947,33 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               // Definitive failure — do NOT record in DB, throw to outer catch
               throw confirmErr;
             }
-            // Timeout or network error — record anyway (Helius webhook will update status)
-            console.warn("[HTLC] confirmTransaction timed out — recording deposit anyway:", confirmMsg);
-            txConfirmed = true; // Optimistic: record and let webhook correct if needed
+            // Timeout or network error — NEVER proceed optimistically.
+            // A failed tx would trigger false-positive settlement (USDT never moves).
+            // Verify the actual tx status via getSignatureStatus before continuing.
+            console.warn("[HTLC] confirmTransaction timed out — verifying tx status on-chain:", confirmMsg);
+            try {
+              const statusResp = await solConnection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+              const txStatus = statusResp?.value;
+              if (!txStatus) {
+                throw new Error("HTLC lock transaction not found on-chain after timeout — please retry");
+              }
+              if (txStatus.err) {
+                const errStr = JSON.stringify(txStatus.err);
+                console.error("[HTLC] Lock tx confirmed FAILED on-chain:", errStr);
+                throw new Error(`HTLC lock transaction failed on-chain: ${errStr}`);
+              }
+              // Status exists and no error — tx succeeded
+              console.log("[HTLC] Tx verified on-chain after timeout:", txHash);
+              txConfirmed = true;
+            } catch (verifyErr) {
+              const verifyMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+              if (verifyMsg.includes("failed on-chain") || verifyMsg.includes("not found on-chain")) {
+                throw verifyErr; // Definitive failure — propagate to outer catch
+              }
+              // getSignatureStatus itself failed (network) — still do not proceed optimistically
+              console.error("[HTLC] Could not verify tx status after timeout:", verifyMsg);
+              throw new Error(`HTLC lock could not be verified on-chain: ${verifyMsg}`);
+            }
           }
 
           if (!txConfirmed) {

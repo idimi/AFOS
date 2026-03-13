@@ -1,0 +1,43 @@
+{
+  "query": "SELECT rfqId, status, expiresAt, fromChain, fromToken, toToken, lockTxId, initiatorAddress, counterpartyAddress FROM htlc_secrets ORDER BY createdAt DESC LIMIT 3;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, status, expiresAt, fromChain, fromToken, toToken, lockTxId, initiatorAddress, counterpartyAddress FROM htlc_secrets ORDER BY createdAt DESC LIMIT 3;",
+  "rows": [
+    {
+      "rfqId": "rfq_1773368673516_lp-c7de5",
+      "status": "revealed",
+      "expiresAt": "1773372273516",
+      "fromChain": "solana",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "lockTxId": "NULL",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "NULL"
+    },
+    {
+      "rfqId": "rfq_1773365303738_lp-c7de5",
+      "status": "expired",
+      "expiresAt": "1773365363738",
+      "fromChain": "solana",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "lockTxId": "NULL",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "NULL"
+    },
+    {
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "status": "completed",
+      "expiresAt": "1773359604103",
+      "fromChain": "solana",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "lockTxId": "NULL",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    }
+  ],
+  "messages": [],
+  "stdout": "rfqId\tstatus\texpiresAt\tfromChain\tfromToken\ttoToken\tlockTxId\tinitiatorAddress\tcounterpartyAddress\nrfq_1773368673516_lp-c7de5\trevealed\t1773372273516\tsolana\tSOL\tUSDT\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\nrfq_1773365303738_lp-c7de5\texpired\t1773365363738\tsolana\tSOL\tUSDT\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tNULL\nrfq_1773359544103_lp-c7de5\tcompleted\t1773359604103\tsolana\tSOL\tUSDT\tNULL\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n",
+  "stderr": "",
+  "execution_time_ms": 351
+}

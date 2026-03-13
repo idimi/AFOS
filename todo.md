@@ -2853,3 +2853,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] On-chain polling: when Agent B lock detected on-chain, triggers triggerAutoReveal as fallback for dropped P2P htlc_locked messages
 - [x] On-chain polling: skips already-revealed rfqs (htlcRevealedSecrets check) to avoid double-reveal
 - [x] agentAWalletByRfqRef persisted to localStorage and restored on wallet connect for page-refresh resilience
+
+## Critical Bug: False-Positive Settlement (Session 2026-03-13 #4)
+- [x] BUG: Agent B shows "Swap Complete" but USDT never moved — false positive settlement
+- [x] BUG: Agent A settlement never completed — stuck at "Atomic Settlement" step
+- [x] ROOT CAUSE 1: Wrong ASSOCIATED_TOKEN_PROGRAM_ID in afosHtlcProgram.ts, solanaHtlcClaim.ts, solanaHtlcRefund.ts — last 4 chars of address were wrong (e1bE vs A8knL), causing InvalidAccountData on all SPL token HTLC txes
+- [x] ROOT CAUSE 2: "confirmation timed out — recording deposit anyway" — optimistic false-positive; fixed by verifying tx status via getSignatureStatus after timeout
+- [x] ROOT CAUSE 3: InsufficientFundsForRent on Agent A's SOL lock — added pre-flight balance check (needs lockAmount + 0.005 SOL overhead)
+- [ ] ROOT CAUSE 4: "502 Bad Gateway" on /api/trpc/chat.revealHtlcSecret — server error during reveal (investigate separately)
+- [x] FIX: Wrong ATA program ID fixed in all 3 files — SPL token HTLC lock/claim/refund will now derive correct ATAs
+- [x] FIX: confirmTransaction timeout no longer records deposit optimistically — verifies on-chain status first
+- [x] FIX: Pre-flight SOL balance check added — clear error shown before tx if insufficient funds
