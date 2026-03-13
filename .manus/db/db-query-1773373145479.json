@@ -1,0 +1,76 @@
+{
+  "query": "SELECT id, htlcId, status, chain, htlcAddress, lockTxId, refundTxId, secretHash, amountHuman FROM htlc_swaps WHERE chain = 'solana' ORDER BY id DESC LIMIT 6;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, htlcId, status, chain, htlcAddress, lockTxId, refundTxId, secretHash, amountHuman FROM htlc_swaps WHERE chain = 'solana' ORDER BY id DESC LIMIT 6;",
+  "rows": [
+    {
+      "id": "11",
+      "htlcId": "htlc_b_rfq_1773368673516_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "8o4UZpRzeRjvuqs1Rh5Pqc48eAuq9bSioh2hR1u4QvZU",
+      "lockTxId": "2JW7a1CYT12fbpHqceR2iJEvbQZeaDqYy3iPByQW6wqwJB4d82ZXn6Hm5aWGaQHb54GJGY96hxn8KQpBELBS2vdo",
+      "refundTxId": "auto-detected-closed",
+      "secretHash": "0d863f07574a36c700fa931d0aea472a74c4b073749a41ac615cc04de99632c7",
+      "amountHuman": "0.8992491000000001"
+    },
+    {
+      "id": "10",
+      "htlcId": "htlc_a_rfq_1773368673516_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "7hbBBmV43mi7o7s1JKEXe2DMwmsixp5jGCbZs1WkrvL1",
+      "lockTxId": "3QKReYodnM56Q8BZjbLT9468fN3UtQyNKpBujti7bxYyV8Uzz7y1agudLykG5CM2AEJdM67pTmqMTw3qJoafy7Bm",
+      "refundTxId": "auto-detected-closed",
+      "secretHash": "0d863f07574a36c700fa931d0aea472a74c4b073749a41ac615cc04de99632c7",
+      "amountHuman": "0.01"
+    },
+    {
+      "id": "9",
+      "htlcId": "htlc_b_rfq_1773365303738_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "4MtWjuQm5RLuMcJABF8nxAQvkB8ac3weZ5MQhbUpLj4r",
+      "lockTxId": "41yEWUyAo2iV6zRFG3Tp8qoQiW3vK4SgaM7SVJDFkUVUQGFKQvv51hcdWJ4t5nMC8idUXQFVrcByipB98BMBkfJ5",
+      "refundTxId": "auto-detected-closed",
+      "secretHash": "982c4f318800763df9704a6b9e39c1c9a9694e4b84961468f36b9ee7c6083fc6",
+      "amountHuman": "0.8990494000000001"
+    },
+    {
+      "id": "8",
+      "htlcId": "htlc_a_rfq_1773365303738_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf",
+      "lockTxId": "4bKF2SCDxxCZvqHqwy5VzQQGyvQKAhp16oNLJDb1E7EoKbZB4YkcfMxaWmdnyHyt34TKyfBTqhgHH5XShwFP1erW",
+      "refundTxId": "auto-detected-already-refunded",
+      "secretHash": "982c4f318800763df9704a6b9e39c1c9a9694e4b84961468f36b9ee7c6083fc6",
+      "amountHuman": "0.01"
+    },
+    {
+      "id": "7",
+      "htlcId": "htlc_b_rfq_1773359544103_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd",
+      "lockTxId": "67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U",
+      "refundTxId": "auto-detected-closed",
+      "secretHash": "90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5",
+      "amountHuman": "0.8684953000000001"
+    },
+    {
+      "id": "6",
+      "htlcId": "htlc_a_rfq_1773359544103_lp-c",
+      "status": "refunded",
+      "chain": "solana",
+      "htlcAddress": "4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6",
+      "lockTxId": "3rPJU7QaGYFisUaRHWXuPinEtVkRgM1ovbiBaZbK8js5fzEe2pSREwkMHnysGc71q8rVgsj5PJdCzofhqWTMuJD6",
+      "refundTxId": "already-settled",
+      "secretHash": "90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5",
+      "amountHuman": "0.01"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\thtlcId\tstatus\tchain\thtlcAddress\tlockTxId\trefundTxId\tsecretHash\tamountHuman\n11\thtlc_b_rfq_1773368673516_lp-c\trefunded\tsolana\t8o4UZpRzeRjvuqs1Rh5Pqc48eAuq9bSioh2hR1u4QvZU\t2JW7a1CYT12fbpHqceR2iJEvbQZeaDqYy3iPByQW6wqwJB4d82ZXn6Hm5aWGaQHb54GJGY96hxn8KQpBELBS2vdo\tauto-detected-closed\t0d863f07574a36c700fa931d0aea472a74c4b073749a41ac615cc04de99632c7\t0.8992491000000001\n10\thtlc_a_rfq_1773368673516_lp-c\trefunded\tsolana\t7hbBBmV43mi7o7s1JKEXe2DMwmsixp5jGCbZs1WkrvL1\t3QKReYodnM56Q8BZjbLT9468fN3UtQyNKpBujti7bxYyV8Uzz7y1agudLykG5CM2AEJdM67pTmqMTw3qJoafy7Bm\tauto-detected-closed\t0d863f07574a36c700fa931d0aea472a74c4b073749a41ac615cc04de99632c7\t0.01\n9\thtlc_b_rfq_1773365303738_lp-c\trefunded\tsolana\t4MtWjuQm5RLuMcJABF8nxAQvkB8ac3weZ5MQhbUpLj4r\t41yEWUyAo2iV6zRFG3Tp8qoQiW3vK4SgaM7SVJDFkUVUQGFKQvv51hcdWJ4t5nMC8idUXQFVrcByipB98BMBkfJ5\tauto-detected-closed\t982c4f318800763df9704a6b9e39c1c9a9694e4b84961468f36b9ee7c6083fc6\t0.8990494000000001\n8\thtlc_a_rfq_1773365303738_lp-c\trefunded\tsolana\t8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf\t4bKF2SCDxxCZvqHqwy5VzQQGyvQKAhp16oNLJDb1E7EoKbZB4YkcfMxaWmdnyHyt34TKyfBTqhgHH5XShwFP1erW\tauto-detected-already-refunded\t982c4f318800763df9704a6b9e39c1c9a9694e4b84961468f36b9ee7c6083fc6\t0.01\n7\thtlc_b_rfq_1773359544103_lp-c\trefunded\tsolana\t9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd\t67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U\tauto-detected-closed\t90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5\t0.8684953000000001\n6\thtlc_a_rfq_1773359544103_lp-c\trefunded\tsolana\t4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6\t3rPJU7QaGYFisUaRHWXuPinEtVkRgM1ovbiBaZbK8js5fzEe2pSREwkMHnysGc71q8rVgsj5PJdCzofhqWTMuJD6\talready-settled\t90a44a7d3f72442a2d975f8b92d4d153c3c9208cc23fcc596375c566346f45d5\t0.01\n",
+  "stderr": "",
+  "execution_time_ms": 363
+}

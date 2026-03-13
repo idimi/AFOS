@@ -1015,8 +1015,10 @@ interface RefundRecord {
   failReason: string;
   htlcExpiry: Date;
   status: "pending" | "claimable" | "claimed" | "refunded" | "expired";
-  txHash: string;
-  escrowPda: string;
+  txHash: string;         // real tx signature for lock tx (always valid base58)
+  refundTxHash: string | null; // real tx signature for refund tx (null if placeholder)
+  escrowPda: string;      // truncated PDA for display
+  pdaAddress: string;     // full PDA address for explorer link
   chain: string;
   htlcAddress: string;
   secretHash: string;
@@ -1031,6 +1033,10 @@ interface RefundRecord {
 const PRICE_ESTIMATES: Record<string, number> = {
   BTC: 95000, ETH: 3000, SOL: 150, USDT: 1, USDC: 1, TNK: 0.01,
 };
+
+/** Returns true only for real base58 Solana/ETH/BTC tx signatures (not placeholder strings). */
+const isRealTxSig = (s: string | null | undefined): s is string =>
+  !!s && s.length >= 60 && !s.startsWith("auto-") && !s.startsWith("already-");
 
 function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
   // The native token for this chain
@@ -1077,8 +1083,10 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
     htlcExpiry,
     status,
-    txHash: row.refundTxId ?? row.lockTxId ?? row.secretHash.slice(0, 16) + "...",
+    txHash: isRealTxSig(row.lockTxId) ? row.lockTxId : "",
+    refundTxHash: isRealTxSig(row.refundTxId) ? row.refundTxId : null,
     escrowPda: row.htlcAddress.length > 20 ? row.htlcAddress.slice(0, 12) + "..." : row.htlcAddress,
+    pdaAddress: row.htlcAddress,
     chain: row.chain,
     htlcAddress: row.htlcAddress,
     secretHash: row.secretHash,
@@ -1452,14 +1460,30 @@ function RefundCard({
             ))}
           </div>
 
-          {/* Explorer links */}
-          {refund.txHash && !refund.txHash.endsWith("...") && (
-            <a href={explorerTxUrl(refund.chain, refund.txHash)} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 hover:text-cyan-300 transition-colors">
-              <ExternalLink className="w-2.5 h-2.5" />
-              View on explorer
-            </a>
-          )}
+          {/* Explorer links — lock tx + PDA account + refund tx */}
+          <div className="flex flex-wrap gap-3 mt-1">
+            {refund.txHash && (
+              <a href={explorerTxUrl(refund.chain, refund.txHash)} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 hover:text-cyan-300 transition-colors">
+                <ExternalLink className="w-2.5 h-2.5" />
+                Lock tx
+              </a>
+            )}
+            {refund.pdaAddress && (
+              <a href={explorerAddrUrl(refund.chain, refund.pdaAddress)} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[9px] font-mono text-cyan-400 hover:text-cyan-300 transition-colors">
+                <ExternalLink className="w-2.5 h-2.5" />
+                HTLC account
+              </a>
+            )}
+            {refund.refundTxHash && (
+              <a href={explorerTxUrl(refund.chain, refund.refundTxHash)} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[9px] font-mono text-emerald-400 hover:text-emerald-300 transition-colors">
+                <ExternalLink className="w-2.5 h-2.5" />
+                Refund tx
+              </a>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 shrink-0">
@@ -1720,8 +1744,10 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
       failReason: "HTLC expired — timelock passed without settlement",
       htlcExpiry: new Date((h.timelockExpiry ?? 0) * 1000),
       status: "claimable" as const,
-      txHash: h.htlcId,
+      txHash: "",           // no lock tx hash available from on-chain scan alone
+      refundTxHash: null,
       escrowPda: h.pdaAddress.slice(0, 12) + "...",
+      pdaAddress: h.pdaAddress,
       chain: h.chain,
       htlcAddress: h.chain === "solana" ? h.htlcId : h.pdaAddress,
       secretHash: h.secretHash ?? "",
