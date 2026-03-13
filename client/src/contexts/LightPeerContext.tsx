@@ -32,7 +32,7 @@ import {
   executeBtcHtlcLock,
   type BtcWalletProvider,
 } from "../lib/btcHtlc";
-import { buildSolanaHtlcLockTx, generateHtlcSecret } from "../lib/solanaHtlc";
+import { buildSolanaHtlcLockTx, generateHtlcSecret, checkHtlcProgramDeployed } from "../lib/solanaHtlc";
 import { buildSolanaTokenHtlcLockTx, TOKEN_MINTS } from "../lib/solanaTokenHtlc";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
@@ -1526,6 +1526,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           console.error("[HTLC-DEBUG] senderPubkeyStr", senderPubkeyStr, { fromAdapter: !!solPubkey, fromLivePhantom: !!liveSolAddress, fromStored: !!phantomSolAddress });
           if (!senderPubkeyStr) throw new Error("No Solana wallet address available");
           const senderPubkeyObj = new PublicKey(senderPubkeyStr);
+
+          // ── Pre-flight: verify HTLC program is deployed on-chain ──────────────
+          const programCheck = await checkHtlcProgramDeployed(solConnection);
+          if (!programCheck.deployed) {
+            const msg = programCheck.reason ?? "HTLC program not found on-chain. Please try again later.";
+            setHtlcSigning({ rfqId, step: 'failed', error: msg });
+            toast.error('HTLC program unavailable', { description: msg });
+            return;
+          }
 
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
           const { secretHex, secretHashHex } = rfq.secretHashHex

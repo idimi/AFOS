@@ -26,7 +26,6 @@ import {
   buildLockTokenTx,
   buildRefundInstruction,
   htlcIdToBytes,
-  createVaultAtaIfNeeded,
 } from "./afosHtlcProgram";
 
 // ─── Well-known SPL token mints ───────────────────────────────────────────────
@@ -141,26 +140,11 @@ export async function buildSolanaHtlcLockTx(
       tokenAmount: amount,
     });
 
-    // Create vault ATA if it doesn't exist yet (prepend to tx)
-    const createAtaIx = await createVaultAtaIfNeeded(connection, senderPubkey, htlcPda, tokenMint);
-    if (createAtaIx) {
-      const ataSetupTx = new Transaction();
-      ataSetupTx.recentBlockhash = transaction.recentBlockhash;
-      ataSetupTx.feePayer = senderPubkey;
-      ataSetupTx.add(createAtaIx);
-      // Merge: add the lock instruction to the setup tx
-      for (const ix of transaction.instructions) {
-        ataSetupTx.add(ix);
-      }
-      return {
-        transaction: ataSetupTx,
-        escrowAddress: vaultAta.toBase58(),
-        secretHash,
-        timelock,
-        htlcId,
-      };
-    }
-
+    // NOTE: Do NOT pre-create the vault ATA separately.
+    // The Anchor lock_token instruction uses `init_if_needed` to create both the
+    // htlcPda state account and the vaultAta atomically in a single instruction.
+    // Pre-creating the ATA before the htlcPda exists causes ProgramAccountNotFound
+    // because the ATA owner (htlcPda) doesn't exist yet at that point.
     return {
       transaction,
       escrowAddress: vaultAta.toBase58(),

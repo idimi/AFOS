@@ -2821,3 +2821,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix Refunds tab display bug: fromSymbol was always the chain native token (SOL) even when Agent B locked an SPL token (USDT). Fixed mapHtlcToRefund and mapHtlcToOpenTrade to use toToken as fromSymbol when it differs from the native token.
 - [x] Fix HTLC deposit recording: recordHtlcDeposit was called before on-chain confirmation, causing failed txes (ProgramAccountNotFound) to appear as pending in the Refunds tab. Added confirmTransaction check before recording — definitive failures throw and skip DB write.
 - [x] Cleaned up stuck phantom HTLC record: marked the failed 67QTT... tx as expired in the DB since the on-chain tx failed with ProgramAccountNotFound.
+- [x] Verify HTLC program deployed: XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW confirmed executable on Solscan. The 5YqKt6mJ tx was the program deployment tx.
+- [x] Fix solanaHtlc.ts: removed createVaultAtaIfNeeded pre-step that caused ProgramAccountNotFound — the Anchor program creates htlcPda and vaultAta atomically in lock_token; separate ATA creation before the PDA exists fails.
+- [x] Add pre-flight HTLC program check in LightPeerContext: checkHtlcProgramDeployed() called before building lock tx; shows clear error if program not found.
+- [x] Fix htlcSecretsMonitor claim B retry: added htlcPda existence pre-check in claimSolanaHtlc — if PDA not found on-chain (already claimed/refunded), throw AlreadyClaimed and mark DB as completed.
+- [x] Fix isAlreadyClaimedError: now detects Custom 6004 (AlreadyClaimed) and Custom 6005 (AlreadyRefunded) Anchor error codes.
+- [x] Resolved both stuck rfqs (rfq_1773283782213 and rfq_1773359544103): both marked as completed after htlcPda pre-check confirmed they were already settled on-chain.

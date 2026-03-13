@@ -1,0 +1,30 @@
+{
+  "query": "SELECT rfqId, status, fromToken, toToken, counterpartyAddress, initiatorAddress, secretHex IS NOT NULL as hasSecret, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773283782213%' OR rfqId LIKE '%1773359544103%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, status, fromToken, toToken, counterpartyAddress, initiatorAddress, secretHex IS NOT NULL as hasSecret, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773283782213%' OR rfqId LIKE '%1773359544103%' LIMIT 5;",
+  "rows": [
+    {
+      "rfqId": "rfq_1773283782213_lp-c7de5",
+      "status": "revealed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "hasSecret": "1",
+      "createdAt": "2026-03-12 02:49:42"
+    },
+    {
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "status": "revealed",
+      "fromToken": "SOL",
+      "toToken": "USDT",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "hasSecret": "1",
+      "createdAt": "2026-03-12 23:52:24"
+    }
+  ],
+  "messages": [],
+  "stdout": "rfqId\tstatus\tfromToken\ttoToken\tcounterpartyAddress\tinitiatorAddress\thasSecret\tcreatedAt\nrfq_1773283782213_lp-c7de5\trevealed\tSOL\tUSDT\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t1\t2026-03-12 02:49:42\nrfq_1773359544103_lp-c7de5\trevealed\tSOL\tUSDT\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\t1\t2026-03-12 23:52:24\n",
+  "stderr": "",
+  "execution_time_ms": 384
+}

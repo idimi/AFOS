@@ -56,6 +56,7 @@ function deriveHtlcIdB(rfqId: string): string {
 function isAlreadyClaimedError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   // Common Anchor / Solana program error messages for already-settled HTLCs
+  // Custom error codes: 6004 = AlreadyClaimed (0x1774), 6005 = AlreadyRefunded (0x1775)
   return (
     msg.includes("already") ||
     msg.includes("InvalidStatus") ||
@@ -63,7 +64,12 @@ function isAlreadyClaimedError(err: unknown): boolean {
     msg.includes("AlreadyRefunded") ||
     msg.includes("0x1770") || // Custom Anchor error codes
     msg.includes("0x1771") ||
-    msg.includes("0x1772")
+    msg.includes("0x1772") ||
+    msg.includes("0x1773") ||
+    msg.includes("0x1774") || // AlreadyClaimed
+    msg.includes("0x1775") || // AlreadyRefunded
+    msg.includes("Custom: 6004") || // AlreadyClaimed (decimal)
+    msg.includes("Custom: 6005")    // AlreadyRefunded (decimal)
   );
 }
 
@@ -259,9 +265,13 @@ async function runHtlcSecretsCheck(): Promise<void> {
               claimBSuccess = true;
               console.log(`[HtlcSecretsMonitor] Claim B already settled on-chain rfqId=${row.rfqId}`);
             } else {
+              // Extract on-chain simulation logs if available (SendTransactionError)
+              const errMsg = errB instanceof Error ? errB.message : String(errB);
+              const txLogs = (errB as { logs?: string[] })?.logs;
               console.error(
                 `[HtlcSecretsMonitor] Retry claim B failed rfqId=${row.rfqId}:`,
-                errB instanceof Error ? errB.message : errB
+                errMsg,
+                txLogs ? `\nOn-chain logs: ${txLogs.join(' | ')}` : ''
               );
             }
           }

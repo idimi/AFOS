@@ -1,0 +1,20 @@
+{
+  "query": "SELECT id, htlcId, rfqId, amountHuman, toToken, status, htlcAddress, lockTxId FROM htlc_swaps WHERE lockTxId = '67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U' LIMIT 1;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, htlcId, rfqId, amountHuman, toToken, status, htlcAddress, lockTxId FROM htlc_swaps WHERE lockTxId = '67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U' LIMIT 1;",
+  "rows": [
+    {
+      "id": "7",
+      "htlcId": "htlc_b_rfq_1773359544103_lp-c",
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "amountHuman": "0.8684953000000001",
+      "toToken": "USDT",
+      "status": "expired",
+      "htlcAddress": "9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd",
+      "lockTxId": "67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\thtlcId\trfqId\tamountHuman\ttoToken\tstatus\thtlcAddress\tlockTxId\n7\thtlc_b_rfq_1773359544103_lp-c\trfq_1773359544103_lp-c7de5\t0.8684953000000001\tUSDT\texpired\t9hCF3qiWDiLvjtzCMdncdyCa9xPaYowqsZLwaZEgmGrd\t67QTTsgW6sMyVKNXmT1rSxJYULRMT9e8hJMNdRKNLvHw3p7f6fS3iaeDiSudkeiriU7TuxgEzzdkpLBue2WEM91U\n",
+  "stderr": "",
+  "execution_time_ms": 366
+}

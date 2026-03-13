@@ -26,6 +26,7 @@ import {
   sendAndConfirmTransaction,
   SystemProgram,
   TransactionInstruction,
+  SYSVAR_RENT_PUBKEY,
 } from "@solana/web3.js";
 import bs58 from "bs58";
 import { ENV } from "./_core/env";
@@ -165,6 +166,13 @@ export async function claimSolanaHtlc(params: {
   const vaultAta = deriveAta(htlcPda, tokenMint);
   const recipientAta = deriveAta(recipient, tokenMint);
 
+  // Pre-check: if htlcPda doesn't exist on-chain, it was already claimed/refunded
+  const htlcPdaInfo = await connection.getAccountInfo(htlcPda);
+  if (!htlcPdaInfo) {
+    console.log(`[HTLC] htlcPda ${htlcPda.toBase58()} not found on-chain — already claimed or refunded htlcId=${htlcId}`);
+    throw new Error(`AlreadyClaimed: htlcPda not found on-chain (already settled)`);
+  }
+
   // Ensure recipient's ATA exists — create if needed (only relevant for SPL token claims)
   if (tokenSymbol) {
     await ensureAtaExists(connection, agentKeypair, recipient, tokenMint, recipientAta);
@@ -202,12 +210,18 @@ export async function claimSolanaHtlc(params: {
   tx.feePayer = agentKeypair.publicKey;
   tx.add(claimIx);
 
-  const txSignature = await sendAndConfirmTransaction(
-    connection,
-    tx,
-    [agentKeypair],
-    { commitment: "confirmed", maxRetries: 3 }
-  );
+  // Simulate first to get detailed on-chain logs on failure
+  const sim = await connection.simulateTransaction(tx, [agentKeypair]);
+  if (sim.value.err) {
+    const logs = sim.value.logs ?? [];
+    console.error(`[HTLC] Claim simulation failed htlcId=${htlcId}:`, sim.value.err, '\nLogs:', logs.join(' | '));
+    throw new Error(`Simulation failed. Logs: ${logs.slice(-5).join(' | ')}`);
+  }
+
+  tx.sign(agentKeypair);
+  const rawTx = tx.serialize();
+  const txSignature = await connection.sendRawTransaction(rawTx, { skipPreflight: true, maxRetries: 3 });
+  await connection.confirmTransaction({ signature: txSignature, blockhash, lastValidBlockHeight }, 'confirmed');
 
   console.log(`[HTLC] Claim submitted: ${txSignature} | htlcId=${htlcId} | recipient=${recipientAddress}`);
 
@@ -238,6 +252,7 @@ async function ensureAtaExists(
   console.log(`[HTLC] Creating recipient ATA for ${owner.toBase58()} / mint ${mint.toBase58()}`);
 
   // Build create_associated_token_account instruction
+  // Requires 7 accounts: payer, ata, owner, mint, system, token, rent
   const createAtaIx = new TransactionInstruction({
     programId: SPL_ASSOCIATED_TOKEN_PROGRAM_ID,
     keys: [
@@ -247,6 +262,7 @@ async function ensureAtaExists(
       { pubkey: mint, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: SPL_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
     ],
     data: Buffer.alloc(0),
   });
@@ -258,5 +274,17 @@ async function ensureAtaExists(
   tx.feePayer = payer.publicKey;
   tx.add(createAtaIx);
 
-  await sendAndConfirmTransaction(connection, tx, [payer], { commitment: "confirmed" });
+  try {
+    await sendAndConfirmTransaction(connection, tx, [payer], { commitment: "confirmed", skipPreflight: true });
+    console.log(`[HTLC] Created recipient ATA ${ata.toBase58()} for ${owner.toBase58()}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If ATA already exists (race condition), that's fine
+    if (msg.includes('already in use') || msg.includes('already exists') || msg.includes('0x0')) {
+      console.log(`[HTLC] ATA already exists (race condition) ${ata.toBase58()}`);
+      return;
+    }
+    console.error(`[HTLC] Failed to create ATA ${ata.toBase58()}:`, msg);
+    throw err;
+  }
 }
