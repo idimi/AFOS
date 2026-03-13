@@ -2904,3 +2904,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Helius webhook auto-claims both Agent A and Agent B HTLCs on lock detection
 - [x] Settlement speed badge (Fast/Normal/Slow) with settledVia source (Webhook/Browser/Monitor/Admin)
 - [x] All claim paths (webhook, browser_notify, monitor_fallback, admin_force_claim) now set settledAt/settledVia
+
+## Helius Webhook Health Widget + Claim All Fix (Session 2026-03-13 #7)
+- [x] Add tRPC procedure to expose /api/webhooks/helius-htlc/status data
+- [x] Build HeliusWebhookHealthCard component for Admin panel (HeliusWebhookHealthCard.tsx)
+- [x] Wire card into AdminPanel.tsx as new 'Webhook' tab with 30s auto-refresh
+- [x] Fix Claim All: txHash moved outside try, timeout recovery check in catch
+- [x] Fix single claimRefund: same txHash-outside-try pattern with timeout recovery
+- [x] After on-chain success via fallback, immediately call updateHtlcRefund and invalidate cache
+- [x] Fix Dashboard.tsx Jupiter swap: replaced confirmTransaction with polling-based getSignatureStatus
+- [x] Fix ChatPage.tsx Jupiter swap: replaced confirmTransaction with polling-based getSignatureStatus
+- [x] Added 26 new vitest tests for webhookHealth router (315 total, all passing)

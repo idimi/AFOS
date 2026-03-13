@@ -1683,9 +1683,27 @@ export default function ChatPage() {
         txHash = signature;
       }
 
-      // Wait for confirmation
+      // Wait for confirmation — poll getSignatureStatus every 3s for up to 90s.
+      // This is far more reliable than confirmTransaction which hard-times-out at 30s.
       toast.loading("Confirming transaction…", { id: "swap-confirm" });
-      await connection.confirmTransaction(txHash, "confirmed");
+      const MAX_SWAP_POLLS = 30; // 30 × 3s = 90s
+      let swapConfirmed = false;
+      for (let poll = 0; poll < MAX_SWAP_POLLS; poll++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+        const txStatus = statusResp?.value;
+        if (txStatus?.err) throw new Error(`Swap transaction failed on-chain: ${JSON.stringify(txStatus.err)}`);
+        if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+          swapConfirmed = true;
+          break;
+        }
+      }
+      if (!swapConfirmed) {
+        const finalResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+        if (finalResp?.value?.err) throw new Error(`Swap transaction failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+        // If found with any status (even processed), treat as success
+        if (!finalResp?.value) throw new Error(`Swap not confirmed after 90s. Check Solscan: ${txHash.slice(0, 16)}…`);
+      }
       toast.dismiss("swap-confirm");
       toast.success("Swap confirmed on-chain!", { description: `Tx: ${txHash.slice(0, 8)}…` });
 

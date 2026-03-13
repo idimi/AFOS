@@ -1142,6 +1142,9 @@ function RefundCard({
       // lockTxId is the Solana tx signature — NOT the PDA seed. Using it would derive the wrong account.
       const htlcId = refund.htlcSeedId ?? refund.htlcAddress;
       toast.loading("Waiting for Phantom signature…", { id: toastId });
+      // Declare txHash outside try so the catch block can attempt a final DB update
+      // if the tx landed on-chain but the polling timed out before detecting it.
+      let txHash: string | null = null;
       try {
         const { transaction } = await buildSolanaHtlcRefundTx({
           senderPubkey: effectivePubkey,
@@ -1149,7 +1152,6 @@ function RefundCard({
           connection,
           tokenSymbol: refund.fromSymbol !== "SOL" ? refund.fromSymbol : undefined,
         });
-        let txHash: string;
         if (publicKey && signTransaction) {
           const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
           const rawTx = signed.serialize();
@@ -1213,6 +1215,44 @@ function RefundCard({
           toast.success("Already refunded on-chain", {
             id: toastId,
             description: "This HTLC was already settled. Your wallet balance is up to date.",
+          });
+        } else if (txHash && msg.includes("not confirmed after 90s")) {
+          // Tx was submitted but polling timed out before detecting confirmation.
+          // The tx may have landed on-chain — do one final check and update DB if found.
+          // This prevents the UI from showing failure when the refund actually succeeded.
+          try {
+            const recoveryResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            if (recoveryResp?.value && !recoveryResp.value.err) {
+              // Tx found on-chain with no error — treat as success
+              await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
+              await utils.history.refunds.invalidate();
+              await utils.history.myOnChainRefunds.invalidate();
+              toast.success("Refund confirmed (delayed)!", {
+                id: toastId,
+                duration: 8000,
+                description: (
+                  <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+                    className="text-cyan-400 underline flex items-center gap-1 mt-1">
+                    View on Solscan <ExternalLink className="w-3 h-3" />
+                  </a>
+                ),
+              });
+              return;
+            }
+          } catch { /* ignore recovery errors */ }
+          // Tx genuinely not found — show error with Solscan link so user can verify manually
+          toast.error("Refund not confirmed after 90s", {
+            id: toastId,
+            description: (
+              <span>
+                Check{" "}
+                <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+                  className="text-cyan-400 underline">
+                  Solscan
+                </a>
+                {" "}— if confirmed, the Refunds tab will auto-sync on next load.
+              </span>
+            ),
           });
         } else {
           toast.error("Refund failed", { id: toastId, description: msg });
@@ -1560,6 +1600,10 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
       const refund = claimable[i];
       setProgress({ done: i, total: claimable.length });
 
+      // Declare solTxHash outside try so the catch block can attempt recovery
+      // if the tx landed on-chain but polling timed out before detecting it.
+      let solTxHash: string | null = null;
+      const claimToastId = `claim-all-sol-${i}`;
       try {
         if (refund.chain === "solana") {
           if (!effectivePubkey || (!signTransaction && !phantomSolana?.signAndSendTransaction)) {
@@ -1569,31 +1613,29 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
           }
           // Use htlcSeedId (PDA seed string) — lockTxId is the tx signature, NOT the PDA seed
           const htlcId = refund.htlcSeedId ?? refund.htlcAddress;
-          const toastId = `claim-all-sol-${i}`;
-          toast.loading(`Claiming ${i + 1}/${claimable.length} — waiting for Phantom…`, { id: toastId });
+          toast.loading(`Claiming ${i + 1}/${claimable.length} — waiting for Phantom…`, { id: claimToastId });
           const { transaction } = await buildSolanaHtlcRefundTx({
             senderPubkey: effectivePubkey,
             htlcId,
             connection,
             tokenSymbol: refund.fromSymbol !== "SOL" ? refund.fromSymbol : undefined,
           });
-          let txHash: string;
           if (publicKey && signTransaction) {
             const signed = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(transaction);
-            txHash = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+            solTxHash = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
           } else if (phantomSolana?.signAndSendTransaction) {
             const result = await phantomSolana.signAndSendTransaction(transaction);
-            txHash = result.signature;
+            solTxHash = result.signature;
           } else {
             throw new Error("No signing method available");
           }
           // Poll getSignatureStatus every 3s for up to 90s — avoids the 30s hard timeout of confirmTransaction
-          toast.loading(`Confirming ${i + 1}/${claimable.length} on-chain…`, { id: toastId });
+          toast.loading(`Confirming ${i + 1}/${claimable.length} on-chain…`, { id: claimToastId });
           const MAX_POLLS_ALL = 30; // 30 × 3s = 90s
           let confirmedAll = false;
           for (let poll = 0; poll < MAX_POLLS_ALL; poll++) {
             await new Promise(r => setTimeout(r, 3000));
-            const statusResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            const statusResp = await connection.getSignatureStatus(solTxHash, { searchTransactionHistory: true });
             const txStatus = statusResp?.value;
             if (txStatus?.err) throw new Error(`Refund tx failed on-chain: ${JSON.stringify(txStatus.err)}`);
             if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
@@ -1602,13 +1644,13 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
             }
           }
           if (!confirmedAll) {
-            const finalResp = await connection.getSignatureStatus(txHash, { searchTransactionHistory: true });
+            const finalResp = await connection.getSignatureStatus(solTxHash, { searchTransactionHistory: true });
             if (finalResp?.value?.err) throw new Error(`Refund tx failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
-            if (!finalResp?.value) throw new Error(`Tx not confirmed after 90s — check Solscan: ${txHash.slice(0,16)}…`);
+            if (!finalResp?.value) throw new Error(`Tx not confirmed after 90s — check Solscan: ${solTxHash.slice(0,16)}…`);
             // Has a status — treat as success
           }
-          await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
-          toast.dismiss(toastId);
+          await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: solTxHash });
+          toast.dismiss(claimToastId);
           succeeded++;
         } else if (refund.chain === "trac_network") {
           const { requestTnkHtlcRefund: tnkRefund } = await import("@/lib/tnkHtlc");
@@ -1650,6 +1692,26 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
             await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: "already-settled" });
           } catch { /* ignore */ }
           succeeded++; // Count as success — funds already back in wallet
+        } else if (solTxHash && msg.includes("not confirmed after 90s")) {
+          // Tx was submitted but polling timed out before detecting confirmation.
+          // The tx may have landed on-chain — do one final check and update DB if found.
+          try {
+            const recoveryResp = await connection.getSignatureStatus(solTxHash, { searchTransactionHistory: true });
+            if (recoveryResp?.value && !recoveryResp.value.err) {
+              // Tx found on-chain with no error — treat as success
+              await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: solTxHash });
+              toast.dismiss(claimToastId);
+              succeeded++;
+            } else {
+              toast.error(`Claim ${i + 1}/${claimable.length} timed out`, {
+                description: `Check Solscan: ${solTxHash.slice(0, 16)}… — Refunds tab will auto-sync if confirmed.`,
+              });
+              failed++;
+            }
+          } catch {
+            toast.error(`Claim ${i + 1}/${claimable.length} failed`, { description: msg });
+            failed++;
+          }
         } else {
           toast.error(`Claim ${i + 1}/${claimable.length} failed`, { description: msg });
           failed++;

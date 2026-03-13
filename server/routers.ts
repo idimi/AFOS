@@ -18,6 +18,7 @@ import { adminConfigRouter } from "./routers/adminConfig";
 import { operatorConfigRouter } from "./routers/operatorConfig";
 import { historyRouter } from "./routers/history";
 import { nodeHealthRouter } from "./routers/nodeHealth";
+import { webhookHealthRouter } from "./routers/webhookHealth";
 
 // ─── In-memory price cache (BTC/SOL/ETH from CoinGecko + TNK from Gate.io) ───
 let _priceCache: {
@@ -146,6 +147,7 @@ export const appRouter = router({
   operatorConfig: operatorConfigRouter,
   history: historyRouter,
   nodeHealth: nodeHealthRouter,
+  webhookHealth: webhookHealthRouter,
 
   // Public price feed — used by the landing page live swap card (no auth required)
   prices: router({

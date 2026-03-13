@@ -453,7 +453,24 @@ function MiniChatWidget({ onOpenFullChat, onOpenWallet }: { onOpenFullChat: () =
         return;
       }
       const { signature } = await phantom.signAndSendTransaction(tx);
-      await connection.confirmTransaction(signature, "confirmed");
+      // Poll getSignatureStatus every 3s for up to 90s — avoids the 30s hard timeout of confirmTransaction.
+      const MAX_DASH_POLLS = 30; // 30 × 3s = 90s
+      let dashConfirmed = false;
+      for (let poll = 0; poll < MAX_DASH_POLLS; poll++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusResp = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+        const txStatus = statusResp?.value;
+        if (txStatus?.err) throw new Error(`Swap transaction failed on-chain: ${JSON.stringify(txStatus.err)}`);
+        if (txStatus?.confirmationStatus === "confirmed" || txStatus?.confirmationStatus === "finalized") {
+          dashConfirmed = true;
+          break;
+        }
+      }
+      if (!dashConfirmed) {
+        const finalResp = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+        if (finalResp?.value?.err) throw new Error(`Swap transaction failed on-chain: ${JSON.stringify(finalResp.value.err)}`);
+        if (!finalResp?.value) throw new Error(`Swap not confirmed after 90s. Check Solscan: ${signature.slice(0, 16)}…`);
+      }
       addMessage({
         role: "assistant",
         content: `Swap confirmed! ${quoteData.fromAmount} ${quoteData.fromToken} → ${(quoteData.toAmount ?? 0).toFixed(6)} ${quoteData.toToken}`,

@@ -32,6 +32,7 @@ import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
 import ConnectWalletModal from "@/components/ConnectWalletModal";
 import type { SupportedChain } from "@shared/const";
 import HtlcRecoveryTab from "@/components/AdminPanel/HtlcRecoveryTab";
+import HeliusWebhookHealthCard from "@/components/AdminPanel/HeliusWebhookHealthCard";
 
 // Admin wallet allowlist — set via VITE_ADMIN_WALLETS env var (comma-separated)
 const ADMIN_WALLETS: string[] = (import.meta.env.VITE_ADMIN_WALLETS ?? "")
@@ -1915,7 +1916,7 @@ function AuditLogTab() {
 
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 // LP Node and Routing tabs removed — no backing system yet
-type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_recovery";
+type AdminTab = "revenue" | "fees" | "treasury" | "nodes" | "users" | "agent_wallet" | "operator_config" | "reports" | "audit_log" | "htlc_recovery" | "webhook_health";
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<AdminTab>("revenue");
@@ -2026,6 +2027,10 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     {
       id: "htlc_recovery", label: "HTLC Recovery", icon: AlertTriangle,
       tooltip: "Multi-chain HTLC recovery dashboard. Scans Solana, Ethereum, and Bitcoin for stuck or expired HTLCs across all users. Shows expired HTLCs that are claimable, active HTLCs with countdown timers, and estimated USD at risk. Allows marking HTLCs as refunded after manual recovery. Users can self-service refund from History → Refunds tab.",
+    },
+    {
+      id: "webhook_health", label: "Webhook", icon: Zap,
+      tooltip: "Helius HTLC webhook health monitor. Shows registration status, live event counters (events received, claims triggered), last event timestamp and signature, settlement breakdown by source (Webhook/Browser/Monitor/Admin), and average settlement time for webhook-triggered claims. Auto-refreshes every 30 seconds.",
     },
   ];
 
@@ -2332,6 +2337,13 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
         {/* ── HTLC Recovery Tab ── */}
         {activeTab === "htlc_recovery" && <HtlcRecoveryTab />}
+
+        {/* ── Webhook Health Tab ── */}
+        {activeTab === "webhook_health" && (
+          <div className="max-w-lg mx-auto">
+            <HeliusWebhookHealthCard />
+          </div>
+        )}
 
       </div>
 
