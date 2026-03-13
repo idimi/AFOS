@@ -1,0 +1,101 @@
+{
+  "query": "SELECT id, chain, status, rfqId, createdAt FROM htlc_swaps ORDER BY createdAt DESC LIMIT 20;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, chain, status, rfqId, createdAt FROM htlc_swaps ORDER BY createdAt DESC LIMIT 20;",
+  "rows": [
+    {
+      "id": "14",
+      "chain": "solana",
+      "status": "completed",
+      "rfqId": "rfq_1773375728714_lp-c7de5",
+      "createdAt": "2026-03-13 04:22:44"
+    },
+    {
+      "id": "13",
+      "chain": "solana",
+      "status": "completed",
+      "rfqId": "rfq_1773375728714_lp-c7de5",
+      "createdAt": "2026-03-13 04:22:23"
+    },
+    {
+      "id": "12",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773374809360_lp-c7de5",
+      "createdAt": "2026-03-13 04:07:04"
+    },
+    {
+      "id": "11",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773368673516_lp-c7de5",
+      "createdAt": "2026-03-13 02:25:53"
+    },
+    {
+      "id": "10",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773368673516_lp-c7de5",
+      "createdAt": "2026-03-13 02:25:23"
+    },
+    {
+      "id": "9",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773365303738_lp-c7de5",
+      "createdAt": "2026-03-13 01:29:38"
+    },
+    {
+      "id": "8",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773365303738_lp-c7de5",
+      "createdAt": "2026-03-13 01:29:13"
+    },
+    {
+      "id": "7",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "createdAt": "2026-03-12 23:52:56"
+    },
+    {
+      "id": "6",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773359544103_lp-c7de5",
+      "createdAt": "2026-03-12 23:52:39"
+    },
+    {
+      "id": "5",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773357484712_lp-c7de5",
+      "createdAt": "2026-03-12 23:18:25"
+    },
+    {
+      "id": "4",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773290772851_lp-c7de5",
+      "createdAt": "2026-03-12 04:46:26"
+    },
+    {
+      "id": "2",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773283782213_lp-c",
+      "createdAt": "2026-03-12 03:32:02"
+    },
+    {
+      "id": "1",
+      "chain": "solana",
+      "status": "refunded",
+      "rfqId": "rfq_1773205346880",
+      "createdAt": "2026-03-11 20:03:53"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tchain\tstatus\trfqId\tcreatedAt\n14\tsolana\tcompleted\trfq_1773375728714_lp-c7de5\t2026-03-13 04:22:44\n13\tsolana\tcompleted\trfq_1773375728714_lp-c7de5\t2026-03-13 04:22:23\n12\tsolana\trefunded\trfq_1773374809360_lp-c7de5\t2026-03-13 04:07:04\n11\tsolana\trefunded\trfq_1773368673516_lp-c7de5\t2026-03-13 02:25:53\n10\tsolana\trefunded\trfq_1773368673516_lp-c7de5\t2026-03-13 02:25:23\n9\tsolana\trefunded\trfq_1773365303738_lp-c7de5\t2026-03-13 01:29:38\n8\tsolana\trefunded\trfq_1773365303738_lp-c7de5\t2026-03-13 01:29:13\n7\tsolana\trefunded\trfq_1773359544103_lp-c7de5\t2026-03-12 23:52:56\n6\tsolana\trefunded\trfq_1773359544103_lp-c7de5\t2026-03-12 23:52:39\n5\tsolana\trefunded\trfq_1773357484712_lp-c7de5\t2026-03-12 23:18:25\n4\tsolana\trefunded\trfq_1773290772851_lp-c7de5\t2026-03-12 04:46:26\n2\tsolana\trefunded\trfq_1773283782213_lp-c\t2026-03-12 03:32:02\n1\tsolana\trefunded\trfq_1773205346880\t2026-03-11 20:03:53\n",
+  "stderr": "",
+  "execution_time_ms": 373
+}

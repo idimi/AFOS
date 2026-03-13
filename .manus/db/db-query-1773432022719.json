@@ -1,0 +1,67 @@
+{
+  "query": "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'swap_analytics' ORDER BY ORDINAL_POSITION;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'swap_analytics' ORDER BY ORDINAL_POSITION;",
+  "rows": [
+    {
+      "COLUMN_NAME": "id"
+    },
+    {
+      "COLUMN_NAME": "fromChain"
+    },
+    {
+      "COLUMN_NAME": "toChain"
+    },
+    {
+      "COLUMN_NAME": "fromToken"
+    },
+    {
+      "COLUMN_NAME": "toToken"
+    },
+    {
+      "COLUMN_NAME": "amount"
+    },
+    {
+      "COLUMN_NAME": "amountUsd"
+    },
+    {
+      "COLUMN_NAME": "route"
+    },
+    {
+      "COLUMN_NAME": "status"
+    },
+    {
+      "COLUMN_NAME": "settlementMs"
+    },
+    {
+      "COLUMN_NAME": "txId"
+    },
+    {
+      "COLUMN_NAME": "peerId"
+    },
+    {
+      "COLUMN_NAME": "createdAt"
+    },
+    {
+      "COLUMN_NAME": "platformFeeUsd"
+    },
+    {
+      "COLUMN_NAME": "feeBps"
+    },
+    {
+      "COLUMN_NAME": "feeAmountOut"
+    },
+    {
+      "COLUMN_NAME": "outAmount"
+    },
+    {
+      "COLUMN_NAME": "walletAddress"
+    },
+    {
+      "COLUMN_NAME": "rfqId"
+    }
+  ],
+  "messages": [],
+  "stdout": "COLUMN_NAME\nid\nfromChain\ntoChain\nfromToken\ntoToken\namount\namountUsd\nroute\nstatus\nsettlementMs\ntxId\npeerId\ncreatedAt\nplatformFeeUsd\nfeeBps\nfeeAmountOut\noutAmount\nwalletAddress\nrfqId\n",
+  "stderr": "",
+  "execution_time_ms": 350
+}

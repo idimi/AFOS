@@ -1,0 +1,90 @@
+{
+  "query": "SELECT COUNT(*) as total, route, status FROM swap_analytics GROUP BY route, status ORDER BY total DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT COUNT(*) as total, route, status FROM swap_analytics GROUP BY route, status ORDER BY total DESC;",
+  "rows": [
+    {
+      "total": "27",
+      "route": "AFOS P2P",
+      "status": "completed"
+    },
+    {
+      "total": "3",
+      "route": "Jupiter DEX (Whirlpool → ZeroFi)",
+      "status": "completed"
+    },
+    {
+      "total": "2",
+      "route": "Jupiter DEX (SolFi V2 → ZeroFi)",
+      "status": "completed"
+    },
+    {
+      "total": "2",
+      "route": "Jupiter DEX (Whirlpool → AlphaQ)",
+      "status": "completed"
+    },
+    {
+      "total": "2",
+      "route": "Jupiter DEX (BisonFi → ZeroFi)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (Meteora DLMM → AlphaQ → AlphaQ)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (HumidiFi)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (Whirlpool → Saber)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Oracle VM DEX",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (Whirlpool → Manifest)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (Whirlpool → GoonFi V2)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (Invariant → AlphaQ)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (SolFi V2 → AlphaQ)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (TesseraV → ZeroFi)",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "IntercomSwap P2P",
+      "status": "completed"
+    },
+    {
+      "total": "1",
+      "route": "Jupiter DEX (BisonFi → BisonFi)",
+      "status": "completed"
+    }
+  ],
+  "messages": [],
+  "stdout": "total\troute\tstatus\n27\tAFOS P2P\tcompleted\n3\tJupiter DEX (Whirlpool → ZeroFi)\tcompleted\n2\tJupiter DEX (SolFi V2 → ZeroFi)\tcompleted\n2\tJupiter DEX (Whirlpool → AlphaQ)\tcompleted\n2\tJupiter DEX (BisonFi → ZeroFi)\tcompleted\n1\tJupiter DEX (Meteora DLMM → AlphaQ → AlphaQ)\tcompleted\n1\tJupiter DEX (HumidiFi)\tcompleted\n1\tJupiter DEX (Whirlpool → Saber)\tcompleted\n1\tOracle VM DEX\tcompleted\n1\tJupiter DEX (Whirlpool → Manifest)\tcompleted\n1\tJupiter DEX (Whirlpool → GoonFi V2)\tcompleted\n1\tJupiter DEX (Invariant → AlphaQ)\tcompleted\n1\tJupiter DEX (SolFi V2 → AlphaQ)\tcompleted\n1\tJupiter DEX (TesseraV → ZeroFi)\tcompleted\n1\tIntercomSwap P2P\tcompleted\n1\tJupiter DEX (BisonFi → BisonFi)\tcompleted\n",
+  "stderr": "",
+  "execution_time_ms": 436
+}

@@ -2985,3 +2985,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: server returns replay:true for already-revealed/completed secrets; client suppresses toast for replays
 - [x] Fix: new healStaleHtlcSecret helper in db.ts heals stale 'locked' rows by cross-checking htlcSwaps terminal status
 - [x] Fix: getLockedHtlcsForInitiator now filters null rfqIds to prevent false positives from legacy rows
+
+## Remove Jupiter DEX Data from UI (2026-03-13)
+- [ ] Remove Jupiter DEX entries from Route Distribution chart in Analytics
+- [ ] Remove Jupiter DEX entries from Avg Settlement Time by Route in Analytics
+- [ ] Remove Jupiter DEX labels from Recent Swaps widget (Overview + History)
+- [ ] Replace Jupiter DEX route label with IntercomSwap P2P or AFOS P2P in swap records
