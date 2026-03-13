@@ -2966,3 +2966,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Wallet UX Polish Session #13 (2026-03-13)
 - [x] Show destination wallet hint during executing state in QuoteCard ("Awaiting signature from X → Y bc1q…")
 - [ ] Push code to GitHub after checkpoint
+
+## Wallet UX Polish Session #14 (2026-03-13)
+- [x] Animate destination wallet hint with left-to-right slide-in during executing state
+- [x] Add per-quote BTC wallet override (local state per QuoteCard, syncs to global on change)
+- [ ] Push code to GitHub after checkpoint

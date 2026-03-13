@@ -198,12 +198,23 @@ function QuoteCard({
   // Use the multi-chain walletConnected prop when provided; fall back to Solana adapter
   const connected = walletConnected ?? solConnected;
 
+  // Per-quote BTC wallet override — starts from the global preference, stays local to this card
+  const [localBtcWallet, setLocalBtcWallet] = useState<import("@/contexts/MultiChainWalletContext").BtcProviderType | null>(
+    preferredBtcWallet ?? null
+  );
+
   // Show BTC wallet picker when both Phantom/MetaMask BTC and Tap Wallet BTC are connected
   const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin" ||
     data.fromChain === "trac_network" || data.toChain === "trac_network";
   const hasPhantomMetaMaskBtc = activeBitcoin?.connected && activeBitcoin.walletName !== "Tap Wallet";
   const hasTapBtc = bitcoinTap?.connected;
   const showBtcPicker = isBtcSwap && hasPhantomMetaMaskBtc && hasTapBtc;
+
+  // Helper to update both local and global preference
+  const handleSetBtcWallet = (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => {
+    setLocalBtcWallet(p);
+    setPreferredBtcWallet?.(p);
+  };
 
   // ── "Signing with" wallet label for the confirm button ──────────────────────
   // Derive which wallet + address will sign the swap so users know before confirming
@@ -214,7 +225,7 @@ function QuoteCard({
   const deriveWalletForChain = (chain: SupportedChain | undefined): { name: string; address: string } | null => {
     const c = chain ?? "solana";
     if (c === "bitcoin") {
-      if (preferredBtcWallet === "tap" && bitcoinTap?.connected)
+      if (localBtcWallet === "tap" && bitcoinTap?.connected)
         return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
       if (activeBitcoin?.connected)
         return { name: activeBitcoin.walletName, address: activeBitcoin.shortAddress };
@@ -360,7 +371,7 @@ function QuoteCard({
       </div>
 
       {/* BTC wallet picker — shown when both Phantom/MetaMask BTC and Tap Wallet BTC are connected */}
-      {showBtcPicker && setPreferredBtcWallet && (
+      {showBtcPicker && (
         <div className="px-4 pb-3">
           <div className="rounded-xl p-3 space-y-2"
             style={{ background: "rgba(247,147,26,0.08)", border: "1px solid rgba(247,147,26,0.25)" }}>
@@ -370,34 +381,34 @@ function QuoteCard({
             <div className="flex gap-2">
               {/* Phantom / MetaMask BTC option */}
               <button
-                onClick={() => setPreferredBtcWallet(activeBitcoin?.walletName === "Phantom" ? "phantom" : "metamask")}
+                onClick={() => handleSetBtcWallet(activeBitcoin?.walletName === "Phantom" ? "phantom" : "metamask")}
                 className="flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
                 style={{
-                  background: (!preferredBtcWallet || preferredBtcWallet !== "tap")
+                  background: (!localBtcWallet || localBtcWallet !== "tap")
                     ? "rgba(247,147,26,0.2)" : "var(--muted)",
-                  border: (!preferredBtcWallet || preferredBtcWallet !== "tap")
+                  border: (!localBtcWallet || localBtcWallet !== "tap")
                     ? "1px solid rgba(247,147,26,0.5)" : "1px solid var(--border)",
-                  color: (!preferredBtcWallet || preferredBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)",
+                  color: (!localBtcWallet || localBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)",
                 }}
               >
                 <span className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: (!preferredBtcWallet || preferredBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)" }}
+                  style={{ background: (!localBtcWallet || localBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)" }}
                 />
                 {activeBitcoin?.walletName ?? "Phantom/MetaMask"}
                 <span className="ml-auto text-[9px] opacity-70">{activeBitcoin?.shortAddress}</span>
               </button>
               {/* Tap Wallet BTC option */}
               <button
-                onClick={() => setPreferredBtcWallet("tap")}
+                onClick={() => handleSetBtcWallet("tap")}
                 className="flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
                 style={{
-                  background: preferredBtcWallet === "tap" ? "rgba(247,147,26,0.2)" : "var(--muted)",
-                  border: preferredBtcWallet === "tap" ? "1px solid rgba(247,147,26,0.5)" : "1px solid var(--border)",
-                  color: preferredBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)",
+                  background: localBtcWallet === "tap" ? "rgba(247,147,26,0.2)" : "var(--muted)",
+                  border: localBtcWallet === "tap" ? "1px solid rgba(247,147,26,0.5)" : "1px solid var(--border)",
+                  color: localBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)",
                 }}
               >
                 <span className="w-2 h-2 rounded-full shrink-0"
-                  style={{ background: preferredBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)" }}
+                  style={{ background: localBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)" }}
                 />
                 Tap Wallet
                 <span className="ml-auto text-[9px] opacity-70">{bitcoinTap?.shortAddress}</span>
@@ -448,16 +459,23 @@ function QuoteCard({
               </p>
             )}
             {isExecuting && signingWallet && (
-              <p className="text-center text-[10px] text-emerald-400 truncate">
-                Awaiting signature from <span className="font-semibold">{signingWallet.name}</span>
+              <p className="text-center text-[10px] text-emerald-400 truncate flex items-center justify-center gap-0.5 flex-wrap">
+                <span>Awaiting signature from</span>
+                <span className="font-semibold">{signingWallet.name}</span>
                 {destinationWallet && (
-                  <>
-                    {" "}<span className="opacity-60">→</span>{" "}
+                  <motion.span
+                    key={destinationWallet.address}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.3, duration: 0.35, ease: "easeOut" }}
+                    className="inline-flex items-center gap-0.5"
+                  >
+                    <span className="opacity-60 mx-0.5">→</span>
                     <span className="font-semibold">{destinationWallet.name}</span>
-                    {" "}<span className="font-mono opacity-70">{destinationWallet.address}</span>
-                  </>
+                    <span className="font-mono opacity-70 ml-0.5">{destinationWallet.address}</span>
+                  </motion.span>
                 )}
-                …
+                <span>…</span>
               </p>
             )}
           </div>
