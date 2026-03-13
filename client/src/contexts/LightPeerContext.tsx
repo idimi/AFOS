@@ -2027,6 +2027,33 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // ── Claim HTLC Funds (Agent B) ──────────────────────────────────────────────
   // Called when Agent B has received the secret from Agent A and wants to claim
   // the funds locked in the HTLC on the destination chain.
+  // ── Exponential backoff retry helper ─────────────────────────────────────
+  // Retries an async operation up to maxAttempts times with exponential backoff.
+  // Does NOT retry on user-rejection errors (wallet cancelled).
+  async function withRetry<T>(
+    fn: () => Promise<T>,
+    opts: { maxAttempts?: number; baseDelayMs?: number; label?: string } = {}
+  ): Promise<T> {
+    const { maxAttempts = 3, baseDelayMs = 1500, label = "operation" } = opts;
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err: unknown) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+        // Do not retry user cancellations or wallet rejections
+        const isUserRejection = msg.includes("user rejected") || msg.includes("cancelled") || msg.includes("canceled") || msg.includes("denied");
+        if (isUserRejection || attempt === maxAttempts) throw err;
+        const delay = baseDelayMs * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
+        console.warn(`[HTLC] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms:`, msg);
+        toast.loading(`${label} — retrying (${attempt}/${maxAttempts - 1})…`, { id: `retry-htlc-${attempt}`, duration: delay });
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    throw lastErr;
+  }
+
   const claimHtlcFunds = useCallback(async (rfqId: string) => {
     const secretHex = htlcRevealedSecrets[rfqId];
     if (!secretHex) {
@@ -2073,18 +2100,29 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           tx.feePayer = claimSolPubkey;
           tx.add(claimIx);
           let txHash: string;
-          if (sendSolTransaction && solPubkey) {
-            // Preferred: sendTransaction works for Standard Wallet (Phantom v24+) and legacy adapters
-            txHash = await (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(tx, solConnection);
-          } else if (signTransaction && solPubkey) {
+          // Sign the transaction once (wallet interaction — not retried)
+          let signedTxBytes: Uint8Array | null = null;
+          if (signTransaction && solPubkey && !sendSolTransaction) {
             const signedTx = await (signTransaction as (tx: import("@solana/web3.js").Transaction) => Promise<import("@solana/web3.js").Transaction>)(tx);
-            txHash = await solConnection.sendRawTransaction(signedTx.serialize(), { skipPreflight: false, preflightCommitment: "confirmed" });
-          } else {
-            const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
-            if (!phantom?.signAndSendTransaction) throw new Error("No Solana wallet found. Please connect Phantom or Solflare.");
-            const { signature } = await phantom.signAndSendTransaction(tx);
-            txHash = signature;
+            signedTxBytes = signedTx.serialize();
           }
+          // Submit with exponential backoff retry (up to 3 attempts)
+          txHash = await withRetry(async () => {
+            // Refresh blockhash on each retry to avoid expiry
+            const { blockhash: freshBlockhash } = await solConnection.getLatestBlockhash("confirmed");
+            tx.recentBlockhash = freshBlockhash;
+            if (sendSolTransaction && solPubkey) {
+              // Preferred: sendTransaction works for Standard Wallet (Phantom v24+) and legacy adapters
+              return (sendSolTransaction as (tx: import("@solana/web3.js").Transaction, conn: typeof solConnection) => Promise<string>)(tx, solConnection);
+            } else if (signedTxBytes) {
+              return solConnection.sendRawTransaction(signedTxBytes, { skipPreflight: false, preflightCommitment: "confirmed" });
+            } else {
+              const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+              if (!phantom?.signAndSendTransaction) throw new Error("No Solana wallet found. Please connect Phantom or Solflare.");
+              const { signature } = await phantom.signAndSendTransaction(tx);
+              return signature;
+            }
+          }, { maxAttempts: 3, baseDelayMs: 1500, label: "SOL HTLC claim" });
           toast.success("SOL HTLC claimed!", {
             id: `claim-${rfqId}`,
             description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,
@@ -2125,10 +2163,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Function selector: keccak256("withdraw(bytes32)") = 0x441a3e70
           const padLeft = (hex: string, bytes = 32) => hex.padStart(bytes * 2, "0");
           const calldata = "0x441a3e70" + padLeft(secretHex, 32);
-          const txHash = await rawEth.request({
+          const txHash = await withRetry(() => rawEth.request({
             method: "eth_sendTransaction",
             params: [{ from: claimEthAddr, to: htlcContractAddress, data: calldata, gas: "0x186A0" }],
-          });
+          }) as Promise<string>, { maxAttempts: 3, baseDelayMs: 1500, label: "ETH HTLC claim" });
           toast.success("ETH HTLC claimed!", {
             id: `claim-${rfqId}`,
             description: `Tx: ${txHash.slice(0, 20)}… · Funds released to your wallet`,

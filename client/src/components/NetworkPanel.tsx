@@ -12,7 +12,7 @@ import {
   CheckCircle2, XCircle, Clock, Zap, TrendingUp,
   Users, Shield, AlertCircle, Network,
   ToggleLeft, ToggleRight, Info, Lock, ExternalLink,
-  Activity,
+  Activity, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { useLightPeer, type IncomingRfq, type HtlcStep } from "../contexts/LightPeerContext";
 import { useWallet } from "../contexts/WalletContext";
@@ -443,6 +443,70 @@ function SwapStatusIndicator() {
             <span className="font-mono font-semibold">{formatCountdown(msLeft)}</span>
           )}
         </div>
+      )}
+
+      {/* Funds at Risk warning — shown when lock timer < 2 min and not yet settled */}
+      {currentStep === "locked" && msLeft !== null && msLeft < 120_000 && msLeft > 0 && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 space-y-2"
+        >
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+            <span className="text-xs font-bold text-red-400">Funds at Risk</span>
+            <span className="text-[10px] text-red-400/70 ml-auto font-mono font-semibold">{formatCountdown(msLeft)} left</span>
+          </div>
+          <p className="text-[10px] text-red-300/80 leading-relaxed">
+            Your HTLC lock expires soon. If the counterparty has revealed the secret, claim now. Otherwise, initiate a refund to recover your funds.
+          </p>
+          <div className="flex gap-2">
+            {lockedRfqId && (
+              <button
+                onClick={() => void peer.claimHtlcFunds(lockedRfqId)}
+                className="flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Claim Now
+              </button>
+            )}
+            {lockedRfqId && peer.refundableHtlcs && lockedRfqId in peer.refundableHtlcs && (
+              <button
+                onClick={() => void peer.refundHtlcFunds(lockedRfqId)}
+                className="flex-1 flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-colors"
+              >
+                <XCircle className="w-3 h-3" />
+                Refund
+              </button>
+            )}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Lock expired — refund available */}
+      {currentStep === "locked" && msLeft !== null && msLeft <= 0 && lockedRfqId && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="rounded-lg border border-red-500/50 bg-red-500/15 px-3 py-2.5 space-y-2"
+        >
+          <div className="flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+            <span className="text-xs font-bold text-red-400">Lock Expired</span>
+          </div>
+          <p className="text-[10px] text-red-300/80 leading-relaxed">
+            The HTLC timelock has expired. You can now refund your locked funds.
+          </p>
+          {peer.refundableHtlcs && lockedRfqId in peer.refundableHtlcs && (
+            <button
+              onClick={() => void peer.refundHtlcFunds(lockedRfqId)}
+              className="w-full flex items-center justify-center gap-1 text-[10px] font-semibold py-1.5 rounded bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30 transition-colors"
+            >
+              <XCircle className="w-3 h-3" />
+              Refund Locked Funds
+            </button>
+          )}
+        </motion.div>
       )}
 
       {/* Tx hash */}
