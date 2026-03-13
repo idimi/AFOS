@@ -449,7 +449,15 @@ function QuoteCard({
             )}
             {isExecuting && signingWallet && (
               <p className="text-center text-[10px] text-emerald-400 truncate">
-                Awaiting signature from <span className="font-semibold">{signingWallet.name}</span>…
+                Awaiting signature from <span className="font-semibold">{signingWallet.name}</span>
+                {destinationWallet && (
+                  <>
+                    {" "}<span className="opacity-60">→</span>{" "}
+                    <span className="font-semibold">{destinationWallet.name}</span>
+                    {" "}<span className="font-mono opacity-70">{destinationWallet.address}</span>
+                  </>
+                )}
+                …
               </p>
             )}
           </div>

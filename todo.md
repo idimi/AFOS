@@ -2962,3 +2962,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Persist signedBy in chat history via localStorage (up to 200 messages, auto-pruned)
 - [x] Show destination wallet address in QuoteCard for cross-chain swaps
 - [ ] Push code to GitHub after checkpoint
+
+## Wallet UX Polish Session #13 (2026-03-13)
+- [x] Show destination wallet hint during executing state in QuoteCard ("Awaiting signature from X → Y bc1q…")
+- [ ] Push code to GitHub after checkpoint
