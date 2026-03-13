@@ -470,7 +470,11 @@ function QuoteCard({
                     transition={{ delay: 0.3, duration: 0.35, ease: "easeOut" }}
                     className="inline-flex items-center gap-0.5"
                   >
-                    <span className="opacity-60 mx-0.5">→</span>
+                    <motion.span
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                      className="mx-0.5"
+                    >→</motion.span>
                     <span className="font-semibold">{destinationWallet.name}</span>
                     <span className="font-mono opacity-70 ml-0.5">{destinationWallet.address}</span>
                   </motion.span>

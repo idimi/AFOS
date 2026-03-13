@@ -2971,3 +2971,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Animate destination wallet hint with left-to-right slide-in during executing state
 - [x] Add per-quote BTC wallet override (local state per QuoteCard, syncs to global on change)
 - [ ] Push code to GitHub after checkpoint
+
+## Wallet UX Polish Session #15 (2026-03-13)
+- [x] Add pulse animation to arrow between source and destination wallets in executing state
+- [ ] Push code to GitHub after checkpoint
