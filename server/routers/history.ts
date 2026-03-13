@@ -477,14 +477,16 @@ export const historyRouter = router({
             });
             const json = await resp.json() as { result?: { value?: { data: [string, string] } | null } };
             const accValue = json.result?.value;
-            if (!accValue) {
-              // PDA is closed on-chain (already refunded or claimed) but DB still shows pending.
-              // Auto-update the DB so the UI stops showing a Claim button for this HTLC.
+            const raw = accValue ? Buffer.from(accValue.data[0], "base64") : null;
+
+            if (!raw || raw.length < 186) {
+              // PDA is closed (null) or too short — already refunded/claimed on-chain.
+              // Auto-update DB to refunded. Do NOT write placeholder strings to refundTxId.
               try {
                 const db2 = await getDb();
                 if (db2) {
                   await db2.update(htlcSwaps)
-                    .set({ status: "refunded", refundTxId: "auto-detected-closed" })
+                    .set({ status: "refunded" })
                     .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
                   console.log(`[myOnChainRefunds] Auto-marked HTLC ${row.htlcAddress.slice(0,8)} as refunded (PDA closed on-chain)`);
                 }
@@ -493,7 +495,28 @@ export const historyRouter = router({
               }
               continue;
             }
-            const raw = Buffer.from(accValue.data[0], "base64");
+
+            // Read status byte at offset 185 (verified correct offset from on-chain hex dumps)
+            const onChainStatus = raw[185]; // 0=active, 1=refunded, 2=claimed
+            if (onChainStatus !== 0) {
+              // PDA exists but HTLC is already settled (refunded or claimed).
+              // Update DB to match on-chain reality. Do NOT write placeholder strings.
+              const newStatus = onChainStatus === 2 ? "completed" : "refunded";
+              try {
+                const db2 = await getDb();
+                if (db2) {
+                  await db2.update(htlcSwaps)
+                    .set({ status: newStatus })
+                    .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
+                  console.log(`[myOnChainRefunds] Auto-marked HTLC ${row.htlcAddress.slice(0,8)} as ${newStatus} (on-chain status byte=${onChainStatus})`);
+                }
+              } catch (dbErr) {
+                console.warn(`[myOnChainRefunds] Failed to auto-mark HTLC ${row.htlcAddress.slice(0,8)}:`, dbErr);
+              }
+              continue;
+            }
+
+            // status byte = 0 → HTLC is still active on-chain
             const parsed = parseHtlcAccount(raw, row.htlcAddress);
             if (parsed) {
               // Enrich with DB data and push
