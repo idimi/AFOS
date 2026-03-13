@@ -402,17 +402,33 @@ export async function updateHtlcSecretStatus(
  * Get all HTLC secrets in 'locked' status where the given wallet is the initiator.
  * Used by the autonomous retry-reveal on page load / wallet connect.
  * Only returns non-expired rows (expiresAt > now).
+ *
+ * Excludes any rfqId whose corresponding htlcSwaps row is already settled
+ * (refunded / completed / expired) to prevent spurious auto-reveal toasts
+ * after a refund has been claimed.
  */
 export async function getLockedHtlcsForInitiator(initiatorAddress: string): Promise<HtlcSecret[]> {
   const db = await getDb();
   if (!db) return [];
   const nowMs = BigInt(Date.now());
-  return db.select().from(htlcSecrets)
+  // First get candidate locked secrets
+  const candidates = await db.select().from(htlcSecrets)
     .where(
       sql`${htlcSecrets.status} = 'locked'
         AND LOWER(${htlcSecrets.initiatorAddress}) = LOWER(${initiatorAddress})
         AND ${htlcSecrets.expiresAt} > ${nowMs}`
     );
+  if (candidates.length === 0) return [];
+  // Cross-check: exclude any rfqId that already has a settled htlcSwaps row
+  const rfqIds = candidates.map(r => r.rfqId);
+  const settledSwaps = await db.select({ rfqId: htlcSwaps.rfqId })
+    .from(htlcSwaps)
+    .where(
+      sql`${htlcSwaps.rfqId} IN (${sql.join(rfqIds.map(id => sql`${id}`), sql`, `)})
+        AND ${htlcSwaps.status} IN ('refunded', 'completed', 'expired')`
+    );
+  const settledRfqIds = new Set(settledSwaps.map(r => r.rfqId));
+  return candidates.filter(r => !settledRfqIds.has(r.rfqId));
 }
 
 /** Get all active (locked/revealed) HTLC secrets for the monitor */

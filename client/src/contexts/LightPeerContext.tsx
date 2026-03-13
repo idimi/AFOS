@@ -303,6 +303,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(null);
   // rfqId → revealed secretHex (received from Agent A after they confirm their lock)
   const [htlcRevealedSecrets, setHtlcRevealedSecrets] = useState<Record<string, string>>({});
+  // Ref mirror so closures (useEffect with stale deps) always read the latest value
+  const htlcRevealedSecretsRef = useRef<Record<string, string>>({});
+  useEffect(() => { htlcRevealedSecretsRef.current = htlcRevealedSecrets; }, [htlcRevealedSecrets]);
   // rfqIds that have been successfully claimed (Claim button hidden after success)
   // Seeded from localStorage on mount, then synced with DB via getSettledHtlcs
   const [claimedRfqIds, setClaimedRfqIds] = useState<Set<string>>(() => {
@@ -561,6 +564,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         if (!rows?.length) return;
         console.log(`[AutoReveal] Found ${rows.length} pending reveal(s) for wallet ${solWalletAddress.slice(0,8)}`);
         for (const row of rows) {
+          // Skip if already revealed in this session (prevents double-toast after refund/refresh)
+          // Use the ref so we always read the latest value even in a stale closure
+          if (htlcRevealedSecretsRef.current[row.rfqId]) {
+            console.log(`[AutoReveal] rfqId=${row.rfqId.slice(0,8)} already revealed in session — skipping`);
+            continue;
+          }
           // Restore the agentAWalletByRfqRef mapping
           if (row.initiatorAddress) {
             agentAWalletByRfqRef.current[row.rfqId] = row.initiatorAddress;

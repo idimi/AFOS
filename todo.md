@@ -2975,3 +2975,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Wallet UX Polish Session #15 (2026-03-13)
 - [x] Add pulse animation to arrow between source and destination wallets in executing state
 - [ ] Push code to GitHub after checkpoint
+
+## Bug Fix: Spurious HTLC Secret Toast After Refund (2026-03-13)
+- [x] Investigate why "[Auto] HTLC secret revealed autonomously" toast fires after claiming a refund
+- [x] Fix the incorrect trigger condition (server: cross-check htlcSwaps status; client: ref-based guard + stale closure fix)
