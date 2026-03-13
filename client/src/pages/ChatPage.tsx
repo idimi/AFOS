@@ -1611,23 +1611,28 @@ export default function ChatPage() {
       // Update the swap_progress card to confirmed phase
       setMessages(prev => {
         const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
-        if (idx !== -1) {
-          const updated = [...prev];
-          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
-          // Append a success text message with new balance
-          const balanceLine = freshBalances.length > 0
-            ? `\n\n**Your new balances:** ${freshBalances.map(b => `${parseFloat(b.amount).toFixed(4)} ${b.symbol}`).join(' · ')}`
-            : "";
-          const successMsg = {
-            id: `htlc-done-${Date.now()}`,
-            role: "assistant" as const,
-            type: "text" as const,
-            content: `✅ **Swap complete!** Atomic settlement confirmed on-chain. Both parties have received their funds.${balanceLine}`,
-            timestamp: Date.now(),
-          };
-          return [...updated, successMsg];
-        }
-        return prev;
+        if (idx === -1) return prev; // No matching card in this session — ignore
+        // Guard: if already confirmed, don't append another success message
+        if (prev[idx].swapProgressData?.phase === "confirmed") return prev;
+        // Guard: if a success message for this rfqId already exists, just update the card phase
+        const alreadyHasSuccessMsg = prev.some(
+          m => m.type === "text" && m.id?.startsWith(`htlc-done-${data.rfqId}`)
+        );
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
+        if (alreadyHasSuccessMsg) return updated;
+        // Append a success text message with new balance
+        const balanceLine = freshBalances.length > 0
+          ? `\n\n**Your new balances:** ${freshBalances.map(b => `${parseFloat(b.amount).toFixed(4)} ${b.symbol}`).join(' \u00b7 ')}`
+          : "";
+        const successMsg = {
+          id: `htlc-done-${data.rfqId}`,
+          role: "assistant" as const,
+          type: "text" as const,
+          content: `\u2705 **Swap complete!** Atomic settlement confirmed on-chain. Both parties have received their funds.${balanceLine}`,
+          timestamp: Date.now(),
+        };
+        return [...updated, successMsg];
       });
     };
     const wrappedHandler = (e: Event) => void handler(e);

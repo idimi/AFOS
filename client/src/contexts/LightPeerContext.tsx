@@ -2502,11 +2502,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Agent B locked on toChain (the chain they sent funds to), so they claim on fromChain
     // (the chain where Agent A locked funds for them)
     const claimChain = rfq?.fromChain?.toLowerCase() ?? "solana";
-
-    toast.loading(`Claiming funds on ${claimChain}…`, { id: `claim-${rfqId}` });
+    // Dismiss the "Auto-claiming" loading toast (if it was shown by the auto-claim path)
+    // before showing the "Claiming funds" toast so only one loading indicator is visible.
+    toast.dismiss(`auto-claim-${rfqId}`);
+    toast.loading(`Claiming funds on ${claimChain}\u2026`, { id: `claim-${rfqId}` });
     // Update modal to show "revealing" step
     setHtlcSigning(prev => prev ? { ...prev, step: "revealing" } : prev);
-
     try {
       if (claimChain === "solana" && solConnected) {
         // Solana claim: build a claim instruction using the revealed secret
