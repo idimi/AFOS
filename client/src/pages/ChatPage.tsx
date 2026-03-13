@@ -173,6 +173,9 @@ function QuoteCard({
   limitWarning,
   tnkPeerCount,
   walletConnected,
+  bitcoinTap,
+  preferredBtcWallet,
+  setPreferredBtcWallet,
 }: {
   data: QuoteData;
   onConfirm: () => void;
@@ -183,10 +186,24 @@ function QuoteCard({
   tnkPeerCount?: number;
   /** Pass true when ANY wallet (SOL, ETH, BTC, TNK) is connected — overrides Solana-only hook */
   walletConnected?: boolean;
+  /** Tap Wallet BTC state — non-null when Tap Wallet BTC is connected */
+  bitcoinTap?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
+  /** Which BTC wallet is preferred when multiple are connected */
+  preferredBtcWallet?: import("@/contexts/MultiChainWalletContext").BtcProviderType | null;
+  /** Callback to set the preferred BTC wallet */
+  setPreferredBtcWallet?: (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => void;
 }) {
   const { connected: solConnected } = useWallet();
+  const { bitcoin: activeBitcoin } = useMultiChainWallet();
   // Use the multi-chain walletConnected prop when provided; fall back to Solana adapter
   const connected = walletConnected ?? solConnected;
+
+  // Show BTC wallet picker when both Phantom/MetaMask BTC and Tap Wallet BTC are connected
+  const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin" ||
+    data.fromChain === "trac_network" || data.toChain === "trac_network";
+  const hasPhantomMetaMaskBtc = activeBitcoin?.connected && activeBitcoin.walletName !== "Tap Wallet";
+  const hasTapBtc = bitcoinTap?.connected;
+  const showBtcPicker = isBtcSwap && hasPhantomMetaMaskBtc && hasTapBtc;
 
   return (
     <motion.div
@@ -298,6 +315,54 @@ function QuoteCard({
           </div>
         )}
       </div>
+
+      {/* BTC wallet picker — shown when both Phantom/MetaMask BTC and Tap Wallet BTC are connected */}
+      {showBtcPicker && setPreferredBtcWallet && (
+        <div className="px-4 pb-3">
+          <div className="rounded-xl p-3 space-y-2"
+            style={{ background: "rgba(247,147,26,0.08)", border: "1px solid rgba(247,147,26,0.25)" }}>
+            <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">
+              Which Bitcoin wallet to use?
+            </p>
+            <div className="flex gap-2">
+              {/* Phantom / MetaMask BTC option */}
+              <button
+                onClick={() => setPreferredBtcWallet(activeBitcoin?.walletName === "Phantom" ? "phantom" : "metamask")}
+                className="flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
+                style={{
+                  background: (!preferredBtcWallet || preferredBtcWallet !== "tap")
+                    ? "rgba(247,147,26,0.2)" : "var(--muted)",
+                  border: (!preferredBtcWallet || preferredBtcWallet !== "tap")
+                    ? "1px solid rgba(247,147,26,0.5)" : "1px solid var(--border)",
+                  color: (!preferredBtcWallet || preferredBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)",
+                }}
+              >
+                <span className="w-2 h-2 rounded-full shrink-0"
+                  style={{ background: (!preferredBtcWallet || preferredBtcWallet !== "tap") ? "#f97316" : "var(--muted-foreground)" }}
+                />
+                {activeBitcoin?.walletName ?? "Phantom/MetaMask"}
+                <span className="ml-auto text-[9px] opacity-70">{activeBitcoin?.shortAddress}</span>
+              </button>
+              {/* Tap Wallet BTC option */}
+              <button
+                onClick={() => setPreferredBtcWallet("tap")}
+                className="flex-1 py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center gap-2"
+                style={{
+                  background: preferredBtcWallet === "tap" ? "rgba(247,147,26,0.2)" : "var(--muted)",
+                  border: preferredBtcWallet === "tap" ? "1px solid rgba(247,147,26,0.5)" : "1px solid var(--border)",
+                  color: preferredBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)",
+                }}
+              >
+                <span className="w-2 h-2 rounded-full shrink-0"
+                  style={{ background: preferredBtcWallet === "tap" ? "#f97316" : "var(--muted-foreground)" }}
+                />
+                Tap Wallet
+                <span className="ml-auto text-[9px] opacity-70">{bitcoinTap?.shortAddress}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2">
@@ -954,6 +1019,9 @@ function MessageBubble({
   tnkPeerCount,
   anyWalletConnected,
   onSwapAgain,
+  bitcoinTap,
+  preferredBtcWallet,
+  setPreferredBtcWallet,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -975,6 +1043,12 @@ function MessageBubble({
   anyWalletConnected?: boolean;
   /** Called when user clicks "Swap again" on the completion card */
   onSwapAgain?: () => void;
+  /** Tap Wallet BTC state — passed to QuoteCard for BTC wallet picker */
+  bitcoinTap?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
+  /** Which BTC wallet is preferred when multiple are connected */
+  preferredBtcWallet?: import("@/contexts/MultiChainWalletContext").BtcProviderType | null;
+  /** Callback to set the preferred BTC wallet */
+  setPreferredBtcWallet?: (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -1056,6 +1130,9 @@ function MessageBubble({
               limitWarning={msg.limitWarning}
               tnkPeerCount={tnkPeerCount}
               walletConnected={anyWalletConnected}
+              bitcoinTap={bitcoinTap}
+              preferredBtcWallet={preferredBtcWallet}
+              setPreferredBtcWallet={setPreferredBtcWallet}
             />
           </div>
         )}
@@ -1190,7 +1267,7 @@ function MessageBubble({
 // ─── Main ChatPage ─────────────────────────────────────────────────────────────
 export default function ChatPage() {
   const { connected, shortAddress, walletName, balances, totalUsd, connect, publicKey, sendTransaction, refreshBalances } = useWallet();
-  const { bitcoin, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
+  const { bitcoin, bitcoinTap, preferredBtcWallet, setPreferredBtcWallet, ethereum, tracNetwork: tnkWallet, phantomMultiChain } = useMultiChainWallet();
   const { user } = useAuth();
   const openId = user?.openId;
 
@@ -1522,6 +1599,7 @@ export default function ChatPage() {
   const handleConfirmSwap = useCallback(async (msgId: string, quoteData: QuoteData) => {
     // ── Wallet required — AFOS is non-custodial, user must connect their own wallet ──
     const fromChainNorm = (quoteData.fromChain ?? "solana").toLowerCase();
+    const toChainNorm = (quoteData.toChain ?? "solana").toLowerCase();
     // Accept Phantom multi-chain Solana address as a valid Solana wallet
     const effectivePublicKey = publicKey || (phantomSolAddr ? { toString: () => phantomSolAddr } : null);
     const noWalletConnected =
@@ -1535,6 +1613,33 @@ export default function ChatPage() {
       // Prompt the user to connect their wallet for the appropriate chain.
       openWalletForChain(quoteData.fromToken, quoteData.fromChain);
       return;
+    }
+
+    // ── Destination wallet check for cross-chain swaps ─────────────────────────────────────────────
+    // For cross-chain swaps, both source AND destination wallets must be connected.
+    // The destination wallet is needed to receive the output tokens.
+    if (fromChainNorm !== toChainNorm) {
+      // Check if destination wallet is connected
+      const destWalletMissing =
+        (toChainNorm === "solana"       && !effectivePublicKey) ||
+        (toChainNorm === "ethereum"     && !ethereum?.address) ||
+        (toChainNorm === "bitcoin"      && !bitcoin?.address) ||
+        (toChainNorm === "trac_network" && !tnkWallet?.address);
+
+      if (destWalletMissing) {
+        const destChainLabel = {
+          solana:       "Solana (Phantom/MetaMask)",
+          ethereum:     "Ethereum (MetaMask/Phantom)",
+          bitcoin:      "Bitcoin (Phantom/MetaMask/Tap Wallet)",
+          trac_network: "Trac Network (Tap Wallet)",
+        }[toChainNorm] ?? toChainNorm;
+        toast.error("Destination wallet not connected", {
+          description: `This cross-chain swap sends ${quoteData.toToken} to ${destChainLabel}. Please connect that wallet first.`,
+          duration: 6000,
+        });
+        openWalletForChain(quoteData.toToken, quoteData.toChain as SupportedChain);
+        return;
+      }
     }
 
     setExecutingId(msgId);
@@ -2043,6 +2148,9 @@ export default function ChatPage() {
                 setInput("swap ");
                 setTimeout(() => inputRef.current?.focus(), 50);
               }}
+              bitcoinTap={bitcoinTap}
+              preferredBtcWallet={preferredBtcWallet}
+              setPreferredBtcWallet={setPreferredBtcWallet}
             />
           ) : null
         ))}

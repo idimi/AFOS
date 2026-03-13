@@ -2936,6 +2936,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Remove isCoinbaseWallet from EthProvider interface
 - [x] Replace @solana/wallet-adapter-wallets with @solana/wallet-adapter-phantom (lighter dep)
 - [ ] Add chain coverage badges: Phantom (SOL+ETH+BTC), MetaMask (SOL+ETH+BTC), Tap Wallet (BTC+TNK) — future
-- [ ] Update ChatPage handleConfirmSwap: check both source AND destination wallet — future
-- [ ] Add BTC wallet picker when both Phantom/MetaMask and Tap Wallet are connected for BTC swaps — future
+- [x] Update ChatPage handleConfirmSwap: check both source AND destination wallet — done
+- [x] Add BTC wallet picker when both Phantom/MetaMask and Tap Wallet are connected for BTC swaps — done
+- [ ] Push updated code to GitHub after checkpoint
+
+## Wallet UX Improvements (Session 2026-03-13 #9)
+- [x] Add chain coverage badges to ConnectWalletModal: Phantom (SOL·ETH·BTC), MetaMask (SOL·ETH·BTC), Tap Wallet (BTC·TNK)
+- [x] Add BTC wallet picker to swap quote card when both Phantom/MetaMask and Tap Wallet are connected
+- [x] Add destination wallet check to handleConfirmSwap (e.g. TNK→SOL requires Phantom/MetaMask for destination)
 - [ ] Push updated code to GitHub after checkpoint

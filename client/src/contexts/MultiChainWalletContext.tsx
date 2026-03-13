@@ -71,7 +71,14 @@ export interface PhantomMultiChainState {
 
 interface MultiChainWalletContextValue {
   ethereum: ChainWallet | null;
+  /** Active BTC wallet — respects preferredBtcWallet when both Phantom/MetaMask and Tap Wallet are connected */
   bitcoin: ChainWallet | null;
+  /** Tap Wallet BTC state — kept separate so Phantom/MetaMask BTC and Tap Wallet BTC can coexist */
+  bitcoinTap: ChainWallet | null;
+  /** Which BTC wallet to prefer when multiple are connected. null = use last-connected */
+  preferredBtcWallet: BtcProviderType | null;
+  /** Explicitly choose which BTC wallet to use for the next swap */
+  setPreferredBtcWallet: (provider: BtcProviderType | null) => void;
   /** Trac Network (TNK) wallet state — connected via window.tracnetwork (Tap Wallet) */
   tracNetwork: ChainWallet | null;
   erc20Balances: EthErc20Balances;
@@ -431,6 +438,10 @@ function clearWalletSession() {
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
   const [ethereum, setEthereum] = useState<ChainWallet | null>(null);
   const [bitcoin, setBitcoin] = useState<ChainWallet | null>(null);
+  /** Separate state for Tap Wallet BTC — allows Phantom/MetaMask BTC and Tap Wallet BTC to coexist */
+  const [bitcoinTap, setBitcoinTap] = useState<ChainWallet | null>(null);
+  /** Preferred BTC wallet when multiple are connected */
+  const [preferredBtcWallet, setPreferredBtcWallet] = useState<BtcProviderType | null>(null);
   const [tracNetwork, setTracNetwork] = useState<ChainWallet | null>(null);
   const [erc20Balances, setErc20Balances] = useState<EthErc20Balances>({ usdc: 0, usdt: 0 });
   const [phantomMultiChain, setPhantomMultiChain] = useState<PhantomMultiChainState | null>(null);
@@ -916,7 +927,20 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             ]);
             const btcBal = btcResult?.btc ?? "0.00000000";
             const sats = btcResult?.sats ?? 0;
-            setBitcoin({
+            setBitcoinTap({
+              chain: "bitcoin",
+              walletName: "Tap Wallet",
+              address: btcAddress,
+              shortAddress: shortAddr(btcAddress),
+              balance: `${btcBal} BTC`,
+              balanceUsd: (sats / 1e8) * btcPrice,
+              symbol: "BTC",
+              connected: true,
+              connecting: false,
+              isPhantom: false,
+            });
+            // If no Phantom/MetaMask BTC is connected yet, also populate bitcoin for backward compat
+            setBitcoin(prev => prev && prev.walletName !== "Tap Wallet" ? prev : {
               chain: "bitcoin",
               walletName: "Tap Wallet",
               address: btcAddress,
@@ -955,7 +979,10 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         if (!newAddress) {
           // User disconnected all accounts in the extension
           setTracNetwork(null);
-          setBitcoin(null);
+          setBitcoinTap(null);
+          // Only clear bitcoin state if it was set by Tap Wallet
+          setBitcoin(prev => prev?.walletName === "Tap Wallet" ? null : prev);
+          setPreferredBtcWallet(null);
           clearWalletSession();
           showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
           return;
@@ -1011,9 +1038,18 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   }, [connectMetaMaskBitcoin, connectTapWallet, connectPhantomMultiChain]);
 
   // ── Unified BTC PSBT signing ─────────────────────────────────────────────────
-  // Auto-routes to whichever BTC wallet is currently connected.
+  // Auto-routes to the preferred BTC wallet (preferredBtcWallet) or the last-connected one.
   const btcSignPsbt = useCallback(async (psbtBase64: string, inputsToSign?: number[]): Promise<string> => {
-    const walletName = bitcoin?.walletName ?? (phantomMultiChain?.chains.includes("bitcoin") ? "Phantom" : null);
+    // Determine which wallet to use: prefer explicit preference, then active bitcoin state
+    const activeBtcWallet = (() => {
+      if (preferredBtcWallet === "tap") return bitcoinTap;
+      if (preferredBtcWallet === "phantom" || preferredBtcWallet === "metamask") {
+        const nonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
+        return nonTap ?? bitcoin;
+      }
+      return bitcoin;
+    })();
+    const walletName = activeBtcWallet?.walletName ?? (phantomMultiChain?.chains.includes("bitcoin") ? "Phantom" : null);
     if (!walletName) throw new Error("No Bitcoin wallet connected");
 
     // ── Phantom ──────────────────────────────────────────────────────────────
@@ -1055,40 +1091,37 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
 
     throw new Error(`btcSignPsbt: unsupported wallet "${walletName}"`);
-  }, [bitcoin, phantomMultiChain]);
+  }, [bitcoin, bitcoinTap, preferredBtcWallet, phantomMultiChain]);
 
   const disconnectBitcoin = useCallback(() => {
     if (bitcoin?.isPhantom) {
       disconnectPhantom();
     } else {
-      // If Tap Wallet was used, both BTC (tapprotocol) and TNK (tracnetwork) were connected
-      // together — disconnect both so the UI is fully clean.
-      const isTap = bitcoin?.walletName === "Tap Wallet";
+      const isTap = bitcoin?.walletName === "Tap Wallet" || bitcoinTap !== null;
       if (isTap) {
         setTracNetwork(null);
+        setBitcoinTap(null);
       }
       setBitcoin(null);
+      setPreferredBtcWallet(null);
       clearWalletSession();
-      // For Tap Wallet: show ONE combined toast with both chains.
-      // For MetaMask BTC: show BTC-only toast.
       if (isTap) {
         showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
       } else {
         showWalletDisconnectedToast(bitcoin?.walletName ?? "Bitcoin Wallet", ["bitcoin"]);
       }
     }
-  }, [bitcoin, disconnectPhantom]);
+  }, [bitcoin, bitcoinTap, disconnectPhantom]);
   const disconnectTracNetwork = useCallback(() => {
-    const isTap = bitcoin?.walletName === "Tap Wallet";
+    const isTap = tracNetwork?.walletName === "Tap Wallet";
     setTracNetwork(null);
-    // Also clear BTC if it was connected via Tap Wallet simultaneously
-    if (isTap) {
-      setBitcoin(null);
-    }
+    setBitcoinTap(null);
+    // Only clear bitcoin state if it was set by Tap Wallet
+    setBitcoin(prev => prev?.walletName === "Tap Wallet" ? null : prev);
+    setPreferredBtcWallet(null);
     clearWalletSession();
-    // For Tap Wallet: show ONE combined toast with both chains.
     showWalletDisconnectedToast("Tap Wallet", isTap ? ["bitcoin", "trac_network"] : ["trac_network"]);
-  }, [bitcoin]);
+  }, [tracNetwork]);
 
   // ── Assign connect refs (updated every render so they always point to latest callbacks) ──
   connectEthereumRef.current = connectEthereum;
@@ -1152,7 +1185,20 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             ]);
             const btcBalance = btcResult?.btc ?? "0.00000000";
             const sats = btcResult?.sats ?? 0;
-            setBitcoin({
+            setBitcoinTap({
+              chain: "bitcoin",
+              walletName: "Tap Wallet",
+              address: btcAddress,
+              shortAddress: shortAddr(btcAddress),
+              balance: `${btcBalance} BTC`,
+              balanceUsd: (sats / 1e8) * btcPriceUsd,
+              symbol: "BTC",
+              connected: true,
+              connecting: false,
+              isPhantom: false,
+            });
+            // If no Phantom/MetaMask BTC is connected, also set bitcoin for backward compat
+            setBitcoin(prev => prev && prev.walletName !== "Tap Wallet" ? prev : {
               chain: "bitcoin",
               walletName: "Tap Wallet",
               address: btcAddress,
@@ -1177,7 +1223,10 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         const newAddress = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
         if (!newAddress) {
           setTracNetwork(null);
-          setBitcoin(null);
+          setBitcoinTap(null);
+          // Only clear bitcoin state if it was set by Tap Wallet
+          setBitcoin(prev => prev?.walletName === "Tap Wallet" ? null : prev);
+          setPreferredBtcWallet(null);
           clearWalletSession();
           showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
           return;
@@ -1359,10 +1408,24 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
+  // ── Derived active BTC wallet (respects preferredBtcWallet) ─────────────────
+  // When both Phantom/MetaMask BTC and Tap Wallet BTC are connected, use the preferred one.
+  // If no preference is set, use the last-connected (bitcoin state).
+  const activeBitcoin: ChainWallet | null = (() => {
+    if (!preferredBtcWallet) return bitcoin;
+    if (preferredBtcWallet === "tap") return bitcoinTap ?? bitcoin;
+    // phantom or metamask
+    const nonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
+    return nonTap ?? bitcoin;
+  })();
+
   return (
     <MultiChainWalletContext.Provider value={{
       ethereum,
-      bitcoin,
+      bitcoin: activeBitcoin,
+      bitcoinTap,
+      preferredBtcWallet,
+      setPreferredBtcWallet,
       tracNetwork,
       erc20Balances,
       phantomMultiChain,
