@@ -2827,3 +2827,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix htlcSecretsMonitor claim B retry: added htlcPda existence pre-check in claimSolanaHtlc — if PDA not found on-chain (already claimed/refunded), throw AlreadyClaimed and mark DB as completed.
 - [x] Fix isAlreadyClaimedError: now detects Custom 6004 (AlreadyClaimed) and Custom 6005 (AlreadyRefunded) Anchor error codes.
 - [x] Resolved both stuck rfqs (rfq_1773283782213 and rfq_1773359544103): both marked as completed after htlcPda pre-check confirmed they were already settled on-chain.
+- [ ] Fix revealHtlcSecret PRECONDITION_FAILED: HTLC expired before secret revealed — fix timing/expiry logic
+- [ ] Fix 403 Forbidden on rpc.unlock-protocol.com — remove all remaining direct RPC calls, route through /api/sol-rpc proxy
+- [ ] Redesign Agent B HTLC modal: full progress card with countdown, steps (1-5), tx hash, peer info matching Agent A's SwapInProgress card
+- [ ] Fix full end-to-end swap flow: RFQ → lock → counterparty lock → reveal → claim → settle with no manual steps
+
+## HTLC Swap Flow Fixes (Session 2026-03-13)
+- [x] Fix revealHtlcSecret PRECONDITION_FAILED expiry bug (htlc_secrets expiresAt was 60s, now 1 hour)
+- [x] Redesign Agent B HTLC modal with countdown, steps, tx details matching Agent A progress card
+- [x] Fix setHtlcSigning intermediate calls to preserve rich state fields using spread pattern
+- [x] Add revealing/settled state transitions in claimHtlcFunds for all chains
+- [x] Fix Dashboard.tsx and SwapHistoryTabs.tsx to use sol-rpc proxy instead of direct RPC

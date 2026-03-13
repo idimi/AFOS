@@ -92,6 +92,17 @@ export interface HtlcSigningState {
   step: HtlcStep;
   txHash?: string;
   error?: string;
+  // Enhanced fields for the progress modal
+  fromToken?: string;       // Token Agent B is locking (e.g. "USDT")
+  toToken?: string;         // Token Agent B will receive (e.g. "SOL")
+  fromAmount?: number;      // Amount Agent B is locking
+  toAmount?: number;        // Amount Agent B will receive
+  fromChain?: string;       // Chain Agent B is locking on
+  toChain?: string;         // Chain Agent B will receive on
+  counterpartyAlias?: string; // Agent A's alias/peerId
+  expiresAt?: number;       // HTLC timelock expiry (ms epoch)
+  lockedAt?: number;        // When Agent B locked (ms epoch)
+  claimTxHash?: string;     // Tx hash of the claim (settlement)
 }
 
 export interface LightPeerState {
@@ -1494,7 +1505,21 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     // Step 2: In-browser HTLC lock signing
     console.error("[HTLC-DEBUG] about to setHtlcSigning signing");
     toast.info("[HTLC-DEBUG] Step 2: setHtlcSigning");
-    setHtlcSigning({ rfqId, step: "signing" });
+    // Agent B locks toToken and receives fromToken
+    const isInit = !!rfq.isInitiator;
+    setHtlcSigning({
+      rfqId,
+      step: "signing",
+      fromToken:          isInit ? rfq.fromToken : rfq.toToken,   // what Agent B locks
+      toToken:            isInit ? rfq.toToken   : rfq.fromToken, // what Agent B receives
+      fromAmount:         isInit ? rfq.amount    : rfq.suggestedOutAmount,
+      toAmount:           isInit ? rfq.suggestedOutAmount : rfq.amount,
+      fromChain:          isInit ? rfq.fromChain : rfq.toChain,
+      toChain:            isInit ? rfq.toChain   : rfq.fromChain,
+      counterpartyAlias:  rfq.requestorPeer?.slice(0, 12),
+      expiresAt:          Date.now() + 3_600_000, // 1 hour HTLC timelock
+      lockedAt:           Date.now(),
+    });
 
     try {
       // Agent A locks on fromChain; Agent B locks on toChain (important for cross-chain swaps)
@@ -1507,7 +1532,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       if (chain === "solana" && solConnected) {
         // Solana HTLC: build lock transaction and sign with wallet
         // Agent A locks fromToken (e.g., SOL); Agent B locks toToken (e.g., USDT)
-        setHtlcSigning({ rfqId, step: "locking" });
+        setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
 
         // Determine what token and amount this agent should lock
         const isAgentA = !!rfq.isInitiator;
@@ -1531,7 +1556,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           const programCheck = await checkHtlcProgramDeployed(solConnection);
           if (!programCheck.deployed) {
             const msg = programCheck.reason ?? "HTLC program not found on-chain. Please try again later.";
-            setHtlcSigning({ rfqId, step: 'failed', error: msg });
+            setHtlcSigning(prev => prev ? { ...prev, step: 'failed', error: msg } : { rfqId, step: 'failed', error: msg });
             toast.error('HTLC program unavailable', { description: msg });
             return;
           }
@@ -1616,7 +1641,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                     const msg = balance === 0
                       ? `You have no ${lockToken} in this wallet. Please fund your wallet with ${lockAmount} ${lockToken} before accepting this swap.`
                       : `Insufficient ${lockToken} balance. You have ${balance.toFixed(6)} ${lockToken} but need ${lockAmount} ${lockToken}.`;
-                    setHtlcSigning({ rfqId, step: 'failed', error: msg });
+                    setHtlcSigning(prev => prev ? { ...prev, step: 'failed', error: msg } : { rfqId, step: 'failed', error: msg });
                     toast.error('Insufficient balance', { description: msg });
                     return;
                   }
@@ -1713,7 +1738,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
 
           // HTLC lock tx submitted — mark as "locked" (not "settled").
           // True settlement only happens after Agent A reveals the secret and both sides claim.
-          setHtlcSigning({ rfqId, step: "locked", txHash });
+          setHtlcSigning(prev => ({
+            ...(prev ?? {}),
+            rfqId,
+            step: "locked",
+            txHash,
+            lockedAt: Date.now(),
+            expiresAt: Date.now() + 3_600_000, // 1 hour from now
+          }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1777,16 +1809,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         } catch (solErr: unknown) {
           const msg = solErr instanceof Error ? solErr.message : String(solErr);
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
-            setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: "Transaction rejected by user" } : { rfqId, step: "failed", error: "Transaction rejected by user" });
           } else {
-            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg.slice(0, 120) } : { rfqId, step: "failed", error: msg.slice(0, 120) });
             toast.error("Solana HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else if ((chain === "ethereum" || chain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
         // Ethereum HTLC: ABI-encoded lockETH() / lockToken() via HTLC.sol
         // Accepts: MetaMask, Coinbase Wallet, Phantom multi-chain ethereum, or any EIP-1193 provider
-        setHtlcSigning({ rfqId, step: "locking" });
+        setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
         const rawEth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown[] }) => Promise<string> } }).ethereum
           ?? (window as any).phantom?.ethereum;
         try {
@@ -1847,7 +1879,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             }],
           });
           // HTLC lock tx submitted — mark as "locked" (not "settled").
-          setHtlcSigning({ rfqId, step: "locked", txHash });
+          setHtlcSigning(prev => ({
+            ...(prev ?? {}),
+            rfqId,
+            step: "locked",
+            txHash,
+            lockedAt: Date.now(),
+            expiresAt: Date.now() + 3_600_000, // 1 hour from now
+          }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1859,16 +1898,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         } catch (ethErr: unknown) {
           const msg = ethErr instanceof Error ? ethErr.message : String(ethErr);
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("rejected")) {
-            setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: "Transaction rejected by user" } : { rfqId, step: "failed", error: "Transaction rejected by user" });
           } else {
             // Wallet signing failed — do NOT mark as settled
-            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg.slice(0, 120) } : { rfqId, step: "failed", error: msg.slice(0, 120) });
             toast.error("ETH HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else if ((chain === "bitcoin" || chain === "btc") && (bitcoin?.connected || phantomMultiChain?.bitcoinAddress || !!(window as any).tapprotocol)) {
         // Bitcoin HTLC: build P2WSH PSBT, sign with detected wallet, broadcast via mempool.space
-        setHtlcSigning({ rfqId, step: "locking" });
+        setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
         try {
           const btcProvider: BtcWalletProvider = detectBtcProvider();
           if (btcProvider === "unknown") {
@@ -1904,7 +1943,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             btcExistingHash,
           );
           // HTLC lock tx submitted — mark as "locked" (not "settled").
-          setHtlcSigning({ rfqId, step: "locked", txHash: result.txid });
+          setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: result.txid } : { rfqId, step: "locked", txHash: result.txid });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1920,19 +1959,19 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         } catch (btcErr: unknown) {
           const msg = btcErr instanceof Error ? btcErr.message : String(btcErr);
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
-            setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: "Transaction rejected by user" } : { rfqId, step: "failed", error: "Transaction rejected by user" });
           } else if (msg.includes("Insufficient funds") || msg.includes("No confirmed UTXOs")) {
-            setHtlcSigning({ rfqId, step: "failed", error: msg });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg } : { rfqId, step: "failed", error: msg });
             toast.error("Insufficient Bitcoin balance", { description: msg });
           } else {
             // Wallet signing failed — do NOT mark as settled
-            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg.slice(0, 120) } : { rfqId, step: "failed", error: msg.slice(0, 120) });
             toast.error("BTC HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else if ((chain === "trac_network" || rfq.fromToken === "TNK") && (window as any).tracnetwork) {
         // TNK (Trac Network) HTLC: agent-escrow model using window.tracnetwork.sendTNK()
-        setHtlcSigning({ rfqId, step: "locking" });
+        setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
         try {
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
           const existingTnkHash = rfq.secretHashHex;
@@ -1946,7 +1985,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             timelockSeconds: 600, // 10 minutes default for TNK
           });
           // HTLC lock tx submitted — mark as "locked" (not "settled").
-          setHtlcSigning({ rfqId, step: "locked", txHash: result.txHash });
+          setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: result.txHash } : { rfqId, step: "locked", txHash: result.txHash });
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -1962,23 +2001,23 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         } catch (tnkErr: unknown) {
           const msg = tnkErr instanceof Error ? tnkErr.message : String(tnkErr);
           if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
-            setHtlcSigning({ rfqId, step: "failed", error: "Transaction rejected by user" });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: "Transaction rejected by user" } : { rfqId, step: "failed", error: "Transaction rejected by user" });
           } else {
             // Wallet signing failed — do NOT mark as settled
-            setHtlcSigning({ rfqId, step: "failed", error: msg.slice(0, 120) });
+            setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg.slice(0, 120) } : { rfqId, step: "failed", error: msg.slice(0, 120) });
             toast.error("TNK HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
       } else {
         // No wallet connected for this chain — cannot sign HTLC
-        setHtlcSigning({ rfqId, step: "failed", error: `No ${chain} wallet connected to sign HTLC` });
+        setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: `No ${chain} wallet connected to sign HTLC` } : { rfqId, step: "failed", error: `No ${chain} wallet connected to sign HTLC` });
         toast.error("Wallet not connected", {
           description: `Connect a ${chain} wallet to sign the HTLC lock transaction.`,
         });
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setHtlcSigning({ rfqId, step: "failed", error: msg });
+      setHtlcSigning(prev => prev ? { ...prev, step: "failed", error: msg } : { rfqId, step: "failed", error: msg });
       toast.error("HTLC signing failed", { description: msg });
     }
 
@@ -2107,6 +2146,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     const claimChain = rfq?.fromChain?.toLowerCase() ?? "solana";
 
     toast.loading(`Claiming funds on ${claimChain}…`, { id: `claim-${rfqId}` });
+    // Update modal to show "revealing" step
+    setHtlcSigning(prev => prev ? { ...prev, step: "revealing" } : prev);
 
     try {
       if (claimChain === "solana" && solConnected) {
@@ -2176,6 +2217,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "solana", txHash } } }),
           }).catch(() => {});
+          setHtlcSigning(prev => prev ? { ...prev, step: "settled", claimTxHash: txHash } : prev);
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: no program deployed — show the secret and instruct user
@@ -2186,6 +2228,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             action: { label: "Copy Secret", onClick: () => void navigator.clipboard.writeText(secretHex) },
           });
           // Mark as claimed in UI even in demo mode
+          setHtlcSigning(prev => prev ? { ...prev, step: "settled" } : prev);
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         }
       } else if ((claimChain === "ethereum" || claimChain === "eth") && (ethereum?.connected || !!(window as any).ethereum || phantomMultiChain?.ethereumAddress)) {
@@ -2218,6 +2261,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "ethereum", txHash } } }),
           }).catch(() => {});
+          setHtlcSigning(prev => prev ? { ...prev, step: "settled", claimTxHash: txHash } : prev);
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
         } else {
           // Demo mode: show secret
@@ -2267,6 +2311,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "trac_network" } } }),
         }).catch(() => {});
+        setHtlcSigning(prev => prev ? { ...prev, step: "settled" } : prev);
         setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else {
         // No wallet connected for this chain — just copy the secret

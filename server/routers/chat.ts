@@ -1204,7 +1204,7 @@ export const chatRouter = router({
       // ── Step 2: If P2P peer matched, send agent_rfq to peer and return P2P route ─────────────────────
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
       if (p2pQuote && p2pQuote.peerId && p2pQuote.rfqId) {
-        const expiresAt = Date.now() + 60_000; // 60s for counterparty to accept
+        const expiresAt = Date.now() + 3_600_000; // 1 hour — matches the on-chain HTLC timelock
         // Generate HTLC secret BEFORE sending agent_rfq so the hash can be included
         const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
         const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");

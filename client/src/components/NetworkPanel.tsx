@@ -301,6 +301,285 @@ function PairToggle({ pair, active, onToggle }: { pair: string; active: boolean;
   );
 }
 
+// ─── HTLC Progress Modal (Agent B) ─────────────────────────────────────────
+
+const HTLC_STEPS: { key: HtlcStep; label: string; desc: string }[] = [
+  { key: "signing",   label: "Sign HTLC lock transaction",        desc: "Approve the lock transaction in your wallet" },
+  { key: "locking",   label: "Submitting lock to chain",           desc: "Broadcasting transaction to the network" },
+  { key: "locked",    label: "Funds locked — waiting for peer",    desc: "Your funds are in escrow. Waiting for counterparty to lock." },
+  { key: "revealing", label: "Counterparty revealing secret",      desc: "Claiming your funds using the revealed secret" },
+  { key: "settled",   label: "Atomic settlement complete",         desc: "Funds have been released to your wallet" },
+];
+
+const CHAIN_COLORS_NP: Record<string, string> = {
+  solana: "#9945ff", ethereum: "#627eea", bitcoin: "#f7931a", trac_network: "#00d4ff",
+};
+const CHAIN_LABELS_NP: Record<string, string> = {
+  solana: "SOL", ethereum: "ETH", bitcoin: "BTC", trac_network: "TNK",
+};
+
+function getExplorerUrlNP(chain: string | undefined, txHash: string): string {
+  switch ((chain ?? "solana").toLowerCase()) {
+    case "solana":       return `https://solscan.io/tx/${txHash}`;
+    case "ethereum":     return `https://etherscan.io/tx/${txHash}`;
+    case "bitcoin":      return `https://mempool.space/tx/${txHash}`;
+    case "trac_network": return `https://explorer.trac.network/tx/${txHash}`;
+    default:             return `https://solscan.io/tx/${txHash}`;
+  }
+}
+
+import type { HtlcSigningState } from "../contexts/LightPeerContext";
+
+function HtlcProgressModal({ signing, onDismiss }: { signing: HtlcSigningState; onDismiss: () => void }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (signing.step === "settled" || signing.step === "failed") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [signing.step]);
+
+  const steps = HTLC_STEPS;
+  const currentIdx = steps.findIndex(s => s.key === signing.step);
+  const isDone = signing.step === "settled";
+  const isFailed = signing.step === "failed";
+
+  const accent = isFailed ? "#f87171" : isDone ? "#34d399" : "#06b6d4";
+  const accentBorder = isFailed ? "rgba(239,68,68,0.2)" : isDone ? "rgba(16,185,129,0.2)" : "rgba(6,182,212,0.2)";
+
+  // Countdown
+  const expiryInfo = (() => {
+    if (!signing.expiresAt || isDone || isFailed) return null;
+    const diff = signing.expiresAt - now;
+    if (diff <= 0) return { label: "Expired", urgent: true };
+    const totalSecs = Math.floor(diff / 1000);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return { label: m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`, urgent: totalSecs < 120 };
+  })();
+
+  // Elapsed
+  const elapsedLabel = (() => {
+    if (!signing.lockedAt) return null;
+    const diff = now - signing.lockedAt;
+    const totalSecs = Math.floor(diff / 1000);
+    const m = Math.floor(totalSecs / 60);
+    const s = totalSecs % 60;
+    return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+  })();
+
+  const fromChainColor = CHAIN_COLORS_NP[signing.fromChain ?? "solana"] ?? "#aaa";
+  const toChainColor   = CHAIN_COLORS_NP[signing.toChain   ?? "solana"] ?? "#aaa";
+  const fromChainLabel = CHAIN_LABELS_NP[signing.fromChain ?? "solana"] ?? (signing.fromChain?.toUpperCase() ?? "?");
+  const toChainLabel   = CHAIN_LABELS_NP[signing.toChain   ?? "solana"] ?? (signing.toChain?.toUpperCase()   ?? "?");
+  const isCrossChain   = signing.fromChain && signing.toChain && signing.fromChain !== signing.toChain;
+
+  // Active tx hash: show claimTxHash when settled, otherwise lockTxHash
+  const displayTxHash = signing.step === "settled" ? (signing.claimTxHash ?? signing.txHash) : signing.txHash;
+  const displayTxChain = signing.step === "settled" ? (signing.toChain ?? signing.fromChain) : signing.fromChain;
+
+  const canDismiss = signing.step !== "signing" && signing.step !== "locking" && signing.step !== "revealing";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(6px)" }}
+      onClick={(e) => { if (e.target === e.currentTarget && canDismiss) onDismiss(); }}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        className="w-[340px] overflow-hidden"
+        style={{
+          borderRadius: "18px",
+          background: "rgba(8,8,16,0.95)",
+          border: `1px solid ${accentBorder}`,
+          boxShadow: `0 0 0 1px rgba(255,255,255,0.04) inset, 0 8px 40px rgba(0,0,0,0.6)`,
+        }}
+      >
+        {/* Top accent bar */}
+        <div style={{ height: "2px", background: `linear-gradient(90deg, ${accent}80, ${accent}20, transparent)` }} />
+
+        <div className="p-5 space-y-4">
+          {/* ── Header ── */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {isDone ? (
+                <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.4)" }}>
+                  <CheckCircle2 className="w-3 h-3" style={{ color: "#34d399" }} />
+                </div>
+              ) : isFailed ? (
+                <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.4)" }}>
+                  <AlertTriangle className="w-3 h-3" style={{ color: "#f87171" }} />
+                </div>
+              ) : (
+                <div className="relative w-5 h-5 shrink-0">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 rounded-full border-2 border-transparent"
+                    style={{ borderTopColor: accent, borderRightColor: `${accent}40` }}
+                  />
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-semibold tracking-wide" style={{ color: accent }}>
+                  {isDone ? "Swap Complete" : isFailed ? "Swap Failed" : "HTLC Atomic Swap"}
+                </p>
+                {!isDone && !isFailed && elapsedLabel && (
+                  <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Running {elapsedLabel}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.2)" }}>
+              <Shield className="w-2.5 h-2.5" style={{ color: "#06b6d4" }} />
+              <span className="text-[9px] font-semibold tracking-wider" style={{ color: "#06b6d4" }}>HTLC ATOMIC</span>
+            </div>
+          </div>
+
+          {/* ── Swap summary ── */}
+          {(signing.fromToken || signing.toToken) && (
+            <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>You lock</span>
+                  <span className="text-sm font-bold" style={{ color: "rgba(255,255,255,0.95)" }}>
+                    {signing.fromAmount != null ? signing.fromAmount.toFixed(4) : "—"}
+                    <span className="ml-1 text-xs font-semibold" style={{ color: fromChainColor }}>{signing.fromToken ?? "?"}</span>
+                  </span>
+                  {isCrossChain && (
+                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${fromChainColor}18`, color: fromChainColor }}>{fromChainLabel}</span>
+                  )}
+                </div>
+                <div className="flex flex-col items-center gap-0.5">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 8h10M9 4l4 4-4 4" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+                <div className="flex flex-col gap-0.5 items-end">
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>You receive</span>
+                  <span className="text-sm font-bold" style={{ color: isDone ? "#34d399" : "rgba(255,255,255,0.95)" }}>
+                    {signing.toAmount != null ? signing.toAmount.toFixed(4) : "—"}
+                    <span className="ml-1 text-xs font-semibold" style={{ color: toChainColor }}>{signing.toToken ?? "?"}</span>
+                  </span>
+                  {isCrossChain && (
+                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${toChainColor}18`, color: toChainColor }}>{toChainLabel}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── Meta: peer + countdown ── */}
+          <div className="flex items-center justify-between">
+            {signing.counterpartyAlias ? (
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#34d399" }} />
+                <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Peer</span>
+                <span className="text-[11px] font-semibold font-mono" style={{ color: "rgba(255,255,255,0.7)" }}>@{signing.counterpartyAlias}</span>
+              </div>
+            ) : <div />}
+            {expiryInfo && (
+              <div className="flex items-center gap-1" style={{ color: expiryInfo.urgent ? "#f87171" : "#f59e0b" }}>
+                <Clock className="w-3 h-3" />
+                <span className="text-[10px] font-mono font-medium">HTLC {expiryInfo.label}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ── Step tracker ── */}
+          {!isFailed && (
+            <div className="space-y-0">
+              {steps.map((phase, idx) => {
+                const isActive  = idx === currentIdx;
+                const isDoneStep = isDone || idx < currentIdx;
+                const isLast     = idx === steps.length - 1;
+                return (
+                  <div key={phase.key} className="flex items-stretch gap-3">
+                    <div className="flex flex-col items-center" style={{ width: "16px", flexShrink: 0 }}>
+                      {idx > 0 && (
+                        <div className="w-px flex-none" style={{ height: "6px", background: isDoneStep ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)" }} />
+                      )}
+                      {isDoneStep ? (
+                        <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.5)" }}>
+                          <span className="text-[8px] font-bold" style={{ color: "#34d399" }}>✓</span>
+                        </div>
+                      ) : isActive ? (
+                        <motion.div
+                          animate={{ scale: [1, 1.2, 1], opacity: [0.8, 1, 0.8] }}
+                          transition={{ duration: 1.4, repeat: Infinity }}
+                          className="w-4 h-4 rounded-full shrink-0"
+                          style={{ background: `${accent}25`, border: `2px solid ${accent}` }}
+                        />
+                      ) : (
+                        <div className="w-4 h-4 rounded-full shrink-0" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)" }} />
+                      )}
+                      {!isLast && (
+                        <div className="w-px flex-1" style={{ minHeight: "6px", background: isDoneStep ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.08)" }} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-2.5">
+                      <p className="text-[11px] font-semibold leading-none" style={{ color: isDoneStep ? "#34d399" : isActive ? accent : "rgba(255,255,255,0.25)", marginTop: idx === 0 ? "0" : "1px" }}>
+                        {phase.label}
+                        {isActive && !isDone && (
+                          <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.2, repeat: Infinity }} className="ml-1.5 text-[9px] font-normal" style={{ color: `${accent}90` }}>●</motion.span>
+                        )}
+                      </p>
+                      {(isActive || isDoneStep) && (
+                        <p className="text-[10px] mt-0.5 leading-snug" style={{ color: "rgba(255,255,255,0.3)" }}>{phase.desc}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Error message ── */}
+          {isFailed && (
+            <div className="rounded-lg px-3 py-2" style={{ background: "rgba(248,113,113,0.06)", border: "1px solid rgba(248,113,113,0.2)" }}>
+              <p className="text-[11px]" style={{ color: "#f87171" }}>{signing.error ?? "Swap could not be completed."}</p>
+            </div>
+          )}
+
+          {/* ── Tx hash ── */}
+          {displayTxHash && (
+            <a
+              href={getExplorerUrlNP(displayTxChain, displayTxHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-[10px] font-mono group"
+              style={{ color: "rgba(103,232,249,0.7)" }}
+            >
+              <ExternalLink className="w-3 h-3" style={{ opacity: 0.7 }} />
+              <span className="group-hover:underline">{displayTxHash.slice(0, 24)}…</span>
+            </a>
+          )}
+
+          {/* ── Action button ── */}
+          {canDismiss && (
+            <button
+              onClick={onDismiss}
+              className="w-full py-2 rounded-xl text-xs font-bold transition-all hover:opacity-80"
+              style={{
+                background: isDone ? "rgba(52,211,153,0.15)" : isFailed ? "rgba(248,113,113,0.1)" : "rgba(6,182,212,0.12)",
+                color: isDone ? "#34d399" : isFailed ? "#f87171" : "#06b6d4",
+                border: `1px solid ${isDone ? "rgba(52,211,153,0.3)" : isFailed ? "rgba(248,113,113,0.3)" : "rgba(6,182,212,0.25)"}`,
+              }}
+            >
+              {isDone ? "✓ Done" : isFailed ? "Dismiss" : "Waiting for settlement…"}
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── Swap Status Indicator ───────────────────────────────────────────────────
 
 /**
@@ -1419,87 +1698,7 @@ export default function NetworkPanel({ fromToken, toToken, livePeers, activePeer
       {/* ── HTLC Signing Progress Dialog (preserved from LightPeerPanel) ── */}
       <AnimatePresence>
         {peer.htlcSigning && peer.htlcSigning.step !== "idle" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
-            onClick={(e) => {
-              const step = peer.htlcSigning?.step;
-              if (e.target === e.currentTarget && step !== "signing" && step !== "locking") {
-                peer.dismissHtlc();
-              }
-            }}
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="rounded-2xl p-6 w-80"
-              style={{ background: "var(--card)", border: "1px solid var(--border)" }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Lock className="w-4 h-4 text-cyan-400" />
-                <span className="text-sm font-bold text-foreground">HTLC Atomic Swap</span>
-              </div>
-              <div className="space-y-3 mb-5">
-                {(["signing", "locking", "locked", "revealing", "settled"] as HtlcStep[]).map((step, stepIdx) => {
-                  const steps: HtlcStep[] = ["signing", "locking", "locked", "revealing", "settled"];
-                  const currentIdx = steps.indexOf(peer.htlcSigning!.step);
-                  const isDone = peer.htlcSigning!.step === "settled" || stepIdx < currentIdx;
-                  const isActive = peer.htlcSigning!.step === step;
-                  const labels: Record<string, string> = {
-                    signing: "Sign HTLC lock transaction",
-                    locking: "Submitting lock to chain",
-                    locked: "Funds locked — waiting for counterparty",
-                    revealing: "Counterparty revealing secret",
-                    settled: "Atomic settlement complete",
-                  };
-                  return (
-                    <div key={step} className="flex items-center gap-3">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
-                        style={{
-                          background: isDone ? "rgba(16,185,129,0.2)" : isActive ? "rgba(6,182,212,0.2)" : "var(--muted)",
-                          border: `1px solid ${isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--border)"}`,
-                          color: isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--muted-foreground)",
-                        }}
-                      >
-                        {isDone ? "✓" : isActive ? <span className="animate-spin inline-block">◌</span> : stepIdx + 1}
-                      </div>
-                      <span className="text-xs" style={{ color: isDone ? "#10b981" : isActive ? "#06b6d4" : "var(--muted-foreground)" }}>
-                        {labels[step]}
-                      </span>
-                    </div>
-                  );
-                })}
-                {peer.htlcSigning.step === "failed" && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold"
-                      style={{ background: "rgba(239,68,68,0.2)", border: "1px solid #ef4444", color: "#ef4444" }}
-                    >✗</div>
-                    <span className="text-xs text-red-400">{peer.htlcSigning.error ?? "Signing failed"}</span>
-                  </div>
-                )}
-              </div>
-              {peer.htlcSigning.txHash && (
-                <div className="rounded-lg px-3 py-2 mb-4" style={{ background: "var(--muted)" }}>
-                  <div className="text-[9px] text-slate-500 mb-0.5">Transaction Hash</div>
-                  <div className="text-[10px] font-mono text-emerald-400 break-all">{peer.htlcSigning.txHash}</div>
-                </div>
-              )}
-              {(peer.htlcSigning.step === "settled" || peer.htlcSigning.step === "locked" || peer.htlcSigning.step === "failed") && (
-                <button
-                  onClick={peer.dismissHtlc}
-                  className="w-full py-2 rounded-xl text-xs font-bold transition-all hover:opacity-80"
-                  style={{ background: "rgba(6,182,212,0.15)", color: "#06b6d4", border: "1px solid rgba(6,182,212,0.3)" }}
-                >
-                  {peer.htlcSigning.step === "settled" ? "Done" : peer.htlcSigning.step === "locked" ? "Waiting for settlement…" : "Dismiss"}
-                </button>
-              )}
-            </motion.div>
-          </motion.div>
+          <HtlcProgressModal signing={peer.htlcSigning} onDismiss={peer.dismissHtlc} />
         )}
       </AnimatePresence>
     </>
