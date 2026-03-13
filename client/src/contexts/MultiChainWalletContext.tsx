@@ -411,6 +411,8 @@ async function fetchSolanaBalancesForAddress(
 
 // ─── Wallet session persistence keys ─────────────────────────────────────────
 const WALLET_SESSION_KEY = "afos_wallet_session";
+/** localStorage key for the user's preferred BTC wallet (persists across refreshes) */
+const PREFERRED_BTC_WALLET_KEY = "afos_preferred_btc_wallet";
 
 type WalletSession = {
   eth?: EthProviderType;   // "metamask" | "phantom" — Phantom is handled by phantom key
@@ -433,6 +435,23 @@ function clearWalletSession() {
   try { localStorage.removeItem(WALLET_SESSION_KEY); } catch (_) {}
 }
 
+/** Persist the user’s preferred BTC wallet to localStorage */
+function savePreferredBtcWallet(pref: BtcProviderType | null) {
+  try {
+    if (pref) localStorage.setItem(PREFERRED_BTC_WALLET_KEY, pref);
+    else localStorage.removeItem(PREFERRED_BTC_WALLET_KEY);
+  } catch (_) {}
+}
+
+/** Load the user’s preferred BTC wallet from localStorage */
+function loadPreferredBtcWallet(): BtcProviderType | null {
+  try {
+    const raw = localStorage.getItem(PREFERRED_BTC_WALLET_KEY);
+    if (raw === "metamask" || raw === "tap" || raw === "phantom") return raw;
+  } catch (_) {}
+  return null;
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function MultiChainWalletProvider({ children }: { children: ReactNode }) {
@@ -440,8 +459,15 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const [bitcoin, setBitcoin] = useState<ChainWallet | null>(null);
   /** Separate state for Tap Wallet BTC — allows Phantom/MetaMask BTC and Tap Wallet BTC to coexist */
   const [bitcoinTap, setBitcoinTap] = useState<ChainWallet | null>(null);
-  /** Preferred BTC wallet when multiple are connected */
-  const [preferredBtcWallet, setPreferredBtcWallet] = useState<BtcProviderType | null>(null);
+  /** Preferred BTC wallet when multiple are connected — initialised from localStorage */
+  const [preferredBtcWallet, setPreferredBtcWalletRaw] = useState<BtcProviderType | null>(
+    () => loadPreferredBtcWallet()
+  );
+  /** Wrapper that persists the preference to localStorage on every change */
+  const setPreferredBtcWallet = useCallback((pref: BtcProviderType | null) => {
+    setPreferredBtcWalletRaw(pref);
+    savePreferredBtcWallet(pref);
+  }, []);
   const [tracNetwork, setTracNetwork] = useState<ChainWallet | null>(null);
   const [erc20Balances, setErc20Balances] = useState<EthErc20Balances>({ usdc: 0, usdt: 0 });
   const [phantomMultiChain, setPhantomMultiChain] = useState<PhantomMultiChainState | null>(null);

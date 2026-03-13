@@ -2945,3 +2945,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add BTC wallet picker to swap quote card when both Phantom/MetaMask and Tap Wallet are connected
 - [x] Add destination wallet check to handleConfirmSwap (e.g. TNK→SOL requires Phantom/MetaMask for destination)
 - [ ] Push updated code to GitHub after checkpoint
+
+## BTC Wallet Preference Persistence + UX (Session 2026-03-13 #10)
+- [x] Persist preferredBtcWallet to localStorage (survives page refresh)
+- [x] Show active BTC wallet address in QuoteCard confirmation ("Signing with Tap Wallet bc1q…")
+- [ ] Push code to GitHub after checkpoint

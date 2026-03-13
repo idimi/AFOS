@@ -205,6 +205,37 @@ function QuoteCard({
   const hasTapBtc = bitcoinTap?.connected;
   const showBtcPicker = isBtcSwap && hasPhantomMetaMaskBtc && hasTapBtc;
 
+  // ── "Signing with" wallet label for the confirm button ──────────────────────
+  // Derive which wallet + address will sign the swap so users know before confirming
+  const { ethereum: activeEthereum, phantomMultiChain } = useMultiChainWallet();
+  const { shortAddress: solShortAddress } = useWallet();
+  const signingWallet: { name: string; address: string } | null = (() => {
+    const chain = data.fromChain ?? "solana";
+    if (chain === "bitcoin" || chain === "trac_network") {
+      // BTC/TNK: use preferred wallet if set, otherwise active bitcoin
+      if (preferredBtcWallet === "tap" && bitcoinTap?.connected) {
+        return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
+      }
+      if (activeBitcoin?.connected) {
+        return { name: activeBitcoin.walletName, address: activeBitcoin.shortAddress };
+      }
+      return null;
+    }
+    if (chain === "ethereum") {
+      if (activeEthereum?.connected) {
+        return { name: activeEthereum.walletName, address: activeEthereum.shortAddress };
+      }
+      return null;
+    }
+    // Solana
+    const solAddr = phantomMultiChain?.solanaAddress
+      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
+      : solShortAddress;
+    const solName = phantomMultiChain?.solanaAddress ? "Phantom" : "Solana Wallet";
+    if (solAddr) return { name: solName, address: solAddr };
+    return null;
+  })();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -374,21 +405,35 @@ function QuoteCard({
           Cancel
         </button>
         {connected ? (
-          <button
-            onClick={onConfirm}
-            disabled={isExecuting}
-            className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
-            style={{
-              background: isExecuting ? "rgba(16,185,129,0.1)" : "linear-gradient(135deg, #9945FF, #14F195)",
-              color: isExecuting ? "#10b981" : "white",
-              border: isExecuting ? "1px solid rgba(16,185,129,0.3)" : "none",
-            }}>
-            {isExecuting ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Signing…</>
-            ) : (
-              <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm Swap</>
+          <div className="flex-1 flex flex-col gap-1">
+            <button
+              onClick={onConfirm}
+              disabled={isExecuting}
+              className="w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+              style={{
+                background: isExecuting ? "rgba(16,185,129,0.1)" : "linear-gradient(135deg, #9945FF, #14F195)",
+                color: isExecuting ? "#10b981" : "white",
+                border: isExecuting ? "1px solid rgba(16,185,129,0.3)" : "none",
+              }}>
+              {isExecuting ? (
+                <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Signing…</>
+              ) : (
+                <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm Swap</>
+              )}
+            </button>
+            {/* Signing wallet hint — shown when a wallet is identified */}
+            {signingWallet && !isExecuting && (
+              <p className="text-center text-[10px] text-muted-foreground truncate">
+                Signing with <span className="font-semibold text-foreground">{signingWallet.name}</span>
+                {" "}<span className="font-mono opacity-70">{signingWallet.address}</span>
+              </p>
             )}
-          </button>
+            {isExecuting && signingWallet && (
+              <p className="text-center text-[10px] text-emerald-400 truncate">
+                Awaiting signature from <span className="font-semibold">{signingWallet.name}</span>…
+              </p>
+            )}
+          </div>
         ) : (
           <button
             onClick={onRequestConnect}
