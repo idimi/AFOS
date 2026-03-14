@@ -3167,3 +3167,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Wallet Modal Balance Fix (Mar 2026)
 
 - [x] Remove BTC balance from Trac Network tab — only TNK balance shown there; BTC balance belongs on the Bitcoin tab
+
+## BTC Wallet UX Round 7 (Mar 2026)
+
+- [x] Persist preferredBtcWallet to localStorage so preference survives page reload
+- [x] Fetch live Phantom BTC balance in picker when Tap is the active wallet
+- [x] Add "Switch wallet" chip on single-wallet ConnectedCard in Bitcoin tab

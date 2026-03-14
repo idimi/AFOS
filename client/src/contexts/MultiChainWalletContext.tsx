@@ -84,6 +84,8 @@ interface MultiChainWalletContextValue {
   erc20Balances: EthErc20Balances;
   /** Phantom multi-chain state — non-null when Phantom is connected */
   phantomMultiChain: PhantomMultiChainState | null;
+  /** Phantom BTC balance fetched independently from mempool — available even when Tap Wallet is the active BTC wallet */
+  phantomBtcBalance: { balance: string; balanceUsd: number } | null;
   connectEthereum: (provider: EthProviderType) => Promise<void>;
   connectBitcoin: (provider: BtcProviderType) => Promise<void>;
   /** Connect Phantom across all supported chains at once */
@@ -1470,6 +1472,32 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
+  // ── Phantom BTC balance — fetched independently so picker shows real balance even when Tap is active ──
+  const [phantomBtcBalance, setPhantomBtcBalance] = useState<{ balance: string; balanceUsd: number } | null>(null);
+  useEffect(() => {
+    const addr = phantomMultiChain?.bitcoinAddress;
+    if (!addr) { setPhantomBtcBalance(null); return; }
+    // Fetch immediately on connect
+    const fetchPhantomBtc = async () => {
+      try {
+        const [btcResult, priceUsd] = await Promise.all([
+          fetchBtcBalanceFromMempool(addr),
+          fetchBtcPriceUsd(),
+        ]);
+        if (!btcResult) return;
+        setPhantomBtcBalance({
+          balance: `${btcResult.btc} BTC`,
+          balanceUsd: (btcResult.sats / 1e8) * priceUsd,
+        });
+      } catch (err) {
+        console.warn("[Phantom BTC balance] fetch failed:", err);
+      }
+    };
+    fetchPhantomBtc();
+    const interval = setInterval(fetchPhantomBtc, 60_000);
+    return () => clearInterval(interval);
+  }, [phantomMultiChain?.bitcoinAddress]);
+
   // ── Tap Wallet service worker keep-alive ────────────────────────────────────
   // Chrome kills MV3 service workers after ~30s of inactivity. We send a silent
   // fire-and-forget ping every 25 seconds to both window.tracnetwork (TNK) and
@@ -1539,6 +1567,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       tracNetwork,
       erc20Balances,
       phantomMultiChain,
+      phantomBtcBalance,
       connectEthereum,
       connectBitcoin,
       connectPhantomMultiChain,

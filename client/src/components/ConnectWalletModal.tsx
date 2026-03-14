@@ -270,7 +270,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
   // Ethereum + Bitcoin + Phantom multi-chain
   const {
     ethereum, bitcoin, bitcoinTap, tracNetwork,
-    phantomMultiChain,
+    phantomMultiChain, phantomBtcBalance,
     preferredBtcWallet, setPreferredBtcWallet,
     connectEthereum, connectBitcoin,
     connectPhantomMultiChain,
@@ -800,8 +800,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     walletName: "Phantom",
                     address: phantomMultiChain.bitcoinAddress,
                     shortAddress: `${phantomMultiChain.bitcoinAddress.slice(0, 6)}\u2026${phantomMultiChain.bitcoinAddress.slice(-6)}`,
-                    balance: "0.00000000 BTC",
-                    balanceUsd: 0,
+                    balance: phantomBtcBalance?.balance ?? "... BTC",
+                    balanceUsd: phantomBtcBalance?.balanceUsd ?? 0,
                     symbol: "BTC",
                     isPhantom: true,
                   } : null);
@@ -910,16 +910,42 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
                 // ── Single wallet connected ──
                 if (bitcoin?.connected) {
+                  // Determine which other wallet type could be connected as a second BTC wallet
+                  const isTapActive = bitcoin.walletName === "Tap Wallet";
+                  const otherWalletDesc = isTapActive
+                    ? "Add Phantom or MetaMask for BTC signing flexibility"
+                    : "Add Tap Wallet for BTC + TNK (Trac Network)";
                   return (
-                    <ConnectedCard
-                      walletName={bitcoin.walletName}
-                      shortAddress={bitcoin.shortAddress}
-                      explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
-                      balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
-                      totalUsd={bitcoin.balanceUsd}
-                      accentColor="#F7931A"
-                      onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
-                    />
+                    <>
+                      <ConnectedCard
+                        walletName={bitcoin.walletName}
+                        shortAddress={bitcoin.shortAddress}
+                        explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
+                        balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
+                        totalUsd={bitcoin.balanceUsd}
+                        accentColor="#F7931A"
+                        onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
+                      />
+                      {/* Switch wallet hint — shown when only one BTC wallet is connected */}
+                      <button
+                        onClick={() => {
+                          // Scroll down to show the connect buttons by temporarily switching to the no-wallet view
+                          // We do this by scrolling the modal content to the bottom
+                          const el = document.querySelector('[data-btc-connect-hint]');
+                          el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }}
+                        className="w-full flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-left transition-all hover:opacity-80"
+                        style={{ background: "rgba(247,147,26,0.06)", border: "1px dashed rgba(247,147,26,0.25)" }}
+                      >
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: "rgba(247,147,26,0.15)", color: "#F7931A" }}>
+                          + Add wallet
+                        </span>
+                        <span className="text-[11px] text-muted-foreground flex-1">{otherWalletDesc}</span>
+                        <span className="text-[10px] text-muted-foreground opacity-60">↓</span>
+                      </button>
+                      <div data-btc-connect-hint />
+                    </>
                   );
                 }
 
