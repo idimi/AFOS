@@ -886,34 +886,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     // Wait for window.tracnetwork (TNK provider) to be ready
     const detected = await waitForTracNetwork(5000);
     if (!detected) {
-      // Check if the extension script was injected but failed due to a conflict
-      // (SyntaxError: Identifier '$t' has already been declared — caused by
-      // MetaMask, Phantom, or other wallet extensions injecting the same variable)
-      const hasConflict = !window.tracnetwork;
-      if (hasConflict) {
-        // Detect which conflicting extensions are present
-        const hasMetaMask = !!(window as unknown as Record<string, unknown>).ethereum;
-        const hasPhantom = !!(window as unknown as Record<string, unknown>).phantom;
-        const conflictNames = [hasMetaMask && "MetaMask", hasPhantom && "Phantom"].filter(Boolean).join(" and ");
-        const conflictHint = conflictNames
-          ? `${conflictNames} ${conflictNames.includes("and") ? "are" : "is"} installed and may be conflicting.`
-          : "Another wallet extension may be conflicting.";
-        toast.error("Tap Wallet not responding", {
-          description: `${conflictHint} Open Chrome Extensions (chrome://extensions), temporarily disable the conflicting wallet, then refresh this page.`,
-          duration: 12000,
-          action: {
-            label: "Retry",
-            onClick: () => {
-              window.location.reload();
-            },
-          },
-        });
-      } else {
-        toast.error("Tap Wallet not detected", {
-          description: "Please install the Tap Wallet extension and refresh the page.",
-          action: { label: "Install", onClick: () => window.open("https://chromewebstore.google.com/detail/tap-wallet/blcaacmeglnfblclocdgaomhopnfobof", "_blank") },
-        });
-      }
+      // window.tracnetwork was never set — Tap Wallet extension is not installed
+      toast.error("Tap Wallet not detected", {
+        description: "Please install the Tap Wallet extension and refresh the page.",
+        duration: 10000,
+        action: { label: "Install", onClick: () => window.open("https://chromewebstore.google.com/detail/tap-wallet/blcaacmeglnfblclocdgaomhopnfobof", "_blank") },
+      });
       return;
     }
     try {
@@ -921,7 +899,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       console.log("[AFOS] Tap Wallet: calling tracnetwork.requestAccount()\u2026");
       const tnkAddress = await withTimeout(
         window.tracnetwork!.requestAccount(),
-        15000,
+        8000,
         "tracnetwork.requestAccount()"
       );
       console.log("[AFOS] Tap Wallet: TNK address", tnkAddress);
@@ -1059,9 +1037,17 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       const isUserCancel = msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied");
       const isTimeout = msg.toLowerCase().includes("timed out");
       if (isTimeout) {
+        // Tap Wallet uses a Manifest V3 service worker that Chrome kills after ~30s of inactivity.
+        // When the SW is dead, BroadcastChannel messages go unanswered and requestAccount() hangs.
+        // The fix: user must click the Tap Wallet icon in the Chrome toolbar to wake the SW, then retry.
         toast.error("Tap Wallet not responding", {
-          description: "The extension didn't respond in time. This usually happens when other wallet extensions (MetaMask, Phantom) interfere with Tap Wallet's messaging. Try: 1) Refresh the page, 2) Disable other wallet extensions in chrome://extensions, 3) Try again.",
-          duration: 12000,
+          description: "The Tap Wallet background service is sleeping. Click the Tap Wallet (₿) icon in your Chrome toolbar to wake it up, then try connecting again.",
+          duration: 15000,
+          action: {
+            label: "Retry",
+            // Use location.reload so the SW wakes up fresh on the next page load
+            onClick: () => window.location.reload(),
+          },
         });
       } else if (!isUserCancel) {
         toast.error("Tap Wallet connection failed", { description: msg });
