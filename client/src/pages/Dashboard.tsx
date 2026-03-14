@@ -37,6 +37,7 @@ import SwapAnalytics from "./SwapAnalytics";
 import { trpc } from "@/lib/trpc";
 import { usePeerMessageChime } from "../hooks/usePeerMessageChime";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AfosLogo } from "@/components/AfosLogo";
 import RefundBanner from "@/components/RefundBanner";
 import { usePrices } from "../contexts/PriceContext";
@@ -2973,7 +2974,31 @@ function AgentLiveBadge() {
   );
 }
 
-/** Compact 5-dot pill for the topbar */
+/** Single service row in the Stack Health popup — shows detail on hover */
+function ServiceRow({ s }: { s: { name: string; status: ServiceStatus; latency?: number | null; detail?: string } }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      className="rounded px-0.5 py-0.5 hover:bg-muted/30 transition-colors cursor-default"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="flex items-center gap-2 py-0.5">
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
+        <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
+        <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
+          {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
+        </span>
+      </div>
+      {s.detail && hovered && (
+        <p className="text-[9.5px] font-mono text-muted-foreground/70 pl-3.5 pb-0.5 leading-tight">
+          {s.detail}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function StackStatusPill() {
   const { services, liveCount, totalCount } = useStackHealth();
   const allLive = liveCount === totalCount;
@@ -3004,56 +3029,39 @@ function StackStatusPill() {
     : 'bg-violet-500/10 border-violet-500/20 hover:bg-violet-500/20 hover:border-violet-500/40';
 
   return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 duration-300 ${pillFlashClass}`}
-            aria-label={`Stack health: ${liveCount}/${totalCount} services live`}
-          >
-            <div className="flex items-center gap-0.5">
-              {services.map(s => (
-                <span
-                  key={s.name}
-                  title={s.name}
-                  className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`}
-                />
-              ))}
-            </div>
-            <span className={`text-[10px] font-mono transition-colors duration-300 ${countColor}`}>{liveCount}/{totalCount}</span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg" style={{ minWidth: 280 }}>
-          <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
-            <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
-          </div>
-          <div className="px-3 py-1.5 space-y-0">
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all active:scale-95 duration-300 ${pillFlashClass}`}
+          aria-label={`Stack health: ${liveCount}/${totalCount} services live`}
+        >
+          <div className="flex items-center gap-0.5">
             {services.map(s => (
-              <Tooltip key={s.name} delayDuration={200}>
-                <TooltipTrigger asChild>
-                  <div className="flex items-center gap-2 py-1 px-0.5 rounded cursor-default hover:bg-muted/30 transition-colors">
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
-                    <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
-                    <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
-                      {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
-                    </span>
-                  </div>
-                </TooltipTrigger>
-                {s.detail && (
-                  <TooltipContent side="left" className="text-[10px] font-mono max-w-[260px] bg-popover/95 border border-border/60 text-muted-foreground px-2.5 py-1.5">
-                    {s.detail}
-                  </TooltipContent>
-                )}
-              </Tooltip>
+              <span
+                key={s.name}
+                title={s.name}
+                className={`w-1.5 h-1.5 rounded-full ${statusColor(s.status)} ${s.status === 'live' ? 'animate-pulse' : ''}`}
+              />
             ))}
           </div>
-          <div className="px-3 py-1.5 border-t border-border/60 flex items-center justify-between bg-muted/40">
-            <span className="text-muted-foreground font-medium">Services live</span>
-            <span className={`font-mono font-bold ${countColor}`}>{liveCount}/{totalCount}</span>
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <span className={`text-[10px] font-mono transition-colors duration-300 ${countColor}`}>{liveCount}/{totalCount}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg w-auto" style={{ minWidth: 280 }}>
+        <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
+          <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
+        </div>
+        <div className="px-3 py-1.5 space-y-0">
+          {services.map(s => (
+            <ServiceRow key={s.name} s={s} />
+          ))}
+        </div>
+        <div className="px-3 py-1.5 border-t border-border/60 flex items-center justify-between bg-muted/40">
+          <span className="text-muted-foreground font-medium">Services live</span>
+          <span className={`font-mono font-bold ${countColor}`}>{liveCount}/{totalCount}</span>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

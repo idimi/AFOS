@@ -3079,3 +3079,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add hover tooltip on each row showing block height / peer detail (side=left, 200ms delay)
 - [x] Shrink popup back to compact height (py-1.5 space-y-0)
 - [x] 353 tests passing, 0 TypeScript errors
+
+## Stack Health — Fix Tooltip Dismissal Issue
+- [x] Convert Stack Health outer container from Tooltip to Popover (click to open, stays open while hovering rows)
+- [x] Add ServiceRow component: single-line default, inline detail expand on hover (no nested tooltip conflict)
+- [x] 353 tests passing, 0 TypeScript errors
