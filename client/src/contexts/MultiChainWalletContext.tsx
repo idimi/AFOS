@@ -1465,29 +1465,53 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
-  // ── Pre-warm Tap Wallet service worker on page load ───────────────────────────
-  // Tap Wallet uses a Manifest V3 service worker that Chrome kills after ~30s of
-  // inactivity. We send a silent fire-and-forget ping 500ms after mount so the SW
-  // is already awake when the user clicks "Connect Tap Wallet". If Tap Wallet is
-  // not installed (window.tracnetwork is undefined) the effect is a no-op.
+  // ── Tap Wallet service worker keep-alive ────────────────────────────────────
+  // Chrome kills MV3 service workers after ~30s of inactivity. We send a silent
+  // fire-and-forget ping every 25 seconds to both window.tracnetwork (TNK) and
+  // window.tapprotocol (BTC) so both signing paths stay warm for the entire
+  // session. The first ping fires 500ms after mount; subsequent pings every 25s.
+  // If Tap Wallet is not installed the effect is a no-op.
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!window.tracnetwork) return; // Tap Wallet not installed — skip
-      try {
-        // getNetwork() is a lightweight read-only call that requires no user
-        // approval and does not open any popup. It simply wakes the SW.
-        await Promise.race([
-          window.tracnetwork.getNetwork?.(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("prewarm timeout")), 3000)),
-        ]);
-        console.log("[AFOS] Tap Wallet SW pre-warmed successfully");
-      } catch {
-        // Silently ignore — this is best-effort. The user will see the normal
-        // "wake up" toast if the SW is still unresponsive when they connect.
+    const pingTapWalletSW = async () => {
+      // Ping window.tracnetwork (TNK path)
+      if (window.tracnetwork?.getNetwork) {
+        try {
+          await Promise.race([
+            window.tracnetwork.getNetwork(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("ping timeout")), 3000)),
+          ]);
+          console.log("[AFOS] Tap Wallet tracnetwork SW keep-alive OK");
+        } catch {
+          // Silently ignore — best-effort ping
+        }
       }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []); // run once on mount
+      // Ping window.tapprotocol (BTC path)
+      if ((window as unknown as Record<string, unknown>).tapprotocol) {
+        const tap = (window as unknown as Record<string, { getNetwork?: () => Promise<unknown> }>).tapprotocol;
+        if (tap?.getNetwork) {
+          try {
+            await Promise.race([
+              tap.getNetwork(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("ping timeout")), 3000)),
+            ]);
+            console.log("[AFOS] Tap Wallet tapprotocol SW keep-alive OK");
+          } catch {
+            // Silently ignore — best-effort ping
+          }
+        }
+      }
+    };
+
+    // Initial ping after 500ms (wake SW on page load)
+    const initialTimer = setTimeout(pingTapWalletSW, 500);
+    // Recurring ping every 25s to keep SW alive throughout the session
+    const keepAliveInterval = setInterval(pingTapWalletSW, 25_000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(keepAliveInterval);
+    };
+  }, []); // run once on mount, interval self-maintains
 
   // ── Derived active BTC wallet (respects preferredBtcWallet) ─────────────────
   // When both Phantom/MetaMask BTC and Tap Wallet BTC are connected, use the preferred one.
