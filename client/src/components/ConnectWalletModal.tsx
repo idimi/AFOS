@@ -590,12 +590,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                           Trac Network
                         </span>
                       )}
-                      {/* Show truncated BTC address so user can confirm which account is connected */}
-                      {bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress && (
-                        <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">
-                          {bitcoin.shortAddress}
-                        </span>
-                      )}
                     </div>
                   </div>
                   <button

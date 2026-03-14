@@ -3210,3 +3210,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Trac Network Tab Address Clarification (Mar 2026)
 
 - [x] Add "Trac Network" chip label to Trac Network tab ConnectedCard to clarify bc1p address is the TNK identity
+
+## Tap Wallet Connected Banner Simplification (Mar 2026)
+
+- [x] Remove BTC address line from "Tap Wallet connected" banner — keep it simple like Phantom/MetaMask banners
