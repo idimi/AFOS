@@ -3214,3 +3214,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Tap Wallet Connected Banner Simplification (Mar 2026)
 
 - [x] Remove BTC address line from "Tap Wallet connected" banner — keep it simple like Phantom/MetaMask banners
+
+## Trac Network Tab ConnectedCard Cleanup (Mar 2026)
+
+- [x] Remove "Trac Network" badge chip from Trac tab ConnectedCard (redundant when already on Trac tab)
+- [x] Ensure explorer link uses Trac Network explorer URL (https://explorer.trac.network/address/...)
