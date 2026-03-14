@@ -2134,6 +2134,7 @@ export default function ChatPage() {
         // matching, and (2) attribute the agent_rfq notification correctly.
         senderPeerId: myPeerId ?? undefined,
         senderAlias:  myPeerAlias ?? undefined,
+        rfqTtlMs:     lightPeer.prefs.quoteTtlMs ?? 120_000,
       });
 
       // P2P route matched: trigger HTLC lock signing for Agent A (the requester)

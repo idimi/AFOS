@@ -1151,10 +1151,12 @@ export const chatRouter = router({
         senderPeerId:   z.string().optional(),
         /** Sender's peer alias — shown to the counterparty in the incoming RFQ card */
         senderAlias:    z.string().optional(),
+        /** How long this RFQ quote is valid in the order book (ms). Defaults to 120_000 (2 min). */
+        rfqTtlMs:       z.number().int().min(10_000).max(600_000).optional().default(120_000),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias, rfqTtlMs } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1205,7 +1207,7 @@ export const chatRouter = router({
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
       if (p2pQuote && p2pQuote.peerId && p2pQuote.rfqId) {
         const htlcExpiresAt = Date.now() + 3_600_000; // 1 hour — on-chain HTLC timelock
-        const rfqExpiresAt  = Date.now() + 120_000;   // 2 min — RFQ quote validity in order book
+        const rfqExpiresAt  = Date.now() + (rfqTtlMs ?? 120_000); // configurable RFQ quote validity
         // Generate HTLC secret BEFORE sending agent_rfq so the hash can be included
         const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
         const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");

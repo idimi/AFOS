@@ -49,6 +49,7 @@ export interface LightPeerPrefs {
   acceptedPairs: string[];    // e.g. ["SOL/USDT", "ETH/USDC"]
   autoAccept: boolean;        // auto-accept RFQs without user confirmation
   autoClaim: boolean;          // auto-claim HTLC funds when the secret is received (Agent B)
+  quoteTtlMs: number;          // how long this peer's RFQ quotes are valid in the order book (ms)
 }
 
 export interface IncomingRfq {
@@ -219,6 +220,7 @@ const DEFAULT_PREFS: LightPeerPrefs = {
   ],
   autoAccept: false,
   autoClaim: true,  // on by default — recommended for fully agentic swaps
+  quoteTtlMs: 120_000, // 2 minutes default
 };
 
 const HEARTBEAT_INTERVAL_MS = 30_000;

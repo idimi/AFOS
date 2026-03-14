@@ -2991,3 +2991,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Remove Jupiter DEX entries from Avg Settlement Time by Route in Analytics
 - [ ] Remove Jupiter DEX labels from Recent Swaps widget (Overview + History)
 - [ ] Replace Jupiter DEX route label with IntercomSwap P2P or AFOS P2P in swap records
+
+## RFQ Enhancements (Mar 2026)
+
+- [x] Configurable Quote TTL in Quote Settings panel (30s / 60s / 120s / 300s selector)
+- [x] Show HTLC timelock separately in NetworkPanel accepted RFQ card
+- [x] Auto-refresh order book when last order expires

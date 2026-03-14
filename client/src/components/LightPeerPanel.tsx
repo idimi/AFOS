@@ -172,6 +172,22 @@ function RfqCard({ rfq, onAccept, onReject, onClaim, hasSecret, isClaimed, onRef
         &nbsp;·&nbsp;
         {rfq.fromChain} → {rfq.toChain}
       </div>
+      {/* Dual-deadline row: quote window + HTLC on-chain lock duration */}
+      {isPending && (
+        <div className="flex items-center gap-3 text-[10px]">
+          <div className="flex items-center gap-1">
+            <Clock className="w-3 h-3 text-amber-400" />
+            <span className="text-amber-400 font-mono font-semibold">{timeLeft(rfq.expiresAt)}</span>
+            <span className="text-slate-500">quote window</span>
+          </div>
+          <span className="text-slate-600">│</span>
+          <div className="flex items-center gap-1">
+            <Lock className="w-3 h-3 text-cyan-500/70" />
+            <span className="text-cyan-500/80 font-mono">1h</span>
+            <span className="text-slate-500">HTLC timelock</span>
+          </div>
+        </div>
+      )}
       {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
       {rfq.status === "accepted" && htlcLockedAt && !isClaimed && !isRefunded && (
         <div className="pt-0.5">
@@ -294,6 +310,7 @@ export default function LightPeerPanel() {
   const [spreadInput, setSpreadInput] = useState(String(peer.prefs.spreadBps));
   const [minInput, setMinInput] = useState(String(peer.prefs.minTradeUsd));
   const [maxInput, setMaxInput] = useState(String(peer.prefs.maxTradeUsd));
+  const [quoteTtl, setQuoteTtl] = useState(String(peer.prefs.quoteTtlMs ?? 120_000));
 
   // Listen for open-peer-panel event (from toast notification)
   useEffect(() => {
@@ -309,8 +326,14 @@ export default function LightPeerPanel() {
     const spread = parseInt(spreadInput, 10);
     const min = parseFloat(minInput);
     const max = parseFloat(maxInput);
+    const ttl = parseInt(quoteTtl, 10);
     if (!isNaN(spread) && !isNaN(min) && !isNaN(max)) {
-      peer.setPrefs({ spreadBps: spread, minTradeUsd: min, maxTradeUsd: max });
+      peer.setPrefs({
+        spreadBps: spread,
+        minTradeUsd: min,
+        maxTradeUsd: max,
+        quoteTtlMs: isNaN(ttl) ? 120_000 : ttl,
+      });
     }
     setShowSettings(false);
   };
@@ -650,6 +673,34 @@ export default function LightPeerPanel() {
                                 onChange={e => setMaxInput(e.target.value)}
                                 className="w-full px-2 py-1 rounded bg-white/10 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-cyan-500/50"
                               />
+                            </div>
+                          </div>
+
+                          {/* Quote TTL */}
+                          <div>
+                            <label className="text-[10px] text-slate-400 block mb-1">
+                              Quote TTL — how long your RFQ stays in the order book
+                            </label>
+                            <div className="flex gap-1.5 flex-wrap">
+                              {[
+                                { label: "30s",  value: "30000" },
+                                { label: "1m",   value: "60000" },
+                                { label: "2m",   value: "120000" },
+                                { label: "5m",   value: "300000" },
+                              ].map(opt => (
+                                <button
+                                  key={opt.value}
+                                  type="button"
+                                  onClick={() => setQuoteTtl(opt.value)}
+                                  className={`px-2.5 py-1 rounded text-[10px] font-mono font-semibold border transition-colors ${
+                                    quoteTtl === opt.value
+                                      ? "bg-cyan-500/25 border-cyan-500/50 text-cyan-300"
+                                      : "bg-white/5 border-white/10 text-slate-400 hover:border-white/25 hover:text-white"
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
                             </div>
                           </div>
 

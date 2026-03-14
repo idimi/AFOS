@@ -1323,6 +1323,7 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   // ── Active RFQs from server (order book snapshot for late-joining peers) ──────────
   // Fetches all non-expired RFQs stored server-side so any peer who joins late
   // can see open orders without waiting for a new rfq_broadcast WebSocket event.
+  const utils = trpc.useUtils();
   const { data: serverRfqs } = trpc.chat.getActiveRfqs.useQuery(undefined, {
     refetchInterval: 15_000,
     staleTime: 10_000,
@@ -1488,12 +1489,16 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
   }, [baseRate, fromToken.usdPrice]);
 
   // Tick down expiry every 4s; mark timed-out rows; remove expired live rows
+  // When the last non-timed-out order expires, immediately refetch from server
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
       setOrders(prev => {
         if (prev.length === 0) return prev;
-        return prev.map(o => {
+        const hadLiveOrders = prev.some(o => !o.timedOut && o.expiresIn > 0);
+        const next = prev.map(o => {
           // Check 30s timeout for pending (rate=0) rows
           if (o.rate === 0 && o.rfqSentAt && now - o.rfqSentAt >= 30_000) {
             return { ...o, timedOut: true, expiresIn: 0 };
@@ -1504,6 +1509,13 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
           if (o.timedOut) return true;
           return o.expiresIn > 0;
         });
+        // Auto-refresh: if we just lost the last live order, trigger a server refetch
+        const hasLiveOrders = next.some(o => !o.timedOut && o.expiresIn > 0);
+        if (hadLiveOrders && !hasLiveOrders) {
+          // Defer to avoid setState-in-setState warning
+          setTimeout(() => void utilsRef.current.chat.getActiveRfqs.invalidate(), 0);
+        }
+        return next;
       });
     }, 4000);
     return () => clearInterval(interval);
