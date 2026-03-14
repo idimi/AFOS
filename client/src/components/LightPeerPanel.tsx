@@ -290,6 +290,7 @@ export default function LightPeerPanel() {
 
   const [expanded, setExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showGuardSettings, setShowGuardSettings] = useState(false);
   const [spreadInput, setSpreadInput] = useState(String(peer.prefs.spreadBps));
   const [minInput, setMinInput] = useState(String(peer.prefs.minTradeUsd));
   const [maxInput, setMaxInput] = useState(String(peer.prefs.maxTradeUsd));
@@ -472,9 +473,26 @@ export default function LightPeerPanel() {
                     </button>
                   </div>
 
-                  {/* Guard Settings quick-edit row — always visible when Smart Auto-Accept is shown */}
-                  <div className="rounded-lg border border-white/8 bg-white/3 px-3 py-2.5 space-y-2.5">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Guard Settings</p>
+                  {/* Guard Settings — collapsible, collapsed by default */}
+                  <div>
+                    <button
+                      onClick={() => setShowGuardSettings(s => !s)}
+                      className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      Guard Settings
+                      {showGuardSettings ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+
+                  <AnimatePresence>
+                  {showGuardSettings && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                  <div className="mt-3 rounded-lg border border-white/8 bg-white/3 px-3 py-2.5 space-y-2.5">
 
                     {/* Slippage + trade size in one row */}
                     <div className="grid grid-cols-3 gap-2">
@@ -538,6 +556,10 @@ export default function LightPeerPanel() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                  </motion.div>
+                  )}
+                  </AnimatePresence>
                   </div>
                 </div>
               )}
