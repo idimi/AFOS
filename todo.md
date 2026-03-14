@@ -3206,3 +3206,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Solana tab: show only SOL address (not ETH/BTC)
 - [x] Trac Network tab: show only TNK address (not BTC)
 - [x] Bitcoin tab: single-wallet view now shows only BTC address (removed TNK row and chain badges)
+
+## Trac Network Tab Address Clarification (Mar 2026)
+
+- [x] Add "Trac Network" chip label to Trac Network tab ConnectedCard to clarify bc1p address is the TNK identity

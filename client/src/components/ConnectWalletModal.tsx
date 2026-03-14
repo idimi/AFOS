@@ -740,6 +740,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
+                    chains={[{ label: "Trac Network", color: "#F97316" }]}
                   />
                 ) : (
                   <>
