@@ -3173,3 +3173,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Persist preferredBtcWallet to localStorage so preference survives page reload
 - [x] Fetch live Phantom BTC balance in picker when Tap is the active wallet
 - [x] Add "Switch wallet" chip on single-wallet ConnectedCard in Bitcoin tab
+
+## BTC Wallet Add-Second-Wallet Fix (Mar 2026)
+
+- [x] Fix Bitcoin tab single-wallet view: show Tap Wallet connect button when Phantom is active (and vice versa), so "+ Add wallet" chip is functional
