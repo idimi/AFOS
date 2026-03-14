@@ -2998,3 +2998,18 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show HTLC timelock separately in NetworkPanel accepted RFQ card
 - [x] Auto-refresh order book when last order expires
 - [x] Pre-warm Tap Wallet service worker on page load (silent ping 500ms after load)
+
+## TNK On-Chain HTLC Implementation (Phase 1 — Contract Model)
+
+- [x] trac-peer/htlcProtocol.js — HTLC protocol definition (maps user commands to typed ops)
+- [x] trac-peer/htlcContract.js — Deterministic HTLC state machine (lock/claim/refund)
+- [x] trac-peer/runner.mjs — trac-peer node runner that boots MSB + peer with HTLC contract
+- [x] trac-peer/README.md — Deployment guide for the HTLC subnet node
+- [x] server/tnkHtlcContract.ts — trac-peer RPC client (isTnkPeerHealthy, getTnkHtlcState, submitTnkHtlcLock/Claim/Refund)
+- [x] server/tnkHtlcClaim.ts — Autonomous claim executor (preimage verify → contract claim → agentSendTnk → DB update)
+- [x] server/tnkHtlcRefund.ts — Autonomous refund executor (timelock check → contract refund → agentSendTnk → DB update)
+- [x] server/jobs/tnkHtlcMonitor.ts — Updated to use subnet state queries (with legacy explorer fallback)
+- [x] server/_core/env.ts — Added TNK_PEER_RPC_URL, TNK_HTLC_CONTRACT_ADDRESS, TNK_AGENT_KEY, AFOS_SERVER_SECRET
+- [x] client/src/lib/tnkHtlc.ts — Upgraded to on-chain signTracTx contract lock (with legacy escrow fallback)
+- [x] client/src/contexts/LightPeerContext.tsx — Updated TNK lock call to pass recipientAddress + htlcId
+- [x] server/tnkHtlc.test.ts — 19 Vitest tests covering all happy paths and error paths (342 total tests passing)

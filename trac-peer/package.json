@@ -1,0 +1,17 @@
+{
+  "name": "afos-tnk-htlc-peer",
+  "version": "1.0.0",
+  "description": "AFOS Trac Network HTLC subnet contract — runs as a trac-peer node",
+  "type": "module",
+  "main": "runner.mjs",
+  "scripts": {
+    "start": "node runner.mjs",
+    "dev": "node --watch runner.mjs"
+  },
+  "dependencies": {
+    "@trac-network/peer": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

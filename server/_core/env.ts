@@ -19,4 +19,13 @@ export const ENV = {
   // Ethereum HTLC agent keys
   ethHtlcKey: process.env.ETH_HTLC_KEY ?? "",
   ethRpcUrl: process.env.ETH_RPC_URL ?? "",
+  // Trac Network (TNK) on-chain HTLC
+  // URL of the trac-peer node running the AFOS HTLC subnet contract
+  tnkPeerRpcUrl: process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001",
+  // Address of the HTLC contract on the Trac Network subnet
+  tnkHtlcContractAddress: process.env.TNK_HTLC_CONTRACT_ADDRESS ?? "",
+  // Agent key for signing trac-peer contract transactions (PKCS8 DER hex)
+  tnkAgentKey: process.env.TNK_AGENT_KEY ?? "",
+  // Server secret for authenticating internal agent/send calls
+  afosServerSecret: process.env.AFOS_SERVER_SECRET ?? "",
 };

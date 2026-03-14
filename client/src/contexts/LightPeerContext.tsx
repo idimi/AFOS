@@ -2419,24 +2419,34 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // Agent A locks fromToken amount; Agent B locks toToken amount
           const isAgentATnk = !!rfq.isInitiator;
           const tnkLockAmount = isAgentATnk ? rfq.amount : (rfq.suggestedOutAmount ?? rfq.amount);
+          // Determine recipient address (counterparty who can claim by revealing preimage)
+          const tnkRecipient = rfq.counterpartyAddress ?? rfq.requesterWallet ?? "";
+          // Derive htlcId for this swap (same formula as Solana)
+          const tnkHtlcId = isAgentATnk
+            ? `htlc_a_${rfqId.slice(0, 22)}`
+            : `htlc_b_${rfqId.slice(0, 22)}`;
           const result = await executeTnkHtlcLock({
             amount: tnkLockAmount.toFixed(8),
             secretHash,
             timelockSeconds: 600, // 10 minutes default for TNK
+            recipientAddress: tnkRecipient,
+            htlcId: tnkHtlcId,
           });
           // HTLC lock tx submitted — mark as "locked" (not "settled").
-          setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: result.txHash } : { rfqId, step: "locked", txHash: result.txHash });
-          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash: result.txHash, escrowAddress: undefined, chain: "trac_network" } }));
+          // result.sendTxHash = the TNK transfer tx; result.contractTxHash = the subnet contract lock tx
+          const tnkDisplayTxHash = result.contractTxHash ?? result.sendTxHash;
+          setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: tnkDisplayTxHash } : { rfqId, step: "locked", txHash: tnkDisplayTxHash });
+          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash: tnkDisplayTxHash, escrowAddress: result.contractAddress, chain: "trac_network" } }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
-            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, result.txHash, "trac_network", rfq.amount);
+            signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, tnkDisplayTxHash, "trac_network", rfq.amount);
           }
-          toast.success("TNK escrowed", {
-            description: `${rfq.amount.toFixed(4)} TNK locked in AFOS escrow · Tx: ${result.txHash.slice(0, 16)}…`,
+          toast.success("TNK locked on-chain", {
+            description: `${rfq.amount.toFixed(4)} TNK locked in HTLC contract · Tx: ${tnkDisplayTxHash.slice(0, 16)}…`,
             action: {
               label: "View on Trac Explorer",
-              onClick: () => window.open(tnkExplorerUrl(result.txHash), "_blank"),
+              onClick: () => window.open(tnkExplorerUrl(result.sendTxHash), "_blank"),
             },
           });
         } catch (tnkErr: unknown) {

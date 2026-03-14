@@ -1,0 +1,290 @@
+/**
+ * tnkHtlcContract.ts — Server-side trac-peer RPC client for the AFOS HTLC subnet
+ *
+ * This module provides typed wrappers around the trac-peer HTTP API exposed by
+ * the AFOS HTLC subnet node (runner.mjs). It handles:
+ *   - Health checks (isTnkPeerHealthy)
+ *   - State queries (getTnkHtlcState, getTnkBlockHeight)
+ *   - Signed contract transactions (submitTnkHtlcLock, submitTnkHtlcClaim, submitTnkHtlcRefund)
+ *
+ * The signing flow mirrors what the Trac Wallet does on the client side:
+ *   1. GET /v1/contract/nonce
+ *   2. GET /v1/contract/tx/context
+ *   3. Compute tx hash: sha256(networkId:txv:iw:sha256(command):bs:mbs:nonce:opType)
+ *   4. Sign with Ed25519 agent key (TNK_AGENT_KEY — PKCS8 DER hex)
+ *   5. POST /v1/contract/tx with sim=true (simulation)
+ *   6. POST /v1/contract/tx with sim=false (broadcast)
+ *
+ * Environment variables:
+ *   TNK_PEER_RPC_URL          — Base URL of the trac-peer node (default: http://localhost:5001)
+ *   TNK_AGENT_KEY             — Agent's Ed25519 private key (PKCS8 DER hex, ≥64 chars)
+ */
+
+import crypto from "node:crypto";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface TnkHtlcState {
+  status:     "locked" | "claimed" | "refunded";
+  secretHash: string;
+  amountRaw:  string;
+  locktime:   number;
+  sender:     string;
+  recipient:  string;
+  lockedAt:   number;
+  claimedAt:  number | null;
+  refundedAt: number | null;
+  preimage:   string | null;
+  lockTxHash: string | null;
+}
+
+export interface ContractTxResult {
+  ok:      boolean;
+  result?: unknown;
+  error?:  string;
+}
+
+// ─── RPC helpers ──────────────────────────────────────────────────────────────
+
+function getPeerRpcUrl(): string {
+  return process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001";
+}
+
+async function rpcGet<T>(path: string): Promise<T> {
+  const url = `${getPeerRpcUrl()}${path}`;
+  const res = await fetch(url, {
+    headers: { "Accept": "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`[TNK RPC] GET ${path} failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+async function rpcPost<T>(path: string, body: unknown): Promise<T> {
+  const url = `${getPeerRpcUrl()}${path}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`[TNK RPC] POST ${path} failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ─── Health check ─────────────────────────────────────────────────────────────
+
+/**
+ * Check whether the trac-peer RPC node is reachable and healthy.
+ * Returns false on any error (connection refused, timeout, non-ok status).
+ */
+export async function isTnkPeerHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch(`${getPeerRpcUrl()}/health`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return false;
+    const body = await res.json() as { status?: string };
+    return body.status === "ok";
+  } catch {
+    return false;
+  }
+}
+
+// ─── State queries ────────────────────────────────────────────────────────────
+
+/**
+ * Get the current block height from the trac-peer subnet.
+ * Returns null on error.
+ */
+export async function getTnkBlockHeight(): Promise<number | null> {
+  try {
+    const data = await rpcGet<{ value: unknown }>("/v1/state?key=msb/signedLength");
+    if (typeof data.value !== "number") return null;
+    return data.value;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the current state of an HTLC from the subnet.
+ * Returns null if the HTLC does not exist or on error.
+ */
+export async function getTnkHtlcState(htlcId: string): Promise<TnkHtlcState | null> {
+  try {
+    const data = await rpcGet<{ value: TnkHtlcState | null }>(`/v1/state?key=htlc/${htlcId}`);
+    return data.value ?? null;
+  } catch (err) {
+    console.error(`[TNK RPC] getTnkHtlcState(${htlcId}) failed:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+// ─── Agent key signing ────────────────────────────────────────────────────────
+
+/**
+ * Sign a tx hash with the agent's Ed25519 key.
+ * TNK_AGENT_KEY must be a PKCS8 DER hex string (the output of
+ *   privateKey.export({ format: 'der', type: 'pkcs8' }).toString('hex')
+ * on an Ed25519 key pair).
+ */
+async function signWithAgentKey(txHashHex: string): Promise<{
+  tx:        string;
+  signature: string;
+  address:   string;
+}> {
+  const agentKeyHex = process.env.TNK_AGENT_KEY ?? "";
+  if (!agentKeyHex || agentKeyHex.length < 64) {
+    throw new Error("[TNK HTLC] TNK_AGENT_KEY not set or invalid. Cannot sign contract tx.");
+  }
+
+  // Import the Ed25519 private key from PKCS8 DER hex
+  const privateKeyBytes = Buffer.from(agentKeyHex, "hex");
+
+  const keyObject = crypto.createPrivateKey({
+    key: privateKeyBytes,
+    format: "der",
+    type: "pkcs8",
+  });
+
+  // Derive the public key (address = last 32 bytes of SPKI DER)
+  const pubKeyObject = crypto.createPublicKey(keyObject);
+  const pubKeyDer = pubKeyObject.export({ format: "der", type: "spki" }) as Buffer;
+  const pubKeyHex = pubKeyDer.slice(-32).toString("hex");
+
+  // Sign the tx hash
+  const txHashBytes = Buffer.from(txHashHex, "hex");
+  const signatureBytes = crypto.sign(null, txHashBytes, keyObject);
+  const signatureHex = signatureBytes.toString("hex");
+
+  return {
+    tx:        txHashHex,
+    signature: signatureHex,
+    address:   pubKeyHex,
+  };
+}
+
+// ─── Tx hash computation ──────────────────────────────────────────────────────
+
+/**
+ * Compute the contract tx hash that the agent signs.
+ *
+ * Per the trac-peer docs:
+ *   ch = sha256(JSON.stringify(prepared_command))
+ *   tx = sha256(networkId:txv:iw:ch:bs:mbs:nonce:operationType)
+ */
+function computeTxHash(params: {
+  preparedCommand: { type: string; value: unknown };
+  nonce:           string;
+  context: {
+    networkId:     number;
+    txv:           string;
+    iw:            string;
+    bs?:           string;
+    mbs:           string;
+    operationType: number;
+  };
+}): string {
+  const { preparedCommand, nonce, context } = params;
+  const commandJson = JSON.stringify(preparedCommand);
+  const ch = crypto.createHash("sha256").update(commandJson).digest("hex");
+  const message = [
+    context.networkId.toString(),
+    context.txv,
+    context.iw,
+    ch,
+    context.bs ?? "",
+    context.mbs,
+    nonce,
+    context.operationType.toString(),
+  ].join(":");
+  return crypto.createHash("sha256").update(message).digest("hex");
+}
+
+// ─── Submit contract tx ───────────────────────────────────────────────────────
+
+async function submitContractTx(
+  preparedCommand: { type: string; value: unknown }
+): Promise<ContractTxResult> {
+  // 1. Get nonce
+  const nonceResp = await rpcGet<{ nonce: string }>("/v1/contract/nonce");
+  const nonce = nonceResp.nonce;
+
+  // 2. Get MSB context
+  const ctxResp = await rpcGet<{
+    msb: {
+      networkId:     number;
+      txv:           string;
+      iw:            string;
+      bs?:           string;
+      mbs:           string;
+      operationType: number;
+    };
+  }>("/v1/contract/tx/context");
+  const context = ctxResp.msb;
+
+  // 3. Compute tx hash
+  const txHash = computeTxHash({ preparedCommand, nonce, context });
+
+  // 4. Sign with agent key
+  const { tx, signature, address } = await signWithAgentKey(txHash);
+
+  const payload = { tx, prepared_command: preparedCommand, address, signature, nonce };
+
+  // 5. Simulate
+  try {
+    await rpcPost("/v1/contract/tx", { ...payload, sim: true });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[TNK RPC] Simulation failed for ${preparedCommand.type}:`, msg);
+    return { ok: false, error: `Simulation failed: ${msg}` };
+  }
+
+  // 6. Broadcast
+  try {
+    const result = await rpcPost<{ result: unknown }>("/v1/contract/tx", { ...payload, sim: false });
+    console.log(`[TNK RPC] ${preparedCommand.type} broadcast OK`);
+    return { ok: true, result: (result as { result: unknown }).result };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[TNK RPC] Broadcast failed for ${preparedCommand.type}:`, msg);
+    return { ok: false, error: `Broadcast failed: ${msg}` };
+  }
+}
+
+// ─── Public contract operations ───────────────────────────────────────────────
+
+/** Submit an htlc_lock command to the subnet. */
+export async function submitTnkHtlcLock(params: {
+  htlcId:      string;
+  secretHash:  string;
+  amountRaw:   string;
+  locktime:    number;
+  sender:      string;
+  recipient:   string;
+  lockTxHash?: string;
+}): Promise<ContractTxResult> {
+  return submitContractTx({ type: "htlc_lock", value: params });
+}
+
+/** Submit an htlc_claim command to the subnet. */
+export async function submitTnkHtlcClaim(params: {
+  htlcId:   string;
+  preimage: string;
+}): Promise<ContractTxResult> {
+  return submitContractTx({ type: "htlc_claim", value: params });
+}
+
+/** Submit an htlc_refund command to the subnet. */
+export async function submitTnkHtlcRefund(params: {
+  htlcId: string;
+}): Promise<ContractTxResult> {
+  return submitContractTx({ type: "htlc_refund", value: params });
+}
