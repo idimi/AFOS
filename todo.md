@@ -3159,3 +3159,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Add "You receive" badge in P2P match card mirroring the "You send" badge
 - [x] Persist preferred BTC wallet to localStorage so choice survives page reloads (already implemented via savePreferredBtcWallet)
+
+## BTC Wallet UX Polish (Mar 2026 — Round 6)
+
+- [x] Add counterparty "Receiving to" badge in P2P match card showing peer's receiving address from RFQ data
+- [x] Add wallet-aware swap summary card after swap completes: "Sent X BTC from Tap Wallet \u00b7 Received Y SOL to Phantom" with chain explorer links

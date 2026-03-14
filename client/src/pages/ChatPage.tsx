@@ -614,20 +614,28 @@ function getExplorerInfo(txHash: string, chain: string) {
   };
 }
 
-function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain, balancesAfterSwap, signedBy, onSwapAgain }: {
+function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromChain, toChain, balancesAfterSwap, signedBy, receivedBy, onSwapAgain }: {
   txHash: string;
   fromToken: string;
   toToken: string;
   fromAmount: number;
   toAmount: number;
   fromChain?: string;
+  /** Destination chain — used to show the correct explorer link for cross-chain swaps */
+  toChain?: string;
   balancesAfterSwap?: Array<{ symbol: string; amount: string; usdValue: number }>;
-  /** Wallet that signed the swap — shown for audit trail */
+  /** Wallet that signed the swap (sent side) — shown for audit trail */
   signedBy?: { name: string; address: string };
+  /** Wallet that received the swap (receive side) — shown for cross-chain audit trail */
+  receivedBy?: { name: string; address: string };
   onSwapAgain?: () => void;
 }) {
   const chain = fromChain?.toLowerCase() ?? (fromToken === "BTC" ? "bitcoin" : fromToken === "ETH" ? "ethereum" : "solana");
+  const destChain = toChain?.toLowerCase() ?? chain;
   const { explorerUrl, explorerLabel } = getExplorerInfo(txHash, chain);
+  // For cross-chain swaps, also show a destination-chain explorer link
+  const isCrossChain = destChain !== chain;
+  const destExplorer = isCrossChain ? getExplorerInfo(txHash, destChain) : null;
 
   // Pick a celebration message deterministically from the txHash so it stays stable on re-render
   const msgIdx = txHash.charCodeAt(0) % SWAP_CELEBRATION_MESSAGES.length;
@@ -770,19 +778,61 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
             </button>
           )}
         </div>
-        {/* Signed-by audit trail — shown when the signing wallet is known */}
-        {signedBy && (
-          <motion.p
+        {/* Cross-chain destination explorer link */}
+        {isCrossChain && destExplorer && (
+          <a
+            href={destExplorer.explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" />
+            {destExplorer.explorerLabel} ({destChain})
+          </a>
+        )}
+        {/* Wallet-aware audit trail — shows send wallet and receive wallet */}
+        {(signedBy || receivedBy) && (
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="text-[10px] text-muted-foreground"
+            className="flex flex-col gap-0.5"
           >
-            Signed by{" "}
-            <span className="font-semibold text-foreground">{signedBy.name}</span>
-            {" "}
-            <span className="font-mono opacity-70">{signedBy.address}</span>
-          </motion.p>
+            {signedBy && (
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                <span className="shrink-0">Sent from</span>
+                {(chain === "bitcoin" || chain === "trac_network") ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.25)" }}
+                  >
+                    <span>&#x20BF;</span>
+                    <span>{signedBy.name}</span>
+                  </span>
+                ) : (
+                  <span className="font-semibold text-foreground">{signedBy.name}</span>
+                )}
+                <span className="font-mono opacity-60">{signedBy.address}</span>
+              </p>
+            )}
+            {receivedBy && (
+              <p className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
+                <span className="shrink-0">Received to</span>
+                {(destChain === "bitcoin" || destChain === "trac_network") ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.25)" }}
+                  >
+                    <span>&#x20BF;</span>
+                    <span>{receivedBy.name}</span>
+                  </span>
+                ) : (
+                  <span className="font-semibold text-foreground">{receivedBy.name}</span>
+                )}
+                <span className="font-mono opacity-60">{receivedBy.address}</span>
+              </p>
+            )}
+          </motion.div>
         )}
       </div>
 
@@ -1418,7 +1468,7 @@ function MessageBubble({
                   } else {
                     // Solana
                     const solAddr = phantomMultiChain?.solanaAddress
-                      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
+                      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`
                       : (solShortAddress ?? null);
                     const solName = phantomMultiChain?.solanaAddress ? 'Phantom' : (solWalletName ?? 'Solana Wallet');
                     if (solAddr) { receiveName = solName; receiveAddr = solAddr; }
@@ -1436,7 +1486,34 @@ function MessageBubble({
                     >
                       {isBtcReceive && <span>&#x20BF;</span>}
                       <span>You receive: {receiveName}</span>
-                      {receiveAddr && <span className="font-mono opacity-70">· {receiveAddr}</span>}
+                      {receiveAddr && <span className="font-mono opacity-70">\u00b7 {receiveAddr}</span>}
+                    </span>
+                  );
+                })()}
+                {/* "Peer receives" badge — shows counterparty's receiving address for full transparency */}
+                {msg.routeBadge === "p2p" && msg.counterpartyWallets && (() => {
+                  const toChain = msg.quoteData?.toChain;
+                  if (!toChain) return null;
+                  // Pick the counterparty's address for the destination chain
+                  const peerAddr = toChain === "bitcoin" || toChain === "trac_network"
+                    ? msg.counterpartyWallets.bitcoin
+                    : toChain === "ethereum"
+                      ? msg.counterpartyWallets.ethereum
+                      : msg.counterpartyWallets.solana;
+                  if (!peerAddr) return null;
+                  const shortPeerAddr = peerAddr.length > 12
+                    ? `${peerAddr.slice(0, 5)}\u2026${peerAddr.slice(-5)}`
+                    : peerAddr;
+                  const isBtcPeer = toChain === "bitcoin" || toChain === "trac_network";
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(6,182,212,0.08)", color: "#67e8f9", border: "1px solid rgba(6,182,212,0.2)" }}
+                      title={`Peer's receiving address on ${toChain}: ${peerAddr}`}
+                    >
+                      {isBtcPeer && <span>&#x20BF;</span>}
+                      <span>Peer receives:</span>
+                      <span className="font-mono opacity-80">{shortPeerAddr}</span>
                     </span>
                   );
                 })()}
@@ -1601,19 +1678,45 @@ function MessageBubble({
         )}
 
         {/* Tx success */}
-        {msg.type === "tx_success" && msg.txHash && msg.quoteData && (
-          <TxSuccessCard
-            txHash={msg.txHash}
-            fromToken={msg.quoteData.fromToken}
-            toToken={msg.quoteData.toToken}
-            fromAmount={msg.quoteData.fromAmount}
-            toAmount={msg.quoteData.toAmount}
-            fromChain={msg.quoteData.fromChain}
-            balancesAfterSwap={msg.balancesAfterSwap}
-            signedBy={msg.signedBy}
-            onSwapAgain={onSwapAgain}
-          />
-        )}
+        {msg.type === "tx_success" && msg.txHash && msg.quoteData && (() => {
+          // Derive the receiving wallet for cross-chain swaps
+          const toChain = msg.quoteData.toChain?.toLowerCase();
+          const fromChain = msg.quoteData.fromChain?.toLowerCase();
+          let receivedBy: { name: string; address: string } | undefined;
+          if (toChain && toChain !== fromChain) {
+            if (toChain === "bitcoin" || toChain === "trac_network") {
+              const activeBtcName = preferredBtcWallet === 'tap'
+                ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
+                : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
+              const btcAddr = preferredBtcWallet === 'tap' ? bitcoinTap?.shortAddress : bitcoin?.shortAddress;
+              if (activeBtcName && btcAddr) receivedBy = { name: activeBtcName, address: btcAddr };
+            } else if (toChain === "ethereum") {
+              if (ethereum?.connected && ethereum.shortAddress) receivedBy = { name: ethereum.walletName ?? 'MetaMask', address: ethereum.shortAddress };
+            } else {
+              // Solana
+              const solAddr = phantomMultiChain?.solanaAddress
+                ? `${phantomMultiChain.solanaAddress.slice(0, 4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`
+                : (solShortAddress ?? null);
+              const solName = phantomMultiChain?.solanaAddress ? 'Phantom' : (solWalletName ?? 'Solana Wallet');
+              if (solAddr) receivedBy = { name: solName, address: solAddr };
+            }
+          }
+          return (
+            <TxSuccessCard
+              txHash={msg.txHash!}
+              fromToken={msg.quoteData.fromToken}
+              toToken={msg.quoteData.toToken}
+              fromAmount={msg.quoteData.fromAmount}
+              toAmount={msg.quoteData.toAmount}
+              fromChain={msg.quoteData.fromChain}
+              toChain={msg.quoteData.toChain}
+              balancesAfterSwap={msg.balancesAfterSwap}
+              signedBy={msg.signedBy}
+              receivedBy={receivedBy}
+              onSwapAgain={onSwapAgain}
+            />
+          );
+        })()}
 
         {/* Timestamp */}
         <span className="text-[10px] text-muted-foreground mt-1 px-1">
@@ -2018,7 +2121,7 @@ export default function ChatPage() {
 
       if (result.type === "quote_card" && result.quoteData) {
         // Determine route badge from the result
-        const p2pPeer = (result as { p2pPeer?: { peerId?: string; alias?: string } | null }).p2pPeer;
+        const p2pPeer = (result as { p2pPeer?: { peerId?: string; alias?: string; counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string } } | null }).p2pPeer;
         const routeBadge: "p2p" | "dex" = p2pPeer?.peerId ? "p2p" : "dex";
         const matchedPeerAlias = p2pPeer?.alias ?? p2pPeer?.peerId?.slice(0, 8);
         // Extract DEX name from route string (e.g. "Jupiter DEX" → "Jupiter")
@@ -2035,6 +2138,7 @@ export default function ChatPage() {
           routeBadge,
           matchedPeerAlias,
           dexName,
+          counterpartyWallets: p2pPeer?.counterpartyWallets,
         });
       } else {
         addMessage({
