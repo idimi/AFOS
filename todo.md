@@ -3199,3 +3199,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Verify preferredBtcWallet is correctly applied after both wallets reconnect in parallel on page load
 - [x] Fix race condition: parallel reconnect may overwrite the stored preference with a default
+
+## Wallet Modal Per-Tab Address Filtering (Mar 2026)
+
+- [x] Ethereum tab: show only ETH address (not SOL/BTC)
+- [x] Solana tab: show only SOL address (not ETH/BTC)
+- [x] Trac Network tab: show only TNK address (not BTC)
+- [x] Bitcoin tab: unchanged (already shows BTC-specific UI)

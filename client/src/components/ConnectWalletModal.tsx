@@ -643,31 +643,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     totalUsd={effectiveSolTotalUsd}
                     accentColor="#9945FF"
                     onDisconnect={phantomSolAddr && !solAdapterConnected ? disconnectPhantom : handleSolanaDisconnect}
-                    chains={phantomMultiChain?.connected ? [
-                      ...(phantomMultiChain.solanaAddress ? [{ label: "SOL", color: "#9945FF" }] : []),
-                      ...(phantomMultiChain.ethereumAddress ? [{ label: "ETH", color: "#627EEA" }] : []),
-                      ...(phantomMultiChain.bitcoinAddress ? [{ label: "BTC", color: "#F7931A" }] : []),
-                    ] : undefined}
-                    addresses={phantomMultiChain?.connected && (phantomMultiChain.ethereumAddress || phantomMultiChain.bitcoinAddress) ? [
-                      ...(phantomMultiChain.solanaAddress ? [{
-                        label: "SOL",
-                        address: phantomMultiChain.solanaAddress,
-                        shortAddress: `${phantomMultiChain.solanaAddress.slice(0,4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`,
-                        explorerUrl: `https://solscan.io/account/${phantomMultiChain.solanaAddress}`,
-                      }] : []),
-                      ...(phantomMultiChain.ethereumAddress ? [{
-                        label: "ETH",
-                        address: phantomMultiChain.ethereumAddress,
-                        shortAddress: `${phantomMultiChain.ethereumAddress.slice(0,6)}\u2026${phantomMultiChain.ethereumAddress.slice(-4)}`,
-                        explorerUrl: `https://etherscan.io/address/${phantomMultiChain.ethereumAddress}`,
-                      }] : []),
-                      ...(phantomMultiChain.bitcoinAddress ? [{
-                        label: "BTC",
-                        address: phantomMultiChain.bitcoinAddress,
-                        shortAddress: `${phantomMultiChain.bitcoinAddress.slice(0,6)}\u2026${phantomMultiChain.bitcoinAddress.slice(-6)}`,
-                        explorerUrl: `https://mempool.space/address/${phantomMultiChain.bitcoinAddress}`,
-                      }] : []),
-                    ] : undefined}
                   />
                 ) : (
                   <>
@@ -765,24 +740,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
-                    chains={[
-                      { label: "Bitcoin", color: "#F7931A" },
-                      { label: "Trac Network", color: "#F97316" },
-                    ]}
-                    addresses={bitcoinTap?.address ? [
-                      {
-                        label: "BTC",
-                        address: bitcoinTap.address,
-                        shortAddress: bitcoinTap.shortAddress,
-                        explorerUrl: `https://mempool.space/address/${bitcoinTap.address}`,
-                      },
-                      {
-                        label: "TNK",
-                        address: tracNetwork.address,
-                        shortAddress: tracNetwork.shortAddress,
-                        explorerUrl: `https://explorer.trac.network/address/${tracNetwork.address}`,
-                      },
-                    ] : undefined}
                   />
                 ) : (
                   <>
