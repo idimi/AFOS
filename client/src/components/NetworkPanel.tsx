@@ -446,6 +446,19 @@ function HtlcProgressModal({ signing, onDismiss }: { signing: HtlcSigningState; 
                 <p className="text-xs font-semibold tracking-wide" style={{ color: accent }}>
                   {isDone ? "Swap Complete" : isFailed ? "Swap Failed" : "HTLC Atomic Swap"}
                 </p>
+                {isDone && signing.settledAt && signing.lockedAt && (() => {
+                  const ms = signing.settledAt - signing.lockedAt;
+                  const totalSec = Math.round(ms / 1000);
+                  const mins = Math.floor(totalSec / 60);
+                  const secs = totalSec % 60;
+                  const label = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                  return (
+                    <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: "rgba(52,211,153,0.7)" }}>
+                      <span>⚡</span>
+                      <span>Settled in {label}</span>
+                    </p>
+                  );
+                })()}
                 {!isDone && !isFailed && elapsedLabel && (
                   <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Running {elapsedLabel}</p>
                 )}

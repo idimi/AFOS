@@ -103,6 +103,7 @@ export interface HtlcSigningState {
   counterpartyAlias?: string; // Agent A's alias/peerId
   expiresAt?: number;       // HTLC timelock expiry (ms epoch)
   lockedAt?: number;        // When Agent B locked (ms epoch)
+  settledAt?: number;       // When the swap fully settled (ms epoch)
   claimTxHash?: string;     // Tx hash of the claim (settlement)
   counterpartyLockTxHash?: string;  // Agent A's lock tx on their chain (seen by Agent B)
   counterpartyClaimTxHash?: string; // Agent A's claim tx (Agent A claims Agent B's funds)
@@ -2737,7 +2738,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
           body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "trac_network" } } }),
         }).catch(() => {});
-        setHtlcSigning(prev => prev ? { ...prev, step: "settled" } : prev);
+        setHtlcSigning(prev => prev ? { ...prev, step: "settled", settledAt: prev.settledAt ?? Date.now() } : prev);
         setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
       } else {
         // No wallet connected for this chain — just copy the secret
