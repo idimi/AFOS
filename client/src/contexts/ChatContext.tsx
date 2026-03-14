@@ -78,6 +78,7 @@ export interface ChatMessage {
     startedAt?: number; // unix ms — when the swap started
     agentBClaimTxId?: string; // Agent A's SOL escrow claim tx (Agent B receives fromToken)
     agentAClaimTxId?: string; // Agent B's USDT escrow claim tx (Agent A receives toToken)
+    confirmedAt?: number; // unix ms — when the swap was confirmed on-chain
   };
   incomingRfqData?: {
     rfqId: string;

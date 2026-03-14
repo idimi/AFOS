@@ -817,6 +817,18 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
     return { label, urgent: totalSecs < 60 };
   })();
 
+  // Settlement duration (only when confirmed)
+  const settlementLabel = (() => {
+    if (!isDone || !data.startedAt) return null;
+    const endMs = data.confirmedAt ?? Date.now();
+    const diffSec = Math.round((endMs - data.startedAt) / 1000);
+    if (diffSec <= 0) return null;
+    if (diffSec < 60) return `${diffSec}s`;
+    const m = Math.floor(diffSec / 60);
+    const s = diffSec % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  })();
+
   // Accent color based on state
   const accent = isFailed ? "#f87171" : isDone ? "#34d399" : "#818cf8";
   const accentBorder = isFailed ? "rgba(239,68,68,0.2)" : isDone ? "rgba(16,185,129,0.2)" : "rgba(99,102,241,0.2)";
@@ -877,6 +889,9 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
               <p className="text-xs font-semibold tracking-wide" style={{ color: accent }}>
                 {isDone ? "Swap Complete" : isFailed ? (isExpired ? "HTLC Expired" : "Swap Failed") : "Swap In Progress"}
               </p>
+              {isDone && settlementLabel && (
+                <p className="text-[10px] mt-0.5 font-semibold" style={{ color: "rgba(52,211,153,0.7)" }}>⚡ Settled in {settlementLabel}</p>
+              )}
               {!isDone && !isFailed && elapsedLabel && (
                 <p className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Running {elapsedLabel}</p>
               )}
@@ -1606,7 +1621,7 @@ export default function ChatPage() {
         const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed", confirmedAt: updated[idx].swapProgressData!.confirmedAt ?? Date.now() } };
           return updated;
         }
             // No matching swap card — ghost event from a previous session. Suppress silently.
@@ -1673,6 +1688,7 @@ export default function ChatPage() {
             phase: "confirmed",
             agentBClaimTxId: data.agentBClaimTxId ?? cardData.agentBClaimTxId,
             agentAClaimTxId: data.agentAClaimTxId ?? cardData.agentAClaimTxId,
+            confirmedAt: cardData.confirmedAt ?? Date.now(),
           },
         };
         if (alreadyHasSuccessMsg) return updated;
