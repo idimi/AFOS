@@ -200,7 +200,39 @@ export const nodeHealthRouter = router({
       results.push({ name: "Trac Network RPC", status: "offline", detail: "Unreachable", error: msg });
     }
 
-    // ── 6. AFOS Signaling (local in-process WebSocket server) ────────────────
+    // ── 6. TNK HTLC Subnet (trac-peer node) ────────────────────────────────
+    try {
+      const { isTnkPeerHealthy, getTnkBlockHeight } = await import("../tnkHtlcContract.js");
+      const t0 = Date.now();
+      const [healthy, blockHeight] = await Promise.all([
+        isTnkPeerHealthy(),
+        getTnkBlockHeight(),
+      ]);
+      const latency = `${Date.now() - t0}ms`;
+      const peerUrl = process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001";
+      const host = (() => { try { return new URL(peerUrl).hostname; } catch { return peerUrl; } })();
+      if (healthy) {
+        results.push({
+          name: "TNK HTLC Subnet",
+          status: "live",
+          detail: blockHeight !== null
+            ? `Block height: ${blockHeight.toLocaleString()} · Connected via ${host}`
+            : `Subnet reachable · Connected via ${host}`,
+          latency,
+        });
+      } else {
+        results.push({
+          name: "TNK HTLC Subnet",
+          status: "offline",
+          detail: `Unreachable · ${host} · Set TNK_PEER_RPC_URL to deploy`,
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown";
+      results.push({ name: "TNK HTLC Subnet", status: "offline", detail: "Subnet error", error: msg });
+    }
+
+    // ── 7. AFOS Signaling (local in-process WebSocket server) ────────────────
     try {
       const { getSignalingPeerCount } = await import("../signaling.js");
       const peerCount = getSignalingPeerCount();

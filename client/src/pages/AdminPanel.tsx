@@ -864,7 +864,7 @@ function NodeHealthTab() {
 
       {loading && nodes.length === 0 ? (
         <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map(i => (
+          {[1, 2, 3, 4, 5, 6, 7].map(i => (
             <div key={i} className="h-16 rounded-2xl animate-pulse" style={{ background: "var(--card)" }} />
           ))}
         </div>
@@ -2002,7 +2002,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     },
     {
       id: "nodes", label: "Node Health", icon: Server,
-      tooltip: "Live infrastructure health monitor. Checks connectivity and block heights for all critical nodes: Oracle VM (AFOS backend), Ethereum RPC, Solana RPC, Bitcoin RPC, Trac Network RPC, and the AFOS WebSocket signaling server. All checks run server-side to bypass CORS/firewall restrictions. Auto-refreshes every 60 seconds. Also shows the Oracle VM sync job status and allows enabling/disabling it.",
+      tooltip: "Live infrastructure health monitor. Checks connectivity and block heights for all critical nodes: Oracle VM (AFOS backend), Ethereum RPC, Solana RPC, Bitcoin RPC, Trac Network RPC, TNK HTLC Subnet (trac-peer node), and the AFOS WebSocket signaling server. All checks run server-side to bypass CORS/firewall restrictions. Auto-refreshes every 60 seconds. Also shows the Oracle VM sync job status and allows enabling/disabling it.",
     },
     {
       id: "users", label: "Users", icon: Users,

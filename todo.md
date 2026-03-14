@@ -3013,3 +3013,14 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] client/src/lib/tnkHtlc.ts — Upgraded to on-chain signTracTx contract lock (with legacy escrow fallback)
 - [x] client/src/contexts/LightPeerContext.tsx — Updated TNK lock call to pass recipientAddress + htlcId
 - [x] server/tnkHtlc.test.ts — 19 Vitest tests covering all happy paths and error paths (342 total tests passing)
+
+## TNK Subnet Deployment + Admin Health Indicator
+
+- [x] Generate real Ed25519 TNK_AGENT_KEY (PKCS8 DER hex) and add to secrets
+- [x] Add TNK_PEER_RPC_URL env var (points to deployed trac-peer node)
+- [x] Add TNK_HTLC_CONTRACT_ADDRESS env var
+- [x] Add AFOS_SERVER_SECRET env var (shared secret between AFOS server and trac-peer runner)
+- [x] Add TNK HTLC Subnet as entry #6 in nodeHealthRouter.check (isTnkPeerHealthy + getTnkBlockHeight)
+- [x] Update Admin Panel Node Health tab skeleton count to 7 and tooltip to mention TNK HTLC Subnet
+- [x] signWithAgentKey now accepts both PKCS8 DER (96 hex) and raw 64-byte (128 hex) Ed25519 key formats
+- [x] Write Vitest tests for subnet health entry and TNK_AGENT_KEY validation (350 total passing)
