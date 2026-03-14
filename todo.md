@@ -3194,3 +3194,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Wallet Auto-Reconnect on Page Reload (Mar 2026)
 
 - [x] Persist wallet connection state to localStorage and auto-reconnect Tap Wallet, Phantom, and MetaMask on page load
+
+## preferredBtcWallet Restoration After Parallel Reconnect (Mar 2026)
+
+- [x] Verify preferredBtcWallet is correctly applied after both wallets reconnect in parallel on page load
+- [x] Fix race condition: parallel reconnect may overwrite the stored preference with a default

@@ -508,6 +508,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const connectEthereumRef = React.useRef<((p: EthProviderType) => Promise<void>) | null>(null);
   const connectBitcoinRef = React.useRef<((p: BtcProviderType) => Promise<void>) | null>(null);
   const connectPhantomRef = React.useRef<(() => Promise<void>) | null>(null);
+  // Set to true after the auto-reconnect useEffect completes (or if there is no session to restore).
+  // Guards the stale-preference cleanup effect from firing before wallets have had a chance to reconnect.
+  const reconnectCompleteRef = React.useRef<boolean>(false);
 
   // ── Phantom Multi-Chain Connect ─────────────────────────────────────────────
   // Phantom exposes window.phantom.solana, window.phantom.ethereum, window.phantom.bitcoin
@@ -1364,7 +1367,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   // For MetaMask BTC: calls connectBitcoin which handles its own silent checks.
   useEffect(() => {
     const session = loadWalletSession();
-    if (!session) return;
+    if (!session) {
+      // No session to restore — mark reconnect as complete immediately
+      reconnectCompleteRef.current = true;
+      return;
+    }
 
     // Wait 800ms for wallet extensions to inject into window
     const timer = setTimeout(async () => {
@@ -1430,6 +1437,20 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
       // Run all reconnections in parallel
       await Promise.allSettled(reconnectPromises);
+
+      // ── Restore preferredBtcWallet after all wallets have reconnected ─────────
+      // Both connectPhantomMultiChain and silentRestoreTapWallet call setPreferredBtcWallet
+      // as part of their connect flow. Since they run in parallel, the last one to finish
+      // would overwrite the stored preference. We fix this by re-applying the stored
+      // preference AFTER all reconnections complete, so the user's explicit choice always wins.
+      const storedPref = loadPreferredBtcWallet();
+      if (storedPref) {
+        setPreferredBtcWalletRaw(storedPref); // Update state only — already in localStorage
+        console.log(`[AFOS] Restored preferredBtcWallet: ${storedPref}`);
+      }
+
+      // Mark reconnect as complete — allows the stale-preference cleanup effect to run
+      reconnectCompleteRef.current = true;
     }, 800);
 
     return () => clearTimeout(timer);
@@ -1609,6 +1630,33 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       clearInterval(keepAliveInterval);
     };
   }, []); // run once on mount, interval self-maintains
+
+  // ── Stale preference cleanup ───────────────────────────────────────────────────────────────────────
+  // If the preferred BTC wallet is no longer connected (e.g., extension removed), clear
+  // the stale preference so the UI falls back to whichever wallet is actually connected.
+  // This runs whenever bitcoin, bitcoinTap, or preferredBtcWallet changes.
+  // IMPORTANT: guarded by reconnectCompleteRef to prevent firing before the 800ms
+  // auto-reconnect window has elapsed (which would clear a valid stored preference).
+  useEffect(() => {
+    if (!preferredBtcWallet) return;
+    // Do not run until the auto-reconnect phase is complete
+    if (!reconnectCompleteRef.current) return;
+    const tapConnected = bitcoinTap?.connected ?? false;
+    const nonTapConnected = (bitcoin?.connected && bitcoin.walletName !== "Tap Wallet") ?? false;
+    if (preferredBtcWallet === "tap" && !tapConnected && nonTapConnected) {
+      // Tap Wallet preference is stale — fall back to the connected non-Tap wallet
+      console.log("[AFOS] preferredBtcWallet 'tap' is stale — clearing preference");
+      setPreferredBtcWallet(bitcoin?.isPhantom ? "phantom" : "metamask");
+    } else if (preferredBtcWallet !== "tap" && !nonTapConnected && tapConnected) {
+      // Phantom/MetaMask preference is stale — fall back to Tap Wallet
+      console.log(`[AFOS] preferredBtcWallet '${preferredBtcWallet}' is stale — falling back to tap`);
+      setPreferredBtcWallet("tap");
+    } else if (!tapConnected && !nonTapConnected) {
+      // No BTC wallet connected at all — clear the preference
+      setPreferredBtcWallet(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bitcoin, bitcoinTap, preferredBtcWallet]);
 
   // ── Derived active BTC wallet (respects preferredBtcWallet) ─────────────────
   // When both Phantom/MetaMask BTC and Tap Wallet BTC are connected, use the preferred one.
