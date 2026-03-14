@@ -824,65 +824,91 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       </div>
 
                       {/* Tap Wallet option */}
-                      <button
-                        onClick={() => setPreferredBtcWallet("tap")}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
-                        style={{
-                          background: isTapActive ? "rgba(249,115,22,0.12)" : "var(--muted)",
-                          border: isTapActive ? "1.5px solid rgba(249,115,22,0.45)" : "1px solid var(--border)",
-                          boxShadow: isTapActive ? "0 0 0 2px rgba(249,115,22,0.12)" : "none",
-                        }}
-                      >
-                        <img src={TAP_ICON} alt="Tap Wallet" className="w-8 h-8 rounded-xl shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-bold text-foreground">Tap Wallet</p>
-                            {isTapActive && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}>ACTIVE</span>
-                            )}
+                      <div className="relative">
+                        <button
+                          onClick={() => setPreferredBtcWallet("tap")}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                          style={{
+                            background: isTapActive ? "rgba(249,115,22,0.12)" : "var(--muted)",
+                            border: isTapActive ? "1.5px solid rgba(249,115,22,0.45)" : "1px solid var(--border)",
+                            boxShadow: isTapActive ? "0 0 0 2px rgba(249,115,22,0.12)" : "none",
+                          }}
+                        >
+                          <img src={TAP_ICON} alt="Tap Wallet" className="w-8 h-8 rounded-xl shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-bold text-foreground">Tap Wallet</p>
+                              {isTapActive && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}>ACTIVE</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-mono text-muted-foreground truncate">{tapWallet.shortAddress}</p>
+                            <p className="text-[10px] text-muted-foreground">{tapWallet.balance}</p>
                           </div>
-                          <p className="text-[11px] font-mono text-muted-foreground truncate">{tapWallet.shortAddress}</p>
-                          <p className="text-[10px] text-muted-foreground">{tapWallet.balance}</p>
-                        </div>
-                        <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                          style={{ borderColor: isTapActive ? "#F97316" : "var(--border)" }}>
-                          {isTapActive && <div className="w-2 h-2 rounded-full" style={{ background: "#F97316" }} />}
-                        </div>
-                      </button>
+                          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                            style={{ borderColor: isTapActive ? "#F97316" : "var(--border)" }}>
+                            {isTapActive && <div className="w-2 h-2 rounded-full" style={{ background: "#F97316" }} />}
+                          </div>
+                        </button>
+                        {/* Explorer link — positioned top-right, stops propagation so it doesn't trigger wallet selection */}
+                        <a
+                          href={`https://mempool.space/address/${tapWallet.address}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="absolute top-2.5 right-10 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                          title="View on mempool.space"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
 
                       {/* Phantom / MetaMask option */}
                       {otherWallet && (
-                        <button
-                          onClick={() => setPreferredBtcWallet(otherWallet.isPhantom ? "phantom" : "metamask")}
-                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
-                          style={{
-                            background: isOtherActive ? "rgba(171,159,242,0.12)" : "var(--muted)",
-                            border: isOtherActive ? "1.5px solid rgba(171,159,242,0.45)" : "1px solid var(--border)",
-                            boxShadow: isOtherActive ? "0 0 0 2px rgba(171,159,242,0.12)" : "none",
-                          }}
-                        >
-                          <img
-                            src={otherWallet.isPhantom ? PHANTOM_ICON : METAMASK_ICON}
-                            alt={otherWallet.walletName}
-                            className="w-8 h-8 rounded-xl shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-bold text-foreground">{otherWallet.walletName}</p>
-                              {isOtherActive && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                  style={{ background: "rgba(171,159,242,0.2)", color: "#AB9FF2" }}>ACTIVE</span>
-                              )}
+                        <div className="relative">
+                          <button
+                            onClick={() => setPreferredBtcWallet(otherWallet.isPhantom ? "phantom" : "metamask")}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                            style={{
+                              background: isOtherActive ? "rgba(171,159,242,0.12)" : "var(--muted)",
+                              border: isOtherActive ? "1.5px solid rgba(171,159,242,0.45)" : "1px solid var(--border)",
+                              boxShadow: isOtherActive ? "0 0 0 2px rgba(171,159,242,0.12)" : "none",
+                            }}
+                          >
+                            <img
+                              src={otherWallet.isPhantom ? PHANTOM_ICON : METAMASK_ICON}
+                              alt={otherWallet.walletName}
+                              className="w-8 h-8 rounded-xl shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-bold text-foreground">{otherWallet.walletName}</p>
+                                {isOtherActive && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                    style={{ background: "rgba(171,159,242,0.2)", color: "#AB9FF2" }}>ACTIVE</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] font-mono text-muted-foreground truncate">{otherWallet.shortAddress}</p>
+                              <p className="text-[10px] text-muted-foreground">{otherWallet.balance}</p>
                             </div>
-                            <p className="text-[11px] font-mono text-muted-foreground truncate">{otherWallet.shortAddress}</p>
-                            <p className="text-[10px] text-muted-foreground">{otherWallet.balance}</p>
-                          </div>
-                          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                            style={{ borderColor: isOtherActive ? "#AB9FF2" : "var(--border)" }}>
-                            {isOtherActive && <div className="w-2 h-2 rounded-full" style={{ background: "#AB9FF2" }} />}
-                          </div>
-                        </button>
+                            <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                              style={{ borderColor: isOtherActive ? "#AB9FF2" : "var(--border)" }}>
+                              {isOtherActive && <div className="w-2 h-2 rounded-full" style={{ background: "#AB9FF2" }} />}
+                            </div>
+                          </button>
+                          {/* Explorer link */}
+                          <a
+                            href={`https://mempool.space/address/${otherWallet.address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="absolute top-2.5 right-10 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                            title="View on mempool.space"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
                       )}
 
                       <p className="text-[10px] text-muted-foreground text-center px-2">
