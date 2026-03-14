@@ -777,17 +777,37 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
               {/* ── BITCOIN ── */}
               {activeChain === "bitcoin" && (() => {
-                // Determine if multiple BTC wallets are connected simultaneously
-                const tapConnected = bitcoinTap?.connected ?? false;
-                const phantomOrMmConnected = !!(bitcoin?.connected && bitcoin.walletName !== "Tap Wallet");
+                // Detect each wallet independently:
+                // - Tap Wallet BTC is always in bitcoinTap (separate state)
+                // - Phantom/MetaMask BTC: check phantomMultiChain.bitcoinAddress OR bitcoin state that isn't Tap Wallet
+                const tapConnected = !!(bitcoinTap?.connected);
+                // When Tap is the active/preferred wallet, bitcoin state is set to Tap Wallet.
+                // Detect Phantom/MetaMask BTC independently via phantomMultiChain or the raw bitcoin state.
+                const phantomBtcConnected = !!(phantomMultiChain?.bitcoinAddress);
+                const metamaskBtcConnected = !!(bitcoin?.connected && !bitcoin.isPhantom && bitcoin.walletName !== "Tap Wallet");
+                const phantomOrMmConnected = phantomBtcConnected || metamaskBtcConnected;
                 const bothConnected = tapConnected && phantomOrMmConnected;
 
                 if (bothConnected) {
                   // ── Multi-wallet picker: both Tap Wallet and Phantom/MetaMask BTC are connected ──
                   const tapWallet = bitcoinTap!;
-                  const otherWallet = bitcoin?.walletName !== "Tap Wallet" ? bitcoin! : null;
+                  // Reconstruct the non-tap wallet: prefer the raw bitcoin state if it's not Tap, else use phantomMultiChain data
+                  const rawNonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
+                  const otherWallet: typeof bitcoin = rawNonTap ?? (phantomMultiChain?.bitcoinAddress ? {
+                    chain: "bitcoin",
+                    connected: true,
+                    connecting: false,
+                    walletName: "Phantom",
+                    address: phantomMultiChain.bitcoinAddress,
+                    shortAddress: `${phantomMultiChain.bitcoinAddress.slice(0, 6)}\u2026${phantomMultiChain.bitcoinAddress.slice(-6)}`,
+                    balance: "0.00000000 BTC",
+                    balanceUsd: 0,
+                    symbol: "BTC",
+                    isPhantom: true,
+                  } : null);
                   const activePref = preferredBtcWallet;
-                  const isTapActive = activePref === "tap" || (!activePref && bitcoin?.walletName === "Tap Wallet");
+                  // isTapActive: true if preference is tap, OR if no preference and bitcoin state is Tap Wallet
+                  const isTapActive = activePref === "tap" || (!activePref && (bitcoin?.walletName === "Tap Wallet" || !phantomOrMmConnected));
                   const isOtherActive = !isTapActive;
 
                   return (
