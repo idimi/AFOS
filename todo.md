@@ -3107,3 +3107,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add Vitest tests for isSolToTnk Helius webhook branch
 - [x] Add Vitest tests for TNK→SOL path in executeAgentSwap
 - [x] Verify TypeScript 0 errors, 376 tests passing
+
+## Tap Wallet Sign Step + TNK Pairs in Swaps + isTnkToSol Webhook
+- [x] ChatPage: show TapWalletSignCard (QR + deep-link) when buildSwapTx returns route "AFOS TNK→SOL HTLC"
+- [x] Create TapWalletSignCard component (QR code of tnkLockTxPayload, deep-link button, copy button, status polling)
+- [x] Swaps.tsx: add TNK/SOL, TNK/USDT, TNK/USDC pairs to pair selector
+- [x] Swaps.tsx: wire TNK pair selection to buildSwapTx (not executeAgentSwap) with recipientAddress
+- [x] tnkHtlcMonitor: add isTnkToSol branch — when fromChain=trac_network and toChain=solana, claim TNK + release Solana tokens
+- [ ] Add Vitest tests for isTnkToSol monitor branch
+- [x] TypeScript 0 errors, 376 tests passing

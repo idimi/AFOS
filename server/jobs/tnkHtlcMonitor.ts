@@ -21,7 +21,7 @@
  */
 
 import { getDb } from "../db";
-import { htlcSwaps } from "../../drizzle/schema";
+import { htlcSwaps, htlcSecrets } from "../../drizzle/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { broadcastAll } from "../signaling";
 import { notifyOwner } from "../_core/notification";
@@ -151,6 +151,91 @@ async function pollSubnetMode(
 
         console.log(`[TNK Monitor] Subnet: Lock confirmed for HTLC ${htlc.id} (${htlc.amountHuman} TNK)`);
         detected++;
+
+        // ── isTnkToSol: user locked TNK → agent claims TNK + releases Solana ──
+        // When toChain === "solana", this is a TNK→SOL/USDT/USDC swap.
+        // The user just locked TNK on Trac Network (htlc_b_). We must:
+        //   a) Claim the user's TNK lock (htlc_b_) → agent receives TNK
+        //   b) Release the agent's Solana lock (htlc_a_) → user receives SOL/USDT/USDC
+        if (htlc.toChain === "solana" && htlc.rfqId) {
+          const rfqId = htlc.rfqId;
+          void (async () => {
+            try {
+              // Look up the htlcSecrets row to get the plaintext secret
+              const secretRows = await db
+                .select()
+                .from(htlcSecrets)
+                .where(eq(htlcSecrets.rfqId, rfqId))
+                .limit(1);
+              const secretRow = secretRows[0];
+              if (!secretRow?.secretHex) {
+                console.error(`[TNK Monitor] isTnkToSol: No secret found for rfqId=${rfqId.slice(0, 12)}…`);
+                return;
+              }
+              // htlcIdB = user's TNK lock (htlc_b_<rfqId slice>)
+              // htlcIdA = agent's Solana lock (htlc_a_<rfqId slice>)
+              const htlcIdB = `htlc_b_${rfqId.slice(0, 22)}`;
+              const htlcIdA = `htlc_a_${rfqId.slice(0, 22)}`;
+              const userSolanaAddress = htlc.senderAddress ?? secretRow.initiatorAddress ?? "";
+              const toTokenSym = htlc.toToken ?? "SOL";
+
+              // Step a: Claim user's TNK lock → agent receives TNK
+              const { claimTnkHtlc } = await import("../tnkHtlcClaim.js");
+              const claimTnk = await claimTnkHtlc(htlcIdB, secretRow.secretHex);
+              if (!claimTnk.ok) {
+                console.error(`[TNK Monitor] isTnkToSol: TNK claim failed for htlcIdB=${htlcIdB}: ${claimTnk.error}`);
+                // Non-fatal — will retry on next poll cycle
+                return;
+              }
+              console.log(`[TNK Monitor] isTnkToSol: Claimed user's TNK lock (htlcIdB=${htlcIdB}): tx=${claimTnk.contractTxHash?.slice(0, 16)}…`);
+
+              // Step b: Release agent's Solana lock → user receives SOL/USDT/USDC
+              const { claimSolanaHtlc } = await import("../solanaHtlcClaim.js");
+              const claimSol = await claimSolanaHtlc({
+                htlcId:           htlcIdA,
+                secretHex:        secretRow.secretHex,
+                recipientAddress: userSolanaAddress,
+                tokenSymbol:      toTokenSym === "SOL" ? undefined : toTokenSym,
+              });
+              console.log(`[TNK Monitor] isTnkToSol: Released ${toTokenSym} to user (htlcIdA=${htlcIdA}): tx=${claimSol.txSignature.slice(0, 16)}…`);
+
+              // Mark as completed
+              const now = new Date();
+              await db.update(htlcSecrets)
+                .set({ status: "completed", revealTxId: claimSol.txSignature, settledAt: now, settledVia: "tnk_monitor", updatedAt: now })
+                .where(eq(htlcSecrets.rfqId, rfqId));
+              await db.update(htlcSwaps)
+                .set({ status: "completed", updatedAt: now })
+                .where(eq(htlcSwaps.rfqId, rfqId));
+
+              broadcastAll({
+                type:       "tnk_to_sol_settled",
+                rfqId,
+                htlcIdA,
+                htlcIdB,
+                toToken:    toTokenSym,
+                claimSolTx: claimSol.txSignature,
+                claimTnkTx: claimTnk.contractTxHash,
+              });
+              console.log(`[TNK Monitor] isTnkToSol: Swap rfqId=${rfqId.slice(0, 12)}… fully settled.`);
+            } catch (settleErr) {
+              const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+              // "already" errors mean on-chain state is already settled — mark completed
+              if (msg.includes("already") || msg.includes("0x1774") || msg.includes("0x1775")) {
+                await db.update(htlcSecrets)
+                  .set({ status: "completed", updatedAt: new Date() })
+                  .where(eq(htlcSecrets.rfqId, rfqId))
+                  .catch(() => {});
+                await db.update(htlcSwaps)
+                  .set({ status: "completed", updatedAt: new Date() })
+                  .where(eq(htlcSwaps.rfqId, rfqId))
+                  .catch(() => {});
+              } else {
+                console.error(`[TNK Monitor] isTnkToSol settlement failed for rfqId=${rfqId.slice(0, 12)}…:`, msg);
+              }
+            }
+          })();
+        }
       } catch (err) {
         console.error(`[TNK Monitor] DB update failed for HTLC ${htlc.id}:`, err);
       }

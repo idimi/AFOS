@@ -32,6 +32,7 @@ import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
 import { getTnkBalance } from "../lib/tnkHtlc";
+import TapWalletSignCard from "../components/TapWalletSignCard";
 import { usePairDepth, formatDepth, depthColor } from "../hooks/usePairDepth";
 
 // ─── Chain & Token Config ─────────────────────────────────────────────────────
@@ -2544,7 +2545,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [fromDropOpen, setFromDropOpen] = useState(false);
   const [toDropOpen, setToDropOpen] = useState(false);
   const { connected, shortAddress, balances: solBalances, refreshBalances } = useWallet();
-  const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum: ethWallet, bitcoin: btcWallet, erc20Balances, phantomMultiChain, tracNetwork: tnkWallet } = useMultiChainWallet();
    const { theme: currentTheme } = useTheme();
   const lightPeer = useLightPeer();
   // ── Live balances map: symbol → on-chain balance ─────────────────────────
@@ -2692,6 +2693,17 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
   const [pendingAcceptOrder, setPendingAcceptOrder] = useState<OrderBookEntry | null>(null);
   const [lastTxHash, setLastTxHash] = useState<string | undefined>(undefined);
   const [lastTxChain, setLastTxChain] = useState<string>("solana");
+  // TNK→SOL sign card state — shown after buildSwapTx returns tnkLockTxPayload
+  const [tnkSignCardData, setTnkSignCardData] = useState<{
+    tnkLockTxPayload: string;
+    htlcIdA: string;
+    htlcIdB: string;
+    rfqId: string;
+    tnkAmount?: number;
+    outAmount?: number;
+    toToken?: string;
+  } | null>(null);
+  const buildSwapTxMutation = trpc.chat.buildSwapTx.useMutation();
   // Collapsible chart on mobile (hidden by default)
   const [chartOpen, setChartOpen] = useState(false);
 
@@ -2887,6 +2899,88 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     }
     if (swapPhase !== "idle" && swapPhase !== "complete" && swapPhase !== "error") return;
     haptic.tap();
+
+    // ── TNK→SOL/USDT/USDC: use buildSwapTx (agent-escrow HTLC) instead of Oracle VM path ──
+    const isTnkToSol = fromToken.chain === "trac_network" && toToken.chain === "solana";
+    const isSolToTnk = fromToken.chain === "solana" && toToken.chain === "trac_network";
+    if (isTnkToSol || isSolToTnk) {
+      const solAddress = shortAddress || "";
+      const tnkAddress = tnkWallet?.address || "";
+      if (isTnkToSol && !tnkAddress) {
+        toast.error("Connect Tap Wallet (TNK) to swap TNK→SOL");
+        setShowWalletModal(true);
+        return;
+      }
+      if (isSolToTnk && !solAddress) {
+        toast.error("Connect a Solana wallet to swap SOL→TNK");
+        setShowWalletModal(true);
+        return;
+      }
+      setSwapPhase("rfq");
+      setLastTxHash(undefined);
+      setTnkSignCardData(null);
+      try {
+        const result = await buildSwapTxMutation.mutateAsync({
+          quoteResponse: null,
+          fromToken: fromToken.symbol,
+          toToken:   toToken.symbol,
+          fromChain: fromToken.chain as import("../lib/afosApi").SupportedChain,
+          toChain:   toToken.chain   as import("../lib/afosApi").SupportedChain,
+          amount:    parseFloat(fromAmount),
+          userPublicKey: isSolToTnk ? solAddress : tnkAddress,
+          recipientAddress: isSolToTnk ? tnkAddress : solAddress,
+        });
+        const r = result as {
+          route?: string;
+          tnkLockTxPayload?: string;
+          htlcIdA?: string; htlcIdB?: string; rfqId?: string;
+          outAmount?: number; message?: string;
+        };
+        if (isTnkToSol && r.route === "AFOS TNK→SOL" && r.tnkLockTxPayload) {
+          setSwapPhase("idle");
+          setTnkSignCardData({
+            tnkLockTxPayload: r.tnkLockTxPayload,
+            htlcIdA:  r.htlcIdA  ?? "",
+            htlcIdB:  r.htlcIdB  ?? "",
+            rfqId:    r.rfqId    ?? `rfq_tnk_sol_${Date.now()}`,
+            tnkAmount: parseFloat(fromAmount),
+            outAmount: r.outAmount,
+            toToken:   toToken.symbol,
+          });
+          toast.info("Scan the QR code or tap the deep-link to sign the TNK lock in Tap Wallet");
+          return;
+        }
+        // SOL→TNK: user signs the Solana lock transaction
+        if (isSolToTnk && r.route === "AFOS SOL→TNK") {
+          setSwapPhase("locking");
+          const swapTx = (result as { swapTransaction?: string }).swapTransaction;
+          if (!swapTx) throw new Error(r.message ?? "SOL→TNK swap failed");
+          // Import Solana libs dynamically to avoid circular deps
+          const { Connection, VersionedTransaction } = await import("@solana/web3.js");
+          const { useWallet: _useWallet } = await import("../contexts/WalletContext");
+          // We can't call hooks here — use the wallet adapter directly via window.phantom
+          const phantom = (window as unknown as { phantom?: { solana?: { signAndSendTransaction?: (tx: unknown) => Promise<{ signature: string }> } } }).phantom?.solana;
+          if (!phantom?.signAndSendTransaction) throw new Error("Phantom wallet not connected");
+          const conn = new Connection(import.meta.env.VITE_SOL_RPC_URL || "https://api.mainnet-beta.solana.com");
+          const txBuf = Buffer.from(swapTx, "base64");
+          const tx = VersionedTransaction.deserialize(txBuf);
+          const { signature } = await phantom.signAndSendTransaction(tx);
+          await conn.confirmTransaction(signature, "confirmed");
+          setLastTxHash(signature);
+          setSwapPhase("complete");
+          toast.success(`SOL→TNK swap submitted!`, { description: `Tx: ${signature.slice(0, 14)}… — TNK will be released automatically.` });
+          return;
+        }
+        throw new Error(r.message ?? `Unexpected route: ${r.route}`);
+      } catch (tnkErr) {
+        setSwapPhase("error");
+        haptic.error();
+        const msg = tnkErr instanceof Error ? tnkErr.message : String(tnkErr);
+        toast.error("TNK swap failed", { description: msg.slice(0, 100) });
+        return;
+      }
+    }
+
     setSwapPhase("rfq");
     setLastTxHash(undefined);
 
@@ -3740,6 +3834,26 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               rfqId={lastRfqId}
               txHash={lastTxHash}
               txChain={lastTxChain}
+            />
+          </div>
+        )}
+
+        {/* TNK→SOL sign card — shown after buildSwapTx returns tnkLockTxPayload */}
+        {tnkSignCardData && (
+          <div className="xl:col-start-2 xl:row-start-2">
+            <TapWalletSignCard
+              tnkLockTxPayload={tnkSignCardData.tnkLockTxPayload}
+              htlcIdA={tnkSignCardData.htlcIdA}
+              htlcIdB={tnkSignCardData.htlcIdB}
+              rfqId={tnkSignCardData.rfqId}
+              tnkAmount={tnkSignCardData.tnkAmount}
+              outAmount={tnkSignCardData.outAmount}
+              toToken={tnkSignCardData.toToken}
+              onSettled={() => {
+                setTnkSignCardData(null);
+                setSwapPhase("complete");
+                toast.success("TNK→SOL swap settled!", { description: "SOL has been released to your Solana address." });
+              }}
             />
           </div>
         )}

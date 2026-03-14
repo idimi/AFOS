@@ -22,6 +22,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useChat, type ChatMessage, type QuoteData, type SupportedChain } from "@/contexts/ChatContext";
 import { useLightPeer } from "@/contexts/LightPeerContext";
 import ConnectWalletModal from "../components/ConnectWalletModal";
+import TapWalletSignCard from "../components/TapWalletSignCard";
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { Link } from "wouter";
 import { SUPPORTED_WALLETS_TEXT } from "@shared/const";
@@ -1454,6 +1455,19 @@ function MessageBubble({
           <SwapProgressCard data={msg.swapProgressData} />
         )}
 
+        {/* TNK→SOL sign card */}
+        {msg.type === "tnk_sign_card" && msg.tnkSignCardData && (
+          <TapWalletSignCard
+            tnkLockTxPayload={msg.tnkSignCardData.tnkLockTxPayload}
+            htlcIdA={msg.tnkSignCardData.htlcIdA}
+            htlcIdB={msg.tnkSignCardData.htlcIdB}
+            rfqId={msg.tnkSignCardData.rfqId}
+            tnkAmount={msg.tnkSignCardData.tnkAmount}
+            outAmount={msg.tnkSignCardData.outAmount}
+            toToken={msg.tnkSignCardData.toToken}
+          />
+        )}
+
         {/* Tx success */}
         {msg.type === "tx_success" && msg.txHash && msg.quoteData && (
           <TxSuccessCard
@@ -2219,7 +2233,7 @@ export default function ChatPage() {
             return;
           }
 
-          // TNK→SOL: user signs and broadcasts the TNK lock via Tap Wallet
+          // TNK→SOL: inject TapWalletSignCard so user can sign via QR / deep-link / auto-sign
           if (isTnkToSol && (tnkSolResult as { route?: string }).route === "AFOS TNK→SOL") {
             const tnkPayload = (tnkSolResult as { tnkLockTxPayload?: string | null }).tnkLockTxPayload;
             if (!tnkPayload) {
@@ -2227,33 +2241,31 @@ export default function ChatPage() {
               setExecutingId(null);
               return;
             }
-            const tnkLockData = JSON.parse(Buffer.from(tnkPayload, "base64").toString("utf-8"));
-            toast.loading("Sign the TNK lock in your Tap Wallet…", { id: "tnk-lock" });
-            try {
-              const tapTrac = (window as unknown as {
-                tapwallet?: { tracnetwork?: { submitContractTx?: (payload: unknown) => Promise<{ txHash?: string; success?: boolean; error?: string }> } };
-              }).tapwallet?.tracnetwork;
-              if (!tapTrac?.submitContractTx) throw new Error("Tap Wallet Trac Network provider not found. Please install or update Tap Wallet.");
-              const tnkLockResult = await tapTrac.submitContractTx(tnkLockData);
-              toast.dismiss("tnk-lock");
-              if (tnkLockResult?.error) throw new Error(tnkLockResult.error);
-              const tnkTxHash = tnkLockResult?.txHash ?? "pending";
-              toast.success("TNK lock submitted!", { description: `Tx: ${tnkTxHash.slice(0, 14)}… — SOL will be released automatically.` });
-              setMessages(prev => prev.map(m =>
-                m.id === msgId ? { ...m, type: "tx_success" as const, txHash: tnkTxHash, signedBy: signingWalletForAudit } : m
-              ));
-              addMessage({
-                role: "assistant",
-                content: (tnkSolResult as { message?: string }).message ??
-                  "TNK locked on Trac Network. SOL/USDT/USDC will be released to your Solana address automatically.",
-                type: "text",
-              });
-            } catch (tnkErr) {
-              toast.dismiss("tnk-lock");
-              const tnkMsg = tnkErr instanceof Error ? tnkErr.message : String(tnkErr);
-              toast.error("TNK lock failed", { description: tnkMsg.slice(0, 100) });
-              addMessage({ role: "assistant", content: `TNK lock failed: ${tnkMsg.slice(0, 150)}. Please try again.`, type: "error" });
-            }
+            const r2 = tnkSolResult as {
+              htlcIdA?: string; htlcIdB?: string; rfqId?: string;
+              outAmount?: number; message?: string;
+            };
+            // Summary text message
+            addMessage({
+              role: "assistant",
+              content: r2.message ?? `TNK→SOL swap ready. Lock ${quoteData.fromAmount.toFixed(4)} TNK in Tap Wallet to receive ${(r2.outAmount ?? 0).toFixed(4)} ${quoteData.toToken} on Solana.`,
+              type: "text",
+            });
+            // Inject the sign card as a dedicated message
+            addMessage({
+              role: "assistant",
+              content: "",
+              type: "tnk_sign_card",
+              tnkSignCardData: {
+                tnkLockTxPayload: tnkPayload,
+                htlcIdA:  r2.htlcIdA  ?? "",
+                htlcIdB:  r2.htlcIdB  ?? "",
+                rfqId:    r2.rfqId    ?? `rfq_tnk_sol_${Date.now()}`,
+                tnkAmount: quoteData.fromAmount,
+                outAmount: r2.outAmount,
+                toToken:   quoteData.toToken,
+              },
+            });
             setExecutingId(null);
             return;
           }

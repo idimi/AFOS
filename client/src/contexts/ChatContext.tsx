@@ -44,7 +44,7 @@ export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  type?: "text" | "quote_card" | "tx_success" | "swap_complete" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching" | "swap_progress";
+  type?: "text" | "quote_card" | "tx_success" | "swap_complete" | "error" | "limit_exceeded" | "incoming_rfq" | "peer_searching" | "swap_progress" | "tnk_sign_card";
   quoteData?: QuoteData;
   txHash?: string;
   timestamp: number;
@@ -82,6 +82,16 @@ export interface ChatMessage {
     lockTxId?: string;    // Agent A's own lock tx hash (fromChain)
     peerLockTxId?: string; // Agent B's lock tx hash (toChain) — received via htlc_locked event
     htlcEscrowAddress?: string; // HTLC escrow/PDA address on fromChain
+  };
+  /** TNK→SOL HTLC sign card data — shown when buildSwapTx returns route "AFOS TNK→SOL HTLC" */
+  tnkSignCardData?: {
+    tnkLockTxPayload: string;
+    htlcIdA: string;
+    htlcIdB: string;
+    rfqId: string;
+    tnkAmount?: number;
+    outAmount?: number;
+    toToken?: string;
   };
   incomingRfqData?: {
     rfqId: string;

@@ -1,0 +1,302 @@
+/**
+ * TapWalletSignCard — Inline chat card for TNK→SOL HTLC signing
+ *
+ * Shown when buildSwapTx returns route "AFOS TNK→SOL HTLC".
+ * Provides three ways for the user to sign the TNK lock transaction:
+ *   1. QR code — scan with Tap Wallet mobile app
+ *   2. Deep-link button — opens tapwallet://sign?payload=<base64> on mobile
+ *   3. Copy button — copies the base64 payload for manual paste
+ *   4. Auto-sign via window.tapwallet.tracnetwork.submitContractTx (if available)
+ *
+ * After the user signs, the card shows a success state with the TNK tx hash.
+ * Status is polled every 10s via the rfqId to detect settlement.
+ */
+import { useState, useEffect, useCallback } from "react";
+import QRCode from "react-qr-code";
+import { toast } from "sonner";
+import { Copy, Check, ExternalLink, Smartphone, Loader2, CheckCircle2, Clock, AlertTriangle, QrCode, Lock as LockIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+
+interface TapWalletSignCardProps {
+  /** Optional callback fired when the swap is confirmed as settled (status=completed) */
+  onSettled?: () => void;
+  /** Base64-encoded Trac Network lock transaction payload */
+  tnkLockTxPayload: string;
+  /** HTLC ID on Trac Network (htlc_b_<rfqId>) — user locks TNK here */
+  htlcIdB: string;
+  /** HTLC ID on Solana (htlc_a_<rfqId>) — agent locks SOL/USDT/USDC here */
+  htlcIdA: string;
+  /** The rfqId for status polling */
+  rfqId: string;
+  /** Amount of TNK the user is locking */
+  tnkAmount?: number;
+  /** Amount of SOL/USDT/USDC the user will receive */
+  outAmount?: number;
+  /** Token the user will receive */
+  toToken?: string;
+  /** Called when the TNK lock is confirmed on-chain */
+  onSigned?: (txHash: string) => void;
+  /** Called when the user cancels */
+  onCancel?: () => void;
+}
+
+type SignState = "pending" | "signing" | "signed" | "settled" | "error";
+
+export default function TapWalletSignCard({
+  tnkLockTxPayload,
+  htlcIdB,
+  rfqId,
+  tnkAmount,
+  outAmount,
+  toToken = "SOL",
+  onSigned,
+  onSettled,
+  onCancel,
+}: TapWalletSignCardProps) {
+  const [signState, setSignState] = useState<SignState>("pending");
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const [autoSignAttempted, setAutoSignAttempted] = useState(false);
+
+  // Deep-link URL for Tap Wallet mobile app
+  // Format: tapwallet://sign?payload=<base64>&htlcId=<htlcIdB>
+  const deepLinkUrl = `tapwallet://sign?payload=${encodeURIComponent(tnkLockTxPayload)}&htlcId=${encodeURIComponent(htlcIdB)}&rfqId=${encodeURIComponent(rfqId)}`;
+
+  // QR code content — same as deep-link so mobile can scan and open Tap Wallet
+  const qrContent = deepLinkUrl;
+
+  // Poll for settlement via getHtlcSecretHash (returns status field)
+  const htlcStatusQuery = trpc.chat.getHtlcSecretHash.useQuery(
+    { rfqId },
+    {
+      enabled: signState === "signed",
+      refetchInterval: 10_000,
+      retry: false,
+    }
+  );
+
+  // Watch for settlement
+  useEffect(() => {
+    const status = htlcStatusQuery.data?.status;
+    if (status === "completed" && signState === "signed") {
+      setSignState("settled");
+      onSettled?.();
+    }
+  }, [htlcStatusQuery.data?.status, signState, onSettled]);
+
+  // Auto-sign via window.tapwallet if available
+  const tryAutoSign = useCallback(async () => {
+    if (autoSignAttempted) return;
+    setAutoSignAttempted(true);
+    const tapTrac = (window as unknown as {
+      tapwallet?: {
+        tracnetwork?: {
+          submitContractTx?: (payload: unknown) => Promise<{ txHash?: string; success?: boolean; error?: string }>;
+        };
+      };
+    }).tapwallet?.tracnetwork;
+    if (!tapTrac?.submitContractTx) return; // Not available — user must use QR/deep-link
+    try {
+      setSignState("signing");
+      const tnkLockData = JSON.parse(Buffer.from(tnkLockTxPayload, "base64").toString("utf-8")) as unknown;
+      const result = await tapTrac.submitContractTx(tnkLockData);
+      if (result?.error) throw new Error(result.error);
+      const hash = result?.txHash ?? "pending";
+      setTxHash(hash);
+      setSignState("signed");
+      toast.success("TNK lock submitted!", {
+        description: `Tx: ${hash.slice(0, 14)}… — ${toToken} will be released automatically.`,
+      });
+      onSigned?.(hash);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Don't set error state — fall back to manual QR/deep-link
+      console.warn("[TapWalletSignCard] Auto-sign failed, falling back to manual:", msg);
+      setSignState("pending");
+      setAutoSignAttempted(false);
+    }
+  }, [autoSignAttempted, tnkLockTxPayload, toToken, onSigned]);
+
+  // Try auto-sign on mount
+  useEffect(() => {
+    void tryAutoSign();
+  }, [tryAutoSign]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(tnkLockTxPayload);
+      setCopied(true);
+      toast.success("Payload copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
+  const handleDeepLink = () => {
+    window.open(deepLinkUrl, "_blank");
+    toast.info("Opening Tap Wallet…", {
+      description: "If Tap Wallet doesn't open, scan the QR code instead.",
+    });
+  };
+
+  if (signState === "settled") {
+    return (
+      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 mt-2">
+        <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1">
+          <CheckCircle2 className="w-4 h-4" />
+          Swap Complete
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {toToken} has been released to your Solana address.
+          {txHash && (
+            <a
+              href={`https://explorer.trac.network/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-emerald-400 hover:underline inline-flex items-center gap-1"
+            >
+              View TNK lock <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  if (signState === "signed") {
+    return (
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 mt-2">
+        <div className="flex items-center gap-2 text-amber-400 font-semibold mb-1">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          TNK Lock Submitted — Waiting for Settlement
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Your TNK lock is on-chain. The agent will release {outAmount?.toFixed(4)} {toToken} to your Solana address automatically.
+          {txHash && (
+            <a
+              href={`https://explorer.trac.network/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-amber-400 hover:underline inline-flex items-center gap-1"
+            >
+              View tx <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </p>
+        <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+          <Clock className="w-3 h-3" />
+          Polling for settlement every 10s…
+        </div>
+      </div>
+    );
+  }
+
+  if (signState === "signing") {
+    return (
+      <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 mt-2">
+        <div className="flex items-center gap-2 text-orange-400 font-semibold">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Waiting for Tap Wallet signature…
+        </div>
+      </div>
+    );
+  }
+
+  // "pending" state — show QR / deep-link / copy options
+  return (
+    <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 mt-2 space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="flex items-center gap-2 font-semibold text-orange-400 mb-0.5">
+            <LockIcon className="w-4 h-4" />
+            Sign TNK Lock in Tap Wallet
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Lock{tnkAmount ? ` ${tnkAmount.toFixed(2)} TNK` : " TNK"} on Trac Network to receive{" "}
+            {outAmount ? `${outAmount.toFixed(4)} ` : ""}{toToken} on Solana.
+          </p>
+        </div>
+        {onCancel && (
+          <button onClick={onCancel} className="text-muted-foreground hover:text-foreground transition-colors text-xs">
+            Cancel
+          </button>
+        )}
+      </div>
+
+      {/* HTLC info */}
+      <div className="rounded-lg bg-black/20 border border-white/5 p-2.5 text-xs space-y-1 font-mono">
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">HTLC ID</span>
+          <span className="text-orange-300 truncate max-w-[180px]">{htlcIdB}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">RFQ</span>
+          <span className="text-muted-foreground truncate max-w-[180px]">{rfqId.slice(0, 24)}…</span>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="grid grid-cols-2 gap-2">
+        {/* Deep-link button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10 gap-1.5"
+          onClick={handleDeepLink}
+        >
+          <Smartphone className="w-3.5 h-3.5" />
+          Open Tap Wallet
+        </Button>
+
+        {/* QR toggle */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-orange-500/40 text-orange-400 hover:bg-orange-500/10 gap-1.5"
+          onClick={() => setShowQr(v => !v)}
+        >
+          <QrCode className="w-3.5 h-3.5" />
+          {showQr ? "Hide QR" : "Show QR"}
+        </Button>
+      </div>
+
+      {/* QR code */}
+      {showQr && (
+        <div className="flex flex-col items-center gap-2 py-2">
+          <div className="bg-white p-3 rounded-xl">
+            <QRCode
+              value={qrContent}
+              size={180}
+              style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+              viewBox="0 0 256 256"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            Scan with Tap Wallet to sign the TNK lock transaction
+          </p>
+        </div>
+      )}
+
+      {/* Copy payload */}
+      <button
+        onClick={handleCopy}
+        className="w-full flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1.5 rounded-lg border border-white/5 hover:border-white/10 bg-black/10"
+      >
+        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+        {copied ? "Copied!" : "Copy payload (manual paste)"}
+      </button>
+
+      {/* Warning */}
+      <div className="flex items-start gap-1.5 text-xs text-amber-400/80">
+        <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+        <span>
+          Do not close this window until the swap is complete. The agent's Solana lock will expire in ~24h.
+        </span>
+      </div>
+    </div>
+  );
+}
