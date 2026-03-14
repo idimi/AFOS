@@ -92,6 +92,8 @@ export interface ChatMessage {
     tnkAmount?: number;
     outAmount?: number;
     toToken?: string;
+    /** Unix ms — when the agent's Solana HTLC lock expires (user must sign before this) */
+    htlcExpiresAt?: number;
   };
   incomingRfqData?: {
     rfqId: string;

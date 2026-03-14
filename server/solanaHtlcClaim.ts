@@ -215,7 +215,25 @@ export async function claimSolanaHtlc(params: {
   const sim = await connection.simulateTransaction(tx, [agentKeypair]);
   if (sim.value.err) {
     const logs = sim.value.logs ?? [];
-    console.error(`[HTLC] Claim simulation failed htlcId=${htlcId}:`, sim.value.err, '\nLogs:', logs.join(' | '));
+    const logsStr = logs.join(' | ');
+    console.error(`[HTLC] Claim simulation failed htlcId=${htlcId}:`, sim.value.err, '\nLogs:', logsStr);
+
+    // WrongSender (0x1777 / error code 6007): the HTLC was locked by a different sender key.
+    // This is a permanent mismatch — retrying will never succeed. Skip silently so the
+    // monitor loop does not spam the log or block other settlements.
+    const isWrongSender =
+      logsStr.includes('0x1777') ||
+      logsStr.includes('WrongSender') ||
+      (typeof sim.value.err === 'object' &&
+        JSON.stringify(sim.value.err).includes('1777'));
+    if (isWrongSender) {
+      console.warn(
+        `[HTLC] WrongSender (0x1777) on htlcId=${htlcId} — ` +
+        `HTLC was locked by a different sender key. Skipping claim (no retry).`
+      );
+      throw new Error(`WrongSender: HTLC ${htlcId} was locked by a different sender key (0x1777). Claim skipped.`);
+    }
+
     throw new Error(`Simulation failed. Logs: ${logs.slice(-5).join(' | ')}`);
   }
 

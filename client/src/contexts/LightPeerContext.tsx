@@ -2574,7 +2574,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
         // Do not retry user cancellations or wallet rejections
         const isUserRejection = msg.includes("user rejected") || msg.includes("cancelled") || msg.includes("canceled") || msg.includes("denied");
-        if (isUserRejection || attempt === maxAttempts) throw err;
+        // Do not retry permanent on-chain errors — WrongSender (0x1777) will never succeed on retry
+        const isPermanentOnChainError = msg.includes("0x1777") || msg.includes("wrongsender") || msg.includes("wrong sender");
+        if (isUserRejection || isPermanentOnChainError || attempt === maxAttempts) throw err;
         const delay = baseDelayMs * Math.pow(2, attempt - 1); // 1.5s, 3s, 6s
         console.warn(`[HTLC] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delay}ms:`, msg);
         toast.loading(`${label} — retrying (${attempt}/${maxAttempts - 1})…`, { id: `retry-htlc-${attempt}`, duration: delay });
@@ -2779,6 +2781,23 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // WrongSender (0x1777): the HTLC was locked by a different sender key.
+      // This is a permanent mismatch — show a clear, actionable error instead of a generic "Claim failed".
+      const isWrongSender =
+        msg.includes('0x1777') ||
+        msg.includes('WrongSender') ||
+        msg.includes('Wrong sender');
+      if (isWrongSender) {
+        toast.error("Wrong sender key (0x1777)", {
+          id: `claim-${rfqId}`,
+          description:
+            "This HTLC was locked by a different wallet address. " +
+            "Make sure you are using the same wallet that initiated the swap. " +
+            "If the issue persists, contact support with RFQ ID: " + rfqId.slice(0, 16) + "…",
+          duration: 15_000,
+        });
+        return;
+      }
       toast.error("Claim failed", { id: `claim-${rfqId}`, description: msg.slice(0, 100) });
     }
   }, [htlcRevealedSecrets, incomingRfqs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain]);

@@ -2267,7 +2267,7 @@ export default function ChatPage() {
             }
             const r2 = tnkSolResult as {
               htlcIdA?: string; htlcIdB?: string; rfqId?: string;
-              outAmount?: number; message?: string;
+              outAmount?: number; message?: string; htlcExpiresAt?: number;
             };
             // Summary text message
             addMessage({
@@ -2282,12 +2282,13 @@ export default function ChatPage() {
               type: "tnk_sign_card",
               tnkSignCardData: {
                 tnkLockTxPayload: tnkPayload,
-                htlcIdA:  r2.htlcIdA  ?? "",
-                htlcIdB:  r2.htlcIdB  ?? "",
-                rfqId:    r2.rfqId    ?? `rfq_tnk_sol_${Date.now()}`,
-                tnkAmount: quoteData.fromAmount,
-                outAmount: r2.outAmount,
-                toToken:   quoteData.toToken,
+                htlcIdA:      r2.htlcIdA      ?? "",
+                htlcIdB:      r2.htlcIdB      ?? "",
+                rfqId:        r2.rfqId        ?? `rfq_tnk_sol_${Date.now()}`,
+                tnkAmount:    quoteData.fromAmount,
+                outAmount:    r2.outAmount,
+                toToken:      quoteData.toToken,
+                htlcExpiresAt: r2.htlcExpiresAt,
               },
             });
             setExecutingId(null);

@@ -10,11 +10,13 @@
  *
  * After the user signs, the card shows a success state with the TNK tx hash.
  * Status is polled every 10s via the rfqId to detect settlement.
+ * An expiry countdown timer shows how long the user has to sign before the
+ * agent's Solana lock expires and is refunded.
  */
 import { useState, useEffect, useCallback } from "react";
 import QRCode from "react-qr-code";
 import { toast } from "sonner";
-import { Copy, Check, ExternalLink, Smartphone, Loader2, CheckCircle2, Clock, AlertTriangle, QrCode, Lock as LockIcon } from "lucide-react";
+import { Copy, Check, ExternalLink, Smartphone, Loader2, CheckCircle2, Clock, AlertTriangle, QrCode, Lock as LockIcon, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 
@@ -36,13 +38,36 @@ interface TapWalletSignCardProps {
   outAmount?: number;
   /** Token the user will receive */
   toToken?: string;
+  /** Unix ms — when the agent's Solana HTLC lock expires.
+   *  If provided, a live countdown is shown so the user knows how long they have to sign. */
+  htlcExpiresAt?: number;
   /** Called when the TNK lock is confirmed on-chain */
   onSigned?: (txHash: string) => void;
   /** Called when the user cancels */
   onCancel?: () => void;
 }
 
-type SignState = "pending" | "signing" | "signed" | "settled" | "error";
+type SignState = "pending" | "signing" | "signed" | "settled" | "expired" | "error";
+
+/** Format a remaining-time duration (ms) into a human-readable string like "23h 14m 07s" */
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Expired";
+  const totalSeconds = Math.floor(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
+/** Returns a colour class based on how much time is left */
+function countdownColor(ms: number): string {
+  if (ms <= 0) return "text-red-400";
+  if (ms < 5 * 60 * 1000) return "text-red-400";   // < 5 min — critical
+  if (ms < 30 * 60 * 1000) return "text-amber-400"; // < 30 min — warning
+  return "text-emerald-400";                          // plenty of time
+}
 
 export default function TapWalletSignCard({
   tnkLockTxPayload,
@@ -51,6 +76,7 @@ export default function TapWalletSignCard({
   tnkAmount,
   outAmount,
   toToken = "SOL",
+  htlcExpiresAt,
   onSigned,
   onSettled,
   onCancel,
@@ -60,6 +86,29 @@ export default function TapWalletSignCard({
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
   const [autoSignAttempted, setAutoSignAttempted] = useState(false);
+
+  // ── Expiry countdown ──────────────────────────────────────────────────────────
+  const [remainingMs, setRemainingMs] = useState<number | null>(
+    htlcExpiresAt ? htlcExpiresAt - Date.now() : null
+  );
+
+  useEffect(() => {
+    if (!htlcExpiresAt) return;
+    // Tick every second while the card is in pending/signing state
+    const interval = setInterval(() => {
+      const diff = htlcExpiresAt - Date.now();
+      setRemainingMs(diff);
+      if (diff <= 0 && signState === "pending") {
+        setSignState("expired");
+        clearInterval(interval);
+        toast.error("HTLC expired", {
+          description: "The agent's Solana lock has expired and will be refunded. Please start a new swap.",
+          duration: 10_000,
+        });
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [htlcExpiresAt, signState]);
 
   // Deep-link URL for Tap Wallet mobile app
   // Format: tapwallet://sign?payload=<base64>&htlcId=<htlcIdB>
@@ -144,6 +193,23 @@ export default function TapWalletSignCard({
     });
   };
 
+  // ── Expired state ─────────────────────────────────────────────────────────────
+  if (signState === "expired") {
+    return (
+      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 mt-2">
+        <div className="flex items-center gap-2 text-red-400 font-semibold mb-1">
+          <AlertTriangle className="w-4 h-4" />
+          HTLC Expired
+        </div>
+        <p className="text-sm text-muted-foreground">
+          The agent's Solana lock has expired. Your TNK was never locked, so no funds were lost.
+          Please start a new swap.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Settled state ─────────────────────────────────────────────────────────────
   if (signState === "settled") {
     const claimTxId = htlcStatusQuery.data?.revealTxId;
     return (
@@ -181,6 +247,7 @@ export default function TapWalletSignCard({
     );
   }
 
+  // ── Signed / waiting for settlement ──────────────────────────────────────────
   if (signState === "signed") {
     return (
       <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 mt-2">
@@ -209,6 +276,7 @@ export default function TapWalletSignCard({
     );
   }
 
+  // ── Signing (auto-sign in progress) ──────────────────────────────────────────
   if (signState === "signing") {
     return (
       <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 mt-2">
@@ -220,7 +288,9 @@ export default function TapWalletSignCard({
     );
   }
 
-  // "pending" state — show QR / deep-link / copy options
+  // ── Pending state — show QR / deep-link / copy options ───────────────────────
+  const isExpiringSoon = remainingMs !== null && remainingMs > 0 && remainingMs < 30 * 60 * 1000;
+
   return (
     <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4 mt-2 space-y-3">
       {/* Header */}
@@ -241,6 +311,24 @@ export default function TapWalletSignCard({
           </button>
         )}
       </div>
+
+      {/* Expiry countdown */}
+      {remainingMs !== null && remainingMs > 0 && (
+        <div className={`flex items-center gap-1.5 text-xs font-mono rounded-lg px-2.5 py-1.5 border ${
+          isExpiringSoon
+            ? "border-red-500/30 bg-red-500/10 text-red-400"
+            : "border-white/10 bg-black/20 text-emerald-400"
+        }`}>
+          <Timer className="w-3.5 h-3.5 shrink-0" />
+          <span className="font-semibold">Time to sign:</span>
+          <span className={`ml-1 tabular-nums ${countdownColor(remainingMs)}`}>
+            {formatCountdown(remainingMs)}
+          </span>
+          {isExpiringSoon && (
+            <span className="ml-auto text-red-400 font-semibold animate-pulse">Sign now!</span>
+          )}
+        </div>
+      )}
 
       {/* HTLC info */}
       <div className="rounded-lg bg-black/20 border border-white/5 p-2.5 text-xs space-y-1 font-mono">
@@ -309,7 +397,9 @@ export default function TapWalletSignCard({
       <div className="flex items-start gap-1.5 text-xs text-amber-400/80">
         <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
         <span>
-          Do not close this window until the swap is complete. The agent's Solana lock will expire in ~24h.
+          {htlcExpiresAt
+            ? `The agent's Solana lock expires in ${formatCountdown(remainingMs ?? 0)}. Sign before then or the swap will be cancelled automatically.`
+            : "Do not close this window until the swap is complete. The agent's Solana lock will expire in ~24h."}
         </span>
       </div>
     </div>
