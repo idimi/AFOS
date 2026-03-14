@@ -734,13 +734,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     shortAddress={tracNetwork.shortAddress}
                     explorerUrl={`https://trac.network/address/${tracNetwork.address}`}
                     balances={[
-                      // Show BTC balance first when Tap Wallet is the wallet (connects both BTC + TNK)
-                      ...(bitcoin?.connected && bitcoin.walletName === "Tap Wallet"
-                        ? [{ symbol: "BTC", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]
-                        : []),
+                      // Only show TNK balance on Trac Network tab — BTC balance belongs on the Bitcoin tab
                       { symbol: "TNK", amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd },
                     ]}
-                    totalUsd={(bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? bitcoin.balanceUsd : 0) + tracNetwork.balanceUsd}
+                    totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
                   />

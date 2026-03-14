@@ -3164,3 +3164,6 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Add counterparty "Receiving to" badge in P2P match card showing peer's receiving address from RFQ data
 - [x] Add wallet-aware swap summary card after swap completes: "Sent X BTC from Tap Wallet \u00b7 Received Y SOL to Phantom" with chain explorer links
+## Wallet Modal Balance Fix (Mar 2026)
+
+- [x] Remove BTC balance from Trac Network tab — only TNK balance shown there; BTC balance belongs on the Bitcoin tab
