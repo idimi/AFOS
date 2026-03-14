@@ -3177,3 +3177,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## BTC Wallet Add-Second-Wallet Fix (Mar 2026)
 
 - [x] Fix Bitcoin tab single-wallet view: show Tap Wallet connect button when Phantom is active (and vice versa), so "+ Add wallet" chip is functional
+
+## Wallet Badge Consistency Fix (Mar 2026)
+
+- [ ] Standardize Tap Wallet chain badges across all tabs — use same colored pill style as SOL/ETH/BTC on Phantom/MetaMask cards

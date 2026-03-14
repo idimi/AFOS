@@ -755,7 +755,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       chains={["bitcoin", "trac_network"]}
                       customChips={[
                         { label: "BTC", color: "#F7931A" },
-                        { label: "TNK (Trac Network)", color: "#F97316" },
+                        { label: "TNK", color: "#F97316" },
                       ]}
                       accentColor="#F97316"
                       bg="rgba(249,115,22,0.08)"
@@ -960,7 +960,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                             chains={["bitcoin"]}
                             customChips={[
                               { label: "BTC", color: "#F7931A" },
-                              { label: "TNK (Trac Network)", color: "#888888", themeText: true },
+                              { label: "TNK", color: "#F97316" },
                             ]}
                             bg="rgba(255,153,0,0.08)"
                             border="rgba(255,153,0,0.2)"
@@ -1005,10 +1005,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       name="Tap Wallet"
                       desc="BTC + TNK (Trac Network)"
                       chains={["bitcoin"]}
-                      customChips={[
-                        { label: "BTC", color: "#F7931A" },
-                        { label: "TNK (Trac Network)", color: "#888888", themeText: true },
-                      ]}
+                          customChips={[
+                            { label: "BTC", color: "#F7931A" },
+                            { label: "TNK", color: "#F97316" },
+                          ]}
                       bg="rgba(255,153,0,0.08)"
                       border="rgba(255,153,0,0.2)"
                       loading={btcConnecting}
@@ -1126,8 +1126,8 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
           <div className="flex items-center gap-1 mt-0.5">
             {customChips!.map(chip => (
               <span key={chip.label}
-                className={`text-[9px] font-medium px-1 py-0.5 rounded${chip.themeText ? " text-foreground" : ""}`}
-                style={{ background: `${chip.color}22`, ...(chip.themeText ? {} : { color: chip.color }) }}>
+                className={`text-[9px] font-medium px-1 py-0.5 rounded-full${chip.themeText ? " text-foreground" : ""}`}
+                style={{ background: `${chip.color}18`, ...(chip.themeText ? {} : { color: chip.color }) }}>
                 {chip.label}
               </span>
             ))}
@@ -1135,7 +1135,7 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
         ) : isMultiChain ? (
           <div className="flex items-center gap-1 mt-0.5">
             {chains.map(c => (
-              <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded"
+              <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded-full"
                 style={{ background: `${CHAIN_DOTS[c]}18`, color: CHAIN_DOTS[c] }}>
                 {c === "solana" ? "SOL" : c === "ethereum" ? "ETH" : "BTC"}
               </span>
