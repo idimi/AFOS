@@ -2847,7 +2847,7 @@ function useStackHealth() {
     { name: 'Bitcoin',      status: 'checking' },
     { name: 'Ethereum',     status: 'checking' },
     { name: 'Solana',       status: 'checking' },
-    { name: 'IntercomSwap', status: 'checking' },
+    { name: 'Trac Network', status: 'checking' },
   ]);
 
   const updateService = useCallback((name: string, status: ServiceStatus, latency?: number) => {
@@ -2864,7 +2864,7 @@ function useStackHealth() {
     } catch {
       updateService('AFOS Agent', 'offline');
     }
-    updateService('IntercomSwap', isSSEConnected() ? 'live' : 'degraded');
+    updateService('Trac Network', isSSEConnected() ? 'live' : 'degraded');
     // Price service health is derived from shared PriceContext — no extra fetch needed
     const lat = priceLatencyMs ?? undefined;
     if (priceSource === 'live') {
@@ -2882,7 +2882,7 @@ function useStackHealth() {
   useEffect(() => {
     checkAll();
     const interval = setInterval(checkAll, 30_000);
-    const unsubInit = onSSEEvent('init', () => { updateService('IntercomSwap', 'live'); });
+    const unsubInit = onSSEEvent('init', () => { updateService('Trac Network', 'live'); });
     return () => { clearInterval(interval); unsubInit(); };
   }, [checkAll, updateService]);
 

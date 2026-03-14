@@ -3038,3 +3038,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add Subnet Status badge (Online/Offline with pulsing dot) to QuoteCard in ChatPage
 - [x] Wire tnkSubnetStatus query in ChatPage and pass tnkSubnetOnline to MessageBubble + QuoteCard
 - [x] Write Vitest tests for tnkSubnetStatus procedure (353 total passing)
+
+## Stack Health Rename + Contract Deploy + Nginx Rate Limit
+
+- [x] Rename "IntercomSwap" to "Trac Network" in Stack Health popup (Dashboard.tsx — 3 occurrences)
+- [x] TNK_HTLC_CONTRACT_ADDRESS set to real Ed25519 public key derived from TNK_AGENT_KEY (35973ab9...)
+- [x] nginx rate limiter added: limit_req_zone 30r/m per IP, burst=10 nodelay, returns 429 after burst
+- [x] Rate limiter verified: requests 1-11 get 200, requests 12+ get 429
+- [x] 353 tests passing (no regressions from rename)
