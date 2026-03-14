@@ -3180,8 +3180,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Wallet Badge Consistency Fix (Mar 2026)
 
-- [ ] Standardize Tap Wallet chain badges across all tabs — use same colored pill style as SOL/ETH/BTC on Phantom/MetaMask cards
+- [x] Standardize Tap Wallet chain badges across all tabs — use same colored pill style as SOL/ETH/BTC on Phantom/MetaMask cards
 
 ## BTC Picker Explorer Links (Mar 2026)
 
 - [x] Add mempool.space explorer link icon to both wallet rows in the dual-wallet BTC picker (Tap Wallet row and Phantom/MetaMask row)
+
+## ConnectedCard Badge & Address Fix (Mar 2026)
+
+- [x] Show Bitcoin + Trac Network badges on Tap Wallet connected card (currently only shows Trac Network)
+- [x] Show all 3 addresses on Phantom connected card (SOL, ETH, BTC) and 2 addresses on Tap Wallet card (BTC + TNK)

@@ -643,6 +643,31 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     totalUsd={effectiveSolTotalUsd}
                     accentColor="#9945FF"
                     onDisconnect={phantomSolAddr && !solAdapterConnected ? disconnectPhantom : handleSolanaDisconnect}
+                    chains={phantomMultiChain?.connected ? [
+                      ...(phantomMultiChain.solanaAddress ? [{ label: "SOL", color: "#9945FF" }] : []),
+                      ...(phantomMultiChain.ethereumAddress ? [{ label: "ETH", color: "#627EEA" }] : []),
+                      ...(phantomMultiChain.bitcoinAddress ? [{ label: "BTC", color: "#F7931A" }] : []),
+                    ] : undefined}
+                    addresses={phantomMultiChain?.connected && (phantomMultiChain.ethereumAddress || phantomMultiChain.bitcoinAddress) ? [
+                      ...(phantomMultiChain.solanaAddress ? [{
+                        label: "SOL",
+                        address: phantomMultiChain.solanaAddress,
+                        shortAddress: `${phantomMultiChain.solanaAddress.slice(0,4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`,
+                        explorerUrl: `https://solscan.io/account/${phantomMultiChain.solanaAddress}`,
+                      }] : []),
+                      ...(phantomMultiChain.ethereumAddress ? [{
+                        label: "ETH",
+                        address: phantomMultiChain.ethereumAddress,
+                        shortAddress: `${phantomMultiChain.ethereumAddress.slice(0,6)}\u2026${phantomMultiChain.ethereumAddress.slice(-4)}`,
+                        explorerUrl: `https://etherscan.io/address/${phantomMultiChain.ethereumAddress}`,
+                      }] : []),
+                      ...(phantomMultiChain.bitcoinAddress ? [{
+                        label: "BTC",
+                        address: phantomMultiChain.bitcoinAddress,
+                        shortAddress: `${phantomMultiChain.bitcoinAddress.slice(0,6)}\u2026${phantomMultiChain.bitcoinAddress.slice(-6)}`,
+                        explorerUrl: `https://mempool.space/address/${phantomMultiChain.bitcoinAddress}`,
+                      }] : []),
+                    ] : undefined}
                   />
                 ) : (
                   <>
@@ -740,6 +765,24 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                     totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
+                    chains={[
+                      { label: "Bitcoin", color: "#F7931A" },
+                      { label: "Trac Network", color: "#F97316" },
+                    ]}
+                    addresses={bitcoinTap?.address ? [
+                      {
+                        label: "BTC",
+                        address: bitcoinTap.address,
+                        shortAddress: bitcoinTap.shortAddress,
+                        explorerUrl: `https://mempool.space/address/${bitcoinTap.address}`,
+                      },
+                      {
+                        label: "TNK",
+                        address: tracNetwork.address,
+                        shortAddress: tracNetwork.shortAddress,
+                        explorerUrl: `https://explorer.trac.network/address/${tracNetwork.address}`,
+                      },
+                    ] : undefined}
                   />
                 ) : (
                   <>
@@ -948,6 +991,24 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                         totalUsd={bitcoin.balanceUsd}
                         accentColor="#F7931A"
                         onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
+                        chains={isTapActive ? [
+                          { label: "Bitcoin", color: "#F7931A" },
+                          { label: "Trac Network", color: "#F97316" },
+                        ] : undefined}
+                        addresses={isTapActive && tracNetwork?.address ? [
+                          {
+                            label: "BTC",
+                            address: bitcoin.address,
+                            shortAddress: bitcoin.shortAddress,
+                            explorerUrl: `https://mempool.space/address/${bitcoin.address}`,
+                          },
+                          {
+                            label: "TNK",
+                            address: tracNetwork.address,
+                            shortAddress: tracNetwork.shortAddress,
+                            explorerUrl: `https://explorer.trac.network/address/${tracNetwork.address}`,
+                          },
+                        ] : undefined}
                       />
 
                       {/* ── Add second BTC wallet section ── */}
@@ -1198,10 +1259,14 @@ function PrimaryCTA({ label, gradient, shadow, onClick, loading }: {
   );
 }
 
-function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalUsd, accentColor, onDisconnect }: {
+function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalUsd, accentColor, onDisconnect, chains, addresses }: {
   walletName: string; shortAddress: string; explorerUrl?: string;
   balances: { symbol: string; amount: string; usdValue: number }[];
   totalUsd: number; accentColor: string; onDisconnect: () => void;
+  /** Chain badge chips to show below the wallet name */
+  chains?: { label: string; color: string }[];
+  /** Multiple addresses to show (overrides shortAddress when provided) */
+  addresses?: { label: string; address: string; shortAddress: string; explorerUrl?: string }[];
 }) {
   return (
     <>
@@ -1214,15 +1279,52 @@ function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalU
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-emerald-400">{walletName}</p>
-            <p className="text-[11px] font-mono text-muted-foreground truncate">{shortAddress}</p>
+            {/* Chain badges */}
+            {chains && chains.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {chains.map(c => (
+                  <span key={c.label}
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: `${c.color}22`, color: c.color, border: `1px solid ${c.color}44` }}>
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Single address (when no multi-address list) */}
+            {!addresses && (
+              <p className="text-[11px] font-mono text-muted-foreground truncate mt-0.5">{shortAddress}</p>
+            )}
           </div>
-          {explorerUrl && (
+          {/* Single explorer link when no multi-address list */}
+          {!addresses && explorerUrl && (
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors" title="View on explorer">
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
         </div>
+        {/* Multi-address rows */}
+        {addresses && addresses.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            {addresses.map(addr => (
+              <div key={addr.label} className="flex items-center gap-2 px-2 py-1.5 rounded-xl"
+                style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                  style={{ background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+                  {addr.label}
+                </span>
+                <p className="text-[11px] font-mono text-muted-foreground truncate flex-1">{addr.shortAddress}</p>
+                {addr.explorerUrl && (
+                  <a href={addr.explorerUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0" title="View on explorer">
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {balances.length > 0 && (
