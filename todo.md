@@ -3190,3 +3190,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Show Bitcoin + Trac Network badges on Tap Wallet connected card (currently only shows Trac Network)
 - [x] Show all 3 addresses on Phantom connected card (SOL, ETH, BTC) and 2 addresses on Tap Wallet card (BTC + TNK)
+
+## Wallet Auto-Reconnect on Page Reload (Mar 2026)
+
+- [x] Persist wallet connection state to localStorage and auto-reconnect Tap Wallet, Phantom, and MetaMask on page load
