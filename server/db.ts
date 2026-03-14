@@ -389,7 +389,7 @@ export async function getHtlcSecret(rfqId: string): Promise<HtlcSecret | null> {
 export async function updateHtlcSecretStatus(
   rfqId: string,
   status: HtlcSecret["status"],
-  extra?: { lockTxId?: string; revealTxId?: string; counterpartyAddress?: string; settledAt?: Date; settledVia?: string },
+  extra?: { lockTxId?: string; revealTxId?: string; counterpartyRevealTxId?: string; counterpartyAddress?: string; settledAt?: Date; settledVia?: string },
 ): Promise<void> {
   const db = await getDb();
   if (!db) return;

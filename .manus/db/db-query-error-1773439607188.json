@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT \n  hs.rfq_id,\n  hs.status,\n  hs.lock_tx_id,\n  hs.reveal_tx_id,\n  hs.from_chain,\n  hs.to_chain,\n  hs.from_amount,\n  hs.to_amount,\n  hs.created_at,\n  hs.updated_at\nFROM htlc_secrets hs\nORDER BY hs.updated_at DESC\nLIMIT 10;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT \n  hs.rfq_id,\n  hs.status,\n  hs.lock_tx_id,\n  hs.reveal_tx_id,\n  hs.from_chain,\n  hs.to_chain,\n  hs.from_amount,\n  hs.to_amount,\n  hs.created_at,\n  hs.updated_at\nFROM htlc_secrets hs\nORDER BY hs.updated_at DESC\nLIMIT 10;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'hs.updated_at' in 'order clause'"
+  ]
+}

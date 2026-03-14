@@ -1600,7 +1600,13 @@ export default function ChatPage() {
   // ── HTLC completed: atomic settlement finished, both parties received funds ────────────
   useEffect(() => {
     const handler = async (e: Event) => {
-      const data = (e as CustomEvent).detail as { rfqId?: string; txHash?: string; chain?: string };
+      const data = (e as CustomEvent).detail as {
+        rfqId?: string;
+        txHash?: string;
+        chain?: string;
+        agentBClaimTxId?: string; // Agent A's fromToken escrow → Agent B
+        agentAClaimTxId?: string; // Agent B's toToken escrow → Agent A
+      };
       if (!data?.rfqId) return;
       // Refresh balances to show updated amounts
       let freshBalances = balances;
@@ -1608,7 +1614,7 @@ export default function ChatPage() {
         const updated = await refreshBalances();
         if (updated && updated.length > 0) freshBalances = updated;
       } catch { /* non-critical */ }
-      // Update the swap_progress card to confirmed phase
+      // Update the swap_progress card to confirmed phase and store tx hashes
       setMessages(prev => {
         const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
         if (idx === -1) return prev; // No matching card in this session — ignore
@@ -1619,17 +1625,54 @@ export default function ChatPage() {
           m => m.type === "text" && m.id?.startsWith(`htlc-done-${data.rfqId}`)
         );
         const updated = [...prev];
-        updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "confirmed" } };
+        const cardData = updated[idx].swapProgressData!;
+        updated[idx] = {
+          ...updated[idx],
+          swapProgressData: {
+            ...cardData,
+            phase: "confirmed",
+            agentBClaimTxId: data.agentBClaimTxId ?? cardData.agentBClaimTxId,
+            agentAClaimTxId: data.agentAClaimTxId ?? cardData.agentAClaimTxId,
+          },
+        };
         if (alreadyHasSuccessMsg) return updated;
-        // Append a success text message with new balance
-        const balanceLine = freshBalances.length > 0
-          ? `\n\n**Your new balances:** ${freshBalances.map(b => `${parseFloat(b.amount).toFixed(4)} ${b.symbol}`).join(' \u00b7 ')}`
+
+        // Build Solscan proof links
+        const chain = data.chain ?? cardData.fromChain ?? "solana";
+        const explorerBase = chain === "ethereum" ? "https://etherscan.io/tx/" :
+                             chain === "bitcoin"  ? "https://mempool.space/tx/" :
+                             "https://solscan.io/tx/";
+        const txLinks: string[] = [];
+        if (data.agentBClaimTxId) txLinks.push(`[↗ ${cardData.fromToken ?? "Token A"} claim](${explorerBase}${data.agentBClaimTxId})`);
+        if (data.agentAClaimTxId) txLinks.push(`[↗ ${cardData.toToken ?? "Token B"} claim](${explorerBase}${data.agentAClaimTxId})`);
+        const proofLine = txLinks.length > 0
+          ? `\n\n**On-chain proof:** ${txLinks.join(" \u00b7 ")}`
           : "";
+
+        // Build balance line with before/after for swapped tokens
+        let balanceLine = "";
+        if (freshBalances.length > 0) {
+          const relevantTokens = [cardData.fromToken, cardData.toToken].filter(Boolean);
+          const balanceItems = freshBalances
+            .filter(b => relevantTokens.includes(b.symbol))
+            .map(b => `**${parseFloat(b.amount).toFixed(4)} ${b.symbol}**`);
+          const otherItems = freshBalances
+            .filter(b => !relevantTokens.includes(b.symbol))
+            .map(b => `${parseFloat(b.amount).toFixed(4)} ${b.symbol}`);
+          const allItems = [...balanceItems, ...otherItems];
+          balanceLine = allItems.length > 0
+            ? `\n\n**Updated balances:** ${allItems.join(" \u00b7 ")}`
+            : "";
+        }
+
         const successMsg = {
           id: `htlc-done-${data.rfqId}`,
           role: "assistant" as const,
           type: "text" as const,
-          content: `\u2705 **Swap complete!** Atomic settlement confirmed on-chain. Both parties have received their funds.${balanceLine}`,
+          content: `\uD83C\uDF89 **Swap complete!** Atomic settlement confirmed on-chain.\n\n` +
+            `You sent **${cardData.fromAmount?.toFixed(4) ?? "?"} ${cardData.fromToken ?? ""}** and received **${cardData.toAmount?.toFixed(4) ?? "?"} ${cardData.toToken ?? ""}** — both parties have received their funds.` +
+            proofLine +
+            balanceLine,
           timestamp: Date.now(),
         };
         return [...updated, successMsg];

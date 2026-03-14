@@ -2386,8 +2386,9 @@ export const chatRouter = router({
         toChain:       row.toChain,
         status:        row.status,
         expiresAt:     Number(row.expiresAt),
-        lockTxId:      row.lockTxId,
-        revealTxId:    row.revealTxId,
+        lockTxId:               row.lockTxId,
+        revealTxId:             row.revealTxId,
+        counterpartyRevealTxId: row.counterpartyRevealTxId,
       };
     }),
   /**
@@ -2420,7 +2421,13 @@ export const chatRouter = router({
       // if needed, but do NOT update the status or fire any side-effects again.
       if (row.status === "completed") {
         // Already fully settled — return completed flag so client can show success message
-        return { secretHex: row.secretHex, replay: true, completed: true };
+        return {
+          secretHex: row.secretHex,
+          replay: true,
+          completed: true,
+          revealTxId: row.revealTxId,
+          counterpartyRevealTxId: row.counterpartyRevealTxId,
+        };
       }
       if (row.status === "revealed") {
         // Secret was sent but on-chain claims may still be in-flight — return replay only
@@ -2475,6 +2482,7 @@ export const chatRouter = router({
 
             await updateHtlcSecretStatus(input.rfqId, "completed", {
               revealTxId: claimA.txSignature,
+              counterpartyRevealTxId: claimB.txSignature,
               settledAt: new Date(),
               settledVia: "browser_notify",
             });
@@ -2719,6 +2727,7 @@ export const chatRouter = router({
 
           await updateHtlcSecretStatus(rfqId, "completed", {
             revealTxId: claimA.txSignature,
+            counterpartyRevealTxId: claimB.txSignature,
             settledAt: new Date(),
             settledVia: "browser_notify",
           });

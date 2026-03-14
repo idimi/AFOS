@@ -504,10 +504,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       }
       const json = await res.json();
       const batchResult  = Array.isArray(json) ? json[0] : json;
-      const secretHex    = batchResult?.result?.data?.json?.secretHex;
-      const isReplay     = batchResult?.result?.data?.json?.replay === true;
-      const isCompleted  = batchResult?.result?.data?.json?.completed === true;
-      const isTriggered  = batchResult?.result?.data?.json?.triggered === true;
+      const secretHex              = batchResult?.result?.data?.json?.secretHex;
+      const isReplay               = batchResult?.result?.data?.json?.replay === true;
+      const isCompleted            = batchResult?.result?.data?.json?.completed === true;
+      const isTriggered            = batchResult?.result?.data?.json?.triggered === true;
+      // tx hashes returned on completed path (fetched from DB)
+      const completedRevealTxId    = batchResult?.result?.data?.json?.revealTxId as string | undefined;
+      const completedCpRevealTxId  = batchResult?.result?.data?.json?.counterpartyRevealTxId as string | undefined;
       if (!secretHex) {
         console.warn(`[AutoReveal] No secretHex in response (attempt ${attempt})`);
         const backoffMs = [5_000, 15_000, 45_000, 120_000, 300_000][attempt - 1] ?? 300_000;
@@ -529,7 +532,21 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // so Agent A's UI can show the success message even after a page reload.
       if (isCompleted) {
         console.log(`[AutoReveal] rfqId=${rfqId.slice(0,8)} already completed — dispatching afos:htlc-completed`);
-        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain } }));
+        // Fetch tx hashes from DB if not already in the response
+        let agentBClaimTxId = completedRevealTxId;
+        let agentAClaimTxId = completedCpRevealTxId;
+        if (!agentBClaimTxId || !agentAClaimTxId) {
+          try {
+            const txRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
+            if (txRes.ok) {
+              const txJson = await txRes.json();
+              const txData = (txJson as Array<{ result?: { data?: { json?: { revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+              agentBClaimTxId = agentBClaimTxId ?? txData?.revealTxId;
+              agentAClaimTxId = agentAClaimTxId ?? txData?.counterpartyRevealTxId;
+            }
+          } catch { /* non-critical */ }
+        }
+        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain, agentBClaimTxId, agentAClaimTxId } }));
         // Clear retry counter on success
         delete revealRetryCountRef.current[rfqId];
         delete revealRetryTimersRef.current[rfqId];
@@ -567,12 +584,17 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             });
             if (!pollRes.ok) return;
             const pollJson = await pollRes.json();
-            const status = (pollJson as Array<{ result?: { data?: { json?: { status?: string } } } }>)?.[0]?.result?.data?.json?.status;
-            if (status === "completed") {
+            const pollData = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+            if (pollData?.status === "completed") {
               clearInterval(completionPollingRef.current[rfqId]);
               delete completionPollingRef.current[rfqId];
               console.log(`[CompletionPoll] rfqId=${rfqId.slice(0,8)} completed — dispatching afos:htlc-completed`);
-              window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain } }));
+              window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: {
+                rfqId,
+                chain: fromChain,
+                agentBClaimTxId: pollData.revealTxId,             // Agent A's SOL escrow → Agent B
+                agentAClaimTxId: pollData.counterpartyRevealTxId, // Agent B's USDT escrow → Agent A
+              } }));
             }
           } catch (pollErr) {
             console.warn(`[CompletionPoll] rfqId=${rfqId.slice(0,8)} poll error:`, pollErr);
@@ -988,11 +1010,16 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
                 if (!pollRes.ok) return;
                 const pollJson = await pollRes.json();
-                const pollStatus = (pollJson as Array<{ result?: { data?: { json?: { status?: string } } } }>)?.[0]?.result?.data?.json?.status;
-                if (pollStatus === "completed") {
+                const pollData2 = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+                if (pollData2?.status === "completed") {
                   clearInterval(completionPollingRef.current[rfqId]);
                   delete completionPollingRef.current[rfqId];
-                  window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChainLocal } }));
+                  window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: {
+                    rfqId,
+                    chain: fromChainLocal,
+                    agentBClaimTxId: pollData2.revealTxId,
+                    agentAClaimTxId: pollData2.counterpartyRevealTxId,
+                  } }));
                 }
               } catch { /* non-critical */ }
             }, 5_000);
@@ -2151,8 +2178,37 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                   const triggered = (webhookJson as Array<{ result?: { data?: { json?: { triggered?: boolean } } } }>)?.[0]?.result?.data?.json?.triggered;
                   console.log(`[AgentBWebhook] notifyAgentBLocked → triggered=${triggered}`);
                   if (triggered) {
-                    // Server is handling on-chain claims — dispatch completion so ChatPage can show success
-                    window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: "solana" } }));
+                    // Server is handling on-chain claims — start polling for tx hashes then dispatch completion
+                    if (!completionPollingRef.current[rfqId]) {
+                      let pollCountB = 0;
+                      const maxPollsB = 24;
+                      completionPollingRef.current[rfqId] = setInterval(async () => {
+                        pollCountB++;
+                        if (pollCountB > maxPollsB) {
+                          clearInterval(completionPollingRef.current[rfqId]);
+                          delete completionPollingRef.current[rfqId];
+                          // Dispatch without tx hashes as fallback
+                          window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: "solana" } }));
+                          return;
+                        }
+                        try {
+                          const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
+                          if (!pollRes.ok) return;
+                          const pollJson = await pollRes.json();
+                          const pollDataB = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+                          if (pollDataB?.status === "completed") {
+                            clearInterval(completionPollingRef.current[rfqId]);
+                            delete completionPollingRef.current[rfqId];
+                            window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: {
+                              rfqId,
+                              chain: "solana",
+                              agentBClaimTxId: pollDataB.revealTxId,
+                              agentAClaimTxId: pollDataB.counterpartyRevealTxId,
+                            } }));
+                          }
+                        } catch { /* non-critical */ }
+                      }, 5_000);
+                    }
                   }
                 } else {
                   console.warn("[AgentBWebhook] notifyAgentBLocked failed:", webhookRes.status);
