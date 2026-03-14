@@ -3073,3 +3073,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update useStackHealth checkAll to call getRelayPeers alongside getAgentStatus (Promise.all)
 - [x] Show combined total: "Active peers: N (X HW · Y light) · Relay: oracle.afos.network" (or just "Active peers: 0" when none)
 - [x] 353 tests passing, 0 TypeScript errors
+
+## Stack Health — Compact Rows with Hover Tooltip
+- [x] Refactor Stack Health popup to single-line rows (removed detail second line)
+- [x] Add hover tooltip on each row showing block height / peer detail (side=left, 200ms delay)
+- [x] Shrink popup back to compact height (py-1.5 space-y-0)
+- [x] 353 tests passing, 0 TypeScript errors

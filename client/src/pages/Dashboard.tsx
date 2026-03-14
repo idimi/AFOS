@@ -3027,22 +3027,24 @@ function StackStatusPill() {
           <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
             <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
           </div>
-          <div className="px-3 py-2 space-y-2.5">
+          <div className="px-3 py-1.5 space-y-0">
             {services.map(s => (
-              <div key={s.name} className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
-                  <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
-                  <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
-                    {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
-                  </span>
-                </div>
+              <Tooltip key={s.name} delayDuration={200}>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-2 py-1 px-0.5 rounded cursor-default hover:bg-muted/30 transition-colors">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
+                    <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
+                    <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
+                      {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
+                    </span>
+                  </div>
+                </TooltipTrigger>
                 {s.detail && (
-                  <p className="text-[9.5px] font-mono text-muted-foreground/60 pl-3.5 leading-tight truncate" title={s.detail}>
+                  <TooltipContent side="left" className="text-[10px] font-mono max-w-[260px] bg-popover/95 border border-border/60 text-muted-foreground px-2.5 py-1.5">
                     {s.detail}
-                  </p>
+                  </TooltipContent>
                 )}
-              </div>
+              </Tooltip>
             ))}
           </div>
           <div className="px-3 py-1.5 border-t border-border/60 flex items-center justify-between bg-muted/40">
