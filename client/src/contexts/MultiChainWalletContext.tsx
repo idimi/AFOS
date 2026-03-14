@@ -891,9 +891,22 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // MetaMask, Phantom, or other wallet extensions injecting the same variable)
       const hasConflict = !window.tracnetwork;
       if (hasConflict) {
+        // Detect which conflicting extensions are present
+        const hasMetaMask = !!(window as unknown as Record<string, unknown>).ethereum;
+        const hasPhantom = !!(window as unknown as Record<string, unknown>).phantom;
+        const conflictNames = [hasMetaMask && "MetaMask", hasPhantom && "Phantom"].filter(Boolean).join(" and ");
+        const conflictHint = conflictNames
+          ? `${conflictNames} ${conflictNames.includes("and") ? "are" : "is"} installed and may be conflicting.`
+          : "Another wallet extension may be conflicting.";
         toast.error("Tap Wallet not responding", {
-          description: "If you have MetaMask or Phantom installed, try disabling them temporarily — they can conflict with Tap Wallet's script injection. Then refresh the page.",
-          duration: 8000,
+          description: `${conflictHint} Open Chrome Extensions (chrome://extensions), temporarily disable the conflicting wallet, then refresh this page.`,
+          duration: 12000,
+          action: {
+            label: "Retry",
+            onClick: () => {
+              window.location.reload();
+            },
+          },
         });
       } else {
         toast.error("Tap Wallet not detected", {

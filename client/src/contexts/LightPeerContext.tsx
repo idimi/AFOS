@@ -305,7 +305,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   const [quotesGiven, setQuotesGiven] = useState(0);
   const [tradesCompleted, setTradesCompleted] = useState(0);
   const [totalVolumeUsd, setTotalVolumeUsd] = useState(0);
-  const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(null);
+  const [htlcSigning, setHtlcSigning] = useState<HtlcSigningState | null>(() => {
+    try {
+      const stored = sessionStorage.getItem("afos_htlc_signing");
+      if (stored) return JSON.parse(stored) as HtlcSigningState;
+    } catch { /* ignore */ }
+    return null;
+  });
   // rfqId → revealed secretHex (received from Agent A after they confirm their lock)
   const [htlcRevealedSecrets, setHtlcRevealedSecrets] = useState<Record<string, string>>({});
   // Ref mirror so closures (useEffect with stale deps) always read the latest value
@@ -354,6 +360,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try { localStorage.setItem("afos_htlc_locked_at", JSON.stringify(htlcLockedAt)); } catch { /* ignore */ }
   }, [htlcLockedAt]);
+
+  // ── Persist htlcSigning to sessionStorage so the modal survives panel close/reopen ──
+  // sessionStorage (not localStorage) so it clears automatically when the browser tab closes.
+  useEffect(() => {
+    try {
+      if (htlcSigning) {
+        sessionStorage.setItem("afos_htlc_signing", JSON.stringify(htlcSigning));
+      } else {
+        sessionStorage.removeItem("afos_htlc_signing");
+      }
+    } catch { /* ignore */ }
+  }, [htlcSigning]);
 
   // ── localStorage retry fallback for recordHtlcDeposit ──────────────────────
   // If recordHtlcDeposit fails (network error, 400, etc.) the payload is saved
