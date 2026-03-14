@@ -625,6 +625,8 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       // Toast is handled by ConnectWalletModal's showWalletConnectedToast to avoid duplicates
       // Persist session so we can auto-reconnect on next page load
       saveWalletSession({ phantom: true });
+      // Set preferred BTC wallet to Phantom if BTC was connected
+      if (bitcoinAddress) setPreferredBtcWallet("phantom");
 
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -825,6 +827,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         isPhantom: false,
       });
       saveWalletSession({ btc: "metamask" });
+      setPreferredBtcWallet("metamask");
       toast.success("MetaMask BTC connected", { description: `${shortAddr(address)} · ${btcBalance} BTC` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -978,6 +981,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       }
 
       saveWalletSession({ btc: "tap" });
+      setPreferredBtcWallet("tap");
 
       // Fire ONE combined toast with both BTC + TNK addresses.
       // This runs AFTER both setTracNetwork() and setBitcoin() have been called,
@@ -1259,6 +1263,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
               connecting: false,
               isPhantom: false,
             });
+            setPreferredBtcWallet("tap");
             console.log(`[AFOS] Tap Wallet silently restored BTC: ${shortAddr(btcAddress)}`);
           }
         } catch (btcErr) {

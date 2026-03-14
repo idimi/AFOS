@@ -3123,3 +3123,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add settled toast in Swaps page when TapWalletSignCard onSettled fires (Solscan link for claim tx)
 - [x] Add isTnkToSol legacy fallback in pollLegacyMode (same two-step settlement as subnet mode)
 - [x] TypeScript 0 errors, 392 tests passing
+
+## BTC Wallet Picker UX Improvements (Mar 2026)
+
+- [x] Fix context bug: `connectMetaMaskBitcoin` now calls `setPreferredBtcWallet("metamask")` after connecting
+- [x] Fix context bug: `connectPhantomMultiChain` now calls `setPreferredBtcWallet("phantom")` when BTC connects
+- [x] Fix context bug: `connectTapWallet` now calls `setPreferredBtcWallet("tap")` after connecting
+- [x] Fix context bug: `silentRestoreTapWallet` now calls `setPreferredBtcWallet("tap")` after BTC restore
+- [x] ConnectWalletModal Bitcoin tab: when both Tap Wallet and Phantom/MetaMask BTC are connected, show a radio-style wallet picker with ACTIVE badge, address, balance, and disconnect buttons for each wallet
+- [x] ConnectWalletModal Bitcoin tab: single-wallet connected state now correctly uses `disconnectTracNetwork` for Tap Wallet (not `disconnectBitcoin`)

@@ -269,8 +269,9 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
   // Ethereum + Bitcoin + Phantom multi-chain
   const {
-    ethereum, bitcoin, tracNetwork,
+    ethereum, bitcoin, bitcoinTap, tracNetwork,
     phantomMultiChain,
+    preferredBtcWallet, setPreferredBtcWallet,
     connectEthereum, connectBitcoin,
     connectPhantomMultiChain,
     disconnectEthereum, disconnectBitcoin, disconnectTracNetwork,
@@ -778,18 +779,134 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
               )}
 
               {/* ── BITCOIN ── */}
-              {activeChain === "bitcoin" && (
-                bitcoin?.connected ? (
-                  <ConnectedCard
-                    walletName={bitcoin.walletName}
-                    shortAddress={bitcoin.shortAddress}
-                    explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
-                    balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
-                    totalUsd={bitcoin.balanceUsd}
-                    accentColor="#F7931A"
-                    onDisconnect={bitcoin.isPhantom ? disconnectPhantom : disconnectBitcoin}
-                  />
-                ) : (
+              {activeChain === "bitcoin" && (() => {
+                // Determine if multiple BTC wallets are connected simultaneously
+                const tapConnected = bitcoinTap?.connected ?? false;
+                const phantomOrMmConnected = !!(bitcoin?.connected && bitcoin.walletName !== "Tap Wallet");
+                const bothConnected = tapConnected && phantomOrMmConnected;
+
+                if (bothConnected) {
+                  // ── Multi-wallet picker: both Tap Wallet and Phantom/MetaMask BTC are connected ──
+                  const tapWallet = bitcoinTap!;
+                  const otherWallet = bitcoin?.walletName !== "Tap Wallet" ? bitcoin! : null;
+                  const activePref = preferredBtcWallet;
+                  const isTapActive = activePref === "tap" || (!activePref && bitcoin?.walletName === "Tap Wallet");
+                  const isOtherActive = !isTapActive;
+
+                  return (
+                    <>
+                      {/* Active wallet indicator */}
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl"
+                        style={{ background: "rgba(247,147,26,0.06)", border: "1px solid rgba(247,147,26,0.18)" }}>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active BTC wallet</span>
+                        <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full"
+                          style={{ background: "rgba(247,147,26,0.18)", color: "#F7931A" }}>
+                          {isTapActive ? "Tap Wallet" : (otherWallet?.walletName ?? "Phantom")}
+                        </span>
+                      </div>
+
+                      {/* Tap Wallet option */}
+                      <button
+                        onClick={() => setPreferredBtcWallet("tap")}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                        style={{
+                          background: isTapActive ? "rgba(249,115,22,0.12)" : "var(--muted)",
+                          border: isTapActive ? "1.5px solid rgba(249,115,22,0.45)" : "1px solid var(--border)",
+                          boxShadow: isTapActive ? "0 0 0 2px rgba(249,115,22,0.12)" : "none",
+                        }}
+                      >
+                        <img src={TAP_ICON} alt="Tap Wallet" className="w-8 h-8 rounded-xl shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-bold text-foreground">Tap Wallet</p>
+                            {isTapActive && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}>ACTIVE</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] font-mono text-muted-foreground truncate">{tapWallet.shortAddress}</p>
+                          <p className="text-[10px] text-muted-foreground">{tapWallet.balance}</p>
+                        </div>
+                        <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                          style={{ borderColor: isTapActive ? "#F97316" : "var(--border)" }}>
+                          {isTapActive && <div className="w-2 h-2 rounded-full" style={{ background: "#F97316" }} />}
+                        </div>
+                      </button>
+
+                      {/* Phantom / MetaMask option */}
+                      {otherWallet && (
+                        <button
+                          onClick={() => setPreferredBtcWallet(otherWallet.isPhantom ? "phantom" : "metamask")}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                          style={{
+                            background: isOtherActive ? "rgba(171,159,242,0.12)" : "var(--muted)",
+                            border: isOtherActive ? "1.5px solid rgba(171,159,242,0.45)" : "1px solid var(--border)",
+                            boxShadow: isOtherActive ? "0 0 0 2px rgba(171,159,242,0.12)" : "none",
+                          }}
+                        >
+                          <img
+                            src={otherWallet.isPhantom ? PHANTOM_ICON : METAMASK_ICON}
+                            alt={otherWallet.walletName}
+                            className="w-8 h-8 rounded-xl shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-bold text-foreground">{otherWallet.walletName}</p>
+                              {isOtherActive && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ background: "rgba(171,159,242,0.2)", color: "#AB9FF2" }}>ACTIVE</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-mono text-muted-foreground truncate">{otherWallet.shortAddress}</p>
+                            <p className="text-[10px] text-muted-foreground">{otherWallet.balance}</p>
+                          </div>
+                          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                            style={{ borderColor: isOtherActive ? "#AB9FF2" : "var(--border)" }}>
+                            {isOtherActive && <div className="w-2 h-2 rounded-full" style={{ background: "#AB9FF2" }} />}
+                          </div>
+                        </button>
+                      )}
+
+                      <p className="text-[10px] text-muted-foreground text-center px-2">
+                        Tap a wallet above to set it as the active BTC signer for swaps.
+                      </p>
+
+                      {/* Disconnect both */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={disconnectTracNetwork}
+                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all text-red-400 hover:text-red-300"
+                          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                          Disconnect Tap
+                        </button>
+                        <button
+                          onClick={otherWallet?.isPhantom ? disconnectPhantom : disconnectBitcoin}
+                          className="flex-1 py-2.5 rounded-xl text-xs font-semibold transition-all text-red-400 hover:text-red-300"
+                          style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)" }}>
+                          Disconnect {otherWallet?.walletName ?? "Other"}
+                        </button>
+                      </div>
+                    </>
+                  );
+                }
+
+                // ── Single wallet connected ──
+                if (bitcoin?.connected) {
+                  return (
+                    <ConnectedCard
+                      walletName={bitcoin.walletName}
+                      shortAddress={bitcoin.shortAddress}
+                      explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
+                      balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
+                      totalUsd={bitcoin.balanceUsd}
+                      accentColor="#F7931A"
+                      onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
+                    />
+                  );
+                }
+
+                // ── No BTC wallet connected ──
+                return (
                   <>
                     <p className="text-sm text-muted-foreground text-center py-1">
                       Connect your Bitcoin wallet to swap via AFOS P2P.
@@ -838,8 +955,8 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       loading={btcConnecting}
                     />
                   </>
-                )
-              )}
+                );
+              })()}
 
               <p className="text-[10px] text-muted-foreground text-center pb-1">
                 AFOS never holds your private keys · All swaps are self-custodial
