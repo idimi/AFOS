@@ -3148,3 +3148,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update BTC dot tooltip in topbar: when both wallets connected, show "Active BTC: Tap Wallet (bc1…) · Click to switch"
 - [x] Persist "Switch BTC wallet" chip below input bar at all times when both BTC wallets are connected (not just first 2 messages)
 - [x] Make QuoteCard "Signing with" row more prominent for BTC swaps: bold wallet name + BTC wallet icon + address
+
+## BTC Wallet UX Polish (Mar 2026 — Round 4)
+
+- [x] Add "Receiving to" BTC pill in QuoteCard for cross-chain swaps where BTC is the destination
+- [x] Wallet health check on persistent chip: red "Reconnect BTC" state when active BTC wallet disconnects mid-session
+- [x] Surface active BTC wallet in P2P peer match card: "You send: ₿ Tap Wallet · bc1p…"

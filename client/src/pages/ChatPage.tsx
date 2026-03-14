@@ -490,10 +490,25 @@ function QuoteCard({
             )}
             {/* Destination wallet hint — shown for cross-chain swaps */}
             {destinationWallet && !isExecuting && (
-              <p className="text-center text-[10px] text-muted-foreground truncate">
-                Receiving to <span className="font-semibold text-foreground">{destinationWallet.name}</span>
-                {" "}<span className="font-mono opacity-70">{destinationWallet.address}</span>
-              </p>
+              data.toChain === "bitcoin" || data.toChain === "trac_network" ? (
+                /* BTC destination: prominent orange pill */
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">Receiving to</span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
+                  >
+                    <span>&#x20BF;</span>
+                    <span>{destinationWallet.name}</span>
+                  </span>
+                  <span className="font-mono text-[10px] opacity-60">{destinationWallet.address}</span>
+                </div>
+              ) : (
+                <p className="text-center text-[10px] text-muted-foreground truncate">
+                  Receiving to <span className="font-semibold text-foreground">{destinationWallet.name}</span>
+                  {" "}<span className="font-mono opacity-70">{destinationWallet.address}</span>
+                </p>
+              )
             )}
             {isExecuting && signingWallet && (
               <p className="text-center text-[10px] text-emerald-400 truncate flex items-center justify-center gap-0.5 flex-wrap">
@@ -1246,6 +1261,7 @@ function MessageBubble({
   anyWalletConnected,
   onSwapAgain,
   bitcoinTap,
+  bitcoin,
   preferredBtcWallet,
   setPreferredBtcWallet,
 }: {
@@ -1273,6 +1289,8 @@ function MessageBubble({
   onSwapAgain?: () => void;
   /** Tap Wallet BTC state — passed to QuoteCard for BTC wallet picker */
   bitcoinTap?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
+  /** Phantom/MetaMask BTC state — used for P2P match badge */
+  bitcoin?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
   /** Which BTC wallet is preferred when multiple are connected */
   preferredBtcWallet?: import("@/contexts/MultiChainWalletContext").BtcProviderType | null;
   /** Callback to set the preferred BTC wallet */
@@ -1337,16 +1355,37 @@ function MessageBubble({
           <div className="w-full mt-1">
             {/* Route badge — shown above the quote card */}
             {msg.routeBadge && (
-              <div className="flex items-center gap-1.5 mb-1.5">
+              <div className="flex items-center flex-wrap gap-1.5 mb-1.5">
                 {msg.routeBadge === "p2p" ? (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(16,185,129,0.12)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
-                    <span>🤝</span> P2P matched{msg.matchedPeerAlias ? ` — @${msg.matchedPeerAlias}` : ""}
+                    <span>\uD83E\uDD1D</span> P2P matched{msg.matchedPeerAlias ? ` — @${msg.matchedPeerAlias}` : ""}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: "rgba(234,179,8,0.1)", color: "#eab308", border: "1px solid rgba(234,179,8,0.25)" }}>
-                    <span>⚡</span> No peer found — routing via {msg.dexName ?? "DEX"}
+                    <span>\u26A1</span> No peer found — routing via {msg.dexName ?? "DEX"}
                   </span>
                 )}
+                {/* BTC signer badge — shown when the swap involves Bitcoin */}
+                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "bitcoin" || msg.quoteData?.toChain === "bitcoin" || msg.quoteData?.fromChain === "trac_network" || msg.quoteData?.toChain === "trac_network") && (() => {
+                  const activeBtcName = preferredBtcWallet === 'tap'
+                    ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
+                    : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
+                  const btcAddr = preferredBtcWallet === 'tap'
+                    ? bitcoinTap?.shortAddress
+                    : bitcoin?.shortAddress;
+                  if (!activeBtcName) return null;
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
+                      title={`You will sign with ${activeBtcName} (${btcAddr})`}
+                    >
+                      <span>&#x20BF;</span>
+                      <span>You send: {activeBtcName}</span>
+                      {btcAddr && <span className="font-mono opacity-70">· {btcAddr}</span>}
+                    </span>
+                  );
+                })()}
               </div>
             )}
             <QuoteCard
@@ -2677,6 +2716,7 @@ export default function ChatPage() {
                 setTimeout(() => inputRef.current?.focus(), 50);
               }}
               bitcoinTap={bitcoinTap}
+              bitcoin={bitcoin}
               preferredBtcWallet={preferredBtcWallet}
               setPreferredBtcWallet={setPreferredBtcWallet}
             />
@@ -2808,25 +2848,57 @@ export default function ChatPage() {
               )}
             </button>
           </div>
-          {/* Persistent Switch BTC wallet row — always visible when both BTC wallets are connected */}
-          {bitcoin?.connected && bitcoinTap?.connected && (
-            <div className="flex items-center justify-center gap-2 mt-1.5">
-              <button
-                onClick={() => { setWalletModalChain("bitcoin"); setShowWalletModal(true); }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all hover:opacity-90 active:scale-[0.97]"
-                style={{
-                  background: "rgba(247,147,26,0.12)",
-                  border: "1px solid rgba(247,147,26,0.35)",
-                  color: "#F7931A",
-                }}
-                title={`Active BTC: ${preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? 'Phantom')} — click to switch`}
-              >
-                <span className="text-[10px]">&#x20BF;</span>
-                <span>Active: {preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? 'Phantom')}</span>
-                <span className="opacity-60">· Switch</span>
-              </button>
-            </div>
-          )}
+          {/* Persistent BTC wallet row — health check + switch, always visible when any BTC wallet is/was connected */}
+          {(() => {
+            const activeBtcName = preferredBtcWallet === 'tap'
+              ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
+              : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
+            const bothConnected = bitcoin?.connected && bitcoinTap?.connected;
+            const btcWasUsed = bitcoin?.connected || bitcoinTap?.connected;
+            // Disconnected mid-session: show red reconnect chip
+            if (btcWasUsed && !activeBtcName) {
+              const disconnectedName = preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? bitcoinTap?.walletName ?? 'BTC Wallet');
+              return (
+                <div className="flex items-center justify-center gap-2 mt-1.5">
+                  <button
+                    onClick={() => { setWalletModalChain("bitcoin"); setShowWalletModal(true); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all hover:opacity-90 active:scale-[0.97] animate-pulse"
+                    style={{
+                      background: "rgba(239,68,68,0.12)",
+                      border: "1px solid rgba(239,68,68,0.4)",
+                      color: "#ef4444",
+                    }}
+                    title={`${disconnectedName} disconnected — click to reconnect`}
+                  >
+                    <span className="text-[10px]">&#x20BF;</span>
+                    <span>Reconnect {disconnectedName}</span>
+                  </button>
+                </div>
+              );
+            }
+            // Both connected: show orange switch chip
+            if (bothConnected && activeBtcName) {
+              return (
+                <div className="flex items-center justify-center gap-2 mt-1.5">
+                  <button
+                    onClick={() => { setWalletModalChain("bitcoin"); setShowWalletModal(true); }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all hover:opacity-90 active:scale-[0.97]"
+                    style={{
+                      background: "rgba(247,147,26,0.12)",
+                      border: "1px solid rgba(247,147,26,0.35)",
+                      color: "#F7931A",
+                    }}
+                    title={`Active BTC: ${activeBtcName} — click to switch`}
+                  >
+                    <span className="text-[10px]">&#x20BF;</span>
+                    <span>Active: {activeBtcName}</span>
+                    <span className="opacity-60">· Switch</span>
+                  </button>
+                </div>
+              );
+            }
+            return null;
+          })()}
           <p className="text-[10px] text-muted-foreground text-center mt-2">
             AFOS never holds your keys · All swaps are self-custodial · Powered by AFOS P2P · Jupiter · 0x Protocol · 1inch
           </p>
