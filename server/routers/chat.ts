@@ -1204,7 +1204,8 @@ export const chatRouter = router({
       // ── Step 2: If P2P peer matched, send agent_rfq to peer and return P2P route ─────────────────────
       // The frontend will coordinate the HTLC lock with the peer via LightPeerContext.
       if (p2pQuote && p2pQuote.peerId && p2pQuote.rfqId) {
-        const expiresAt = Date.now() + 3_600_000; // 1 hour — matches the on-chain HTLC timelock
+        const htlcExpiresAt = Date.now() + 3_600_000; // 1 hour — on-chain HTLC timelock
+        const rfqExpiresAt  = Date.now() + 120_000;   // 2 min — RFQ quote validity in order book
         // Generate HTLC secret BEFORE sending agent_rfq so the hash can be included
         const htlcSecretBytes = crypto.getRandomValues(new Uint8Array(32));
         const htlcSecretHex   = Array.from(htlcSecretBytes).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -1219,7 +1220,7 @@ export const chatRouter = router({
           toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    senderPeerId ?? undefined,
-          expiresAt:          BigInt(expiresAt),
+          expiresAt:          BigInt(htlcExpiresAt),
           status:             "locked",
           // On-chain HTLC tracking
           htlcId:             `htlc_a_${p2pQuote.rfqId.slice(0, 22)}`,
@@ -1242,7 +1243,7 @@ export const chatRouter = router({
           requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
           requesterPeerId: senderPeerId,
           requesterWallet: userPublicKey,
-          expiresAt,
+          expiresAt:       rfqExpiresAt,
           secretHashHex:   htlcSecretHash,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
@@ -1257,7 +1258,7 @@ export const chatRouter = router({
           outAmount:      p2pQuote.outAmount ?? 0,
           rate:           p2pQuote.rate ?? 0,
           requesterAlias: senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
-          expiresAt,
+          expiresAt:      rfqExpiresAt,
           secretHashHex:  htlcSecretHash,
           timestamp:      Date.now(),
         });
@@ -1275,7 +1276,7 @@ export const chatRouter = router({
         }).catch(() => {/* non-fatal */});
         return {
           route:          "AFOS P2P" as const,
-          p2pQuote:       { ...p2pQuote, expiresAt, delivered, secretHashHex: htlcSecretHash },
+          p2pQuote:       { ...p2pQuote, expiresAt: rfqExpiresAt, htlcExpiresAt, delivered, secretHashHex: htlcSecretHash },
           swapTransaction: null,
           message:
             `P2P peer matched: @${p2pQuote.peerAlias ?? p2pQuote.peerId?.slice(0, 8) ?? "peer"}. ` +

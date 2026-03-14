@@ -2148,7 +2148,8 @@ export default function ChatPage() {
         ));
         // Inject a live swap progress card so the user can track the flow inside chat
         const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
-        const htlcExpiry = Date.now() + 10 * 60 * 1000; // 10 min default HTLC lock time
+        // Use the actual HTLC timelock from server (1 hour), not a hardcoded 10 min
+        const htlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
         setMessages(prev => [...prev, {
           id: progressMsgId,
           role: "assistant" as const,
