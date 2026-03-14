@@ -3154,3 +3154,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add "Receiving to" BTC pill in QuoteCard for cross-chain swaps where BTC is the destination
 - [x] Wallet health check on persistent chip: red "Reconnect BTC" state when active BTC wallet disconnects mid-session
 - [x] Surface active BTC wallet in P2P peer match card: "You send: ₿ Tap Wallet · bc1p…"
+
+## BTC Wallet UX Polish (Mar 2026 — Round 5)
+
+- [x] Add "You receive" badge in P2P match card mirroring the "You send" badge
+- [x] Persist preferred BTC wallet to localStorage so choice survives page reloads (already implemented via savePreferredBtcWallet)

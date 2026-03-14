@@ -1264,6 +1264,11 @@ function MessageBubble({
   bitcoin,
   preferredBtcWallet,
   setPreferredBtcWallet,
+  ethereum,
+  tnkWallet,
+  phantomMultiChain,
+  solShortAddress,
+  solWalletName,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -1295,6 +1300,16 @@ function MessageBubble({
   preferredBtcWallet?: import("@/contexts/MultiChainWalletContext").BtcProviderType | null;
   /** Callback to set the preferred BTC wallet */
   setPreferredBtcWallet?: (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => void;
+  /** Ethereum wallet state — used for receive badge */
+  ethereum?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
+  /** TNK wallet state — used for receive badge */
+  tnkWallet?: import("@/contexts/MultiChainWalletContext").ChainWallet | null;
+  /** Phantom multi-chain state — used for SOL receive badge */
+  phantomMultiChain?: import("@/contexts/MultiChainWalletContext").PhantomMultiChainState | null;
+  /** Solana wallet short address — used for SOL receive badge */
+  solShortAddress?: string | null;
+  /** Solana wallet name — used for SOL receive badge */
+  solWalletName?: string | null;
 }) {
   const isUser = msg.role === "user";
 
@@ -1365,8 +1380,8 @@ function MessageBubble({
                     <span>\u26A1</span> No peer found — routing via {msg.dexName ?? "DEX"}
                   </span>
                 )}
-                {/* BTC signer badge — shown when the swap involves Bitcoin */}
-                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "bitcoin" || msg.quoteData?.toChain === "bitcoin" || msg.quoteData?.fromChain === "trac_network" || msg.quoteData?.toChain === "trac_network") && (() => {
+                {/* BTC signer badge — shown when the swap involves Bitcoin on the send side */}
+                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "bitcoin" || msg.quoteData?.fromChain === "trac_network") && (() => {
                   const activeBtcName = preferredBtcWallet === 'tap'
                     ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                     : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
@@ -1383,6 +1398,45 @@ function MessageBubble({
                       <span>&#x20BF;</span>
                       <span>You send: {activeBtcName}</span>
                       {btcAddr && <span className="font-mono opacity-70">· {btcAddr}</span>}
+                    </span>
+                  );
+                })()}
+                {/* "You receive" badge — shown for cross-chain P2P swaps to show the destination wallet */}
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain !== msg.quoteData?.toChain && (() => {
+                  const toChain = msg.quoteData?.toChain;
+                  if (!toChain) return null;
+                  let receiveName: string | null = null;
+                  let receiveAddr: string | null = null;
+                  if (toChain === "bitcoin" || toChain === "trac_network") {
+                    const activeBtcName = preferredBtcWallet === 'tap'
+                      ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
+                      : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
+                    const btcAddr = preferredBtcWallet === 'tap' ? bitcoinTap?.shortAddress : bitcoin?.shortAddress;
+                    if (activeBtcName) { receiveName = activeBtcName; receiveAddr = btcAddr ?? null; }
+                  } else if (toChain === "ethereum") {
+                    if (ethereum?.connected) { receiveName = ethereum.walletName ?? 'MetaMask'; receiveAddr = ethereum.shortAddress ?? null; }
+                  } else {
+                    // Solana
+                    const solAddr = phantomMultiChain?.solanaAddress
+                      ? `${phantomMultiChain.solanaAddress.slice(0, 4)}…${phantomMultiChain.solanaAddress.slice(-4)}`
+                      : (solShortAddress ?? null);
+                    const solName = phantomMultiChain?.solanaAddress ? 'Phantom' : (solWalletName ?? 'Solana Wallet');
+                    if (solAddr) { receiveName = solName; receiveAddr = solAddr; }
+                  }
+                  if (!receiveName) return null;
+                  const isBtcReceive = toChain === "bitcoin" || toChain === "trac_network";
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={isBtcReceive
+                        ? { background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }
+                        : { background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }
+                      }
+                      title={`You will receive to ${receiveName} (${receiveAddr})`}
+                    >
+                      {isBtcReceive && <span>&#x20BF;</span>}
+                      <span>You receive: {receiveName}</span>
+                      {receiveAddr && <span className="font-mono opacity-70">· {receiveAddr}</span>}
                     </span>
                   );
                 })()}
@@ -2715,10 +2769,15 @@ export default function ChatPage() {
                 setInput("swap ");
                 setTimeout(() => inputRef.current?.focus(), 50);
               }}
-              bitcoinTap={bitcoinTap}
+                 bitcoinTap={bitcoinTap}
               bitcoin={bitcoin}
               preferredBtcWallet={preferredBtcWallet}
               setPreferredBtcWallet={setPreferredBtcWallet}
+              ethereum={ethereum}
+              tnkWallet={tnkWallet}
+              phantomMultiChain={phantomMultiChain}
+              solShortAddress={shortAddress}
+              solWalletName={walletName}
             />
           ) : null
         ))}
