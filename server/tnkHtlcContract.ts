@@ -86,12 +86,12 @@ async function rpcPost<T>(path: string, body: unknown): Promise<T> {
  */
 export async function isTnkPeerHealthy(): Promise<boolean> {
   try {
-    const res = await fetch(`${getPeerRpcUrl()}/health`, {
+    const res = await fetch(`${getPeerRpcUrl()}/v1/health`, {
       signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) return false;
-    const body = await res.json() as { status?: string };
-    return body.status === "ok";
+    const body = await res.json() as { ok?: boolean };
+    return body.ok === true;
   } catch {
     return false;
   }

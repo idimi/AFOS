@@ -268,4 +268,46 @@ export const nodeHealthRouter = router({
       return { online: false, blockHeight: null, latencyMs: null };
     }
   }),
+
+  /**
+   * Lightweight public procedure — fetches block heights for all 4 chains
+   * (BTC, ETH, SOL, TNK) in parallel for the Stack Health popup.
+   * Used by the frontend to show consistent "Block height: X · Connected via Y" detail.
+   */
+  chainStatus: publicProcedure.query(async () => {
+    const { isTnkPeerHealthy, getTnkBlockHeight } = await import("../tnkHtlcContract.js");
+    const peerUrl = process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001";
+    const tnkHost = (() => { try { return new URL(peerUrl).hostname; } catch { return peerUrl; } })();
+
+    const t0 = Date.now();
+    const [ethHeight, solHeight, btcHeight, tnkHealthy, tnkHeight] = await Promise.all([
+      getEthBlockHeight(),
+      getSolBlockHeight(),
+      getBtcBlockHeight(),
+      isTnkPeerHealthy(),
+      getTnkBlockHeight(),
+    ]);
+    const latencyMs = Date.now() - t0;
+
+    return {
+      latencyMs,
+      btc: {
+        blockHeight: btcHeight,
+        source: "mempool.space",
+      },
+      eth: {
+        blockHeight: ethHeight,
+        source: "ethereum.publicnode.com",
+      },
+      sol: {
+        blockHeight: solHeight,
+        source: "mainnet-beta.solana.com",
+      },
+      tnk: {
+        online: tnkHealthy,
+        blockHeight: tnkHeight,
+        source: tnkHost,
+      },
+    };
+  }),
 });

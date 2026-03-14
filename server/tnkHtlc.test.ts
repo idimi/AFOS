@@ -7,7 +7,7 @@
  *   - tnkHtlcRefund:   refundTnkHtlc (happy path + error paths)
  *
  * Mock shapes match the actual API calls:
- *   - isTnkPeerHealthy:  GET /health → { status: "ok" }
+ *   - isTnkPeerHealthy:  GET /v1/health → { ok: true }
  *   - getTnkHtlcState:   GET /v1/state?key=htlc/{id} → { value: TnkHtlcState | null }
  *   - submitContractTx:
  *       GET /v1/contract/nonce → { nonce: "..." }
@@ -102,7 +102,7 @@ describe("isTnkPeerHealthy", () => {
 
   it("returns true when peer responds with status ok", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok", version: "1.0.0" } },
+      { ok: true, body: { ok: true, version: "1.0.0" } },
     ]));
     const { isTnkPeerHealthy } = await import("./tnkHtlcContract");
     expect(await isTnkPeerHealthy()).toBe(true);
@@ -290,7 +290,7 @@ describe("claimTnkHtlc", () => {
 
   it("returns ok:false when HTLC not found in subnet", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },     // GET /health
+      { ok: true, body: { ok: true } },     // GET /health
       { ok: true, body: { value: null } },       // GET /v1/state?key=htlc/...
     ]));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
@@ -301,7 +301,7 @@ describe("claimTnkHtlc", () => {
 
   it("returns ok:false when HTLC is already claimed", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: { ...mockLockedState, status: "claimed" } } },
     ]));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
@@ -312,7 +312,7 @@ describe("claimTnkHtlc", () => {
 
   it("returns ok:false when preimage does not match secretHash", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: mockLockedState } },
     ]));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
@@ -324,7 +324,7 @@ describe("claimTnkHtlc", () => {
   it("returns ok:false when timelock has expired", async () => {
     const expiredLocktime = Math.floor(Date.now() / 1000) - 3600;
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: { ...mockLockedState, locktime: expiredLocktime } } },
     ]));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
@@ -335,7 +335,7 @@ describe("claimTnkHtlc", () => {
 
   it("returns ok:true on successful claim (6 fetch calls)", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },                               // GET /health
+      { ok: true, body: { ok: true } },                               // GET /health
       { ok: true, body: { value: mockLockedState } },                     // GET /v1/state?key=htlc/...
       ...successfulContractTxResponses("0xclaim_contract_tx"),            // submitTnkHtlcClaim (4 calls)
       { ok: true, body: { success: true, txHash: "0xclaim_send_tx" } },  // POST /v1/agent/send
@@ -391,7 +391,7 @@ describe("refundTnkHtlc", () => {
 
   it("returns ok:false when HTLC not found", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: null } },
     ]));
     const { refundTnkHtlc } = await import("./tnkHtlcRefund");
@@ -402,7 +402,7 @@ describe("refundTnkHtlc", () => {
 
   it("returns ok:false when timelock has not expired", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: { ...mockLockedExpiredState, locktime: futureLocktime } } },
     ]));
     const { refundTnkHtlc } = await import("./tnkHtlcRefund");
@@ -413,7 +413,7 @@ describe("refundTnkHtlc", () => {
 
   it("returns ok:false when HTLC is already claimed", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: { ...mockLockedExpiredState, status: "claimed" } } },
     ]));
     const { refundTnkHtlc } = await import("./tnkHtlcRefund");
@@ -424,7 +424,7 @@ describe("refundTnkHtlc", () => {
 
   it("returns ok:true on successful refund (6 fetch calls)", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },                                // GET /health
+      { ok: true, body: { ok: true } },                                // GET /health
       { ok: true, body: { value: mockLockedExpiredState } },               // GET /v1/state?key=htlc/...
       ...successfulContractTxResponses("0xrefund_contract_tx"),            // submitTnkHtlcRefund (4 calls)
       { ok: true, body: { success: true, txHash: "0xrefund_send_tx" } },  // POST /v1/agent/send
@@ -437,7 +437,7 @@ describe("refundTnkHtlc", () => {
 
   it("returns ok:true even when sendTNK fails (contract state is already refunded)", async () => {
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { status: "ok" } },
+      { ok: true, body: { ok: true } },
       { ok: true, body: { value: mockLockedExpiredState } },
       ...successfulContractTxResponses("0xrefund_contract_tx"),
       { ok: false, body: { error: "sendTNK failed" } },                   // agentSendTnk fails

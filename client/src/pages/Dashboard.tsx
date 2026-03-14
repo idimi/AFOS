@@ -2822,6 +2822,7 @@ interface ServiceState {
   name: string;
   status: ServiceStatus;
   latency?: number; // ms
+  detail?: string;  // e.g. "Block height: 123,456 · Connected via mempool.space"
 }
 
 function statusColor(s: ServiceStatus): string {
@@ -2840,10 +2841,8 @@ function statusTextColor(s: ServiceStatus): string {
 
 /** Shared hook — runs the health checks and exposes service state */
 function useStackHealth() {
-  // Use shared price context for latency + status — avoids a duplicate API call
-  const { prices: healthPrices, latencyMs: priceLatencyMs, source: priceSource } = usePrices();
-  // TNK subnet status — measures real round-trip latency to the trac-peer node
-  const { data: tnkStatus } = trpc.nodeHealth.tnkSubnetStatus.useQuery(undefined, {
+  // chainStatus — fetches block heights for all 4 chains in parallel (public procedure)
+  const { data: chainStatusData } = trpc.nodeHealth.chainStatus.useQuery(undefined, {
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
@@ -2855,9 +2854,28 @@ function useStackHealth() {
     { name: 'Trac Network', status: 'checking' },
   ]);
 
-  const updateService = useCallback((name: string, status: ServiceStatus, latency?: number) => {
-    setServices(prev => prev.map(s => s.name === name ? { ...s, status, latency } : s));
+  const updateService = useCallback((name: string, status: ServiceStatus, latency?: number, detail?: string) => {
+    setServices(prev => prev.map(s => s.name === name ? { ...s, status, latency, ...(detail !== undefined ? { detail } : {}) } : s));
   }, []);
+
+  // Helper to build the "Block height: X · Connected via Y" detail string
+  const blockDetail = useCallback((height: number | null | undefined, source: string): string =>
+    height != null
+      ? `Block height: ${height.toLocaleString()} · Connected via ${source}`
+      : `Connected via ${source}`,
+  []);
+
+  // React to chainStatus query changes — update all 4 chains at once
+  useEffect(() => {
+    if (!chainStatusData) return;
+    const lat = chainStatusData.latencyMs;
+    const { btc, eth, sol, tnk } = chainStatusData;
+    updateService('Bitcoin',  btc.blockHeight != null ? 'live' : 'degraded', lat, blockDetail(btc.blockHeight, btc.source));
+    updateService('Ethereum', eth.blockHeight != null ? 'live' : 'degraded', lat, blockDetail(eth.blockHeight, eth.source));
+    updateService('Solana',   sol.blockHeight != null ? 'live' : 'degraded', lat, blockDetail(sol.blockHeight, sol.source));
+    updateService('Trac Network', tnk.online ? 'live' : 'offline', tnk.online ? lat : undefined,
+      tnk.online ? blockDetail(tnk.blockHeight, tnk.source) : `Unreachable · ${tnk.source}`);
+  }, [chainStatusData, updateService, blockDetail]);
 
   const checkAll = useCallback(async () => {
     const t0 = Date.now();
@@ -2869,35 +2887,13 @@ function useStackHealth() {
     } catch {
       updateService('AFOS Agent', 'offline');
     }
-    // Price service health is derived from shared PriceContext — no extra fetch needed
-    const lat = priceLatencyMs ?? undefined;
-    if (priceSource === 'live') {
-      updateService('Bitcoin',  (healthPrices['BTC']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-      updateService('Solana',   (healthPrices['SOL']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-      updateService('Ethereum', (healthPrices['ETH']?.usd ?? 0) > 0 ? 'live' : 'degraded', lat);
-    } else if (priceSource === 'error') {
-      updateService('Bitcoin',  'offline');
-      updateService('Solana',   'offline');
-      updateService('Ethereum', 'offline');
-    }
-    // If priceSource === 'loading', keep existing 'checking' state
-  }, [updateService, healthPrices, priceLatencyMs, priceSource]);
-  // Trac Network — react to tnkSubnetStatus query changes directly (includes real latency from server)
-  useEffect(() => {
-    if (tnkStatus !== undefined) {
-      const tnkLat = tnkStatus.latencyMs != null ? tnkStatus.latencyMs : undefined;
-      updateService('Trac Network', tnkStatus.online ? 'live' : 'offline', tnkLat);
-    }
-  }, [tnkStatus, updateService]);
+  }, [updateService]);
+
   useEffect(() => {
     checkAll();
     const interval = setInterval(checkAll, 30_000);
-    // SSE init event: fallback for Trac Network if tnkSubnetStatus hasn't resolved yet
-    const unsubInit = onSSEEvent('init', () => {
-      if (tnkStatus === undefined) updateService('Trac Network', 'live');
-    });
-    return () => { clearInterval(interval); unsubInit(); };
-  }, [checkAll, updateService, tnkStatus]);
+    return () => { clearInterval(interval); };
+  }, [checkAll]);
 
   const liveCount = services.filter(s => s.status === 'live').length;
   return { services, liveCount, totalCount: services.length };
@@ -3016,18 +3012,25 @@ function StackStatusPill() {
             <span className={`text-[10px] font-mono transition-colors duration-300 ${countColor}`}>{liveCount}/{totalCount}</span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg" style={{ minWidth: 210 }}>
+        <TooltipContent side="bottom" className="text-xs p-0 overflow-hidden bg-popover text-popover-foreground border border-border shadow-lg" style={{ minWidth: 280 }}>
           <div className="px-3 pt-2.5 pb-1 border-b border-border/60">
             <p className="font-semibold text-[11px] uppercase tracking-wider text-muted-foreground/70">Stack Health</p>
           </div>
-          <div className="px-3 py-2 space-y-2">
+          <div className="px-3 py-2 space-y-2.5">
             {services.map(s => (
-              <div key={s.name} className="flex items-center gap-2">
-                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
-                <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
-                <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
-                  {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
-                </span>
+              <div key={s.name} className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${statusColor(s.status)} ${s.status === 'live' ? 'shadow-[0_0_4px_rgba(52,211,153,0.8)]' : ''}`} />
+                  <span className="flex-1 font-mono text-[11px] text-popover-foreground">{s.name}</span>
+                  <span className={`text-[10px] font-mono ${statusTextColor(s.status)}`}>
+                    {s.status}{s.latency != null ? ` · ${s.latency}ms` : ''}
+                  </span>
+                </div>
+                {s.detail && (
+                  <p className="text-[9.5px] font-mono text-muted-foreground/60 pl-3.5 leading-tight truncate" title={s.detail}>
+                    {s.detail}
+                  </p>
+                )}
               </div>
             ))}
           </div>

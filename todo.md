@@ -3052,3 +3052,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add latency ms to Trac Network in Stack Health (server: tnkSubnetStatus now returns latencyMs, client: dedicated useEffect in useStackHealth wires it to updateService)
 - [x] Set up pm2 startup hook on 141.253.123.101 (pm2 startup systemd + pm2 save; Type=oneshot RemainAfterExit=yes service)
 - [x] Verify both afos-backend and trac-peer-htlc are in pm2 saved list (confirmed online after pm2 resurrect)
+
+## Trac Network Offline Fix + Stack Health Consistency
+- [x] Fix isTnkPeerHealthy: wrong endpoint /health → /v1/health, wrong field body.status → body.ok
+- [x] Add blockHeight display to Trac Network row in Stack Health popup (tooltip/detail)
+- [x] Make all chains consistent: BTC, ETH, SOL, TNK all show same info pattern (latency + block height + connected via)
+- [x] Add nodeHealth.chainStatus public tRPC procedure (fetches BTC/ETH/SOL/TNK block heights in parallel)
+- [x] Update tnkHtlc.test.ts mocks to match new /v1/health response format { ok: true }
+- [x] 353 tests passing, 0 TypeScript errors
