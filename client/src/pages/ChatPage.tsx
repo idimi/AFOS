@@ -1029,8 +1029,48 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
           </div>
         )}
 
-        {/* ── Tx hash ── */}
-        {data.txHash && (
+        {/* ── On-chain proof (confirmed) ── */}
+        {isDone && (data.agentBClaimTxId || data.agentAClaimTxId) ? (
+          <div className="space-y-1.5">
+            <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+            <div className="flex flex-wrap gap-2">
+              {data.agentBClaimTxId && (
+                <a
+                  href={getExplorerUrl(data.fromChain, data.agentBClaimTxId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                  style={{
+                    background: "rgba(52,211,153,0.08)",
+                    border: "1px solid rgba(52,211,153,0.25)",
+                    color: "#34d399",
+                  }}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>{data.fromToken ?? "Token A"} claim ↗</span>
+                  <span className="font-mono opacity-60">{data.agentBClaimTxId.slice(0, 8)}…</span>
+                </a>
+              )}
+              {data.agentAClaimTxId && (
+                <a
+                  href={getExplorerUrl(data.toChain ?? data.fromChain, data.agentAClaimTxId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                  style={{
+                    background: "rgba(52,211,153,0.08)",
+                    border: "1px solid rgba(52,211,153,0.25)",
+                    color: "#34d399",
+                  }}
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>{data.toToken ?? "Token B"} claim ↗</span>
+                  <span className="font-mono opacity-60">{data.agentAClaimTxId.slice(0, 8)}…</span>
+                </a>
+              )}
+            </div>
+          </div>
+        ) : data.txHash ? (
           <a
             href={getExplorerUrl(data.fromChain, data.txHash)}
             target="_blank"
@@ -1041,7 +1081,7 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
             <ExternalLink className="w-3 h-3 group-hover:opacity-100" style={{ opacity: 0.7 }} />
             <span className="group-hover:underline">{data.txHash.slice(0, 20)}…</span>
           </a>
-        )}
+        ) : null}
       </div>
     </motion.div>
   );
@@ -1669,10 +1709,7 @@ export default function ChatPage() {
           id: `htlc-done-${data.rfqId}`,
           role: "assistant" as const,
           type: "text" as const,
-          content: `\uD83C\uDF89 **Swap complete!** Atomic settlement confirmed on-chain.\n\n` +
-            `You sent **${cardData.fromAmount?.toFixed(4) ?? "?"} ${cardData.fromToken ?? ""}** and received **${cardData.toAmount?.toFixed(4) ?? "?"} ${cardData.toToken ?? ""}** — both parties have received their funds.` +
-            proofLine +
-            balanceLine,
+          content: `\uD83C\uDF89 **Swap complete!** You sent **${cardData.fromAmount?.toFixed(4) ?? "?"} ${cardData.fromToken ?? ""}** and received **${cardData.toAmount?.toFixed(4) ?? "?"} ${cardData.toToken ?? ""}**. Atomic settlement confirmed on-chain — see the proof links in the card above.${balanceLine}`,
           timestamp: Date.now(),
         };
         return [...updated, successMsg];
