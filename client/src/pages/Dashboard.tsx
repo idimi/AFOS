@@ -2842,6 +2842,11 @@ function statusTextColor(s: ServiceStatus): string {
 function useStackHealth() {
   // Use shared price context for latency + status — avoids a duplicate API call
   const { prices: healthPrices, latencyMs: priceLatencyMs, source: priceSource } = usePrices();
+  // TNK subnet status — measures real round-trip latency to the trac-peer node
+  const { data: tnkStatus } = trpc.nodeHealth.tnkSubnetStatus.useQuery(undefined, {
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
   const [services, setServices] = useState<ServiceState[]>([
     { name: 'AFOS Agent',    status: 'checking' },
     { name: 'Bitcoin',      status: 'checking' },
@@ -2864,7 +2869,6 @@ function useStackHealth() {
     } catch {
       updateService('AFOS Agent', 'offline');
     }
-    updateService('Trac Network', isSSEConnected() ? 'live' : 'degraded');
     // Price service health is derived from shared PriceContext — no extra fetch needed
     const lat = priceLatencyMs ?? undefined;
     if (priceSource === 'live') {
@@ -2878,13 +2882,22 @@ function useStackHealth() {
     }
     // If priceSource === 'loading', keep existing 'checking' state
   }, [updateService, healthPrices, priceLatencyMs, priceSource]);
-
+  // Trac Network — react to tnkSubnetStatus query changes directly (includes real latency from server)
+  useEffect(() => {
+    if (tnkStatus !== undefined) {
+      const tnkLat = tnkStatus.latencyMs != null ? tnkStatus.latencyMs : undefined;
+      updateService('Trac Network', tnkStatus.online ? 'live' : 'offline', tnkLat);
+    }
+  }, [tnkStatus, updateService]);
   useEffect(() => {
     checkAll();
     const interval = setInterval(checkAll, 30_000);
-    const unsubInit = onSSEEvent('init', () => { updateService('Trac Network', 'live'); });
+    // SSE init event: fallback for Trac Network if tnkSubnetStatus hasn't resolved yet
+    const unsubInit = onSSEEvent('init', () => {
+      if (tnkStatus === undefined) updateService('Trac Network', 'live');
+    });
     return () => { clearInterval(interval); unsubInit(); };
-  }, [checkAll, updateService]);
+  }, [checkAll, updateService, tnkStatus]);
 
   const liveCount = services.filter(s => s.status === 'live').length;
   return { services, liveCount, totalCount: services.length };

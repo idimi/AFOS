@@ -257,13 +257,15 @@ export const nodeHealthRouter = router({
   tnkSubnetStatus: publicProcedure.query(async () => {
     try {
       const { isTnkPeerHealthy, getTnkBlockHeight } = await import("../tnkHtlcContract.js");
+      const t0 = Date.now();
       const [healthy, blockHeight] = await Promise.all([
         isTnkPeerHealthy(),
         getTnkBlockHeight(),
       ]);
-      return { online: healthy, blockHeight };
+      const latencyMs = Date.now() - t0;
+      return { online: healthy, blockHeight, latencyMs };
     } catch {
-      return { online: false, blockHeight: null };
+      return { online: false, blockHeight: null, latencyMs: null };
     }
   }),
 });

@@ -3046,3 +3046,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] nginx rate limiter added: limit_req_zone 30r/m per IP, burst=10 nodelay, returns 429 after burst
 - [x] Rate limiter verified: requests 1-11 get 200, requests 12+ get 429
 - [x] 353 tests passing (no regressions from rename)
+
+## Trac Network Latency + pm2 Startup
+
+- [x] Add latency ms to Trac Network in Stack Health (server: tnkSubnetStatus now returns latencyMs, client: dedicated useEffect in useStackHealth wires it to updateService)
+- [x] Set up pm2 startup hook on 141.253.123.101 (pm2 startup systemd + pm2 save; Type=oneshot RemainAfterExit=yes service)
+- [x] Verify both afos-backend and trac-peer-htlc are in pm2 saved list (confirmed online after pm2 resurrect)
