@@ -2880,11 +2880,20 @@ function useStackHealth() {
   const checkAll = useCallback(async () => {
     const t0 = Date.now();
     try {
-      const agentStatus = await getAgentStatus();
+      // Fetch agent status + relay peers in parallel for accurate combined peer count
+      const [agentStatus, relayPeers] = await Promise.all([
+        getAgentStatus(),
+        getRelayPeers().catch(() => null),
+      ]);
       const lat = Date.now() - t0;
       const isActive = agentStatus?.status === 'active' || agentStatus?.activePeers != null;
-      const peers = agentStatus?.activePeers ?? 0;
-      const detail = `Active peers: ${peers} · Relay: oracle.afos.network`;
+      const hw = relayPeers?.hyperswarmPeers?.length ?? agentStatus?.activePeers ?? 0;
+      const light = relayPeers?.lightPeers?.length ?? 0;
+      const total = hw + light;
+      const peerStr = total > 0
+        ? `Active peers: ${total} (${hw} HW · ${light} light)`
+        : `Active peers: 0`;
+      const detail = `${peerStr} · Relay: oracle.afos.network`;
       updateService('AFOS Agent', isActive ? 'live' : 'degraded', lat, detail);
     } catch {
       updateService('AFOS Agent', 'offline');
