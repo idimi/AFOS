@@ -1045,58 +1045,79 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
         )}
 
         {/* ── On-chain proof (confirmed) ── */}
-        {isDone && (data.agentBClaimTxId || data.agentAClaimTxId) ? (
+        {/* ── ON-CHAIN PROOF: structured links for all available tx types ── */}
+        {(data.lockTxId || data.peerLockTxId || data.agentBClaimTxId || data.agentAClaimTxId || data.htlcEscrowAddress || data.txHash) && (
           <div className="space-y-1.5">
             <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
-            <div className="flex flex-wrap gap-2">
-              {data.agentBClaimTxId && (
-                <a
-                  href={getExplorerUrl(data.fromChain, data.agentBClaimTxId)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
-                  style={{
-                    background: "rgba(52,211,153,0.08)",
-                    border: "1px solid rgba(52,211,153,0.25)",
-                    color: "#34d399",
-                  }}
+            <div className="flex flex-wrap gap-1.5">
+              {/* Agent A's own lock tx */}
+              {data.lockTxId && (
+                <a href={getExplorerUrl(data.fromChain, data.lockTxId)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#06b6d4" }}
                 >
-                  <ExternalLink className="w-3 h-3" />
-                  <span>{data.fromToken ?? "Token A"} claim ↗</span>
-                  <span className="font-mono opacity-60">{data.agentBClaimTxId.slice(0, 8)}…</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>Lock Tx</span>
+                  <span className="font-mono opacity-60">{data.lockTxId.slice(0, 7)}…</span>
+                </a>
+              )}
+              {/* Peer (Agent B) lock tx — received via htlc_locked event */}
+              {data.peerLockTxId && (
+                <a href={getExplorerUrl(data.toChain ?? data.fromChain, data.peerLockTxId)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#06b6d4" }}
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>Peer Lock Tx</span>
+                  <span className="font-mono opacity-60">{data.peerLockTxId.slice(0, 7)}…</span>
+                </a>
+              )}
+              {/* Fallback: show txHash if no specific lock tx stored yet */}
+              {!data.lockTxId && !data.peerLockTxId && data.txHash && (
+                <a href={getExplorerUrl(data.fromChain, data.txHash)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#06b6d4" }}
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>Lock Tx</span>
+                  <span className="font-mono opacity-60">{data.txHash.slice(0, 7)}…</span>
+                </a>
+              )}
+              {/* HTLC escrow address */}
+              {data.htlcEscrowAddress && (
+                <a href={getExplorerUrl(data.fromChain, data.htlcEscrowAddress)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", color: "#a78bfa" }}
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>HTLC Escrow</span>
+                  <span className="font-mono opacity-60">{data.htlcEscrowAddress.slice(0, 7)}…</span>
+                </a>
+              )}
+              {/* Claim txs */}
+              {data.agentBClaimTxId && (
+                <a href={getExplorerUrl(data.fromChain, data.agentBClaimTxId)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>{data.fromToken ?? "A"} Claim Tx</span>
+                  <span className="font-mono opacity-60">{data.agentBClaimTxId.slice(0, 7)}…</span>
                 </a>
               )}
               {data.agentAClaimTxId && (
-                <a
-                  href={getExplorerUrl(data.toChain ?? data.fromChain, data.agentAClaimTxId)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
-                  style={{
-                    background: "rgba(52,211,153,0.08)",
-                    border: "1px solid rgba(52,211,153,0.25)",
-                    color: "#34d399",
-                  }}
+                <a href={getExplorerUrl(data.toChain ?? data.fromChain, data.agentAClaimTxId)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}
                 >
-                  <ExternalLink className="w-3 h-3" />
-                  <span>{data.toToken ?? "Token B"} claim ↗</span>
-                  <span className="font-mono opacity-60">{data.agentAClaimTxId.slice(0, 8)}…</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>{data.toToken ?? "B"} Claim Tx</span>
+                  <span className="font-mono opacity-60">{data.agentAClaimTxId.slice(0, 7)}…</span>
                 </a>
               )}
             </div>
           </div>
-        ) : data.txHash ? (
-          <a
-            href={getExplorerUrl(data.fromChain, data.txHash)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-[10px] font-mono group"
-            style={{ color: "rgba(103,232,249,0.7)" }}
-          >
-            <ExternalLink className="w-3 h-3 group-hover:opacity-100" style={{ opacity: 0.7 }} />
-            <span className="group-hover:underline">{data.txHash.slice(0, 20)}…</span>
-          </a>
-        ) : null}
+        )}
       </div>
     </motion.div>
   );
@@ -1580,7 +1601,7 @@ export default function ChatPage() {
         const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "settling", peerAlias, txHash: data.txHash } };
+          updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, phase: "settling", peerAlias, txHash: data.txHash, peerLockTxId: data.txHash ?? updated[idx].swapProgressData!.peerLockTxId } };
           return updated;
         }
         const chainLabel = data.chain ? data.chain.charAt(0).toUpperCase() + data.chain.slice(1) : "";
@@ -1589,6 +1610,23 @@ export default function ChatPage() {
     };
     window.addEventListener("afos:htlc-locked", handler);
     return () => window.removeEventListener("afos:htlc-locked", handler);
+  }, [setMessages]);
+
+  // ── HTLC own-lock: Agent A (or B) confirmed their own lock tx on-chain ─────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as { rfqId?: string; txHash?: string; escrowAddress?: string; chain?: string };
+      if (!data?.rfqId) return;
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
+        if (idx === -1) return prev;
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], swapProgressData: { ...updated[idx].swapProgressData!, lockTxId: data.txHash ?? updated[idx].swapProgressData!.lockTxId, htlcEscrowAddress: data.escrowAddress ?? updated[idx].swapProgressData!.htlcEscrowAddress } };
+        return updated;
+      });
+    };
+    window.addEventListener("afos:htlc-own-lock", handler);
+    return () => window.removeEventListener("afos:htlc-own-lock", handler);
   }, [setMessages]);
 
     // ── HTLC secret sent: we revealed the secret to counterparty ────────────────────

@@ -79,6 +79,9 @@ export interface ChatMessage {
     agentBClaimTxId?: string; // Agent A's SOL escrow claim tx (Agent B receives fromToken)
     agentAClaimTxId?: string; // Agent B's USDT escrow claim tx (Agent A receives toToken)
     confirmedAt?: number; // unix ms — when the swap was confirmed on-chain
+    lockTxId?: string;    // Agent A's own lock tx hash (fromChain)
+    peerLockTxId?: string; // Agent B's lock tx hash (toChain) — received via htlc_locked event
+    htlcEscrowAddress?: string; // HTLC escrow/PDA address on fromChain
   };
   incomingRfqData?: {
     rfqId: string;

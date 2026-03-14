@@ -104,6 +104,8 @@ export interface HtlcSigningState {
   expiresAt?: number;       // HTLC timelock expiry (ms epoch)
   lockedAt?: number;        // When Agent B locked (ms epoch)
   claimTxHash?: string;     // Tx hash of the claim (settlement)
+  counterpartyLockTxHash?: string;  // Agent A's lock tx on their chain (seen by Agent B)
+  counterpartyClaimTxHash?: string; // Agent A's claim tx (Agent A claims Agent B's funds)
 }
 
 export interface LightPeerState {
@@ -2095,6 +2097,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             lockedAt: Date.now(),
             expiresAt: Date.now() + 3_600_000, // 1 hour from now
           }));
+          // Dispatch own-lock event so ChatPage can store the lock tx in swapProgressData
+          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash, escrowAddress, chain: "solana" } }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -2302,6 +2306,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             lockedAt: Date.now(),
             expiresAt: Date.now() + 3_600_000, // 1 hour from now
           }));
+          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash, escrowAddress: htlcContractAddress ?? undefined, chain: "ethereum" } }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -2359,6 +2364,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           );
           // HTLC lock tx submitted — mark as "locked" (not "settled").
           setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: result.txid } : { rfqId, step: "locked", txHash: result.txid });
+          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash: result.txid, escrowAddress: result.htlcAddress ?? undefined, chain: "bitcoin" } }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -2401,6 +2407,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           });
           // HTLC lock tx submitted — mark as "locked" (not "settled").
           setHtlcSigning(prev => prev ? { ...prev, step: "locked", txHash: result.txHash } : { rfqId, step: "locked", txHash: result.txHash });
+          window.dispatchEvent(new CustomEvent("afos:htlc-own-lock", { detail: { rfqId, txHash: result.txHash, escrowAddress: undefined, chain: "trac_network" } }));
           setHtlcLockedAt(prev => ({ ...prev, [rfqId]: Date.now() }));
           // Notify Agent A that we (Agent B) have locked our side
           if (rfq.requestorPeer && signalingRef.current) {
@@ -2904,10 +2911,31 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       const msg = err instanceof Error ? err.message : String(err);
       toast.error("Refund failed", { id: `refund-${rfqId}`, description: msg.slice(0, 100) });
     }
-  }, [refundableHtlcs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain]);
+  }, [refundableHtlcs, solConnected, signTransaction, solPubkey, solConnection, ethereum, bitcoin, phantomMultiChain])  // ── Update htlcSigning with counterparty claim tx when swap completes ───────────────────────
+  // For Agent B: agentAClaimTxId = Agent A's claim tx (Agent A claims Agent B's locked funds)
+  // For Agent A: agentBClaimTxId = Agent B's claim tx (Agent B claims Agent A's locked funds)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const data = (e as CustomEvent).detail as {
+        rfqId?: string; agentBClaimTxId?: string; agentAClaimTxId?: string;
+      };
+      if (!data?.rfqId) return;
+      setHtlcSigning(prev => {
+        if (!prev || prev.rfqId !== data.rfqId) return prev;
+        return {
+          ...prev,
+          // For Agent B (non-initiator): agentAClaimTxId is the counterparty's claim tx
+          // For Agent A (initiator): agentBClaimTxId is the counterparty's claim tx
+          counterpartyClaimTxHash: data.agentAClaimTxId ?? data.agentBClaimTxId ?? prev.counterpartyClaimTxHash,
+        };
+      });
+    };
+    window.addEventListener("afos:htlc-completed", handler);
+    return () => window.removeEventListener("afos:htlc-completed", handler);
+  }, []);
 
-  // ── Signaling message helpers ────────────────────────────────────────────
-  const sendPeerMessage = useCallback((targetPeerId: string, payload: unknown) => {
+  // ── Signaling message helpers ────────────────────────────────────────────────
+  const sendPeerMessage= useCallback((targetPeerId: string, payload: unknown) => {
     signalingRef.current?.sendToPeer(targetPeerId, payload);
   }, []);
 

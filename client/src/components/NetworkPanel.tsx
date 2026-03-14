@@ -562,18 +562,57 @@ function HtlcProgressModal({ signing, onDismiss }: { signing: HtlcSigningState; 
             </div>
           )}
 
-          {/* ── Tx hash ── */}
-          {displayTxHash && (
-            <a
-              href={getExplorerUrlNP(displayTxChain, displayTxHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[10px] font-mono group"
-              style={{ color: "rgba(103,232,249,0.7)" }}
-            >
-              <ExternalLink className="w-3 h-3" style={{ opacity: 0.7 }} />
-              <span className="group-hover:underline">{displayTxHash.slice(0, 24)}…</span>
-            </a>
+          {/* ── ON-CHAIN PROOF: standardized multi-link section ── */}
+          {(signing.txHash || signing.claimTxHash || signing.counterpartyLockTxHash || signing.counterpartyClaimTxHash) && (
+            <div className="space-y-1.5">
+              <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+              <div className="flex flex-wrap gap-1.5">
+                {/* Agent B's own lock tx */}
+                {signing.txHash && (
+                  <a href={getExplorerUrlNP(signing.fromChain, signing.txHash)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                    style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#06b6d4" }}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>Lock Tx</span>
+                    <span className="font-mono opacity-60">{signing.txHash.slice(0, 7)}…</span>
+                  </a>
+                )}
+                {/* Counterparty (Agent A) lock tx */}
+                {signing.counterpartyLockTxHash && (
+                  <a href={getExplorerUrlNP(signing.toChain ?? signing.fromChain, signing.counterpartyLockTxHash)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                    style={{ background: "rgba(6,182,212,0.08)", border: "1px solid rgba(6,182,212,0.2)", color: "#06b6d4" }}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>Peer Lock Tx</span>
+                    <span className="font-mono opacity-60">{signing.counterpartyLockTxHash.slice(0, 7)}…</span>
+                  </a>
+                )}
+                {/* Agent B's claim tx */}
+                {signing.claimTxHash && (
+                  <a href={getExplorerUrlNP(signing.toChain ?? signing.fromChain, signing.claimTxHash)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                    style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>{signing.toToken ?? "Token"} Claim Tx</span>
+                    <span className="font-mono opacity-60">{signing.claimTxHash.slice(0, 7)}…</span>
+                  </a>
+                )}
+                {/* Counterparty claim tx */}
+                {signing.counterpartyClaimTxHash && (
+                  <a href={getExplorerUrlNP(signing.fromChain, signing.counterpartyClaimTxHash)} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold transition-all hover:opacity-90 active:scale-95"
+                    style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399" }}
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>{signing.fromToken ?? "Token"} Claim Tx</span>
+                    <span className="font-mono opacity-60">{signing.counterpartyClaimTxHash.slice(0, 7)}…</span>
+                  </a>
+                )}
+              </div>
+            </div>
           )}
 
           {/* ── Action button ── */}
