@@ -2697,6 +2697,24 @@ export default function ChatPage() {
       {/* Suggestion chips — only when a wallet is connected and few messages */}
       {anyWalletConnected && messages.length <= 2 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto scrollbar-hide">
+          {/* Switch BTC wallet chip — shown only when both Tap Wallet and Phantom/MetaMask BTC are connected */}
+          {bitcoin?.connected && bitcoinTap?.connected && (
+            <button
+              key="__switch-btc__"
+              onClick={() => { setWalletModalChain("bitcoin"); setShowWalletModal(true); }}
+              className="shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-all hover:opacity-90 flex items-center gap-1"
+              style={{
+                background: "rgba(247,147,26,0.12)",
+                border: "1px solid rgba(247,147,26,0.35)",
+                color: "#F7931A",
+                whiteSpace: "nowrap",
+              }}
+              title={`Active BTC: ${preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? 'Phantom')} — tap to switch`}
+            >
+              <span>₿</span>
+              <span>Switch BTC wallet</span>
+            </button>
+          )}
           {SUGGESTIONS.map(s => (
             <button
               key={s}

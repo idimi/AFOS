@@ -3132,3 +3132,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix context bug: `silentRestoreTapWallet` now calls `setPreferredBtcWallet("tap")` after BTC restore
 - [x] ConnectWalletModal Bitcoin tab: when both Tap Wallet and Phantom/MetaMask BTC are connected, show a radio-style wallet picker with ACTIVE badge, address, balance, and disconnect buttons for each wallet
 - [x] ConnectWalletModal Bitcoin tab: single-wallet connected state now correctly uses `disconnectTracNetwork` for Tap Wallet (not `disconnectBitcoin`)
+
+## BTC Wallet UX Polish (Mar 2026 — Round 2)
+
+- [x] Change ₿ to "BTC" in the active BTC wallet pill label in ConnectWalletModal Bitcoin tab
+- [x] Add persistent Active BTC indicator in topbar wallet button: when two BTC wallets are connected, show ₿ badge + active wallet name (Tap / Phantom / MetaMask)
+- [x] Add "Switch BTC wallet" quick-action chip in chat input — opens Bitcoin tab of Connect Wallet modal

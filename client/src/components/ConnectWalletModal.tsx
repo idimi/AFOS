@@ -799,9 +799,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl"
                         style={{ background: "rgba(247,147,26,0.06)", border: "1px solid rgba(247,147,26,0.18)" }}>
                         <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active BTC wallet</span>
-                        <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full"
+                        <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
                           style={{ background: "rgba(247,147,26,0.18)", color: "#F7931A" }}>
-                          {isTapActive ? "Tap Wallet" : (otherWallet?.walletName ?? "Phantom")}
+                          <span>₿</span>
+                          <span>{isTapActive ? "Tap" : (otherWallet?.walletName === "MetaMask" ? "MetaMask" : "Phantom")}</span>
                         </span>
                       </div>
 

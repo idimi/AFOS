@@ -3087,12 +3087,19 @@ function TopbarAgentDot() {
 export default function Dashboard() {
   const { theme, toggleTheme } = useTheme();
   const { connected, shortAddress } = useWallet();
-  const { ethereum: topbarEth, bitcoin: topbarBtc, tracNetwork: topbarTnk, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum: topbarEth, bitcoin: topbarBtc, bitcoinTap: topbarBtcTap, tracNetwork: topbarTnk, phantomMultiChain, preferredBtcWallet: topbarPreferredBtc } = useMultiChainWallet();
   const { isOnline: lightPeerOnline, peerId: myPeerId, remotePeers: signalingPeers } = useLightPeer();
   // SOL is connected either via wallet-adapter OR via Phantom multi-chain
   const solConnected = connected || !!(phantomMultiChain?.chains.includes("solana"));
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [walletModalDefaultChain, setWalletModalDefaultChain] = useState<"solana" | "ethereum" | "bitcoin" | "trac_network">("trac_network");
   const [walletModal, setWalletModal] = useState<WalletModalState | null>(null);
+
+  // Helper: open wallet modal on a specific chain tab
+  const openWalletModalOnChain = (chain: "solana" | "ethereum" | "bitcoin" | "trac_network") => {
+    setWalletModalDefaultChain(chain);
+    setShowWalletModal(true);
+  };
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"trading" | "network" | "notifications" | "privacy" | "display" | "advanced" | undefined>(undefined);
 
@@ -3536,9 +3543,20 @@ export default function Dashboard() {
               </span>
               {/* Label — hidden on xs, visible on sm+ */}
               {(solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected) ? (
-                <span style={{ color: "#10b981" }} className="hidden sm:inline">
-                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && (topbarTnk?.connected ? "₿ + TNK" : "BTC"), !topbarBtc?.connected && topbarTnk?.connected && "TNK"]
+                <span style={{ color: "#10b981" }} className="hidden sm:inline flex items-center gap-1">
+                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && (topbarTnk?.connected ? "BTC + TNK" : "BTC"), !topbarBtc?.connected && topbarTnk?.connected && "TNK"]
                     .filter(Boolean).join(" + ")}
+                  {/* Active BTC wallet badge — shown when both Tap Wallet and Phantom/MetaMask BTC are connected */}
+                  {topbarBtc?.connected && topbarBtcTap?.connected && (
+                    <span
+                      className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold leading-none cursor-pointer"
+                      style={{ background: "rgba(247,147,26,0.22)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.35)" }}
+                      title={`Active BTC wallet: ${topbarPreferredBtc === 'tap' ? 'Tap Wallet' : (topbarBtc?.walletName ?? 'Phantom')} — click to switch`}
+                      onClick={e => { e.stopPropagation(); openWalletModalOnChain("bitcoin"); }}
+                    >
+                      ₿ {topbarPreferredBtc === 'tap' ? 'Tap' : (topbarBtc?.walletName === 'MetaMask' ? 'MM' : 'Phantom')}
+                    </span>
+                  )}
                 </span>
               ) : (
                 <span style={{ color: "#60a5fa" }} className="hidden sm:inline">
@@ -3703,7 +3721,7 @@ export default function Dashboard() {
         shortAddress={shortAddress ?? undefined}
       />
       {walletModal && <WalletModal modal={walletModal} onClose={() => setWalletModal(null)} />}
-      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} />
+      <ConnectWalletModal open={showWalletModal} onClose={() => setShowWalletModal(false)} defaultChain={walletModalDefaultChain} />
     </div>
   );
 }
