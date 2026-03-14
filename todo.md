@@ -3084,3 +3084,17 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Convert Stack Health outer container from Tooltip to Popover (click to open, stays open while hovering rows)
 - [x] Add ServiceRow component: single-line default, inline detail expand on hover (no nested tooltip conflict)
 - [x] 353 tests passing, 0 TypeScript errors
+
+## USDT/SOL → TNK Cross-Chain Swap Implementation
+- [ ] Audit Solana HTLC lock code (agentSwapSol.ts) and TNK HTLC monitor to understand reusable pieces
+- [ ] Implement executeSolToTnkSwap() in agentSwapSol.ts: lock USDT/SOL in Solana HTLC, broadcast RFQ to P2P network for TNK peer
+- [ ] Wire SOL→TNK path into chat router executeSwap dispatcher (when fromChain=solana and toChain=trac_network)
+- [ ] Update pathFinder DIRECT_PAIRS to include SOL/USDT → TNK cross-chain pairs
+- [ ] Add vitest tests for the new execution path
+## SOL → TNK Cross-Chain Swap — End-to-End Wiring
+- [x] Add `recipientAddress?: string` to buildSwapTx input schema (required for SOL→TNK swaps)
+- [x] Add `toChain === "trac_network"` branch in buildSwapTx that calls initiateSolToTnkSwap()
+- [x] Import initiateSolToTnkSwap in chat.ts router
+- [x] Update Helius webhook tryAutoClaimOnLock: add isSolToTnk branch that claims user's Solana lock then releases TNK via claimTnkHtlc()
+- [x] TypeScript: 0 errors after all changes
+- [x] Tests: 353/353 passing (no regressions)

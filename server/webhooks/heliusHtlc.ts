@@ -372,45 +372,71 @@ async function tryAutoClaimOnLock(
     webhookStatus.lastClaimTriggeredAt = Date.now();
 
     // 9. Fire-and-forget: trigger both claims immediately
+    // ── SOL → TNK cross-chain path ──────────────────────────────────────────
+    // When toChain === "trac_network", the Helius webhook fires when the user
+    // locks USDT/SOL on Solana (htlc_b_). The agent must:
+    //   a) Claim the user's Solana lock (htlc_b_) → agent receives USDT/SOL
+    //   b) Release the TNK lock (htlc_a_) on Trac Network → user receives TNK
+    const isSolToTnk = secretRow.toChain === "trac_network";
     void (async () => {
       try {
         const { claimSolanaHtlc } = await import("../solanaHtlcClaim.js");
-
-        // Claim Agent A's lock → release to Agent B
-        const claimA = await claimSolanaHtlc({
-          htlcId:           htlcIdA,
-          secretHex:        secretRow.secretHex,
-          recipientAddress: counterpartyAddress,
-          tokenSymbol:      tokenSymA,
-        });
-        console.log(`[HeliusWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
-
-        // Claim Agent B's lock → release to Agent A
-        const claimB = await claimSolanaHtlc({
-          htlcId:           htlcIdB,
-          secretHex:        secretRow.secretHex,
-          recipientAddress: initiatorAddress,
-          tokenSymbol:      tokenSymB,
-        });
-        console.log(`[HeliusWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
-
+        let revealTxId: string | undefined;
+        if (isSolToTnk) {
+          // ── SOL → TNK: claim user's Solana lock, then release TNK ──────────
+          // Step a: Claim htlc_b_ (user's USDT/SOL lock on Solana → agent)
+          const claimSol = await claimSolanaHtlc({
+            htlcId:           htlcIdB,
+            secretHex:        secretRow.secretHex,
+            recipientAddress: initiatorAddress, // agent's Solana address (SOL_HTLC_KEY wallet)
+            tokenSymbol:      tokenSymA,        // fromToken (USDT/SOL)
+          });
+          console.log(`[HeliusWebhook] SOL→TNK: Claimed user's Solana lock (${fromTokenSym}) → agent: ${claimSol.txSignature}`);
+          revealTxId = claimSol.txSignature;
+          // Step b: Claim htlc_a_ (agent's TNK lock → user's TNK address)
+          const { claimTnkHtlc } = await import("../tnkHtlcClaim.js");
+          const claimTnk = await claimTnkHtlc(htlcIdA, secretRow.secretHex);
+          if (claimTnk.ok) {
+            console.log(`[HeliusWebhook] SOL→TNK: Released TNK to user (htlcId=${htlcIdA}): contractTx=${claimTnk.contractTxHash?.slice(0, 16)}…`);
+          } else {
+            console.error(`[HeliusWebhook] SOL→TNK: TNK claim failed for htlcId=${htlcIdA}: ${claimTnk.error}`);
+            // Non-fatal: tnkHtlcMonitor will retry
+          }
+        } else {
+          // ── Standard Solana ↔ Solana path ───────────────────────────────────
+          // Claim Agent A's lock → release to Agent B
+          const claimA = await claimSolanaHtlc({
+            htlcId:           htlcIdA,
+            secretHex:        secretRow.secretHex,
+            recipientAddress: counterpartyAddress,
+            tokenSymbol:      tokenSymA,
+          });
+          console.log(`[HeliusWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+          revealTxId = claimA.txSignature;
+          // Claim Agent B's lock → release to Agent A
+          const claimB = await claimSolanaHtlc({
+            htlcId:           htlcIdB,
+            secretHex:        secretRow.secretHex,
+            recipientAddress: initiatorAddress,
+            tokenSymbol:      tokenSymB,
+          });
+          console.log(`[HeliusWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+        }
         // Mark as completed with settledAt timestamp
         const now = new Date();
         await database!.update(htlcSecrets)
           .set({
             status: "completed",
-            revealTxId: claimA.txSignature,
+            revealTxId,
             settledAt: now,
             settledVia: "helius_webhook",
             updatedAt: now,
           })
           .where(eq(htlcSecrets.rfqId, rfqId));
-
         // Also update both htlc_swaps rows
         await database!.update(htlcSwaps)
           .set({ status: "completed", updatedAt: now })
           .where(eq(htlcSwaps.rfqId, rfqId));
-
         const settlementMs = now.getTime() - new Date(secretRow.createdAt).getTime();
         console.log(`[HeliusWebhook] Swap rfqId=${rfqId.slice(0, 12)}… completed via Helius webhook in ${(settlementMs / 1000).toFixed(1)}s`);
       } catch (err) {

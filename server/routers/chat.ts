@@ -38,6 +38,7 @@ import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, rem
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
+import { initiateSolToTnkSwap } from "../agentSwapSolToTnk";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -1153,10 +1154,12 @@ export const chatRouter = router({
         senderAlias:    z.string().optional(),
         /** How long this RFQ quote is valid in the order book (ms). Defaults to 120_000 (2 min). */
         rfqTtlMs:       z.number().int().min(10_000).max(600_000).optional().default(120_000),
+        /** Recipient address on the destination chain (required for SOL → TNK cross-chain swaps) */
+        recipientAddress: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias, rfqTtlMs } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias, rfqTtlMs, recipientAddress } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1284,6 +1287,61 @@ export const chatRouter = router({
             `P2P peer matched: @${p2pQuote.peerAlias ?? p2pQuote.peerId?.slice(0, 8) ?? "peer"}. ` +
             `Rate: ${p2pQuote.rate?.toFixed(6) ?? "N/A"}. ` +
             "Agent coordinating HTLC lock — please sign the transaction in your wallet.",
+        };
+      }
+
+      // ── Step 3a: SOL → TNK direct agent swap (no P2P peer needed) ──────────
+      // When the destination is trac_network, the AFOS agent acts as maker:
+      // it locks TNK on Trac Network first, then returns a Solana lock tx for the user.
+      if (toChain === "trac_network") {
+        if (!fromToken || !amount) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "fromToken and amount are required for SOL → TNK swaps.",
+          });
+        }
+        if (!recipientAddress) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "recipientAddress (your Trac Network address) is required for SOL → TNK swaps.",
+          });
+        }
+        // Derive TNK out amount from quoteResponse if present, otherwise use amount as-is
+        // (the quote card already computed the rate; we trust it here)
+        const quoteResp = quoteResponse as Record<string, unknown> | null;
+        const tnkOutAmount: number =
+          typeof quoteResp?.tnkOutAmount === "number"
+            ? quoteResp.tnkOutAmount
+            : typeof quoteResp?.outAmount === "number"
+              ? quoteResp.outAmount
+              : amount; // 1:1 fallback (demo mode)
+        const rfqId = `rfq_sol_tnk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const result = await initiateSolToTnkSwap({
+          userSolanaAddress: userPublicKey,
+          userTnkAddress:    recipientAddress,
+          fromToken:         fromToken.toUpperCase(),
+          amount,
+          tnkOutAmount,
+          rfqId,
+        });
+        if (!result.success) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: result.message,
+          });
+        }
+        return {
+          route:           "AFOS SOL→TNK" as const,
+          p2pQuote:        null,
+          swapTransaction: result.solanaLockTxBase64,
+          message:         result.message,
+          // Extra fields for the frontend to display
+          tnkLockTxHash:   result.tnkLockTxHash,
+          htlcId:          result.htlcId,
+          secretHashHex:   result.secretHashHex,
+          outAmount:       result.outAmount,
+          htlcExpiresAt:   result.htlcExpiresAt,
+          nextStep:        result.nextStep,
         };
       }
 
