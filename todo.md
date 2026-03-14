@@ -3098,3 +3098,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update Helius webhook tryAutoClaimOnLock: add isSolToTnk branch that claims user's Solana lock then releases TNK via claimTnkHtlc()
 - [x] TypeScript: 0 errors after all changes
 - [x] Tests: 353/353 passing (no regressions)
+## Full Bidirectional SOL↔TNK Cross-Chain Swap (All Token Pairs)
+- [x] Create agentSwapTnkToSol.ts — TNK→SOL/USDT/USDC reverse path (agent locks Solana side first, user locks TNK)
+- [x] Wire TNK→SOL/USDT/USDC branch in executeAgentSwap dispatcher (chat.ts)
+- [x] Update Helius webhook tryAutoClaimOnLock for TNK→SOL: when fromChain=trac_network, claim user's TNK lock then release Solana tokens
+- [x] Update ChatPage: pass recipientAddress (Solana addr) when toChain=solana from TNK; pass TNK addr when toChain=trac_network
+- [x] Update ChatPage: route TNK→SOL/USDT/USDC through buildSwapTx (not executeAgentSwap) since user signs Trac Network tx
+- [x] Add Vitest tests for isSolToTnk Helius webhook branch
+- [x] Add Vitest tests for TNK→SOL path in executeAgentSwap
+- [x] Verify TypeScript 0 errors, 376 tests passing

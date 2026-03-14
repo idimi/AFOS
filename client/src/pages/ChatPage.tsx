@@ -2141,8 +2141,134 @@ export default function ChatPage() {
         return;
       }
 
-      // ── Trac Network (TNK) swaps: AFOS P2P HTLC via executeAgentSwap ──────
+      // ── Trac Network (TNK) swaps: SOL↔TNK HTLC agent swap ──────────────────────
+      // SOL/USDT/USDC → TNK: agent locks TNK on Trac Network first; user signs Solana lock tx
+      // TNK → SOL/USDT/USDC: agent locks SOL on Solana first; user signs TNK lock via Tap Wallet
+      // TNK → BTC (or other non-Solana): legacy executeAgentSwap path
       if (quoteData.fromChain === "trac_network" || quoteData.toChain === "trac_network") {
+        const isSolToTnk = quoteData.toChain === "trac_network" && quoteData.fromChain === "solana";
+        const isTnkToSol = quoteData.fromChain === "trac_network" && quoteData.toChain === "solana";
+
+        if (isSolToTnk || isTnkToSol) {
+          // Both directions require the user's Trac Network address
+          const userTnkAddr = tnkWallet?.address ?? "";
+          const userSolAddr = effectivePublicKey?.toString() ?? "";
+
+          if (!userTnkAddr) {
+            toast.error("Trac Network wallet not connected", {
+              description: isSolToTnk
+                ? "Connect your Tap Wallet to receive TNK. Your Trac Network address is needed as the recipient."
+                : "Connect your Tap Wallet (BTC+TNK) to lock TNK. Your Trac Network address is needed as the sender.",
+            });
+            setExecutingId(null);
+            return;
+          }
+
+          toast.loading(
+            isSolToTnk ? "Agent locking TNK on Trac Network…" : "Agent locking SOL on Solana…",
+            { id: "tnk-htlc" }
+          );
+          const tnkSolResult = await buildSwapTx.mutateAsync({
+            quoteResponse:    quoteData.quoteResponse,
+            userPublicKey:    userSolAddr,
+            fromToken:        quoteData.fromToken,
+            toToken:          quoteData.toToken,
+            fromChain:        quoteData.fromChain as SupportedChain,
+            toChain:          quoteData.toChain as SupportedChain,
+            amount:           quoteData.fromAmount,
+            openId,
+            // recipientAddress = user's Trac Network address for both directions
+            recipientAddress: userTnkAddr,
+          });
+          toast.dismiss("tnk-htlc");
+
+          // SOL→TNK: user signs the Solana lock transaction
+          if (isSolToTnk && (tnkSolResult as { route?: string }).route === "AFOS SOL→TNK") {
+            const solLockTx = (tnkSolResult as { swapTransaction?: string | null }).swapTransaction;
+            if (!solLockTx) {
+              addMessage({ role: "assistant", content: (tnkSolResult as { message?: string }).message ?? "SOL→TNK swap failed.", type: "error" });
+              setExecutingId(null);
+              return;
+            }
+            toast.loading("Sign the Solana lock transaction in your wallet…", { id: "sol-lock" });
+            const txBytes = Buffer.from(solLockTx, "base64");
+            const transaction = VersionedTransaction.deserialize(txBytes);
+            const solRpcUrl = `${window.location.origin}/api/sol-rpc`;
+            const connection = new Connection(solRpcUrl, "confirmed");
+            let txHash: string;
+            if (sendTransaction && connected) {
+              txHash = await sendTransaction(transaction, connection);
+            } else {
+              const phantom = (window as unknown as { solana?: { signAndSendTransaction: (tx: unknown) => Promise<{ signature: string }> } }).solana;
+              if (!phantom?.signAndSendTransaction) throw new Error("Phantom wallet not found.");
+              const { signature } = await phantom.signAndSendTransaction(transaction);
+              txHash = signature;
+            }
+            toast.dismiss("sol-lock");
+            toast.success("SOL lock submitted!", { description: `Tx: ${txHash.slice(0, 14)}… — TNK will be released automatically.` });
+            setMessages(prev => prev.map(m =>
+              m.id === msgId ? { ...m, type: "tx_success" as const, txHash, signedBy: signingWalletForAudit } : m
+            ));
+            addMessage({
+              role: "assistant",
+              content: (tnkSolResult as { message?: string }).message ??
+                "SOL locked on-chain. TNK will be released to your Trac Network address automatically once confirmed.",
+              type: "text",
+            });
+            setExecutingId(null);
+            return;
+          }
+
+          // TNK→SOL: user signs and broadcasts the TNK lock via Tap Wallet
+          if (isTnkToSol && (tnkSolResult as { route?: string }).route === "AFOS TNK→SOL") {
+            const tnkPayload = (tnkSolResult as { tnkLockTxPayload?: string | null }).tnkLockTxPayload;
+            if (!tnkPayload) {
+              addMessage({ role: "assistant", content: (tnkSolResult as { message?: string }).message ?? "TNK→SOL swap failed.", type: "error" });
+              setExecutingId(null);
+              return;
+            }
+            const tnkLockData = JSON.parse(Buffer.from(tnkPayload, "base64").toString("utf-8"));
+            toast.loading("Sign the TNK lock in your Tap Wallet…", { id: "tnk-lock" });
+            try {
+              const tapTrac = (window as unknown as {
+                tapwallet?: { tracnetwork?: { submitContractTx?: (payload: unknown) => Promise<{ txHash?: string; success?: boolean; error?: string }> } };
+              }).tapwallet?.tracnetwork;
+              if (!tapTrac?.submitContractTx) throw new Error("Tap Wallet Trac Network provider not found. Please install or update Tap Wallet.");
+              const tnkLockResult = await tapTrac.submitContractTx(tnkLockData);
+              toast.dismiss("tnk-lock");
+              if (tnkLockResult?.error) throw new Error(tnkLockResult.error);
+              const tnkTxHash = tnkLockResult?.txHash ?? "pending";
+              toast.success("TNK lock submitted!", { description: `Tx: ${tnkTxHash.slice(0, 14)}… — SOL will be released automatically.` });
+              setMessages(prev => prev.map(m =>
+                m.id === msgId ? { ...m, type: "tx_success" as const, txHash: tnkTxHash, signedBy: signingWalletForAudit } : m
+              ));
+              addMessage({
+                role: "assistant",
+                content: (tnkSolResult as { message?: string }).message ??
+                  "TNK locked on Trac Network. SOL/USDT/USDC will be released to your Solana address automatically.",
+                type: "text",
+              });
+            } catch (tnkErr) {
+              toast.dismiss("tnk-lock");
+              const tnkMsg = tnkErr instanceof Error ? tnkErr.message : String(tnkErr);
+              toast.error("TNK lock failed", { description: tnkMsg.slice(0, 100) });
+              addMessage({ role: "assistant", content: `TNK lock failed: ${tnkMsg.slice(0, 150)}. Please try again.`, type: "error" });
+            }
+            setExecutingId(null);
+            return;
+          }
+
+          // Unexpected route
+          addMessage({
+            role: "assistant",
+            content: `Unexpected swap route: ${(tnkSolResult as { route?: string }).route ?? "unknown"}. Please try again.`,
+            type: "error",
+          });
+          setExecutingId(null);
+          return;
+        }
+
+        // TNK → BTC or other non-Solana destination: legacy executeAgentSwap path
         const btcAddress = bitcoin?.address ?? "";
         if (!btcAddress) {
           toast.error("Trac Network wallet not connected", {
@@ -2151,7 +2277,6 @@ export default function ChatPage() {
           setExecutingId(null);
           return;
         }
-
         toast.loading("Routing TNK swap via AFOS P2P HTLC…", { id: "tnk-swap" });
         const tnkResult = await executeAgentSwap.mutateAsync({
           fromToken:  quoteData.fromToken,
@@ -2161,7 +2286,6 @@ export default function ChatPage() {
           toChain:    (quoteData.toChain as SupportedChain) ?? "bitcoin",
         });
         toast.dismiss("tnk-swap");
-
         if (tnkResult.success) {
           const isDemoStr = tnkResult.demo ? " [DEMO]" : "";
           toast.success(`TNK swap initiated${isDemoStr}`, {
@@ -2184,7 +2308,6 @@ export default function ChatPage() {
             type: "error",
           });
         }
-
         setExecutingId(null);
         return;
       }

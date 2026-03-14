@@ -39,6 +39,7 @@ import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 import { initiateSolToTnkSwap } from "../agentSwapSolToTnk";
+import { initiateTnkToSolSwap } from "../agentSwapTnkToSol";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -1345,6 +1346,63 @@ export const chatRouter = router({
         };
       }
 
+      // ── Step 3b: TNK → SOL/USDT/USDC direct agent swap ──────────────────────
+      // When the source is trac_network and destination is solana, the AFOS agent acts as maker:
+      // it locks SOL/USDT/USDC on Solana first, then returns a TNK lock payload for the user.
+      if (fromChain === "trac_network" && toChain === "solana") {
+        if (!toToken || !amount) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "toToken and amount are required for TNK → SOL swaps.",
+          });
+        }
+        if (!recipientAddress) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "recipientAddress (your Trac Network address) is required for TNK → SOL swaps.",
+          });
+        }
+        // Derive SOL/USDT/USDC out amount from quoteResponse if present
+        const quoteResp2 = quoteResponse as Record<string, unknown> | null;
+        const solOutAmount: number =
+          typeof quoteResp2?.solOutAmount === "number"
+            ? quoteResp2.solOutAmount
+            : typeof quoteResp2?.outAmount === "number"
+              ? quoteResp2.outAmount
+              : amount; // 1:1 fallback (demo mode)
+        const rfqId2 = `rfq_tnk_sol_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const result2 = await initiateTnkToSolSwap({
+          userSolanaAddress: userPublicKey,
+          userTnkAddress:    recipientAddress,
+          toToken:           toToken.toUpperCase(),
+          amount,
+          solOutAmount,
+          rfqId:             rfqId2,
+        });
+        if (!result2.success) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: result2.message,
+          });
+        }
+        return {
+          route:              "AFOS TNK\u2192SOL" as const,
+          p2pQuote:           null,
+          swapTransaction:    null,
+          message:            result2.message,
+          // Extra fields for the frontend
+          tnkLockTxPayload:   result2.tnkLockTxPayload,
+          htlcIdA:            result2.htlcIdA,
+          htlcIdB:            result2.htlcIdB,
+          secretHashHex:      result2.secretHashHex,
+          solanaLockTxSig:    result2.solanaLockTxSig,
+          outAmount:          result2.outAmount,
+          feeAmountOut:       result2.feeAmountOut,
+          agentTnkAddress:    result2.agentTnkAddress,
+          htlcExpiresAt:      result2.htlcExpiresAt,
+          nextStep:           result2.nextStep,
+        };
+      }
       // ── Step 3: Fallback — Jupiter DEX ────────────────────────────────────
       // No P2P peer found (or P2P skipped / no context). Use Jupiter.
       if (isCrossChain) {
