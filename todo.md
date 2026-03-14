@@ -3205,4 +3205,4 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Ethereum tab: show only ETH address (not SOL/BTC)
 - [x] Solana tab: show only SOL address (not ETH/BTC)
 - [x] Trac Network tab: show only TNK address (not BTC)
-- [x] Bitcoin tab: unchanged (already shows BTC-specific UI)
+- [x] Bitcoin tab: single-wallet view now shows only BTC address (removed TNK row and chain badges)

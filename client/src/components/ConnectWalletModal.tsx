@@ -948,24 +948,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                         totalUsd={bitcoin.balanceUsd}
                         accentColor="#F7931A"
                         onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
-                        chains={isTapActive ? [
-                          { label: "Bitcoin", color: "#F7931A" },
-                          { label: "Trac Network", color: "#F97316" },
-                        ] : undefined}
-                        addresses={isTapActive && tracNetwork?.address ? [
-                          {
-                            label: "BTC",
-                            address: bitcoin.address,
-                            shortAddress: bitcoin.shortAddress,
-                            explorerUrl: `https://mempool.space/address/${bitcoin.address}`,
-                          },
-                          {
-                            label: "TNK",
-                            address: tracNetwork.address,
-                            shortAddress: tracNetwork.shortAddress,
-                            explorerUrl: `https://explorer.trac.network/address/${tracNetwork.address}`,
-                          },
-                        ] : undefined}
                       />
 
                       {/* ── Add second BTC wallet section ── */}
