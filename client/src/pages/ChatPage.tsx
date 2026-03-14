@@ -1465,6 +1465,30 @@ function MessageBubble({
             tnkAmount={msg.tnkSignCardData.tnkAmount}
             outAmount={msg.tnkSignCardData.outAmount}
             toToken={msg.tnkSignCardData.toToken}
+            onSettled={(claimTxId) => {
+              const token = msg.tnkSignCardData?.toToken ?? "SOL";
+              const amount = msg.tnkSignCardData?.outAmount;
+              if (claimTxId) {
+                toast.success(
+                  `✅ ${amount ? amount.toFixed(4) + " " : ""}${token} released to your Solana address!`,
+                  {
+                    description: (
+                      <a
+                        href={`https://solscan.io/tx/${claimTxId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-emerald-400"
+                      >
+                        View on Solscan →
+                      </a>
+                    ) as unknown as string,
+                    duration: 12000,
+                  }
+                );
+              } else {
+                toast.success(`${token} swap settled!`, { description: `${token} has been released to your Solana address.` });
+              }
+            }}
           />
         )}
 

@@ -352,6 +352,76 @@ async function pollLegacyMode(
 
           console.log(`[TNK Monitor] Legacy: Lock detected for HTLC ${htlc.id} (${htlc.amountHuman} TNK)`);
           detected++;
+          // ── isTnkToSol legacy fallback ──
+          // Mirror the subnet-mode settlement: claim TNK + release Solana tokens.
+          if (htlc.toChain === "solana" && htlc.rfqId) {
+            const rfqId = htlc.rfqId;
+            void (async () => {
+              try {
+                const secretRows = await db
+                  .select()
+                  .from(htlcSecrets)
+                  .where(eq(htlcSecrets.rfqId, rfqId))
+                  .limit(1);
+                const secretRow = secretRows[0];
+                if (!secretRow?.secretHex) {
+                  console.error(`[TNK Monitor] Legacy isTnkToSol: No secret for rfqId=${rfqId.slice(0, 12)}…`);
+                  return;
+                }
+                const htlcIdB = `htlc_b_${rfqId.slice(0, 22)}`;
+                const htlcIdA = `htlc_a_${rfqId.slice(0, 22)}`;
+                const userSolanaAddress = htlc.senderAddress ?? secretRow.initiatorAddress ?? "";
+                const toTokenSym = htlc.toToken ?? "SOL";
+                const { claimTnkHtlc } = await import("../tnkHtlcClaim.js");
+                const claimTnk = await claimTnkHtlc(htlcIdB, secretRow.secretHex);
+                if (!claimTnk.ok) {
+                  console.error(`[TNK Monitor] Legacy isTnkToSol: TNK claim failed: ${claimTnk.error}`);
+                  return;
+                }
+                console.log(`[TNK Monitor] Legacy isTnkToSol: Claimed TNK (htlcIdB=${htlcIdB}): tx=${claimTnk.contractTxHash?.slice(0, 16)}…`);
+                const { claimSolanaHtlc } = await import("../solanaHtlcClaim.js");
+                const claimSol = await claimSolanaHtlc({
+                  htlcId:           htlcIdA,
+                  secretHex:        secretRow.secretHex,
+                  recipientAddress: userSolanaAddress,
+                  tokenSymbol:      toTokenSym === "SOL" ? undefined : toTokenSym,
+                });
+                console.log(`[TNK Monitor] Legacy isTnkToSol: Released ${toTokenSym} (htlcIdA=${htlcIdA}): tx=${claimSol.txSignature.slice(0, 16)}…`);
+                const now = new Date();
+                await db.update(htlcSecrets)
+                  .set({ status: "completed", revealTxId: claimSol.txSignature, settledAt: now, settledVia: "tnk_monitor_legacy", updatedAt: now })
+                  .where(eq(htlcSecrets.rfqId, rfqId));
+                await db.update(htlcSwaps)
+                  .set({ status: "completed", updatedAt: now })
+                  .where(eq(htlcSwaps.rfqId, rfqId));
+                broadcastAll({
+                  type:       "tnk_to_sol_settled",
+                  rfqId,
+                  htlcIdA,
+                  htlcIdB,
+                  toToken:    toTokenSym,
+                  claimSolTx: claimSol.txSignature,
+                  claimTnkTx: claimTnk.contractTxHash,
+                  source:     "legacy",
+                });
+                console.log(`[TNK Monitor] Legacy isTnkToSol: Swap rfqId=${rfqId.slice(0, 12)}… fully settled.`);
+              } catch (settleErr) {
+                const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+                if (msg.includes("already") || msg.includes("0x1774") || msg.includes("0x1775")) {
+                  await db.update(htlcSecrets)
+                    .set({ status: "completed", updatedAt: new Date() })
+                    .where(eq(htlcSecrets.rfqId, rfqId))
+                    .catch(() => {});
+                  await db.update(htlcSwaps)
+                    .set({ status: "completed", updatedAt: new Date() })
+                    .where(eq(htlcSwaps.rfqId, rfqId))
+                    .catch(() => {});
+                } else {
+                  console.error(`[TNK Monitor] Legacy isTnkToSol settlement failed for rfqId=${rfqId.slice(0, 12)}…:`, msg);
+                }
+              }
+            })();
+          }
         } catch (err) {
           console.error(`[TNK Monitor] DB update failed for HTLC ${htlc.id}:`, err);
         }

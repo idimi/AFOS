@@ -3116,3 +3116,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] tnkHtlcMonitor: add isTnkToSol branch — when fromChain=trac_network and toChain=solana, claim TNK + release Solana tokens
 - [ ] Add Vitest tests for isTnkToSol monitor branch
 - [x] TypeScript 0 errors, 376 tests passing
+
+## isTnkToSol Tests + Settled Toast + Legacy Fallback
+- [x] Add Vitest tests for isTnkToSol monitor branch (mock getTnkHtlcState, verify claimTnkHtlc + claimSolanaHtlc order, htlcSecrets.status=completed)
+- [x] Add settled toast in ChatPage when TapWalletSignCard onSettled fires (Solscan link for claim tx)
+- [x] Add settled toast in Swaps page when TapWalletSignCard onSettled fires (Solscan link for claim tx)
+- [x] Add isTnkToSol legacy fallback in pollLegacyMode (same two-step settlement as subnet mode)
+- [x] TypeScript 0 errors, 392 tests passing

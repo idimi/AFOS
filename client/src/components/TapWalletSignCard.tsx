@@ -19,8 +19,9 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 
 interface TapWalletSignCardProps {
-  /** Optional callback fired when the swap is confirmed as settled (status=completed) */
-  onSettled?: () => void;
+  /** Optional callback fired when the swap is confirmed as settled (status=completed).
+   *  Receives the Solana claim tx signature (revealTxId) so callers can show a Solscan link. */
+  onSettled?: (claimTxId?: string) => void;
   /** Base64-encoded Trac Network lock transaction payload */
   tnkLockTxPayload: string;
   /** HTLC ID on Trac Network (htlc_b_<rfqId>) — user locks TNK here */
@@ -82,7 +83,8 @@ export default function TapWalletSignCard({
     const status = htlcStatusQuery.data?.status;
     if (status === "completed" && signState === "signed") {
       setSignState("settled");
-      onSettled?.();
+      const claimTxId = htlcStatusQuery.data?.revealTxId ?? undefined;
+      onSettled?.(claimTxId ?? undefined);
     }
   }, [htlcStatusQuery.data?.status, signState, onSettled]);
 
@@ -143,6 +145,7 @@ export default function TapWalletSignCard({
   };
 
   if (signState === "settled") {
+    const claimTxId = htlcStatusQuery.data?.revealTxId;
     return (
       <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 mt-2">
         <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1">
@@ -151,17 +154,29 @@ export default function TapWalletSignCard({
         </div>
         <p className="text-sm text-muted-foreground">
           {toToken} has been released to your Solana address.
+        </p>
+        <div className="flex flex-wrap gap-3 mt-2">
           {txHash && (
             <a
               href={`https://explorer.trac.network/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-2 text-emerald-400 hover:underline inline-flex items-center gap-1"
+              className="text-xs text-emerald-400 hover:underline inline-flex items-center gap-1"
             >
               View TNK lock <ExternalLink className="w-3 h-3" />
             </a>
           )}
-        </p>
+          {claimTxId && (
+            <a
+              href={`https://solscan.io/tx/${claimTxId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-emerald-400 hover:underline inline-flex items-center gap-1"
+            >
+              View {toToken} release on Solscan <ExternalLink className="w-3 h-3" />
+            </a>
+          )}
+        </div>
       </div>
     );
   }

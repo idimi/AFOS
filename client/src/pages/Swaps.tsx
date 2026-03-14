@@ -3849,10 +3849,31 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
               tnkAmount={tnkSignCardData.tnkAmount}
               outAmount={tnkSignCardData.outAmount}
               toToken={tnkSignCardData.toToken}
-              onSettled={() => {
+              onSettled={(claimTxId) => {
+                const token = tnkSignCardData?.toToken ?? "SOL";
+                const amount = tnkSignCardData?.outAmount;
                 setTnkSignCardData(null);
                 setSwapPhase("complete");
-                toast.success("TNK→SOL swap settled!", { description: "SOL has been released to your Solana address." });
+                if (claimTxId) {
+                  toast.success(
+                    `✅ ${amount ? amount.toFixed(4) + " " : ""}${token} released to your Solana address!`,
+                    {
+                      description: (
+                        <a
+                          href={`https://solscan.io/tx/${claimTxId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline text-emerald-400"
+                        >
+                          View on Solscan →
+                        </a>
+                      ) as unknown as string,
+                      duration: 12000,
+                    }
+                  );
+                } else {
+                  toast.success(`TNK→${token} swap settled!`, { description: `${token} has been released to your Solana address.` });
+                }
               }}
             />
           </div>
