@@ -2893,7 +2893,7 @@ function useStackHealth() {
       const peerStr = total > 0
         ? `Active peers: ${total} (${hw} HW · ${light} light)`
         : `Active peers: 0`;
-      const detail = `${peerStr} · Relay: oracle.afos.network`;
+      const detail = `${peerStr} · Relay: afos.trade`;
       updateService('AFOS Agent', isActive ? 'live' : 'degraded', lat, detail);
     } catch {
       updateService('AFOS Agent', 'offline');
