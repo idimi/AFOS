@@ -1465,6 +1465,30 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
+  // ── Pre-warm Tap Wallet service worker on page load ───────────────────────────
+  // Tap Wallet uses a Manifest V3 service worker that Chrome kills after ~30s of
+  // inactivity. We send a silent fire-and-forget ping 500ms after mount so the SW
+  // is already awake when the user clicks "Connect Tap Wallet". If Tap Wallet is
+  // not installed (window.tracnetwork is undefined) the effect is a no-op.
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!window.tracnetwork) return; // Tap Wallet not installed — skip
+      try {
+        // getNetwork() is a lightweight read-only call that requires no user
+        // approval and does not open any popup. It simply wakes the SW.
+        await Promise.race([
+          window.tracnetwork.getNetwork?.(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("prewarm timeout")), 3000)),
+        ]);
+        console.log("[AFOS] Tap Wallet SW pre-warmed successfully");
+      } catch {
+        // Silently ignore — this is best-effort. The user will see the normal
+        // "wake up" toast if the SW is still unresponsive when they connect.
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []); // run once on mount
+
   // ── Derived active BTC wallet (respects preferredBtcWallet) ─────────────────
   // When both Phantom/MetaMask BTC and Tap Wallet BTC are connected, use the preferred one.
   // If no preference is set, use the last-connected (bitcoin state).

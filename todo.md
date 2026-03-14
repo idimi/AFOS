@@ -2997,3 +2997,4 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Configurable Quote TTL in Quote Settings panel (30s / 60s / 120s / 300s selector)
 - [x] Show HTLC timelock separately in NetworkPanel accepted RFQ card
 - [x] Auto-refresh order book when last order expires
+- [x] Pre-warm Tap Wallet service worker on page load (silent ping 500ms after load)
