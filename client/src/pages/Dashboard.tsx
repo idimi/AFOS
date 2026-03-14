@@ -3544,7 +3544,7 @@ export default function Dashboard() {
               {/* Label — hidden on xs, visible on sm+ */}
               {(solConnected || topbarEth?.connected || topbarBtc?.connected || topbarTnk?.connected) ? (
                 <span style={{ color: "#10b981" }} className="hidden sm:inline flex items-center gap-1">
-                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarBtc?.connected && (topbarTnk?.connected ? "BTC + TNK" : "BTC"), !topbarBtc?.connected && topbarTnk?.connected && "TNK"]
+                  {[solConnected && "SOL", topbarEth?.connected && "ETH", topbarTnk?.connected && "TNK", topbarBtc?.connected && "BTC"]
                     .filter(Boolean).join(" + ")}
                   {/* Active BTC wallet badge — shown when both Tap Wallet and Phantom/MetaMask BTC are connected */}
                   {topbarBtc?.connected && topbarBtcTap?.connected && (

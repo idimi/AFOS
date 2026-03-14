@@ -3138,3 +3138,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Change ₿ to "BTC" in the active BTC wallet pill label in ConnectWalletModal Bitcoin tab
 - [x] Add persistent Active BTC indicator in topbar wallet button: when two BTC wallets are connected, show ₿ badge + active wallet name (Tap / Phantom / MetaMask)
 - [x] Add "Switch BTC wallet" quick-action chip in chat input — opens Bitcoin tab of Connect Wallet modal
+
+## Topbar Label Order Fix (Mar 2026)
+
+- [x] Reorder topbar wallet pill label so BTC always comes after TNK: SOL + ETH + TNK + BTC
