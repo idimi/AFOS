@@ -732,7 +732,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                   <ConnectedCard
                     walletName={tracNetwork.walletName}
                     shortAddress={tracNetwork.shortAddress}
-                    explorerUrl={`https://trac.network/address/${tracNetwork.address}`}
+                    explorerUrl={`https://explorer.trac.network/address/${tracNetwork.address}`}
                     balances={[
                       // Only show TNK balance on Trac Network tab — BTC balance belongs on the Bitcoin tab
                       { symbol: "TNK", amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd },
