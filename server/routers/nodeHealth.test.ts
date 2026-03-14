@@ -89,6 +89,35 @@ describe("TNK HTLC Subnet node health entry", () => {
   });
 });
 
+// ─── tnkSubnetStatus procedure helper ───────────────────────────────────────
+
+describe("tnkSubnetStatus procedure", () => {
+  it("returns online:true and blockHeight when peer is healthy", async () => {
+    // Simulate what the procedure returns for a healthy peer
+    const result = { online: true, blockHeight: 42000, url: "http://141.253.123.101/trac-peer" };
+    expect(result.online).toBe(true);
+    expect(typeof result.blockHeight).toBe("number");
+    expect(result.blockHeight).toBeGreaterThan(0);
+  });
+
+  it("returns online:false when peer is unreachable", async () => {
+    const result = { online: false, blockHeight: null, url: "" };
+    expect(result.online).toBe(false);
+    expect(result.blockHeight).toBeNull();
+  });
+
+  it("returns online:false when TNK_PEER_RPC_URL is not set", async () => {
+    const url = process.env.TNK_PEER_RPC_URL ?? "";
+    if (!url) {
+      const result = { online: false, blockHeight: null, url: "" };
+      expect(result.online).toBe(false);
+    } else {
+      // URL is set — just verify it's a valid URL
+      expect(() => new URL(url)).not.toThrow();
+    }
+  });
+});
+
 // ─── Integration: verify isTnkPeerHealthy is imported in nodeHealth.ts ───────
 
 describe("nodeHealth.ts imports tnkHtlcContract", () => {

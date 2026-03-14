@@ -1,180 +1,78 @@
 /**
- * htlcProtocol.js — AFOS HTLC Protocol Definition for Trac Network
+ * htlcProtocol.js — AFOS HTLC Protocol for Trac Network
  *
- * A trac-peer Protocol maps incoming user commands to typed operations that
- * the Contract state machine can process. Each operation has:
- *   - type:     unique string identifier
- *   - validate: synchronous schema check (throws on invalid input)
- *   - prepare:  transforms raw user input into a canonical command object
+ * Extends trac-peer BaseProtocol. Maps CLI commands and JSON inputs into
+ * typed operations that the HtlcContract state machine processes.
  *
- * Supported operations:
- *   htlc_lock    — Lock TNK into the HTLC contract (called by swap initiator)
- *   htlc_claim   — Claim locked TNK by revealing the preimage (called by agent)
- *   htlc_refund  — Refund expired HTLC back to sender (called by agent)
- *   htlc_query   — Read-only state query (no state mutation)
- *
- * Per the Trac Network dApp Developer Guide:
- *   - Protocols define the "interface" layer; Contracts define the "logic" layer
- *   - The peer validates the protocol before calling the contract
- *   - prepare() returns the prepared_command that gets signed and broadcast
+ * Supported tx types:
+ *   htlc_lock    — Lock TNK into the HTLC (swap initiator)
+ *   htlc_claim   — Claim locked TNK by revealing preimage (agent)
+ *   htlc_refund  — Refund expired HTLC back to sender (agent)
  */
+import BaseProtocol from "trac-peer/src/artifacts/protocol.js";
 
-"use strict";
+class HtlcProtocol extends BaseProtocol {
+  mapTxCommand(command) {
+    if (typeof command !== "string" || command.trim() === "") return null;
+    const raw = command.trim();
 
-// ─── Validation helpers ───────────────────────────────────────────────────────
-
-function requireString(val, name, minLen = 1, maxLen = 512) {
-  if (typeof val !== "string" || val.length < minLen || val.length > maxLen) {
-    throw new Error(`${name} must be a string of length ${minLen}–${maxLen}`);
-  }
-}
-
-function requireHex(val, name, exactLen) {
-  requireString(val, name, exactLen, exactLen);
-  if (!/^[0-9a-fA-F]+$/.test(val)) {
-    throw new Error(`${name} must be a hex string`);
-  }
-}
-
-function requirePositiveIntString(val, name) {
-  if (typeof val !== "string" || !/^\d+$/.test(val) || BigInt(val) <= 0n) {
-    throw new Error(`${name} must be a positive integer string`);
-  }
-}
-
-function requirePositiveNumber(val, name) {
-  if (typeof val !== "number" || !Number.isFinite(val) || val <= 0) {
-    throw new Error(`${name} must be a positive finite number`);
-  }
-}
-
-// ─── Protocol definition ──────────────────────────────────────────────────────
-
-export const AfosHtlcProtocol = {
-  name: "afos_htlc",
-  version: "1.0.0",
-
-  operations: {
-    /**
-     * htlc_lock — Lock TNK into the HTLC contract
-     *
-     * Called by the swap initiator after sending TNK to the contract address.
-     * Records the HTLC commitment on-chain in the subnet state.
-     *
-     * Input:
-     *   htlcId      — unique swap identifier (UUID or hex)
-     *   secretHash  — SHA-256 hash of the preimage (hex64)
-     *   amountRaw   — TNK amount in smallest unit (integer string)
-     *   locktime    — Unix timestamp (seconds) after which refund is allowed
-     *   sender      — trac1... address of the TNK sender
-     *   recipient   — trac1... address of the intended TNK recipient
-     *   lockTxHash  — (optional) on-chain TNK transfer tx hash for proof
-     */
-    htlc_lock: {
-      validate(input) {
-        requireString(input.htlcId, "htlcId", 1, 128);
-        requireHex(input.secretHash, "secretHash", 64);
-        requirePositiveIntString(input.amountRaw, "amountRaw");
-        requirePositiveNumber(input.locktime, "locktime");
-        requireString(input.sender, "sender", 5, 128);
-        requireString(input.recipient, "recipient", 5, 128);
-        if (input.lockTxHash !== undefined) {
-          requireString(input.lockTxHash, "lockTxHash", 1, 128);
+    // Accept raw JSON: { "type": "htlc_lock", "value": { ... } }
+    if (raw.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.type === "string" && parsed.value !== undefined) {
+          return { type: parsed.type, value: parsed.value };
         }
-      },
-      prepare(input) {
+      } catch (_e) {}
+    }
+
+    // CLI: htlc_lock <htlcId> <secretHash> <amountRaw> <locktime> <sender> <recipient> <lockTxHash>
+    if (raw.startsWith("htlc_lock ")) {
+      const parts = raw.split(" ").filter(Boolean);
+      if (parts.length >= 8) {
         return {
           type: "htlc_lock",
           value: {
-            htlcId:     input.htlcId,
-            secretHash: input.secretHash.toLowerCase(),
-            amountRaw:  input.amountRaw,
-            locktime:   input.locktime,
-            sender:     input.sender,
-            recipient:  input.recipient,
-            lockTxHash: input.lockTxHash ?? null,
+            htlcId: parts[1],
+            secretHash: parts[2],
+            amountRaw: parts[3],
+            locktime: parseInt(parts[4], 10),
+            sender: parts[5],
+            recipient: parts[6],
+            lockTxHash: parts[7],
           },
         };
-      },
-    },
+      }
+    }
 
-    /**
-     * htlc_claim — Claim locked TNK by revealing the preimage
-     *
-     * Called by the AFOS agent after the counterparty reveals the secret.
-     * The contract verifies sha256(preimage) == secretHash.
-     * The actual TNK release (sendTNK) is executed by the AFOS server after
-     * this contract command succeeds.
-     *
-     * Input:
-     *   htlcId   — HTLC identifier (must match a locked HTLC)
-     *   preimage — The secret preimage (hex string, any length <= 256 chars)
-     */
-    htlc_claim: {
-      validate(input) {
-        requireString(input.htlcId, "htlcId", 1, 128);
-        requireString(input.preimage, "preimage", 1, 256);
-      },
-      prepare(input) {
-        return {
-          type: "htlc_claim",
-          value: {
-            htlcId:   input.htlcId,
-            preimage: input.preimage,
-          },
-        };
-      },
-    },
+    // CLI: htlc_claim <htlcId> <preimage>
+    if (raw.startsWith("htlc_claim ")) {
+      const parts = raw.split(" ").filter(Boolean);
+      if (parts.length >= 3) {
+        return { type: "htlc_claim", value: { htlcId: parts[1], preimage: parts[2] } };
+      }
+    }
 
-    /**
-     * htlc_refund — Refund expired HTLC back to sender
-     *
-     * Called by the AFOS agent after the timelock has expired.
-     * The contract verifies current block height > locktime.
-     * The actual TNK return (sendTNK back to sender) is executed by the AFOS
-     * server after this contract command succeeds.
-     *
-     * Input:
-     *   htlcId — HTLC identifier (must match a locked, expired HTLC)
-     */
-    htlc_refund: {
-      validate(input) {
-        requireString(input.htlcId, "htlcId", 1, 128);
-      },
-      prepare(input) {
-        return {
-          type: "htlc_refund",
-          value: {
-            htlcId: input.htlcId,
-          },
-        };
-      },
-    },
+    // CLI: htlc_refund <htlcId>
+    if (raw.startsWith("htlc_refund ")) {
+      const parts = raw.split(" ").filter(Boolean);
+      if (parts.length >= 2) {
+        return { type: "htlc_refund", value: { htlcId: parts[1] } };
+      }
+    }
 
-    /**
-     * htlc_query — Read-only state query (no state mutation)
-     *
-     * Returns the current state of an HTLC. Used by the monitor and UI.
-     * This is a convenience wrapper; callers can also query the subnet state
-     * directly via GET /v1/state?key=htlc/{htlcId}.
-     *
-     * Input:
-     *   htlcId — HTLC identifier to query
-     */
-    htlc_query: {
-      validate(input) {
-        requireString(input.htlcId, "htlcId", 1, 128);
-      },
-      prepare(input) {
-        return {
-          type: "htlc_query",
-          value: {
-            htlcId: input.htlcId,
-          },
-        };
-      },
-    },
-  },
-};
+    return null;
+  }
 
-export default AfosHtlcProtocol;
+  async printOptions() {
+    console.log("");
+    console.log("- AFOS HTLC commands:");
+    console.log("  /tx --command 'htlc_lock <htlcId> <secretHash64> <amountRaw> <locktime> <sender> <recipient> <lockTxHash>'");
+    console.log("  /tx --command 'htlc_claim <htlcId> <preimage>'");
+    console.log("  /tx --command 'htlc_refund <htlcId>'");
+    console.log("  /get --key \"htlc/<htlcId>\"  -- read HTLC state");
+    console.log("");
+  }
+}
+
+export default HtlcProtocol;

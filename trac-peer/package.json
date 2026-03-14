@@ -9,7 +9,9 @@
     "dev": "node --watch runner.mjs"
   },
   "dependencies": {
-    "@trac-network/peer": "^1.0.0"
+    "trac-peer": "^0.4.5",
+    "trac-crypto-api": "^0.1.4",
+    "trac-msb": "^0.2.12"
   },
   "engines": {
     "node": ">=20"

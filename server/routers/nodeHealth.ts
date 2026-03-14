@@ -16,7 +16,7 @@
  * Detail pattern for all RPC nodes:
  *   "Block height: {n} · Connected via {source}"
  */
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { ENV } from "../_core/env";
 
@@ -247,5 +247,23 @@ export const nodeHealthRouter = router({
     }
 
     return results;
+  }),
+
+  /**
+   * Lightweight public procedure — used by the swap UI chain selector badge.
+   * Returns { online: boolean, blockHeight: number | null } without admin auth.
+   * Clients should set staleTime: 15_000 to avoid hammering the subnet.
+   */
+  tnkSubnetStatus: publicProcedure.query(async () => {
+    try {
+      const { isTnkPeerHealthy, getTnkBlockHeight } = await import("../tnkHtlcContract.js");
+      const [healthy, blockHeight] = await Promise.all([
+        isTnkPeerHealthy(),
+        getTnkBlockHeight(),
+      ]);
+      return { online: healthy, blockHeight };
+    } catch {
+      return { online: false, blockHeight: null };
+    }
   }),
 });

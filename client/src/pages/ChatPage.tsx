@@ -172,6 +172,7 @@ function QuoteCard({
   onRequestConnect,
   limitWarning,
   tnkPeerCount,
+  tnkSubnetOnline,
   walletConnected,
   bitcoinTap,
   preferredBtcWallet,
@@ -184,6 +185,8 @@ function QuoteCard({
   onRequestConnect: () => void;
   limitWarning?: string;
   tnkPeerCount?: number;
+  /** TNK subnet online status — shown as a badge when swap involves TNK */
+  tnkSubnetOnline?: boolean;
   /** Pass true when ANY wallet (SOL, ETH, BTC, TNK) is connected — overrides Solana-only hook */
   walletConnected?: boolean;
   /** Tap Wallet BTC state — non-null when Tap Wallet BTC is connected */
@@ -272,6 +275,24 @@ function QuoteCard({
         <Zap className="w-4 h-4 text-cyan-400" />
         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Swap Quote</span>
         <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+          {/* TNK subnet status badge — shown when swap involves TNK chain */}
+          {(data.fromChain === "trac_network" || data.toChain === "trac_network") && tnkSubnetOnline !== undefined && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+              style={{
+                background: tnkSubnetOnline ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
+                color: tnkSubnetOnline ? "#22c55e" : "#ef4444",
+                border: `1px solid ${tnkSubnetOnline ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)"}`,
+              }}
+              title={tnkSubnetOnline ? "TNK HTLC Subnet is online — on-chain atomic swap available" : "TNK HTLC Subnet is offline — swap may be delayed"}
+            >
+              <span
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: tnkSubnetOnline ? "#22c55e" : "#ef4444", animation: tnkSubnetOnline ? "pulse 2s infinite" : "none" }}
+              />
+              Subnet: {tnkSubnetOnline ? "Online" : "Offline"}
+            </span>
+          )}
           {/* TNK peer count badge — shown when swap involves TNK */}
           {(data.fromToken === "TNK" || data.toToken === "TNK") && tnkPeerCount !== undefined && (
             <span
@@ -1205,6 +1226,7 @@ function MessageBubble({
   refundedRfqIds,
   htlcLockedAt,
   tnkPeerCount,
+  tnkSubnetOnline,
   anyWalletConnected,
   onSwapAgain,
   bitcoinTap,
@@ -1227,6 +1249,8 @@ function MessageBubble({
   /** Map of rfqId → Unix ms when HTLC was locked (for countdown timer) */
   htlcLockedAt?: Record<string, number>;
   tnkPeerCount?: number;
+  /** TNK subnet online status — passed to QuoteCard for the Subnet badge */
+  tnkSubnetOnline?: boolean;
   /** Whether ANY wallet (SOL, ETH, BTC, TNK) is connected — passed to QuoteCard */
   anyWalletConnected?: boolean;
   /** Called when user clicks "Swap again" on the completion card */
@@ -1317,6 +1341,7 @@ function MessageBubble({
               onRequestConnect={() => onRequestConnect(msg.quoteData!.fromToken, msg.quoteData!.fromChain)}
               limitWarning={msg.limitWarning}
               tnkPeerCount={tnkPeerCount}
+              tnkSubnetOnline={tnkSubnetOnline}
               walletConnected={anyWalletConnected}
               bitcoinTap={bitcoinTap}
               preferredBtcWallet={preferredBtcWallet}
@@ -1500,6 +1525,12 @@ export default function ChatPage() {
   const executeEthSwap = trpc.chat.executeEthSwap.useMutation();
   // Agent-mode: server-side autonomous swap (no wallet required)
   const executeAgentSwap = trpc.chat.executeAgentSwap.useMutation();
+  // TNK subnet health — shown as a badge when TNK is the source or destination chain
+  const { data: tnkSubnetStatus } = trpc.nodeHealth.tnkSubnetStatus.useQuery(undefined, {
+    staleTime: 15_000,   // re-fetch at most every 15s
+    refetchInterval: 30_000,
+    retry: false,
+  });
 
   // Read prefill from Swaps page "Send to Agent" button on mount
   // If afos_chat_autosend is set, auto-send the message immediately
@@ -2450,6 +2481,7 @@ export default function ChatPage() {
               executingId={executingId}
               onRequestConnect={openWalletForChain}
               tnkPeerCount={remotePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length}
+              tnkSubnetOnline={tnkSubnetStatus?.online}
               anyWalletConnected={anyWalletConnected}
               onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
                 const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;

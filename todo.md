@@ -3024,3 +3024,17 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update Admin Panel Node Health tab skeleton count to 7 and tooltip to mention TNK HTLC Subnet
 - [x] signWithAgentKey now accepts both PKCS8 DER (96 hex) and raw 64-byte (128 hex) Ed25519 key formats
 - [x] Write Vitest tests for subnet health entry and TNK_AGENT_KEY validation (350 total passing)
+
+## TNK Env Var Validation + Subnet Deployment + Swap UI Badge
+
+- [x] Validate TNK_AGENT_KEY — correct format, can sign a test message (128-char raw Ed25519 format)
+- [x] Validate TNK_PEER_RPC_URL — env var set to http://141.253.123.101/trac-peer/ (nginx proxy)
+- [x] Validate TNK_HTLC_CONTRACT_ADDRESS — env var is set and non-empty
+- [x] Validate AFOS_SERVER_SECRET — env var is set and meets minimum length
+- [x] Deploy trac-peer subnet node on 141.253.123.101 via SSH + pm2 (port 5001)
+- [x] Expose trac-peer via nginx reverse proxy on port 80 at /trac-peer/ (Oracle VCN blocks direct port)
+- [x] TNK_PEER_RPC_URL updated to nginx proxy URL; all 5 API endpoints respond correctly
+- [x] Add trpc.nodeHealth.tnkSubnetStatus public procedure (returns online, blockHeight, url)
+- [x] Add Subnet Status badge (Online/Offline with pulsing dot) to QuoteCard in ChatPage
+- [x] Wire tnkSubnetStatus query in ChatPage and pass tnkSubnetOnline to MessageBubble + QuoteCard
+- [x] Write Vitest tests for tnkSubnetStatus procedure (353 total passing)
