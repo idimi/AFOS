@@ -3529,7 +3529,11 @@ export default function Dashboard() {
                     background: topbarBtc?.connected ? "#F7931A" : "rgba(247,147,26,0.2)",
                     boxShadow: topbarBtc?.connected ? "0 0 5px rgba(247,147,26,0.6)" : "none",
                   }}
-                  title={topbarBtc?.connected ? `Bitcoin: ${topbarBtc.shortAddress}` : "Bitcoin: not connected"}
+                   title={topbarBtc?.connected
+                    ? (topbarBtcTap?.connected
+                        ? `Active BTC: ${topbarPreferredBtc === 'tap' ? 'Tap Wallet' : (topbarBtc.walletName ?? 'Phantom')} (${topbarPreferredBtc === 'tap' ? topbarBtcTap.shortAddress : topbarBtc.shortAddress}) · Click to switch`
+                        : `Bitcoin (${topbarBtc.walletName ?? 'Phantom'}): ${topbarBtc.shortAddress}`)
+                    : "Bitcoin: not connected"}
                 />
                 {/* TNK dot — always visible, dim when disconnected */}
                 <span

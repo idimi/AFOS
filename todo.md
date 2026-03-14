@@ -3142,3 +3142,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Topbar Label Order Fix (Mar 2026)
 
 - [x] Reorder topbar wallet pill label so BTC always comes after TNK: SOL + ETH + TNK + BTC
+
+## BTC Wallet UX Polish (Mar 2026 — Round 3)
+
+- [x] Update BTC dot tooltip in topbar: when both wallets connected, show "Active BTC: Tap Wallet (bc1…) · Click to switch"
+- [x] Persist "Switch BTC wallet" chip below input bar at all times when both BTC wallets are connected (not just first 2 messages)
+- [x] Make QuoteCard "Signing with" row more prominent for BTC swaps: bold wallet name + BTC wallet icon + address

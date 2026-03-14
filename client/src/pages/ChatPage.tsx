@@ -468,10 +468,25 @@ function QuoteCard({
             </button>
             {/* Signing wallet hint — shown when a wallet is identified */}
             {signingWallet && !isExecuting && (
-              <p className="text-center text-[10px] text-muted-foreground truncate">
-                Sending from <span className="font-semibold text-foreground">{signingWallet.name}</span>
-                {" "}<span className="font-mono opacity-70">{signingWallet.address}</span>
-              </p>
+              isBtcSwap ? (
+                /* BTC swap: more prominent signing indicator with wallet name + address */
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">Signing with</span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
+                  >
+                    <span>&#x20BF;</span>
+                    <span>{signingWallet.name}</span>
+                  </span>
+                  <span className="font-mono text-[10px] opacity-60">{signingWallet.address}</span>
+                </div>
+              ) : (
+                <p className="text-center text-[10px] text-muted-foreground truncate">
+                  Sending from <span className="font-semibold text-foreground">{signingWallet.name}</span>
+                  {" "}<span className="font-mono opacity-70">{signingWallet.address}</span>
+                </p>
+              )
             )}
             {/* Destination wallet hint — shown for cross-chain swaps */}
             {destinationWallet && !isExecuting && (
@@ -2793,6 +2808,25 @@ export default function ChatPage() {
               )}
             </button>
           </div>
+          {/* Persistent Switch BTC wallet row — always visible when both BTC wallets are connected */}
+          {bitcoin?.connected && bitcoinTap?.connected && (
+            <div className="flex items-center justify-center gap-2 mt-1.5">
+              <button
+                onClick={() => { setWalletModalChain("bitcoin"); setShowWalletModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold transition-all hover:opacity-90 active:scale-[0.97]"
+                style={{
+                  background: "rgba(247,147,26,0.12)",
+                  border: "1px solid rgba(247,147,26,0.35)",
+                  color: "#F7931A",
+                }}
+                title={`Active BTC: ${preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? 'Phantom')} — click to switch`}
+              >
+                <span className="text-[10px]">&#x20BF;</span>
+                <span>Active: {preferredBtcWallet === 'tap' ? 'Tap Wallet' : (bitcoin?.walletName ?? 'Phantom')}</span>
+                <span className="opacity-60">· Switch</span>
+              </button>
+            </div>
+          )}
           <p className="text-[10px] text-muted-foreground text-center mt-2">
             AFOS never holds your keys · All swaps are self-custodial · Powered by AFOS P2P · Jupiter · 0x Protocol · 1inch
           </p>
