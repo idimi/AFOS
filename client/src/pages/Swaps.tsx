@@ -1364,6 +1364,13 @@ function LiveOrderBook({ fromToken, toToken, onAccept, ownQuote, fromAmount, wal
     pendingPeersRef.current.clear();
   }, [fromToken.symbol, toToken.symbol]);
 
+  // Remove the accepted order from the book when the swap completes or errors
+  useEffect(() => {
+    if ((swapPhase === 'complete' || swapPhase === 'error') && acceptingOrderId) {
+      setOrders(prev => prev.filter(o => o.id !== acceptingOrderId && o.rfqId !== acceptingOrderId));
+    }
+  }, [swapPhase, acceptingOrderId]);
+
   // NOTE: The order book shows RFQs from all sources:
   // 1. Server snapshot (getActiveRfqs) — populated on mount and every 15s
   // 2. Real-time SSE p2p_quote events — from Oracle VM
@@ -2829,6 +2836,7 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
     staleTime: 25_000,
   });
   const pairDepthMap = usePairDepth(swapPeers);
+  const removeRfqMutation = trpc.chat.removeRfq.useMutation();
 
   const handleFlip = () => {
     const temp = fromToken;
@@ -2929,6 +2937,14 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
           } else {
             setSwapPhase("complete");
             haptic.success();
+            // Remove the accepted offer from the server-side order book so it
+            // doesn't reappear in the next getActiveRfqs refresh.
+            if (rfqResult.rfqId) {
+              removeRfqMutation.mutate({ rfqId: rfqResult.rfqId });
+            }
+            if (selectedPeer?.id && selectedPeer.id !== rfqResult.rfqId) {
+              removeRfqMutation.mutate({ rfqId: selectedPeer.id });
+            }
             toast.success(`Swap complete: ${fromAmount} ${fromToken.symbol} → ${finalOut} ${toToken.symbol}`, {
               description: realTxHash
                 ? `${route} · Tx: ${realTxHash.slice(0, 12)}…`
