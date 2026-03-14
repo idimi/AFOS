@@ -2883,7 +2883,9 @@ function useStackHealth() {
       const agentStatus = await getAgentStatus();
       const lat = Date.now() - t0;
       const isActive = agentStatus?.status === 'active' || agentStatus?.activePeers != null;
-      updateService('AFOS Agent', isActive ? 'live' : 'degraded', lat);
+      const peers = agentStatus?.activePeers ?? 0;
+      const detail = `Active peers: ${peers} · Relay: oracle.afos.network`;
+      updateService('AFOS Agent', isActive ? 'live' : 'degraded', lat, detail);
     } catch {
       updateService('AFOS Agent', 'offline');
     }

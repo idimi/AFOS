@@ -3060,3 +3060,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add nodeHealth.chainStatus public tRPC procedure (fetches BTC/ETH/SOL/TNK block heights in parallel)
 - [x] Update tnkHtlc.test.ts mocks to match new /v1/health response format { ok: true }
 - [x] 353 tests passing, 0 TypeScript errors
+
+## Trac Network Block Height + AFOS Agent Detail
+- [x] Research official Trac Network API docs (docs.trac.network) for correct block height endpoint
+- [x] Fix getTnkBlockHeight: use tracapi.trac.network/v1/confirmed-length (returns {confirmed_length: 25557})
+- [x] Update chainStatus procedure to label TNK source as tracapi.trac.network
+- [x] Add AFOS Agent detail line: "Active peers: N · Relay: oracle.afos.network"
+- [x] useStackHealth uses chainStatus for all 4 chains with block height + source detail
+- [x] 353 tests passing, 0 TypeScript errors

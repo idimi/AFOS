@@ -100,14 +100,20 @@ export async function isTnkPeerHealthy(): Promise<boolean> {
 // ─── State queries ────────────────────────────────────────────────────────────
 
 /**
- * Get the current block height from the trac-peer subnet.
+ * Get the current confirmed block height from the Trac Network.
+ * Uses the official public API: https://tracapi.trac.network/v1/confirmed-length
  * Returns null on error.
  */
 export async function getTnkBlockHeight(): Promise<number | null> {
   try {
-    const data = await rpcGet<{ value: unknown }>("/v1/state?key=msb/signedLength");
-    if (typeof data.value !== "number") return null;
-    return data.value;
+    const res = await fetch("https://tracapi.trac.network/v1/confirmed-length", {
+      headers: { "Accept": "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { confirmed_length?: number };
+    if (typeof data.confirmed_length !== "number") return null;
+    return data.confirmed_length;
   } catch {
     return null;
   }

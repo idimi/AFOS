@@ -276,8 +276,9 @@ export const nodeHealthRouter = router({
    */
   chainStatus: publicProcedure.query(async () => {
     const { isTnkPeerHealthy, getTnkBlockHeight } = await import("../tnkHtlcContract.js");
-    const peerUrl = process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001";
-    const tnkHost = (() => { try { return new URL(peerUrl).hostname; } catch { return peerUrl; } })();
+    // TNK block height comes from the official public API (tracapi.trac.network)
+    // The peer node is used only for health check and HTLC operations
+    const tnkSource = "tracapi.trac.network";
 
     const t0 = Date.now();
     const [ethHeight, solHeight, btcHeight, tnkHealthy, tnkHeight] = await Promise.all([
@@ -306,7 +307,7 @@ export const nodeHealthRouter = router({
       tnk: {
         online: tnkHealthy,
         blockHeight: tnkHeight,
-        source: tnkHost,
+        source: tnkSource,
       },
     };
   }),
