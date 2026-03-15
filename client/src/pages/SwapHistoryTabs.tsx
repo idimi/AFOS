@@ -1080,7 +1080,13 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     amount,
     usdValue,
     peer: row.peerId ?? "P2P Network",
-    failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
+    failReason: row.status === "expired"
+      ? "HTLC expired — no settlement received"
+      : row.status === "refunded"
+      ? "Refunded on-chain"
+      : timelockExpired
+      ? "Timelock expired — funds reclaimable"
+      : "HTLC locked — awaiting settlement",
     htlcExpiry,
     status,
     txHash: isRealTxSig(row.lockTxId) ? row.lockTxId : "",

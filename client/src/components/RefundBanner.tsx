@@ -49,9 +49,21 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
     }
   );
 
-  // Count claimable from DB: pending HTLCs are claimable
+  // Count claimable from DB: only pending HTLCs where the timelock has expired.
+  // locktime > 1_000_000_000 means it's a Unix timestamp (Solana/ETH); otherwise block height.
+  // Block-height timelocks (BTC) are always shown as claimable since we can't check block height here.
   const dbClaimable = useMemo(() => {
-    return (dbData?.refunds ?? []).filter(r => r.status === "pending");
+    const nowSec = Math.floor(Date.now() / 1000);
+    return (dbData?.refunds ?? []).filter(r => {
+      if (r.status !== "pending") return false;
+      const isUnixTimelock = r.locktime > 1_000_000_000;
+      if (isUnixTimelock) {
+        // Only show as claimable if the timelock has actually expired
+        return r.locktime < nowSec;
+      }
+      // Block-height timelocks (BTC): show as claimable (block check done elsewhere)
+      return true;
+    });
   }, [dbData]);
 
   // Count claimable from on-chain scanner: expired timelocks

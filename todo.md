@@ -3223,3 +3223,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Bitcoin Tab Consolidated Balance (Mar 2026)
 
 - [x] When both Tap Wallet and Phantom/MetaMask are connected on Bitcoin tab, show a consolidated BALANCES section summing both BTC amounts and USD values into one total portfolio display
+
+## CLAIMABLE Refund Bug Fix
+
+- [x] Investigate false CLAIMABLE refund notifications after successful Solana swaps
+- [x] Fix RefundBanner.tsx: only count DB rows where timelock has actually expired (not all pending HTLCs)
+- [x] Fix autoRefund.ts: correct struct layout (status byte at offset 185, not 152)
+- [x] Fix autoRefund.ts: add DB correction for claimed/refunded HTLCs found during scan
+- [x] Fix mapHtlcToRefund: improve failReason text to accurately reflect HTLC state
+- [x] Add corrected count to AutoRefundResult for monitoring
