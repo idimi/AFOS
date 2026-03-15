@@ -2241,6 +2241,14 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                     senderWallet: senderPubkeyStr,
                     lockTxHash:   txHash,
                     chain:        "solana",
+                    // Agent B's full wallet map — stored in Agent A's htlc_secrets row
+                    // as counterpartyWallets for Tier 1 monitor address resolution.
+                    senderWallets: {
+                      ...(senderPubkeyStr           ? { solana: senderPubkeyStr }                    : {}),
+                      ...(ethereum?.address         ? { ethereum: ethereum.address }                 : {}),
+                      ...(bitcoin?.address          ? { bitcoin: bitcoin.address }                   : {}),
+                      ...(tnkWalletCtx?.address     ? { trac_network: tnkWalletCtx.address }         : {}),
+                    },
                   } } }),
                 });
                 if (webhookRes.ok) {

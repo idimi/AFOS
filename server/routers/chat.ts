@@ -2870,9 +2870,21 @@ export const chatRouter = router({
       senderWallet:   z.string(),          // Agent B's wallet address (for auth + claim routing)
       lockTxHash:     z.string().optional(), // On-chain lock tx signature (for logging)
       chain:          z.string().optional(), // "solana" | "ethereum" etc.
+      /**
+       * Agent B's full multi-chain wallet map.
+       * Stored in Agent A's htlc_secrets row as counterpartyWallets so
+       * HtlcSecretsMonitor can resolve Agent B's address on any chain
+       * for auto-claim without needing a separate peer registry lookup.
+       */
+      senderWallets: z.object({
+        solana:       z.string().optional(),
+        ethereum:     z.string().optional(),
+        bitcoin:      z.string().optional(),
+        trac_network: z.string().optional(),
+      }).optional(),
     }))
     .mutation(async ({ input }) => {
-      const { rfqId, htlcIdB, senderWallet, lockTxHash, chain = "solana" } = input;
+      const { rfqId, htlcIdB, senderWallet, lockTxHash, chain = "solana", senderWallets } = input;
 
       // Look up the htlc_secrets row for this rfqId
       const row = await getHtlcSecret(rfqId);
@@ -2887,9 +2899,20 @@ export const chatRouter = router({
         return { triggered: false, reason: row.status };
       }
 
-      // Persist Agent B's lock details so HtlcSecretsMonitor has them if we crash
+      // Persist Agent B's lock details so HtlcSecretsMonitor has them if we crash.
+      // Also store Agent B's full wallet map as counterpartyWallets so the monitor
+      // can resolve Agent B's address on any chain without a peer registry lookup.
+      const mergedCounterpartyWallets = senderWallets
+        ? {
+            ...(row.counterpartyWallets as { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } | null ?? {}),
+            ...senderWallets,
+            // Ensure senderWallet is always set for the primary chain
+            ...(chain === "solana" || !senderWallets.solana ? { solana: senderWallet } : {}),
+          }
+        : undefined;
       await updateHtlcSecretStatus(rfqId, "revealed", {
         counterpartyAddress: senderWallet,
+        counterpartyWallets: mergedCounterpartyWallets,
         lockTxId: lockTxHash ?? row.lockTxId ?? undefined,
       });
 
