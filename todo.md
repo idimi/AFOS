@@ -3283,3 +3283,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Auto-dismiss RefundBanner after successful recovery in RefundCard (all chains: SOL confirmed/already-settled/delayed, TNK, ETH, BTC)
 - [x] Add "Pending" stat card to Refunds tab (locked HTLCs not yet expired) — responsive 2/3/5-col grid
+
+## Pending Card Tooltip
+
+- [x] Add tooltip to Pending stat card explaining HTLC pending state

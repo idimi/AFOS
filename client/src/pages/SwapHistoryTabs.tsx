@@ -1938,6 +1938,17 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
             <div className="flex items-center gap-1.5 mb-3">
               <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
               <span className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-widest">Pending</span>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-blue-400/50 cursor-help ml-0.5 shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[240px] text-xs leading-relaxed">
+                    <p className="font-semibold mb-0.5">In-flight HTLCs</p>
+                    <p>Funds are locked on-chain but the timelock has not expired yet. No action is needed — the swap is still in progress. Once the timelock expires without a claim, these will move to <span className="text-amber-400 font-medium">Stuck Funds</span>.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             <div className="text-3xl font-bold font-mono text-blue-400 leading-none tabular-nums">{pending.length}</div>
             <div className="text-[10px] text-blue-400/50 mt-2">
