@@ -17,7 +17,7 @@
  */
 
 import { getDb } from "../db.js";
-import { htlcSwaps } from "../../drizzle/schema.js";
+import { htlcSwaps, swapAnalytics } from "../../drizzle/schema.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { notifyOwner } from "../_core/notification.js";
 
@@ -155,13 +155,25 @@ async function scanSolanaExpiredHtlcs(): Promise<{ expired: OnChainHtlc[]; corre
         const raw = accValue ? Buffer.from(accValue.data[0], "base64") : null;
 
         if (!raw || raw.length < 186) {
-          // PDA is closed (null) or too short — already settled on-chain.
-          // Auto-update DB to refunded (conservative: we don’t know if claimed or refunded).
+          // PDA is closed (null) or too short — HTLC was either claimed or refunded on-chain.
+          // Cross-reference swap_analytics: if rfqId has a completed entry → claimed.
+          let closedStatus: "completed" | "refunded" = "refunded";
+          try {
+            if (row.rfqId) {
+              const [analytic] = await db.select({ status: swapAnalytics.status })
+                .from(swapAnalytics)
+                .where(eq(swapAnalytics.rfqId, row.rfqId))
+                .limit(1);
+              if (analytic?.status === "completed") {
+                closedStatus = "completed";
+              }
+            }
+          } catch { /* ignore — fall back to refunded */ }
           try {
             await db.update(htlcSwaps)
-              .set({ status: "refunded" })
+              .set({ status: closedStatus })
               .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
-            console.log(`[AutoRefund] Auto-marked HTLC ${row.htlcAddress.slice(0,8)}… as refunded (PDA closed)`);
+            console.log(`[AutoRefund] Auto-marked HTLC ${row.htlcAddress.slice(0,8)}… as ${closedStatus} (PDA closed, rfqId=${row.rfqId ?? 'none'})`);
             corrected++;
           } catch { /* ignore */ }
           continue;

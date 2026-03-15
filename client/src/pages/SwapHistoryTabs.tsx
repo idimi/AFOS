@@ -1085,7 +1085,7 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
       : row.status === "refunded"
       ? "Refunded on-chain"
       : timelockExpired
-      ? "Timelock expired — funds reclaimable"
+      ? "Timelock expired — funds stuck on-chain, recovery available"
       : "HTLC locked — awaiting settlement",
     htlcExpiry,
     status,
@@ -1455,8 +1455,8 @@ function RefundCard({
                        refund.status === "pending"   ? "#3b82f6" :
                        "#64748b",
               }}>
-              {refund.status === "claimable" ? "CLAIMABLE" :
-               refund.status === "claimed"   ? "CLAIMED" :
+              {refund.status === "claimable" ? "STUCK FUNDS" :
+               refund.status === "claimed"   ? "RECOVERED" :
                refund.status === "refunded"  ? "REFUNDED" :
                refund.status === "pending"   ? "LOCKED" :
                "EXPIRED"}
@@ -1540,7 +1540,7 @@ function RefundCard({
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold transition-all disabled:opacity-60"
               style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
               {claiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-              {claiming ? "Claiming…" : "Claim"}
+              {claiming ? "Recovering…" : "Recover Funds"}
             </button>
           )}
           {refund.status === "claimed" && (
@@ -1873,8 +1873,8 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
 
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
-            { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
+            { label: "Stuck Funds", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
+            { label: "Recovered", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
             { label: "Refunded", value: refunded.length, color: "text-cyan-400", bg: "rgba(6,182,212,0.1)", border: "rgba(6,182,212,0.25)" },
             { label: "At Risk", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
           ].map(stat => (

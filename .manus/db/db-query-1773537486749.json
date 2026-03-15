@@ -1,0 +1,22 @@
+{
+  "query": "\nSELECT status, COUNT(*) as count FROM htlc_secrets GROUP BY status;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT status, COUNT(*) as count FROM htlc_secrets GROUP BY status;\n",
+  "rows": [
+    {
+      "status": "refunded",
+      "count": "1"
+    },
+    {
+      "status": "expired",
+      "count": "32"
+    },
+    {
+      "status": "completed",
+      "count": "11"
+    }
+  ],
+  "messages": [],
+  "stdout": "status\tcount\nrefunded\t1\nexpired\t32\ncompleted\t11\n",
+  "stderr": "",
+  "execution_time_ms": 54
+}

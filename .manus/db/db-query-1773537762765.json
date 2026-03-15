@@ -1,0 +1,17 @@
+{
+  "query": "\nSELECT hs.htlcAddress, hs.rfqId, hs.status as htlc_status,\n       sa.status as analytics_status, sa.rfqId as sa_rfqId\nFROM htlc_swaps hs\nLEFT JOIN swap_analytics sa ON sa.rfqId = hs.rfqId\nWHERE hs.htlcAddress LIKE '642LJ3L%';\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT hs.htlcAddress, hs.rfqId, hs.status as htlc_status,\n       sa.status as analytics_status, sa.rfqId as sa_rfqId\nFROM htlc_swaps hs\nLEFT JOIN swap_analytics sa ON sa.rfqId = hs.rfqId\nWHERE hs.htlcAddress LIKE '642LJ3L%';\n",
+  "rows": [
+    {
+      "htlcAddress": "642LJ3LmtT1VFHZpUkJ86bjZCNn34jPgGtsf47zHhPo8",
+      "rfqId": "rfq_1773536423389_lp-b5338",
+      "htlc_status": "pending",
+      "analytics_status": "NULL",
+      "sa_rfqId": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "htlcAddress\trfqId\thtlc_status\tanalytics_status\tsa_rfqId\n642LJ3LmtT1VFHZpUkJ86bjZCNn34jPgGtsf47zHhPo8\trfq_1773536423389_lp-b5338\tpending\tNULL\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

@@ -1,0 +1,8 @@
+{
+  "query": "\nSELECT hs_sec.id, hs_sec.htlcId, hs_sec.chain, hs_sec.status, hs_sec.locktime, hs_sec.settledVia, hs_sec.createdAt,\n       FROM_UNIXTIME(hs_sec.locktime) as locktime_human,\n       CASE WHEN hs_sec.locktime < UNIX_TIMESTAMP() THEN 'EXPIRED' ELSE CONCAT('active ~', ROUND((hs_sec.locktime - UNIX_TIMESTAMP())/60), 'min left') END as timelock_state\nFROM htlc_secrets hs_sec\nWHERE hs_sec.status = 'pending' AND hs_sec.chain = 'solana'\nORDER BY hs_sec.createdAt DESC\nLIMIT 5;\n",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT hs_sec.id, hs_sec.htlcId, hs_sec.chain, hs_sec.status, hs_sec.locktime, hs_sec.settledVia, hs_sec.createdAt,\n       FROM_UNIXTIME(hs_sec.locktime) as locktime_human,\n       CASE WHEN hs_sec.locktime < UNIX_TIMESTAMP() THEN 'EXPIRED' ELSE CONCAT('active ~', ROUND((hs_sec.locktime - UNIX_TIMESTAMP())/60), 'min left') END as timelock_state\nFROM htlc_secrets hs_sec\nWHERE hs_sec.status = 'pending' AND hs_sec.chain = 'solana'\nORDER BY hs_sec.createdAt DESC\nLIMIT 5;\n",
+  "returncode": 1,
+  "logs": [
+    "ERROR 1054 (42S22) at line 2: Unknown column 'hs_sec.chain' in 'where clause'"
+  ]
+}

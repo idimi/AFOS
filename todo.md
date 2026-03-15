@@ -3251,3 +3251,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add claimTxId and claimedAt columns to htlc_swaps DB table
 - [x] Add helius_claim to VIA_LABELS in SettlementBadge and HeliusWebhookHealthCard
 - [x] Add 35 unit tests covering claim account layout, preimage extraction, and label mapping
+
+## Claim Button Visibility Fix — Only Show for Real Stuck Tokens
+- [ ] Audit all places where Claim button appears (RefundBanner, Refunds tab, Open Trades)
+- [ ] Define strict criteria: Claim only when PDA is active on-chain + timelock expired + swap NOT completed in analytics
+- [ ] Remove Claim button for any HTLC where swap_analytics shows completed status
+- [ ] Remove Claim button for any HTLC where on-chain PDA is closed (already settled)
+- [ ] Show Claim only when myOnChainRefunds returns the HTLC as genuinely claimable
+- [ ] Add clear UX label: "Funds stuck on-chain — recover your tokens" not generic "CLAIMABLE"

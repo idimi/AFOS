@@ -142,13 +142,13 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-amber-300">
           {claimableCount === 1
-            ? "You have 1 claimable refund"
-            : `You have ${claimableCount} claimable refunds`}
+            ? "You have 1 HTLC with stuck funds"
+            : `You have ${claimableCount} HTLCs with stuck funds`}
         </p>
         <p className="text-[10px] text-amber-400/70 truncate">
           {amountStr}
           {totalUsd > 0.01 && ` · ≈ $${totalUsd.toFixed(2)}`}
-          {" · "}HTLCs expired — funds locked on-chain
+          {" · "}Timelock expired — recovery available
         </p>
       </div>
 
@@ -162,7 +162,7 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
           color: "#f59e0b",
         }}
       >
-        Claim Now
+        Recover Funds
         <ArrowRight className="w-3 h-3" />
       </button>
 
