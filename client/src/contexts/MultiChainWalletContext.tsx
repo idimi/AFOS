@@ -1877,7 +1877,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   // If no preference is set, use the last-connected (bitcoin state).
   const activeBitcoin: ChainWallet | null = (() => {
     if (!preferredBtcWallet) return bitcoin;
-    if (preferredBtcWallet === "tap") return bitcoinTap ?? bitcoin;
+    if (preferredBtcWallet === "tap") {
+      // If Tap Wallet is the preferred provider, only return it when it's actually connected.
+      // Do NOT fall back to Phantom/MetaMask — that would show the wrong wallet in the UI
+      // during the reconnect window while Tap Wallet is still initialising.
+      return bitcoinTap?.connected ? bitcoinTap : null;
+    }
     // phantom or metamask
     const nonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
     return nonTap ?? bitcoin;

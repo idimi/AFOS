@@ -3317,3 +3317,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] QuoteCard Confirm button: universal missingFromWallet guard for all chains
 - [x] Show TNK "Receiving to" address with amber ⬡ pill (separate from BTC orange pill)
 - [x] Route badge warning pills: BTC, SOL, ETH missing wallet warnings added (clickable, open modal)
+
+## Destination Wallet Warning + BTC Preference Persistence
+
+- [x] Show amber "Receiving to: connect X wallet" warning below Confirm button when destination wallet is missing for cross-chain swaps (clickable, opens modal to correct chain tab)
+- [x] preferredBtcWallet already persisted in localStorage via loadPreferredBtcWallet/savePreferredBtcWallet helpers — confirmed working
+- [x] Fixed activeBitcoin fallback: when preferredBtcWallet=tap but bitcoinTap not yet reconnected, returns null instead of Phantom (prevents wrong wallet showing during reconnect window)

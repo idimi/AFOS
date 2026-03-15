@@ -574,6 +574,24 @@ function QuoteCard({
                 </p>
               )
             )}
+            {/* Destination wallet missing warning — shown when cross-chain destination wallet is not connected */}
+            {missingToWallet && !isExecuting && !destinationWallet && (
+              <button
+                onClick={() => onOpenWalletModal?.(missingToWallet as SupportedChain)}
+                className="flex items-center justify-center gap-1.5 flex-wrap w-full cursor-pointer"
+                title={`Connect your ${chainLabel(missingToWallet as SupportedChain)} wallet to receive funds`}
+              >
+                <span className="text-[10px] text-amber-400/70">Receiving to</span>
+                <span
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                  style={{ background: "rgba(234,179,8,0.1)", color: "#eab308", border: "1px solid rgba(234,179,8,0.3)" }}
+                >
+                  <span style={{ fontSize: "10px" }}>⚠</span>
+                  <span>Connect {chainLabel(missingToWallet as SupportedChain)} wallet</span>
+                </span>
+                <span className="text-[9px] text-amber-400/50">tap to connect →</span>
+              </button>
+            )}
             {/* Destination wallet hint — shown for cross-chain swaps */}
             {destinationWallet && !isExecuting && (
               data.toChain === "bitcoin" ? (
