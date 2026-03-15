@@ -1,0 +1,65 @@
+{
+  "query": "SELECT rfqId, fromChain, toChain, fromToken, toToken, counterpartyPeerId, initiatorPeerId, status, createdAt FROM htlc_secrets ORDER BY createdAt DESC LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, fromChain, toChain, fromToken, toToken, counterpartyPeerId, initiatorPeerId, status, createdAt FROM htlc_secrets ORDER BY createdAt DESC LIMIT 5;",
+  "rows": [
+    {
+      "rfqId": "rfq_1773602992625_lp-0464c",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "counterpartyPeerId": "lp-0464c13f45",
+      "initiatorPeerId": "lp-a7a25b4fea",
+      "status": "locked",
+      "createdAt": "2026-03-15 19:29:52"
+    },
+    {
+      "rfqId": "rfq_1773599495319_lp-0464c",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "counterpartyPeerId": "lp-0464c13f45",
+      "initiatorPeerId": "lp-a7a25b4fea",
+      "status": "completed",
+      "createdAt": "2026-03-15 18:31:35"
+    },
+    {
+      "rfqId": "rfq_1773597773557_lp-0464c",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "counterpartyPeerId": "lp-0464c13f45",
+      "initiatorPeerId": "lp-a7a25b4fea",
+      "status": "completed",
+      "createdAt": "2026-03-15 18:02:53"
+    },
+    {
+      "rfqId": "rfq_1773593476092_lp-0464c",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "counterpartyPeerId": "lp-0464c13f45",
+      "initiatorPeerId": "lp-a7a25b4fea",
+      "status": "expired",
+      "createdAt": "2026-03-15 16:51:16"
+    },
+    {
+      "rfqId": "rfq_1773556058929_lp-0464c",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "counterpartyPeerId": "lp-0464c13f45",
+      "initiatorPeerId": "lp-a7a25b4fea",
+      "status": "completed",
+      "createdAt": "2026-03-15 06:27:38"
+    }
+  ],
+  "messages": [],
+  "stdout": "rfqId\tfromChain\ttoChain\tfromToken\ttoToken\tcounterpartyPeerId\tinitiatorPeerId\tstatus\tcreatedAt\nrfq_1773602992625_lp-0464c\ttrac_network\tsolana\tTNK\tUSDT\tlp-0464c13f45\tlp-a7a25b4fea\tlocked\t2026-03-15 19:29:52\nrfq_1773599495319_lp-0464c\ttrac_network\tsolana\tTNK\tUSDT\tlp-0464c13f45\tlp-a7a25b4fea\tcompleted\t2026-03-15 18:31:35\nrfq_1773597773557_lp-0464c\ttrac_network\tsolana\tTNK\tUSDT\tlp-0464c13f45\tlp-a7a25b4fea\tcompleted\t2026-03-15 18:02:53\nrfq_1773593476092_lp-0464c\ttrac_network\tsolana\tTNK\tUSDT\tlp-0464c13f45\tlp-a7a25b4fea\texpired\t2026-03-15 16:51:16\nrfq_1773556058929_lp-0464c\ttrac_network\tsolana\tTNK\tUSDT\tlp-0464c13f45\tlp-a7a25b4fea\tcompleted\t2026-03-15 06:27:38\n",
+  "stderr": "",
+  "execution_time_ms": 142
+}

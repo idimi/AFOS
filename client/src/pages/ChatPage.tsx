@@ -2194,6 +2194,9 @@ export default function ChatPage() {
   // Read prefill from Swaps page "Send to Agent" button on mount
   // If afos_chat_autosend is set, auto-send the message immediately
   const hasAutoSentRef = useRef(false);
+  // Cache for afos:htlc-completed events that fire before the swap_progress card is created.
+  // Applied immediately when a matching swap_progress card is injected into messages.
+  const pendingCompletionsRef = useRef<Record<string, { agentBClaimTxId?: string; agentAClaimTxId?: string; chain?: string }>>({});
   useEffect(() => {
     const prefill = sessionStorage.getItem('afos_chat_prefill');
     const autoSend = sessionStorage.getItem('afos_chat_autosend');
@@ -2421,7 +2424,18 @@ export default function ChatPage() {
       // Update the swap_progress card to confirmed phase and store tx hashes
       setMessages(prev => {
         const idx = prev.findIndex(m => m.type === "swap_progress" && m.swapProgressData?.rfqId === data.rfqId);
-        if (idx === -1) return prev; // No matching card in this session — ignore
+        if (idx === -1) {
+          // Card not created yet (race: htlc-completed fired before swap_progress card was injected).
+          // Cache the payload so it can be applied when the card is added.
+          if (data.rfqId) {
+            pendingCompletionsRef.current[data.rfqId] = {
+              agentBClaimTxId: data.agentBClaimTxId,
+              agentAClaimTxId: data.agentAClaimTxId,
+              chain: data.chain,
+            };
+          }
+          return prev;
+        }
         // Guard: if already confirmed, don't append another success message
         if (prev[idx].swapProgressData?.phase === "confirmed") return prev;
         // Guard: if a success message for this rfqId already exists, just update the card phase
@@ -2747,27 +2761,34 @@ export default function ChatPage() {
             initiatedSwapRfqIds.current.add(p2p.rfqId);
             setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
           }
-          setMessages(prev => [...prev, {
-            id: btcProgressMsgId,
-            role: "assistant" as const,
-            content: "",
-            type: "swap_progress" as const,
-            timestamp: Date.now(),
-            swapProgressData: {
-              rfqId:      p2p?.rfqId ?? btcProgressMsgId,
-              fromAmount: quoteData.fromAmount,
-              fromToken:  quoteData.fromToken,
-              toAmount:   p2p?.outAmount ?? quoteData.toAmount,
-              toToken:    quoteData.toToken,
-              phase:      "locking" as const,
-              peerAlias:  peerLabel,
-              expiresAt:  btcHtlcExpiry,
-              rate:       p2p?.rate ?? quoteData.rate,
-              fromChain:  (quoteData.fromChain as string) ?? "bitcoin",
-              toChain:    (quoteData.toChain   as string) ?? "bitcoin",
-              startedAt:  Date.now(),
-            },
-          }]);
+          setMessages(prev => {
+            const rfqId = p2p?.rfqId ?? btcProgressMsgId;
+            const pending = pendingCompletionsRef.current[rfqId];
+            const newCard = {
+              id: btcProgressMsgId,
+              role: "assistant" as const,
+              content: "",
+              type: "swap_progress" as const,
+              timestamp: Date.now(),
+              swapProgressData: {
+                rfqId,
+                fromAmount: quoteData.fromAmount,
+                fromToken:  quoteData.fromToken,
+                toAmount:   p2p?.outAmount ?? quoteData.toAmount,
+                toToken:    quoteData.toToken,
+                phase:      pending ? "confirmed" as const : "locking" as const,
+                peerAlias:  peerLabel,
+                expiresAt:  btcHtlcExpiry,
+                rate:       p2p?.rate ?? quoteData.rate,
+                fromChain:  (quoteData.fromChain as string) ?? "bitcoin",
+                toChain:    (quoteData.toChain   as string) ?? "bitcoin",
+                startedAt:  Date.now(),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+              },
+            };
+            if (pending) delete pendingCompletionsRef.current[rfqId];
+            return [...prev, newCard];
+          });
           setExecutingId(null);
           // Step 4: trigger HTLC lock signing via LightPeerContext — same as Solana
           if (p2p?.rfqId) {
@@ -2875,27 +2896,34 @@ export default function ChatPage() {
             initiatedSwapRfqIds.current.add(p2p.rfqId);
             setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
           }
-          setMessages(prev => [...prev, {
-            id: ethProgressMsgId,
-            role: "assistant" as const,
-            content: "",
-            type: "swap_progress" as const,
-            timestamp: Date.now(),
-            swapProgressData: {
-              rfqId: p2p?.rfqId ?? ethProgressMsgId,
-              fromAmount: quoteData.fromAmount,
-              fromToken: quoteData.fromToken,
-              toAmount: p2p?.outAmount ?? quoteData.toAmount,
-              toToken: quoteData.toToken,
-              phase: "locking" as const,
-              peerAlias: peerLabel,
-              expiresAt: ethHtlcExpiry,
-              rate: p2p?.rate ?? quoteData.rate,
-              fromChain: (quoteData.fromChain as string) ?? "ethereum",
-              toChain: (quoteData.toChain as string) ?? "ethereum",
-              startedAt: Date.now(),
-            },
-          }]);
+          setMessages(prev => {
+            const rfqId = p2p?.rfqId ?? ethProgressMsgId;
+            const pending = pendingCompletionsRef.current[rfqId];
+            const newCard = {
+              id: ethProgressMsgId,
+              role: "assistant" as const,
+              content: "",
+              type: "swap_progress" as const,
+              timestamp: Date.now(),
+              swapProgressData: {
+                rfqId,
+                fromAmount: quoteData.fromAmount,
+                fromToken: quoteData.fromToken,
+                toAmount: p2p?.outAmount ?? quoteData.toAmount,
+                toToken: quoteData.toToken,
+                phase: pending ? "confirmed" as const : "locking" as const,
+                peerAlias: peerLabel,
+                expiresAt: ethHtlcExpiry,
+                rate: p2p?.rate ?? quoteData.rate,
+                fromChain: (quoteData.fromChain as string) ?? "ethereum",
+                toChain: (quoteData.toChain as string) ?? "ethereum",
+                startedAt: Date.now(),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+              },
+            };
+            if (pending) delete pendingCompletionsRef.current[rfqId];
+            return [...prev, newCard];
+          });
           setExecutingId(null);
           if (p2p?.rfqId) {
             void initiateHtlcLock({
@@ -3125,27 +3153,39 @@ export default function ChatPage() {
               initiatedSwapRfqIds.current.add(p2p.rfqId);
               setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
             }
-            setMessages(prev => [...prev, {
-              id: progressMsgId,
-              role: "assistant" as const,
-              content: "",
-              type: "swap_progress" as const,
-              timestamp: Date.now(),
-              swapProgressData: {
-                rfqId: p2p?.rfqId ?? progressMsgId,
-                fromAmount: quoteData.fromAmount,
-                fromToken: quoteData.fromToken,
-                toAmount: p2p?.outAmount ?? quoteData.toAmount,
-                toToken: quoteData.toToken,
-                phase: "locking" as const,
-                peerAlias: peerLabel,
-                expiresAt: htlcExpiry,
-                rate: p2p?.rate ?? quoteData.rate,
-                fromChain: (quoteData.fromChain as string) ?? "trac_network",
-                toChain: (quoteData.toChain as string) ?? "solana",
-                startedAt: Date.now(),
-              },
-            }]);
+            setMessages(prev => {
+              const rfqId = p2p?.rfqId ?? progressMsgId;
+              const pending = pendingCompletionsRef.current[rfqId];
+              const newCard = {
+                id: progressMsgId,
+                role: "assistant" as const,
+                content: "",
+                type: "swap_progress" as const,
+                timestamp: Date.now(),
+                swapProgressData: {
+                  rfqId,
+                  fromAmount: quoteData.fromAmount,
+                  fromToken: quoteData.fromToken,
+                  toAmount: p2p?.outAmount ?? quoteData.toAmount,
+                  toToken: quoteData.toToken,
+                  // If a completion event already fired, start in confirmed state
+                  phase: pending ? "confirmed" as const : "locking" as const,
+                  peerAlias: peerLabel,
+                  expiresAt: htlcExpiry,
+                  rate: p2p?.rate ?? quoteData.rate,
+                  fromChain: (quoteData.fromChain as string) ?? "trac_network",
+                  toChain: (quoteData.toChain as string) ?? "solana",
+                  startedAt: Date.now(),
+                  ...(pending ? {
+                    agentBClaimTxId: pending.agentBClaimTxId,
+                    agentAClaimTxId: pending.agentAClaimTxId,
+                    confirmedAt: Date.now(),
+                  } : {}),
+                },
+              };
+              if (pending) delete pendingCompletionsRef.current[rfqId];
+              return [...prev, newCard];
+            });
             setExecutingId(null);
             if (p2p?.rfqId) {
               void initiateHtlcLock({
@@ -3230,27 +3270,34 @@ export default function ChatPage() {
             initiatedSwapRfqIds.current.add(p2p.rfqId);
             setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
           }
-          setMessages(prev => [...prev, {
-            id: tnkBtcProgressMsgId,
-            role: "assistant" as const,
-            content: "",
-            type: "swap_progress" as const,
-            timestamp: Date.now(),
-            swapProgressData: {
-              rfqId:      p2p?.rfqId ?? tnkBtcProgressMsgId,
-              fromAmount: quoteData.fromAmount,
-              fromToken:  quoteData.fromToken,
-              toAmount:   p2p?.outAmount ?? quoteData.toAmount,
-              toToken:    quoteData.toToken,
-              phase:      "locking" as const,
-              peerAlias:  peerLabel,
-              expiresAt:  tnkBtcHtlcExpiry,
-              rate:       p2p?.rate ?? quoteData.rate,
-              fromChain:  "trac_network",
-              toChain:    (quoteData.toChain as string) ?? "bitcoin",
-              startedAt:  Date.now(),
-            },
-          }]);
+          setMessages(prev => {
+            const rfqId = p2p?.rfqId ?? tnkBtcProgressMsgId;
+            const pending = pendingCompletionsRef.current[rfqId];
+            const newCard = {
+              id: tnkBtcProgressMsgId,
+              role: "assistant" as const,
+              content: "",
+              type: "swap_progress" as const,
+              timestamp: Date.now(),
+              swapProgressData: {
+                rfqId,
+                fromAmount: quoteData.fromAmount,
+                fromToken:  quoteData.fromToken,
+                toAmount:   p2p?.outAmount ?? quoteData.toAmount,
+                toToken:    quoteData.toToken,
+                phase:      pending ? "confirmed" as const : "locking" as const,
+                peerAlias:  peerLabel,
+                expiresAt:  tnkBtcHtlcExpiry,
+                rate:       p2p?.rate ?? quoteData.rate,
+                fromChain:  "trac_network",
+                toChain:    (quoteData.toChain as string) ?? "bitcoin",
+                startedAt:  Date.now(),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+              },
+            };
+            if (pending) delete pendingCompletionsRef.current[rfqId];
+            return [...prev, newCard];
+          });
           setExecutingId(null);
           if (p2p?.rfqId) {
             void initiateHtlcLock({
@@ -3359,27 +3406,34 @@ export default function ChatPage() {
           initiatedSwapRfqIds.current.add(p2p.rfqId);
           setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
         }
-        setMessages(prev => [...prev, {
-          id: progressMsgId,
-          role: "assistant" as const,
-          content: "",
-          type: "swap_progress" as const,
-          timestamp: Date.now(),
-          swapProgressData: {
-            rfqId: p2p?.rfqId ?? progressMsgId,
-            fromAmount: quoteData.fromAmount,
-            fromToken: quoteData.fromToken,
-            toAmount: p2p?.outAmount ?? quoteData.toAmount,
-            toToken: quoteData.toToken,
-            phase: "locking" as const,
-            peerAlias: peerLabel,
-            expiresAt: htlcExpiry,
-            rate: p2p?.rate ?? quoteData.rate,
-            fromChain: (quoteData.fromChain as string) ?? "solana",
-            toChain: (quoteData.toChain as string) ?? "solana",
-            startedAt: Date.now(),
-          },
-        }]);
+        setMessages(prev => {
+          const rfqId = p2p?.rfqId ?? progressMsgId;
+          const pending = pendingCompletionsRef.current[rfqId];
+          const newCard = {
+            id: progressMsgId,
+            role: "assistant" as const,
+            content: "",
+            type: "swap_progress" as const,
+            timestamp: Date.now(),
+            swapProgressData: {
+              rfqId,
+              fromAmount: quoteData.fromAmount,
+              fromToken: quoteData.fromToken,
+              toAmount: p2p?.outAmount ?? quoteData.toAmount,
+              toToken: quoteData.toToken,
+              phase: pending ? "confirmed" as const : "locking" as const,
+              peerAlias: peerLabel,
+              expiresAt: htlcExpiry,
+              rate: p2p?.rate ?? quoteData.rate,
+              fromChain: (quoteData.fromChain as string) ?? "solana",
+              toChain: (quoteData.toChain as string) ?? "solana",
+              startedAt: Date.now(),
+              ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+            },
+          };
+          if (pending) delete pendingCompletionsRef.current[rfqId];
+          return [...prev, newCard];
+        });
         setExecutingId(null);
         // Bug 5 fix: trigger HTLC lock signing for Agent A via LightPeerContext
         console.error("[HTLC-DEBUG] About to call initiateHtlcLock", { rfqId: p2p?.rfqId, hasInitiateHtlcLock: typeof initiateHtlcLock });

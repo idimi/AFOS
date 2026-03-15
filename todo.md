@@ -3384,3 +3384,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Bug Fix: TNK HTLC Wrong Counterparty Address (Mar 15, 2026)
 - [ ] Bug: TNK→USDT HTLC lock passes Solana address as counterpartyWallet to Tap Wallet instead of peer's trac_network address — Tap Wallet rejects with "Invalid TRAC address format"
+
+## TNK→USDT Swap Flow Fixes (from screenshot 2026-03-15)
+
+- [ ] Fix: counterpartyPeerId missing in TNK acceptRfq path — "No counterpartyPeerId for rfqId=rfq_1773 — skipping P2P signal"
+- [ ] Fix: auto-reveal loop retries but has no counterpartyPeerId to send secret to (server handles on-chain claims fallback)
+- [ ] Fix: initiateHtlcLock called with chain=trac_network but toChain=solana mismatch — Agent B locks on wrong chain
+- [ ] Fix: acceptRfq passes hasSignaling:true but sendToPeer fails silently when counterpartyPeerId not stored
+- [ ] Fix: agentAWallet stored but counterpartyPeerId not persisted in htlc_secrets during TNK acceptRfq
