@@ -2409,8 +2409,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             toast.error("BTC HTLC lock failed", { description: msg.slice(0, 80) });
           }
         }
-      } else if ((chain === "trac_network" || rfq.fromToken === "TNK") && (window as any).tracnetwork) {
+      } else if ((chain === "trac_network" || rfq.fromToken === "TNK") && ((window as any).tracnetwork || (window as any).tapprotocol)) {
         // TNK (Trac Network) HTLC: agent-escrow model using window.tracnetwork.sendTNK()
+        // Note: Tap Wallet may inject as window.tapprotocol (BTC) AND/OR window.tracnetwork (TNK) — check both
         setHtlcSigning(prev => prev ? { ...prev, step: "locking" } : { rfqId, step: "locking" });
         try {
           // Use Agent A's secretHashHex if provided (ensures atomicity), otherwise generate own
@@ -2749,9 +2750,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ "0": { json: { rfqId, type: "claimed", chain: "bitcoin" } } }),
         }).catch(() => {});
         setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
-      } else if ((claimChain === "trac_network" || claimChain === "tnk") && (window as any).tracnetwork) {
+      } else if ((claimChain === "trac_network" || claimChain === "tnk") && ((window as any).tracnetwork || (window as any).tapprotocol)) {
         // TNK claim: reveal secret to the AFOS agent escrow via signMessage
-        const tap = (window as any).tracnetwork;
+        const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
         const claimMessage = `AFOS-HTLC-CLAIM:${secretHex}:${rfqId}`;
         const sigResult = await tap.signMessage(claimMessage);
         const sig = typeof sigResult === "string" ? sigResult : sigResult?.signature ?? "";
@@ -2928,8 +2929,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         }).catch(() => {});
         setRefundedRfqIds(prev => new Set([...Array.from(prev), rfqId]));
         setRefundableHtlcs(prev => { const next = { ...prev }; delete next[rfqId]; return next; });
-      } else if ((refundChain === "trac_network" || refundChain === "tnk") && (window as any).tracnetwork) {
-        const tap = (window as any).tracnetwork;
+      } else if ((refundChain === "trac_network" || refundChain === "tnk") && ((window as any).tracnetwork || (window as any).tapprotocol)) {
+        const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
         const refundMessage = `AFOS-HTLC-REFUND:${rfqId}`;
         const sigResult = await tap.signMessage(refundMessage);
         const sig = typeof sigResult === "string" ? sigResult : sigResult?.signature ?? "";

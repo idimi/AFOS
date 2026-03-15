@@ -2055,6 +2055,8 @@ export default function ChatPage() {
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
   const [acceptedRfqIds, setAcceptedRfqIds] = useState<Set<string>>(new Set());
   const [declinedRfqIds, setDeclinedRfqIds] = useState<Set<string>>(new Set());
+  // Track rfqIds that Agent A (this user) initiated — suppress incoming_rfq cards for these
+  const initiatedSwapRfqIds = useRef<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2129,6 +2131,9 @@ export default function ChatPage() {
       // Skip RFQs that we ourselves initiated — broadcastRfqToAll sends to all peers
       // including the sender, so we must filter out our own RFQs here
       if (rfq.requesterPeerId && rfq.requesterPeerId === myPeerId) return;
+      // Secondary guard: if we already have a swap_progress card for this rfqId,
+      // this is our own swap echoed back (e.g. via rfq_broadcast or pollInbox) — suppress it
+      if (initiatedSwapRfqIds.current.has(rfq.rfqId)) return;
       const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
       addMessage({
         role: "assistant",
@@ -2645,6 +2650,8 @@ export default function ChatPage() {
           // Inject swap progress card for live tracking
           const ethProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
           const ethHtlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
+          // Track this rfqId so we suppress the echo-back incoming_rfq card
+          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
           setMessages(prev => [...prev, {
             id: ethProgressMsgId,
             role: "assistant" as const,
@@ -2876,6 +2883,8 @@ export default function ChatPage() {
             // Inject swap progress card for live tracking
             const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
             const htlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
+            // Track this rfqId so we suppress the echo-back incoming_rfq card
+            if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
             setMessages(prev => [...prev, {
               id: progressMsgId,
               role: "assistant" as const,
@@ -3009,6 +3018,8 @@ export default function ChatPage() {
         const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
         // Use the actual HTLC timelock from server (1 hour), not a hardcoded 10 min
         const htlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
+        // Track this rfqId so we suppress the echo-back incoming_rfq card
+        if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
         setMessages(prev => [...prev, {
           id: progressMsgId,
           role: "assistant" as const,

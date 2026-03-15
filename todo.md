@@ -3353,3 +3353,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Auto-dismiss incoming RFQ card to "Locking funds…" spinner state after Agent B clicks Accept (prevent double-clicks)
 - [x] Add "Waiting for peer" broadcast status message after Agent A confirms AFOS P2P swap (before peer accepts)
 - [x] Wire BTC AFOS P2P handler to unified swap_progress + initiateHtlcLock pattern (ETH already done); BTC P2P uses executeBtcSwap directly for now, will follow same pattern when BTC P2P matching is added
+
+## Critical TNK P2P Swap Bugs (Mar 15, 2026)
+
+- [ ] Bug 1: Agent A still sees "AFOS Agent P2P Match" card — requesterPeerId guard not working (myPeerId may be undefined when check runs)
+- [ ] Bug 2: Tap Wallet never opens to sign TNK HTLC lock — acceptRfq hits early return ("passed early return check" in debug console)

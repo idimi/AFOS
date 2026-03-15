@@ -137,22 +137,30 @@ export default function TapWalletSignCard({
     }
   }, [htlcStatusQuery.data?.status, signState, onSettled]);
 
-  // Auto-sign via window.tapwallet if available
+  // Auto-sign via Tap Wallet if available.
+  // Tries three APIs in priority order:
+  //   1. window.tapwallet.tracnetwork.submitContractTx (newest Tap Wallet API)
+  //   2. window.tracnetwork.signTracTx (mid-generation Tap Wallet API)
+  //   3. window.tapprotocol.signTracTx (older Tap Wallet API)
   const tryAutoSign = useCallback(async () => {
     if (autoSignAttempted) return;
     setAutoSignAttempted(true);
-    const tapTrac = (window as unknown as {
-      tapwallet?: {
-        tracnetwork?: {
-          submitContractTx?: (payload: unknown) => Promise<{ txHash?: string; success?: boolean; error?: string }>;
-        };
-      };
-    }).tapwallet?.tracnetwork;
-    if (!tapTrac?.submitContractTx) return; // Not available — user must use QR/deep-link
+    type SignFn = (p: unknown) => Promise<{ txHash?: string; success?: boolean; error?: string }>;
+    const win = window as unknown as {
+      tapwallet?: { tracnetwork?: { submitContractTx?: SignFn } };
+      tracnetwork?: { signTracTx?: SignFn };
+      tapprotocol?: { signTracTx?: SignFn };
+    };
+    // Resolve the best available signing function
+    const submitFn: SignFn | undefined =
+      (win.tapwallet?.tracnetwork?.submitContractTx?.bind(win.tapwallet.tracnetwork)) ??
+      (win.tracnetwork?.signTracTx?.bind(win.tracnetwork)) ??
+      (win.tapprotocol?.signTracTx?.bind(win.tapprotocol));
+    if (!submitFn) return; // Not available — user must use QR/deep-link
     try {
       setSignState("signing");
       const tnkLockData = JSON.parse(Buffer.from(tnkLockTxPayload, "base64").toString("utf-8")) as unknown;
-      const result = await tapTrac.submitContractTx(tnkLockData);
+      const result = await submitFn(tnkLockData);
       if (result?.error) throw new Error(result.error);
       const hash = result?.txHash ?? "pending";
       setTxHash(hash);
@@ -174,6 +182,46 @@ export default function TapWalletSignCard({
   useEffect(() => {
     void tryAutoSign();
   }, [tryAutoSign]);
+
+  // Direct Tap Wallet sign — triggers the wallet popup immediately via sendTNK
+  // Used when auto-sign is not available (no submitContractTx/signTracTx API)
+  const handleDirectSign = useCallback(async () => {
+    const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
+    if (!tap) {
+      toast.error("Tap Wallet not detected", {
+        description: "Please install the Tap Wallet browser extension.",
+      });
+      return;
+    }
+    try {
+      setSignState("signing");
+      // Parse the payload to extract HTLC parameters
+      const tnkLockData = JSON.parse(Buffer.from(tnkLockTxPayload, "base64").toString("utf-8")) as {
+        to?: string; amount?: string; secretHash?: string; htlcId?: string;
+      };
+      const toAddress = tnkLockData.to ?? "";
+      const amount = tnkLockData.amount ?? String(tnkAmount ?? 0);
+      // Trigger the Tap Wallet popup via sendTNK
+      const result = await tap.sendTNK(toAddress, amount);
+      if (!result?.success && !result?.txHash) throw new Error(result?.error ?? "TNK send failed");
+      const hash = result?.txHash ?? "pending";
+      setTxHash(hash);
+      setSignState("signed");
+      toast.success("TNK lock submitted!", {
+        description: `Tx: ${hash.slice(0, 14)}… — ${toToken} will be released automatically.`,
+      });
+      onSigned?.(hash);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
+        setSignState("pending");
+        toast.info("Transaction cancelled");
+      } else {
+        setSignState("pending");
+        toast.error("TNK sign failed", { description: msg.slice(0, 80) });
+      }
+    }
+  }, [tnkLockTxPayload, tnkAmount, toToken, onSigned]);
 
   const handleCopy = async () => {
     try {
@@ -342,6 +390,15 @@ export default function TapWalletSignCard({
         </div>
       </div>
 
+       {/* Primary sign button — triggers Tap Wallet popup directly */}
+      <Button
+        size="sm"
+        className="w-full bg-orange-500 hover:bg-orange-600 text-white gap-1.5 font-semibold"
+        onClick={handleDirectSign}
+      >
+        <LockIcon className="w-3.5 h-3.5" />
+        Sign with Tap Wallet
+      </Button>
       {/* Action buttons */}
       <div className="grid grid-cols-2 gap-2">
         {/* Deep-link button */}
@@ -354,7 +411,6 @@ export default function TapWalletSignCard({
           <Smartphone className="w-3.5 h-3.5" />
           Open Tap Wallet
         </Button>
-
         {/* QR toggle */}
         <Button
           variant="outline"
