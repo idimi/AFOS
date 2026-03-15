@@ -2501,6 +2501,12 @@ export default function ChatPage() {
     const searchingMsgId = `searching-${Date.now()}`;
     const peerCount = remotePeers.length;
     if (isSwapIntent) {
+      // Remove any pending (unconfirmed) quote_card from a previous swap request
+      // so the new quote replaces it rather than stacking below it.
+      // Only remove cards that are NOT currently executing (executingId guard).
+      setMessages(prev => prev.filter(m => m.type !== "quote_card" || m.id === executingId));
+    }
+    if (isSwapIntent) {
       addMessage({
         id: searchingMsgId,
         role: "assistant",
