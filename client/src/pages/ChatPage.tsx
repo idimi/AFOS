@@ -1303,20 +1303,30 @@ function SwapProgressCard({
             </p>
           </div>
         )}
-        {/* ── Dismiss button (shown when failed, expired, or confirmed) ── */}
-        {(isFailed || isDone) && onDismiss && (
+        {/* ── Dismiss button (always shown so users can clear stuck cards) ── */}
+        {onDismiss && (
           <div className="flex justify-end pt-1">
             <button
               onClick={onDismiss}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all hover:opacity-90 active:scale-95"
               style={{
-                background: isFailed ? "rgba(248,113,113,0.08)" : "rgba(52,211,153,0.08)",
-                border: `1px solid ${isFailed ? "rgba(248,113,113,0.25)" : "rgba(52,211,153,0.25)"}`,
-                color: isFailed ? "#f87171" : "#34d399",
+                background: isFailed
+                  ? "rgba(248,113,113,0.08)"
+                  : isDone
+                  ? "rgba(52,211,153,0.08)"
+                  : "rgba(255,255,255,0.04)",
+                border: `1px solid ${
+                  isFailed
+                    ? "rgba(248,113,113,0.25)"
+                    : isDone
+                    ? "rgba(52,211,153,0.25)"
+                    : "rgba(255,255,255,0.1)"
+                }`,
+                color: isFailed ? "#f87171" : isDone ? "#34d399" : "rgba(255,255,255,0.35)",
               }}
             >
               <span style={{ fontSize: "10px" }}>✕</span>
-              <span>Dismiss</span>
+              <span>{isFailed || isDone ? "Dismiss" : "Clear"}</span>
             </button>
           </div>
         )}
