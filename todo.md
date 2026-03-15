@@ -3302,3 +3302,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix deriveWalletForChain: removed BTC address fallback for trac_network
 - [x] Fix chain badge: "TNK→SOL" misleading when output is USDT — ChainPill now shows "USDT" with chain superscript badge
 - [x] Improve USDT chain disambiguation UX: USDT colored by destination chain (purple=SOL, blue=ETH) with tiny chain badge
+
+## Swap Quote + HTLC Card Polish
+
+- [x] HTLC progress card: stablecoin chain-coloring applied inline (isStablecoinOut shows token+chain badge like ChainPill)
+- [x] "You send" pill: short address already shown via tnkAddr (confirmed in code review)
+- [x] TNK swap: yellow "Connect Trac wallet to sign" warning pill shown in route badges + Confirm button disabled with amber styling when tnkWallet not connected

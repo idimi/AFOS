@@ -271,6 +271,10 @@ function QuoteCard({
   const { ethereum: activeEthereum, tracNetwork: activeTnk, phantomMultiChain } = useMultiChainWallet();
   const { shortAddress: solShortAddress } = useWallet();
 
+  // TNK swap: warn when Trac wallet is not connected
+  const isTnkSwap = data.fromChain === "trac_network";
+  const tnkWalletMissing = isTnkSwap && !activeTnk?.connected;
+
   /** Derive wallet info for a given chain */
   const deriveWalletForChain = (chain: SupportedChain | undefined): { name: string; address: string } | null => {
     const c = chain ?? "solana";
@@ -497,15 +501,24 @@ function QuoteCard({
           <div className="flex-1 flex flex-col gap-1">
             <button
               onClick={onConfirm}
-              disabled={isExecuting}
+              disabled={isExecuting || tnkWalletMissing}
               className="w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+              title={tnkWalletMissing ? "Connect your Trac wallet (Tap Wallet) before confirming" : undefined}
               style={{
-                background: isExecuting ? "rgba(16,185,129,0.1)" : "linear-gradient(135deg, #9945FF, #14F195)",
-                color: isExecuting ? "#10b981" : "white",
-                border: isExecuting ? "1px solid rgba(16,185,129,0.3)" : "none",
+                background: tnkWalletMissing
+                  ? "rgba(234,179,8,0.08)"
+                  : isExecuting ? "rgba(16,185,129,0.1)" : "linear-gradient(135deg, #9945FF, #14F195)",
+                color: tnkWalletMissing ? "#eab308" : isExecuting ? "#10b981" : "white",
+                border: tnkWalletMissing
+                  ? "1px solid rgba(234,179,8,0.35)"
+                  : isExecuting ? "1px solid rgba(16,185,129,0.3)" : "none",
+                opacity: tnkWalletMissing ? 0.7 : 1,
+                cursor: tnkWalletMissing ? "not-allowed" : undefined,
               }}>
               {isExecuting ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Signing…</>
+              ) : tnkWalletMissing ? (
+                <><span style={{ fontSize: "12px" }}>⚠</span> Connect Trac wallet to sign</>
               ) : (
                 <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm Swap</>
               )}
@@ -993,6 +1006,10 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
   const toChainLabel   = CHAIN_LABELS[data.toChain   ?? "solana"] ?? (data.toChain?.toUpperCase()   ?? "SOL");
   const isCrossChain   = data.fromChain && data.toChain && data.fromChain !== data.toChain;
 
+  // Stablecoin chain disambiguation — same logic as ChainPill
+  const isStablecoinOut = data.toToken && STABLECOINS.has(data.toToken.toUpperCase());
+  const isStablecoinIn  = data.fromToken && STABLECOINS.has(data.fromToken.toUpperCase());
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -1082,7 +1099,22 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
                 <span className="ml-1 text-xs font-semibold" style={{ color: toChainColor }}>{data.toToken}</span>
               </span>
               {isCrossChain && (
-                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${toChainColor}18`, color: toChainColor }}>{toChainLabel}</span>
+                isStablecoinOut ? (
+                  // Stablecoin: show chain badge inline with token name for disambiguation
+                  <span className="flex items-center gap-0.5 mt-0.5">
+                    <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: `${toChainColor}18`, color: toChainColor }}>
+                      {data.toToken}
+                    </span>
+                    <span
+                      className="text-[8px] font-bold px-0.5 py-px rounded"
+                      style={{ background: `${toChainColor}20`, color: toChainColor, border: `1px solid ${toChainColor}40`, lineHeight: 1 }}
+                    >
+                      {toChainLabel}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full mt-0.5 w-fit" style={{ background: `${toChainColor}18`, color: toChainColor }}>{toChainLabel}</span>
+                )
               )}
             </div>
           </div>
@@ -1479,7 +1511,19 @@ function MessageBubble({
                   // TNK swap: show Trac Network address (NOT the BTC address)
                   const tnkAddr = tnkWallet?.connected ? tnkWallet.shortAddress : null;
                   const tnkName = tnkWallet?.connected ? (tnkWallet.walletName ?? 'Tap Wallet') : null;
-                  if (!tnkName) return null;
+                  if (!tnkName) {
+                    // Wallet not connected — show yellow warning so user knows what's missing
+                    return (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{ background: "rgba(234,179,8,0.12)", color: "#eab308", border: "1px solid rgba(234,179,8,0.35)" }}
+                        title="Connect your Tap Wallet to sign this TNK swap"
+                      >
+                        <span style={{ fontSize: "9px" }}>⚠</span>
+                        <span>Connect Trac wallet to sign</span>
+                      </span>
+                    );
+                  }
                   return (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
