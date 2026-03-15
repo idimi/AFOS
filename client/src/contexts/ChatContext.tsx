@@ -58,8 +58,6 @@ export interface ChatMessage {
   routeBadge?: "p2p" | "dex";
   /** Matched peer alias for P2P quote cards */
   matchedPeerAlias?: string;
-  /** Counterparty wallet addresses from P2P peer matching — used to show peer's receiving address in the P2P badge */
-  counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string };
   /** DEX name used for fallback (e.g. 'Jupiter', '0x', '1inch') */
   dexName?: string;
   /** Live swap progress data — updated in-place as phases advance */

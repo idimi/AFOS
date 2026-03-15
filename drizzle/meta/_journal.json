@@ -127,13 +127,6 @@
       "when": 1773460832109,
       "tag": "0017_hesitant_liz_osborn",
       "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "5",
-      "when": 1773535074978,
-      "tag": "0018_boring_joystick",
-      "breakpoints": true
     }
   ]
 }

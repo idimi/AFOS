@@ -84,8 +84,6 @@ interface MultiChainWalletContextValue {
   erc20Balances: EthErc20Balances;
   /** Phantom multi-chain state — non-null when Phantom is connected */
   phantomMultiChain: PhantomMultiChainState | null;
-  /** Phantom BTC balance fetched independently from mempool — available even when Tap Wallet is the active BTC wallet */
-  phantomBtcBalance: { balance: string; balanceUsd: number } | null;
   connectEthereum: (provider: EthProviderType) => Promise<void>;
   connectBitcoin: (provider: BtcProviderType) => Promise<void>;
   /** Connect Phantom across all supported chains at once */
@@ -422,17 +420,8 @@ type WalletSession = {
   phantom?: true;          // Phantom multi-chain was connected
 };
 
-/**
- * Merge new session data into the existing session (additive, not overwriting).
- * This allows multiple wallets (e.g., Phantom + Tap Wallet) to be persisted
- * simultaneously so all can be auto-reconnected on next page load.
- */
 function saveWalletSession(session: WalletSession) {
-  try {
-    const existing = loadWalletSession() ?? {};
-    const merged: WalletSession = { ...existing, ...session };
-    localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(merged));
-  } catch (_) {}
+  try { localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(session)); } catch (_) {}
 }
 
 function loadWalletSession(): WalletSession | null {
@@ -444,24 +433,6 @@ function loadWalletSession(): WalletSession | null {
 
 function clearWalletSession() {
   try { localStorage.removeItem(WALLET_SESSION_KEY); } catch (_) {}
-}
-
-/**
- * Remove only specific wallet keys from the session without clearing other wallets.
- * Used when one wallet disconnects while others remain connected.
- */
-function removeFromWalletSession(keys: (keyof WalletSession)[]) {
-  try {
-    const existing = loadWalletSession();
-    if (!existing) return;
-    const updated = { ...existing };
-    for (const key of keys) delete updated[key];
-    if (Object.keys(updated).length === 0) {
-      localStorage.removeItem(WALLET_SESSION_KEY);
-    } else {
-      localStorage.setItem(WALLET_SESSION_KEY, JSON.stringify(updated));
-    }
-  } catch (_) {}
 }
 
 /** Persist the user’s preferred BTC wallet to localStorage */
@@ -508,9 +479,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const connectEthereumRef = React.useRef<((p: EthProviderType) => Promise<void>) | null>(null);
   const connectBitcoinRef = React.useRef<((p: BtcProviderType) => Promise<void>) | null>(null);
   const connectPhantomRef = React.useRef<(() => Promise<void>) | null>(null);
-  // Set to true after the auto-reconnect useEffect completes (or if there is no session to restore).
-  // Guards the stale-preference cleanup effect from firing before wallets have had a chance to reconnect.
-  const reconnectCompleteRef = React.useRef<boolean>(false);
 
   // ── Phantom Multi-Chain Connect ─────────────────────────────────────────────
   // Phantom exposes window.phantom.solana, window.phantom.ethereum, window.phantom.bitcoin
@@ -689,13 +657,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     // Clear ETH + BTC state that came from Phantom
     setEthereum(prev => prev?.isPhantom ? null : prev);
     setBitcoin(prev => prev?.isPhantom ? null : prev);
-    setErc20Balances(_prev => {
+    setErc20Balances(prev => {
       // Only clear if ETH was from Phantom
       return { usdc: 0, usdt: 0 };
     });
     setPhantomMultiChain(null);
-    // Remove only Phantom from session — Tap Wallet session should persist
-    removeFromWalletSession(["phantom", "eth"]);
+    clearWalletSession();
     const phantomChains = (phantomMultiChain?.chains ?? ["solana", "ethereum", "bitcoin"]) as ("solana" | "ethereum" | "bitcoin")[];
     showWalletDisconnectedToast("Phantom", phantomChains);
   }, []);
@@ -777,12 +744,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const disconnectEthereum = useCallback(() => {
     setEthereum(null);
     setErc20Balances({ usdc: 0, usdt: 0 });
+    clearWalletSession();
     if (phantomMultiChain) {
       // If Phantom was connected, disconnect all Phantom chains
       disconnectPhantom();
     } else {
-      // MetaMask ETH disconnect — remove only eth from session, keep Tap Wallet session
-      removeFromWalletSession(["eth"]);
       showWalletDisconnectedToast(ethereum?.walletName ?? "Ethereum Wallet", ["ethereum"]);
     }
   }, [phantomMultiChain, disconnectPhantom]);
@@ -931,40 +897,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       });
       return;
     }
-
-    // ── Wake-up ping: ensure the MV3 service worker is alive before calling requestAccount ──
-    // Chrome kills MV3 service workers after ~30s of inactivity. If the SW is dormant,
-    // calling requestAccount() will hang for the full 8s timeout before failing.
-    // Instead, we send a cheap getNetwork() ping first (3s timeout). If it succeeds,
-    // the SW is awake and requestAccount() will work immediately. If it fails, we show
-    // the "sleeping" toast right away without wasting 8 more seconds.
-    const swWakeResult = await (async () => {
-      if (!window.tracnetwork?.getNetwork) return "ok"; // no getNetwork — skip ping, proceed
-      try {
-        await Promise.race([
-          window.tracnetwork.getNetwork(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sw_dormant")), 3000)),
-        ]);
-        return "ok";
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        return msg.includes("sw_dormant") ? "dormant" : "ok"; // non-timeout errors are fine
-      }
-    })();
-
-    if (swWakeResult === "dormant") {
-      // SW is sleeping — show the helpful toast immediately
-      toast.error("Tap Wallet not responding", {
-        description: "The Tap Wallet background service is sleeping. Click the Tap Wallet (₿) icon in your Chrome toolbar to wake it up, then try connecting again.",
-        duration: 15000,
-        action: {
-          label: "Retry",
-          onClick: () => connectTapWallet(),
-        },
-      });
-      return;
-    }
-
     try {
       // ── Step 1: Connect TNK via window.tracnetwork ─────────────────────────────────────
       console.log("[AFOS] Tap Wallet: calling tracnetwork.requestAccount()\u2026");
@@ -1061,7 +993,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       tapAddrs.push({ chain: "trac_network", address: shortAddr(tnkAddress) });
       showWalletConnectedToast("Tap Wallet", tapAddrs);
 
-      // ── accountsChanged: update TNK address when user switches accounts ─────────────────
+      // ── accountsChanged: update TNK address when user switches accounts ─────────────
       window.tracnetwork?.on?.("accountsChanged", async (...args: unknown[]) => {
         const newAccounts = args[0] as string[] | string | undefined;
         const newAddress = Array.isArray(newAccounts) ? newAccounts[0] : newAccounts;
@@ -1080,8 +1012,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             if (newPrefEvt1) showBtcWalletSwitchedToast(remaining?.walletName ?? (remaining?.isPhantom ? "Phantom" : "MetaMask"));
             return prev;
           });
-          // Only remove Tap Wallet from session — Phantom session should persist
-          removeFromWalletSession(["btc"]);
+          clearWalletSession();
           showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
           return;
         }
@@ -1208,23 +1139,20 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         setTracNetwork(null);
         setBitcoinTap(null);
         // Tap Wallet BTC disconnected — fall back to Phantom/MetaMask BTC if still connected
-        // (bitcoin state here is the active wallet; if it's Tap Wallet, check if Phantom/MetaMask BTC exists)
+        // (bitcoin state here is the active wallet; if it’s Tap Wallet, check if Phantom/MetaMask BTC exists)
         const phantomOrMmBtc = bitcoin?.walletName !== "Tap Wallet" && bitcoin?.connected;
         const newPrefA = phantomOrMmBtc ? (bitcoin?.isPhantom ? "phantom" : "metamask") : null;
         setPreferredBtcWallet(newPrefA);
         if (newPrefA) showBtcWalletSwitchedToast(bitcoin?.walletName ?? (bitcoin?.isPhantom ? "Phantom" : "MetaMask"));
-        // Remove Tap Wallet from session — Phantom session should persist
-        removeFromWalletSession(["btc"]);
       } else {
         // Phantom/MetaMask BTC disconnected — fall back to Tap Wallet BTC if still connected
         const tapStillConnected = (bitcoinTap as ChainWallet | null)?.connected ?? false;
         const newPrefB = tapStillConnected ? "tap" : null;
         setPreferredBtcWallet(newPrefB);
         if (newPrefB) showBtcWalletSwitchedToast("Tap Wallet");
-        // Remove MetaMask BTC from session — Tap Wallet session should persist
-        removeFromWalletSession(["btc"]);
       }
       setBitcoin(null);
+      clearWalletSession();
       if (isTap) {
         showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
       } else {
@@ -1244,8 +1172,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     const newPrefTnk = phantomOrMmStillConnected ? (remainingBtc?.isPhantom ? "phantom" : "metamask") : null;
     setPreferredBtcWallet(newPrefTnk);
     if (newPrefTnk) showBtcWalletSwitchedToast(remainingBtc?.walletName ?? (remainingBtc?.isPhantom ? "Phantom" : "MetaMask"));
-    // Remove Tap Wallet from session — Phantom session should persist
-    removeFromWalletSession(["btc"]);
+    clearWalletSession();
     showWalletDisconnectedToast("Tap Wallet", isTap ? ["bitcoin", "trac_network"] : ["trac_network"]);
   }, [tracNetwork, bitcoin]);
 
@@ -1260,21 +1187,19 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
   const silentRestoreTapWallet = useCallback(async () => {
     const detected = await waitForTracNetwork(5000);
     if (!detected) {
-      console.log("[AFOS] Silent Tap Wallet restore: extension not detected, removing btc from session");
-      // Only remove Tap Wallet from session — Phantom session should persist
-      removeFromWalletSession(["btc"]);
+      console.log("[AFOS] Silent Tap Wallet restore: extension not detected, clearing session");
+      clearWalletSession();
       return;
     }
     try {
-      // ── Restore TNK via window.tracnetwork ──────────────────────────────────────────────
+      // ── Restore TNK via window.tracnetwork ──────────────────────────────────
       const tnkAddress = await withTimeout(
         window.tracnetwork!.getAddress(),
         10000,
         "tracnetwork.getAddress() [silent restore]"
       );
       if (!tnkAddress) {
-        // Only remove Tap Wallet from session — Phantom session should persist
-        removeFromWalletSession(["btc"]);
+        clearWalletSession();
         return;
       }
       const [rawBalance, tnkPriceUsd] = await Promise.all([
@@ -1364,8 +1289,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
             if (newPrefEvt2) showBtcWalletSwitchedToast(remaining?.walletName ?? (remaining?.isPhantom ? "Phantom" : "MetaMask"));
             return prev;
           });
-          // Only remove Tap Wallet from session — Phantom session should persist
-          removeFromWalletSession(["btc"]);
+          clearWalletSession();
           showWalletDisconnectedToast("Tap Wallet", ["bitcoin", "trac_network"]);
           return;
         }
@@ -1386,286 +1310,61 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       });
     } catch (err) {
       console.warn("[AFOS] Silent Tap Wallet restore failed:", err);
-      // Only remove Tap Wallet from session — Phantom session should persist
-      removeFromWalletSession(["btc"]);
+      clearWalletSession();
     }
   }, [waitForTracNetwork]);
 
-  // ── Silent Phantom restore (no popup) ─────────────────────────────────────
-  // Mirrors silentRestoreTapWallet: polls for window.phantom injection (up to 3s),
-  // then uses connect({ onlyIfTrusted: true }) — the official Phantom silent reconnect
-  // API that returns the public key if already authorised and throws if not.
-  // ETH is restored via eth_accounts (read-only). BTC via requestAccounts (already silent).
-  const silentRestorePhantom = useCallback(async () => {
-    // ── Step 1: Wait for window.phantom to be injected ──────────────────────
-    const waitForPhantom = (ms = 3000): Promise<boolean> => {
-      if (window.phantom?.solana) return Promise.resolve(true);
-      return new Promise<boolean>(resolve => {
-        let resolved = false;
-        const done = (found: boolean, via: string) => {
-          if (resolved) return;
-          resolved = true;
-          clearInterval(interval);
-          if (found) console.log(`[AFOS] Phantom: detected via ${via}`);
-          else console.warn(`[AFOS] Phantom: not detected after ${ms}ms`);
-          resolve(found);
-        };
-        let elapsed = 0;
-        const step = 100;
-        const interval = setInterval(() => {
-          elapsed += step;
-          if (window.phantom?.solana) done(true, `poll after ${elapsed}ms`);
-          else if (elapsed >= ms) done(false, "timeout");
-        }, step);
-      });
-    };
-
-    const detected = await waitForPhantom(3000);
-    if (!detected) {
-      console.log("[AFOS] Silent Phantom restore: extension not detected, removing phantom from session");
-      removeFromWalletSession(["phantom", "eth"]);
-      return;
-    }
-
-    const ph = window.phantom!;
-    const connectedChains: Chain[] = [];
-    let solanaAddress: string | undefined;
-    let ethereumAddress: string | undefined;
-    let bitcoinAddress: string | undefined;
-
-    try {
-      // ── Step 2: Solana — connect({ onlyIfTrusted: true }) ────────────────────
-      // This is the official Phantom silent reconnect API. It resolves immediately
-      // with the public key if the site is already trusted, and throws if not.
-      if (ph.solana?.isPhantom) {
-        try {
-          const resp = await withTimeout(
-            ph.solana.connect({ onlyIfTrusted: true }),
-            5000,
-            "phantom.solana.connect onlyIfTrusted"
-          );
-          solanaAddress = resp.publicKey.toString();
-          connectedChains.push("solana");
-          console.log(`[AFOS] Phantom SOL silently restored: ${shortAddr(solanaAddress)}`);
-        } catch (solErr) {
-          // onlyIfTrusted throws if the user hasn't approved this site yet
-          // or if the user revoked the connection inside Phantom.
-          const msg = solErr instanceof Error ? solErr.message : String(solErr);
-          if (msg.includes("trusted") || msg.includes("not connected") || msg.includes("User rejected")) {
-            console.log("[AFOS] Phantom SOL: not trusted / revoked — clearing session");
-            removeFromWalletSession(["phantom", "eth"]);
-            return;
-          }
-          console.warn("[AFOS] Phantom SOL silent restore failed:", solErr);
-        }
-      }
-
-      // ── Step 3: Ethereum — eth_accounts (read-only, no popup) ────────────────
-      if (ph.ethereum) {
-        try {
-          const accounts = await withTimeout(
-            ph.ethereum.request({ method: "eth_accounts" }) as Promise<string[]>,
-            5000,
-            "phantom.ethereum eth_accounts"
-          );
-          if (accounts?.length) {
-            ethereumAddress = accounts[0];
-            connectedChains.push("ethereum");
-            const [balanceHex, priceUsd, usdcBal, usdtBal] = await Promise.all([
-              ph.ethereum.request({ method: "eth_getBalance", params: [ethereumAddress, "latest"] }) as Promise<string>,
-              fetchEthPriceUsd(),
-              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDC, ethereumAddress, 6),
-              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDT, ethereumAddress, 6),
-            ]);
-            const balanceEth = parseInt(balanceHex, 16) / 1e18;
-            setErc20Balances({ usdc: usdcBal, usdt: usdtBal });
-            setEthereum({
-              chain: "ethereum",
-              walletName: "Phantom",
-              address: ethereumAddress,
-              shortAddress: shortAddr(ethereumAddress),
-              balance: balanceEth.toFixed(4),
-              balanceUsd: balanceEth * priceUsd,
-              symbol: "ETH",
-              connected: true,
-              connecting: false,
-              isPhantom: true,
-            });
-            // Re-register accountsChanged listener
-            ph.ethereum.on?.("accountsChanged", (accs: unknown) => {
-              const newAccs = accs as string[];
-              if (!newAccs?.length) { disconnectPhantom(); }
-              else { setEthereum(prev => prev ? { ...prev, address: newAccs[0], shortAddress: shortAddr(newAccs[0]) } : null); }
-            });
-            console.log(`[AFOS] Phantom ETH silently restored: ${shortAddr(ethereumAddress)}`);
-          }
-        } catch (ethErr) {
-          console.warn("[AFOS] Phantom ETH silent restore failed (non-fatal):", ethErr);
-        }
-      }
-
-      // ── Step 4: Bitcoin — requestAccounts (already silent in Phantom) ─────────
-      if (ph.bitcoin?.isPhantom) {
-        try {
-          const btcAccounts = await withTimeout(
-            ph.bitcoin.requestAccounts(),
-            5000,
-            "phantom.bitcoin.requestAccounts"
-          );
-          const paymentAcc = btcAccounts.find(a => a.purpose === "payment" || a.addressType === "p2wpkh" || a.addressType === "p2tr") ?? btcAccounts[0];
-          if (paymentAcc) {
-            bitcoinAddress = paymentAcc.address;
-            connectedChains.push("bitcoin");
-            const [btcResult, btcPriceUsd] = await Promise.all([
-              fetchBtcBalanceFromMempool(bitcoinAddress),
-              fetchBtcPriceUsd(),
-            ]);
-            const btc = btcResult?.btc ?? "0.00000000";
-            const sats = btcResult?.sats ?? 0;
-            setBitcoin({
-              chain: "bitcoin",
-              walletName: "Phantom",
-              address: bitcoinAddress,
-              shortAddress: shortAddr(bitcoinAddress),
-              balance: btc,
-              balanceUsd: (sats / 1e8) * btcPriceUsd,
-              symbol: "BTC",
-              connected: true,
-              connecting: false,
-              isPhantom: true,
-            });
-            console.log(`[AFOS] Phantom BTC silently restored: ${shortAddr(bitcoinAddress)}`);
-          }
-        } catch (btcErr) {
-          console.warn("[AFOS] Phantom BTC silent restore failed (non-fatal):", btcErr);
-        }
-      }
-
-      if (connectedChains.length === 0) {
-        console.log("[AFOS] Phantom silent restore: no chains reconnected — clearing session");
-        removeFromWalletSession(["phantom", "eth"]);
-        return;
-      }
-
-      // ── Step 5: Update phantomMultiChain state ────────────────────────────────
-      setPhantomMultiChain({
-        connected: true,
-        chains: connectedChains,
-        solanaAddress,
-        ethereumAddress,
-        bitcoinAddress,
-      });
-
-      // Fetch SOL balances in background
-      if (solanaAddress) {
-        fetchSolanaBalancesForAddress(solanaAddress)
-          .then(result => {
-            if (!result) return;
-            setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: result.balances, solanaTotalUsd: result.totalUsd } : null);
-          })
-          .catch(() => {});
-      }
-
-      // Set preferred BTC wallet to Phantom if BTC was connected
-      if (bitcoinAddress) setPreferredBtcWallet("phantom");
-
-      console.log(`[AFOS] Phantom silently restored chains: ${connectedChains.join(", ")}`);
-    } catch (err) {
-      console.warn("[AFOS] Phantom silent restore failed:", err);
-      removeFromWalletSession(["phantom", "eth"]);
-    }
-  }, [disconnectPhantom, setPreferredBtcWallet]);
-
   // ── Auto-reconnect on mount ─────────────────────────────────────────────────────────
-  // Silently restores ALL previously connected wallets on page load without showing any popup.
-  //
-  // For Phantom: uses silentRestorePhantom() which polls for injection + onlyIfTrusted connect.
-  // For MetaMask ETH: uses eth_accounts (read-only, no popup) to verify the session.
-  // For Tap Wallet (BTC + TNK): uses getAddress() (read-only, no popup) via silentRestoreTapWallet.
-  // For MetaMask BTC: calls connectBitcoin which handles its own silent checks.
+  // Silently restores the last wallet session on page load without showing any popup.
+  // For Phantom: checks window.phantom.solana.isConnected (already approved, no prompt).
+  // For ETH: uses eth_accounts (read-only, no popup) to verify the session is still valid.
+  // For BTC Tap Wallet: uses getAddress() (read-only, no popup) via silentRestoreTapWallet.
+  // For BTC MetaMask: calls connect functions which handle their own silent checks.
   useEffect(() => {
     const session = loadWalletSession();
-    if (!session) {
-      // No session to restore — mark reconnect as complete immediately
-      reconnectCompleteRef.current = true;
-      return;
-    }
+    if (!session) return;
 
-    // Kick off reconnect immediately — silentRestorePhantom handles its own injection wait.
-    // Use 0ms delay so Phantom restore starts on the next tick; the function itself polls
-    // for window.phantom injection for up to 3s, so no fixed delay is needed here.
+    // Wait 800ms for wallet extensions to inject into window
     const timer = setTimeout(async () => {
-      const reconnectPromises: Promise<void>[] = [];
-
-      // ── Phantom multi-chain restore ──────────────────────────────────────────
-      if (session.phantom) {
-        reconnectPromises.push(
-          (async () => {
-            try {
-              await silentRestorePhantom();
-            } catch (_) {
-              removeFromWalletSession(["phantom", "eth"]);
-            }
-          })()
-        );
-      } else if (session.eth) {
-        // MetaMask ETH (only when Phantom is not the ETH provider)
-        reconnectPromises.push(
-          (async () => {
-            try {
-              const provider = window.ethereum as { request: (a: { method: string }) => Promise<string[]> } | undefined;
-              if (provider) {
-                const accounts = await provider.request({ method: "eth_accounts" });
-                if (accounts?.length) {
-                  await connectEthereumRef.current?.(session.eth!);
-                } else {
-                  // Authorisation was revoked — remove from session
-                  removeFromWalletSession(["eth"]);
-                }
-              }
-            } catch (_) {
-              removeFromWalletSession(["eth"]);
-            }
-          })()
-        );
-      }
-
-      // ── BTC / Tap Wallet restore (independent of Phantom) ───────────────────
-      if (session.btc && session.btc !== "phantom") {
-        reconnectPromises.push(
-          (async () => {
-            try {
-              if (session.btc === "tap") {
-                // Tap Wallet: silent restore using getAddress() (no popup)
-                await silentRestoreTapWallet();
+      try {
+        if (session.phantom) {
+          // Phantom: reconnect only if the extension reports it is already connected
+          if (window.phantom?.solana?.publicKey) {
+            await connectPhantomRef.current?.();
+          } else {
+            // Session is stale (user revoked in Phantom) — clear it
+            clearWalletSession();
+          }
+        } else {
+          if (session.eth) {
+            // eth_accounts is a read-only call — returns authorised accounts without a popup
+            const provider = window.ethereum as { request: (a: { method: string }) => Promise<string[]> } | undefined;
+            if (provider) {
+              const accounts = await provider.request({ method: "eth_accounts" });
+              if (accounts?.length) {
+                // Accounts still authorised — reconnect silently
+                await connectEthereumRef.current?.(session.eth);
               } else {
-                // MetaMask BTC: attempt reconnect via its connect function
-                await connectBitcoinRef.current?.(session.btc!);
+                // Authorisation was revoked — clear stale session
+                clearWalletSession();
               }
-            } catch (_) {
-              removeFromWalletSession(["btc"]);
             }
-          })()
-        );
+          }
+          if (session.btc && session.btc !== "phantom") {
+            if (session.btc === "tap") {
+              // Tap Wallet: use silent restore with getAddress() (no popup)
+              await silentRestoreTapWallet();
+            } else {
+              // MetaMask BTC: attempt reconnect via its connect function
+              await connectBitcoinRef.current?.(session.btc);
+            }
+          }
+        }
+      } catch (_) {
+        // Auto-reconnect failed — clear session to avoid retrying on every refresh
+        clearWalletSession();
       }
-
-      // Run all reconnections in parallel
-      await Promise.allSettled(reconnectPromises);
-
-      // ── Restore preferredBtcWallet after all wallets have reconnected ─────────
-      // Both connectPhantomMultiChain and silentRestoreTapWallet call setPreferredBtcWallet
-      // as part of their connect flow. Since they run in parallel, the last one to finish
-      // would overwrite the stored preference. We fix this by re-applying the stored
-      // preference AFTER all reconnections complete, so the user's explicit choice always wins.
-      const storedPref = loadPreferredBtcWallet();
-      if (storedPref) {
-        setPreferredBtcWalletRaw(storedPref); // Update state only — already in localStorage
-        console.log(`[AFOS] Restored preferredBtcWallet: ${storedPref}`);
-      }
-
-      // Mark reconnect as complete — allows the stale-preference cleanup effect to run
-      reconnectCompleteRef.current = true;
-    }, 0);
+    }, 800);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1771,32 +1470,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     return () => clearInterval(interval);
   }, [phantomMultiChain?.solanaAddress]);
 
-  // ── Phantom BTC balance — fetched independently so picker shows real balance even when Tap is active ──
-  const [phantomBtcBalance, setPhantomBtcBalance] = useState<{ balance: string; balanceUsd: number } | null>(null);
-  useEffect(() => {
-    const addr = phantomMultiChain?.bitcoinAddress;
-    if (!addr) { setPhantomBtcBalance(null); return; }
-    // Fetch immediately on connect
-    const fetchPhantomBtc = async () => {
-      try {
-        const [btcResult, priceUsd] = await Promise.all([
-          fetchBtcBalanceFromMempool(addr),
-          fetchBtcPriceUsd(),
-        ]);
-        if (!btcResult) return;
-        setPhantomBtcBalance({
-          balance: `${btcResult.btc} BTC`,
-          balanceUsd: (btcResult.sats / 1e8) * priceUsd,
-        });
-      } catch (err) {
-        console.warn("[Phantom BTC balance] fetch failed:", err);
-      }
-    };
-    fetchPhantomBtc();
-    const interval = setInterval(fetchPhantomBtc, 60_000);
-    return () => clearInterval(interval);
-  }, [phantomMultiChain?.bitcoinAddress]);
-
   // ── Tap Wallet service worker keep-alive ────────────────────────────────────
   // Chrome kills MV3 service workers after ~30s of inactivity. We send a silent
   // fire-and-forget ping every 25 seconds to both window.tracnetwork (TNK) and
@@ -1845,44 +1518,12 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     };
   }, []); // run once on mount, interval self-maintains
 
-  // ── Stale preference cleanup ───────────────────────────────────────────────────────────────────────
-  // If the preferred BTC wallet is no longer connected (e.g., extension removed), clear
-  // the stale preference so the UI falls back to whichever wallet is actually connected.
-  // This runs whenever bitcoin, bitcoinTap, or preferredBtcWallet changes.
-  // IMPORTANT: guarded by reconnectCompleteRef to prevent firing before the 800ms
-  // auto-reconnect window has elapsed (which would clear a valid stored preference).
-  useEffect(() => {
-    if (!preferredBtcWallet) return;
-    // Do not run until the auto-reconnect phase is complete
-    if (!reconnectCompleteRef.current) return;
-    const tapConnected = bitcoinTap?.connected ?? false;
-    const nonTapConnected = (bitcoin?.connected && bitcoin.walletName !== "Tap Wallet") ?? false;
-    if (preferredBtcWallet === "tap" && !tapConnected && nonTapConnected) {
-      // Tap Wallet preference is stale — fall back to the connected non-Tap wallet
-      console.log("[AFOS] preferredBtcWallet 'tap' is stale — clearing preference");
-      setPreferredBtcWallet(bitcoin?.isPhantom ? "phantom" : "metamask");
-    } else if (preferredBtcWallet !== "tap" && !nonTapConnected && tapConnected) {
-      // Phantom/MetaMask preference is stale — fall back to Tap Wallet
-      console.log(`[AFOS] preferredBtcWallet '${preferredBtcWallet}' is stale — falling back to tap`);
-      setPreferredBtcWallet("tap");
-    } else if (!tapConnected && !nonTapConnected) {
-      // No BTC wallet connected at all — clear the preference
-      setPreferredBtcWallet(null);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bitcoin, bitcoinTap, preferredBtcWallet]);
-
   // ── Derived active BTC wallet (respects preferredBtcWallet) ─────────────────
   // When both Phantom/MetaMask BTC and Tap Wallet BTC are connected, use the preferred one.
   // If no preference is set, use the last-connected (bitcoin state).
   const activeBitcoin: ChainWallet | null = (() => {
     if (!preferredBtcWallet) return bitcoin;
-    if (preferredBtcWallet === "tap") {
-      // If Tap Wallet is the preferred provider, only return it when it's actually connected.
-      // Do NOT fall back to Phantom/MetaMask — that would show the wrong wallet in the UI
-      // during the reconnect window while Tap Wallet is still initialising.
-      return bitcoinTap?.connected ? bitcoinTap : null;
-    }
+    if (preferredBtcWallet === "tap") return bitcoinTap ?? bitcoin;
     // phantom or metamask
     const nonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
     return nonTap ?? bitcoin;
@@ -1898,7 +1539,6 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       tracNetwork,
       erc20Balances,
       phantomMultiChain,
-      phantomBtcBalance,
       connectEthereum,
       connectBitcoin,
       connectPhantomMultiChain,

@@ -1,9 +1,0 @@
-{
-  "query": "\nSELECT id, rfqId, fromChain, toChain, status, expiresAt, settledVia, settledAt, htlcId, createdAt,\n       FROM_UNIXTIME(expiresAt/1000) as expires_human,\n       CASE WHEN expiresAt < (UNIX_TIMESTAMP()*1000) THEN 'EXPIRED' ELSE CONCAT('active ~', ROUND((expiresAt/1000 - UNIX_TIMESTAMP())/60), 'min left') END as timelock_state\nFROM htlc_secrets\nWHERE status IN ('locked', 'revealed')\nORDER BY createdAt DESC\nLIMIT 5;\n",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT id, rfqId, fromChain, toChain, status, expiresAt, settledVia, settledAt, htlcId, createdAt,\n       FROM_UNIXTIME(expiresAt/1000) as expires_human,\n       CASE WHEN expiresAt < (UNIX_TIMESTAMP()*1000) THEN 'EXPIRED' ELSE CONCAT('active ~', ROUND((expiresAt/1000 - UNIX_TIMESTAMP())/60), 'min left') END as timelock_state\nFROM htlc_secrets\nWHERE status IN ('locked', 'revealed')\nORDER BY createdAt DESC\nLIMIT 5;\n",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 57
-}

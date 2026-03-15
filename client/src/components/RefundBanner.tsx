@@ -9,7 +9,7 @@
  * Shows a banner with count + total amount + link to History → Refunds tab.
  * Dismissed state is stored in sessionStorage (resets on page reload).
  */
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { AlertTriangle, X, ArrowRight } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -49,21 +49,9 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
     }
   );
 
-  // Count claimable from DB: only pending HTLCs where the timelock has expired.
-  // locktime > 1_000_000_000 means it's a Unix timestamp (Solana/ETH); otherwise block height.
-  // Block-height timelocks (BTC) are always shown as claimable since we can't check block height here.
+  // Count claimable from DB: pending HTLCs are claimable
   const dbClaimable = useMemo(() => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    return (dbData?.refunds ?? []).filter(r => {
-      if (r.status !== "pending") return false;
-      const isUnixTimelock = r.locktime > 1_000_000_000;
-      if (isUnixTimelock) {
-        // Only show as claimable if the timelock has actually expired
-        return r.locktime < nowSec;
-      }
-      // Block-height timelocks (BTC): show as claimable (block check done elsewhere)
-      return true;
-    });
+    return (dbData?.refunds ?? []).filter(r => r.status === "pending");
   }, [dbData]);
 
   // Count claimable from on-chain scanner: expired timelocks
@@ -114,18 +102,6 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
       .join(" + ");
   }, [onChainClaimable, dbClaimable]);
 
-  // Track previous count to detect when it drops to 0 after being > 0
-  const prevCountRef = useRef(claimableCount);
-  useEffect(() => {
-    const prev = prevCountRef.current;
-    prevCountRef.current = claimableCount;
-    // If count just dropped to 0 after being positive, auto-dismiss the banner
-    if (prev > 0 && claimableCount === 0 && dismissed) {
-      sessionStorage.removeItem("afos_refund_banner_dismissed");
-      setDismissed(false);
-    }
-  }, [claimableCount, dismissed]);
-
   // Don't render if no wallet connected, dismissed, or no claimable HTLCs
   if (!enabled || claimableCount === 0) return null;
 
@@ -154,13 +130,13 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-amber-300">
           {claimableCount === 1
-            ? "You have 1 HTLC with stuck funds"
-            : `You have ${claimableCount} HTLCs with stuck funds`}
+            ? "You have 1 claimable refund"
+            : `You have ${claimableCount} claimable refunds`}
         </p>
         <p className="text-[10px] text-amber-400/70 truncate">
           {amountStr}
           {totalUsd > 0.01 && ` · ≈ $${totalUsd.toFixed(2)}`}
-          {" · "}Timelock expired — recovery available
+          {" · "}HTLCs expired — funds locked on-chain
         </p>
       </div>
 
@@ -174,7 +150,7 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
           color: "#f59e0b",
         }}
       >
-        Recover Funds
+        Claim Now
         <ArrowRight className="w-3 h-3" />
       </button>
 
