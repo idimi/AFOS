@@ -93,6 +93,7 @@ export interface SignalingPeer {
     solana?: string;
     ethereum?: string;
     bitcoin?: string;
+    trac_network?: string;
   };
   connectedAt: number;
   lastHeartbeat: number;
@@ -114,6 +115,7 @@ interface ClientMessage {
     solana?: string;
     ethereum?: string;
     bitcoin?: string;
+    trac_network?: string;
   };
   targetPeerId?: string;
   sdp?: unknown;

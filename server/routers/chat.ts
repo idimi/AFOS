@@ -350,7 +350,7 @@ interface P2PQuoteResult {
   peerAlias?: string;
   counterpartyPubKey?: string;
   counterpartyAddress?: string;
-  counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string };
+  counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
   rate?: number;
   outAmount?: number;
   route?: string;
@@ -419,13 +419,21 @@ function findSignalingPeer(params: {
       `pair=${wantedPair} rate=${rate.toFixed(6)} outAmount=${outAmount.toFixed(6)}`
     );
 
+    // Select the counterparty's wallet address for the DESTINATION chain
+    // (the chain where Agent A will receive their output tokens from Agent B)
+    const counterpartyAddress =
+      toChain === "ethereum"     ? peer.walletAddresses?.ethereum :
+      toChain === "bitcoin"      ? peer.walletAddresses?.bitcoin :
+      toChain === "trac_network" ? peer.walletAddresses?.trac_network :
+      toChain === "solana"       ? peer.walletAddresses?.solana :
+      (peer.walletAddresses?.ethereum ?? peer.walletAddresses?.bitcoin ?? peer.walletAddresses?.trac_network);
     return {
       rfqId,
       peerId:              peer.peerId,
       peerAlias:           peer.alias,
       counterpartyWallets: peer.walletAddresses,
       counterpartyPubKey:  peer.walletAddresses?.solana,
-      counterpartyAddress: peer.walletAddresses?.ethereum ?? peer.walletAddresses?.bitcoin,
+      counterpartyAddress,
       rate,
       outAmount,
       route:               crossChain ? "AFOS P2P (cross-chain)" : "AFOS P2P",
@@ -674,6 +682,10 @@ Token disambiguation rules:
 - "swap 0.001 BTC to SOL" → fromToken: BTC, fromChain: bitcoin, toToken: SOL, toChain: solana
 - "TNK" or "Trac Network" → fromToken: TNK, fromChain: trac_network
 - "swap 100 TNK to SOL" → fromToken: TNK, fromChain: trac_network, toToken: SOL, toChain: solana
+- "swap 100 TNK to ETH" → fromToken: TNK, fromChain: trac_network, toToken: ETH, toChain: ethereum
+- "swap 100 TNK to BTC" → fromToken: TNK, fromChain: trac_network, toToken: BTC, toChain: bitcoin
+- "swap 0.001 BTC to TNK" → fromToken: BTC, fromChain: bitcoin, toToken: TNK, toChain: trac_network
+- "swap 0.01 ETH to TNK" → fromToken: ETH, fromChain: ethereum, toToken: TNK, toChain: trac_network
 - For price checks: reply with price and source
 - For balance checks: reply with balance info
 - For general questions: reply about AFOS multi-chain capabilities

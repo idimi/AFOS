@@ -235,7 +235,7 @@ const LightPeerContext = createContext<LightPeerState | null>(null);
 
 export function LightPeerProvider({ children }: { children: ReactNode }) {
   const { publicKey: solPubkey, connected: solAdapterConnected, signTransaction, sendTransaction: sendSolTransaction } = useWallet();
-  const { ethereum, bitcoin, phantomMultiChain } = useMultiChainWallet();
+  const { ethereum, bitcoin, tracNetwork: tnkWalletCtx, phantomMultiChain } = useMultiChainWallet();
   const { connection: solConnection } = useConnection();
 
   // Solana is "connected" if the standard adapter is connected OR if Phantom multi-chain has a Solana address
@@ -862,6 +862,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     if (phantomSolAddress) walletAddresses.solana = walletAddresses.solana || phantomSolAddress;
     if (ethereum?.address) walletAddresses.ethereum = ethereum.address;
     if (bitcoin?.address) walletAddresses.bitcoin = bitcoin.address;
+    if (tnkWalletCtx?.address) walletAddresses.trac_network = tnkWalletCtx.address;
 
     // Event handlers
     const unsubs: Array<() => void> = [];

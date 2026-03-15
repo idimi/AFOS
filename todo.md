@@ -3364,3 +3364,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] TNK HTLC refund on History page Refund tab (matching SOL pattern)
 - [ ] Pass signTracTx tx hash through swap flow to TNK Swap Confirmed card
 - [ ] Add TNK balance display in wallet balance row
+## TNK→ETH and TNK→BTC Swap Routes (Mar 15, 2026)
+- [x] Fix TNK wallet check: use tnkWallet?.address instead of bitcoin?.address for fromChain=trac_network
+- [x] Fix TNK sender address: use tnkSenderAddress (tnkWallet?.address) instead of tnkBtcAddress (bitcoin?.address) as userPublicKey in buildSwapTx
+- [x] Add TNK→ETH and TNK→BTC examples to LLM system prompt
+- [x] Add BTC→TNK and ETH→TNK examples to LLM system prompt
+- [x] Add trac_network to SignalingPeer.walletAddresses type in signaling.ts
+- [x] Register trac_network wallet address in signaling peer registry (LightPeerContext)
+- [x] Update findSignalingPeer to select counterpartyAddress based on toChain (ETH/BTC/TNK/SOL)
+- [x] Add trac_network to P2PQuoteResult.counterpartyWallets type
+- [x] Add TNK→ETH and TNK→BTC suggestion chips to ChatPage

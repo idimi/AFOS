@@ -36,6 +36,8 @@ const SUGGESTIONS = [
   "swap 0.1 SOL to USDT",
   "what's the SOL price?",
   "swap 100 TNK to SOL",
+  "swap 100 TNK to ETH",
+  "swap 100 TNK to BTC",
   "what's the TNK price?",
   "show my balances",
   "swap 10 USDT to USDC",
@@ -2593,7 +2595,7 @@ export default function ChatPage() {
       (!connected && !phantomSolAddr) || !effectivePublicKey ||
       (fromChainNorm === "ethereum"    && !ethereum?.address) ||
       (fromChainNorm === "bitcoin"     && !bitcoin?.address) ||
-      (fromChainNorm === "trac_network" && !bitcoin?.address); // TNK uses BTC-style HTLC wallet
+      (fromChainNorm === "trac_network" && !tnkWallet?.address); // TNK uses Tap Wallet (tracNetwork)
 
     if (noWalletConnected) {
       // Non-custodial: the agent cannot execute swaps on behalf of the user.
@@ -3126,11 +3128,12 @@ export default function ChatPage() {
           return;
         }
 
-        // TNK → BTC or other non-Solana destination: AFOS P2P via buildSwapTx (same pattern as Solana)
-        const tnkBtcAddress = bitcoin?.address ?? "";
-        if (!tnkBtcAddress) {
+        // TNK → BTC / ETH / other non-Solana destination: AFOS P2P via buildSwapTx (same pattern as Solana)
+        // userPublicKey is the TNK sender's address (Trac Network address from Tap Wallet)
+        const tnkSenderAddress = tnkWallet?.address ?? "";
+        if (!tnkSenderAddress) {
           toast.error("Trac Network wallet not connected", {
-            description: "Please connect your Tap Wallet (BTC+TNK) to execute TNK swaps.",
+            description: "Please connect your Tap Wallet to execute TNK swaps.",
           });
           setExecutingId(null);
           return;
@@ -3146,7 +3149,7 @@ export default function ChatPage() {
         toast.loading("Finding P2P peer for TNK swap\u2026", { id: "tnk-p2p" });
         const tnkBtcResult = await buildSwapTx.mutateAsync({
           quoteResponse:  quoteData.quoteResponse,
-          userPublicKey:  tnkBtcAddress,
+          userPublicKey:  tnkSenderAddress,
           fromToken:      quoteData.fromToken,
           toToken:        quoteData.toToken,
           fromChain:      "trac_network" as SupportedChain,
