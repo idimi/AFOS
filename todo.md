@@ -3374,3 +3374,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Update findSignalingPeer to select counterpartyAddress based on toChain (ETH/BTC/TNK/SOL)
 - [x] Add trac_network to P2PQuoteResult.counterpartyWallets type
 - [x] Add TNK→ETH and TNK→BTC suggestion chips to ChatPage
+## Bug Fixes + TNK Refund (Mar 15, 2026)
+- [x] Bug 1 fix: Agent A echo-back "AFOS Agent P2P Match" card — added isInitiatingSwapRef guard (set before buildSwapTx, cleared in finally block) + requestorPeer added to rfq_broadcast dispatch
+- [x] Bug 2 fix: acceptRfq early return prevents Tap Wallet from opening — onAcceptRfq now calls lightPeer.acceptRfq directly with full rfqOverride (bypasses LLM chat flow); acceptRfq interface updated to accept optional rfqOverride; HTLC fields (secretHashHex, counterpartyAddress, requestorPeer) stored in incomingRfqData
+- [x] TNK HTLC refund on History page Refund tab — already fully implemented in previous session (Phase 4 scan in myOnChainRefunds, requestTnkHtlcRefund in handleRefundClaim, bulk refund in RefundCard)

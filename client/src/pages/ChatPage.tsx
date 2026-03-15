@@ -1539,7 +1539,7 @@ function MessageBubble({
   onCancelSwap: (msgId: string) => void;
   executingId: string | null;
   onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
-  onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number) => void;
+  onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number, rfqData?: NonNullable<ChatMessage["incomingRfqData"]>) => void;
   onDeclineRfq?: (rfqId: string) => void;
   /** RFQ IDs that Agent B has already accepted — card transitions to "Locking funds…" state */
   acceptedRfqIds?: Set<string>;
@@ -1950,7 +1950,7 @@ function MessageBubble({
                           return;
                         }
                         const rfq = msg.incomingRfqData!;
-                        onAcceptRfq?.(rfq.rfqId, rfq.fromToken, rfq.toToken, rfq.amount, rfq.outAmount);
+                        onAcceptRfq?.(rfq.rfqId, rfq.fromToken, rfq.toToken, rfq.amount, rfq.outAmount, rfq);
                       }}
                       className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1"
                       style={rfqWalletMissing
@@ -2160,6 +2160,9 @@ export default function ChatPage() {
   const [declinedRfqIds, setDeclinedRfqIds] = useState<Set<string>>(new Set());
   // Track rfqIds that Agent A (this user) initiated — suppress incoming_rfq cards for these
   const initiatedSwapRfqIds = useRef<Set<string>>(new Set());
+  // True while a buildSwapTx HTTP call is in-flight — suppresses any rfq_broadcast echo
+  // that arrives before the HTTP response (race window of ~200ms)
+  const isInitiatingSwapRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2229,6 +2232,11 @@ export default function ChatPage() {
         requesterAlias?: string;
         requesterPeerId?: string;
         expiresAt: number;
+        // HTLC fields needed by acceptRfq to build the IncomingRfq object directly
+        secretHashHex?: string;
+        requesterWallet?: string;
+        counterpartyAddress?: string;
+        requestorPeer?: string;
       };
       if (!rfq?.rfqId) return;
       // Skip RFQs that we ourselves initiated — broadcastRfqToAll sends to all peers
@@ -2237,12 +2245,22 @@ export default function ChatPage() {
       // Secondary guard: if we already have a swap_progress card for this rfqId,
       // this is our own swap echoed back (e.g. via rfq_broadcast or pollInbox) — suppress it
       if (initiatedSwapRfqIds.current.has(rfq.rfqId)) return;
+      // Tertiary guard: if we are currently in the middle of calling buildSwapTx,
+      // any rfq_broadcast that arrives during that window is our own echo — suppress it
+      if (isInitiatingSwapRef.current) return;
       const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
       addMessage({
         role: "assistant",
         type: "incoming_rfq",
         content: `The AFOS agent matched you with **@${alias}** who wants to swap **${rfq.outAmount.toFixed(4)} ${rfq.toToken}** for your **${rfq.amount.toFixed(4)} ${rfq.fromToken}**. Do you want to accept this P2P swap?`,
-        incomingRfqData: rfq,
+        incomingRfqData: {
+          ...rfq,
+          // Persist HTLC fields so acceptRfq can be called directly from the card
+          secretHashHex: rfq.secretHashHex,
+          counterpartyAddress: rfq.counterpartyAddress ?? rfq.requesterWallet,
+          requesterWallet: rfq.requesterWallet,
+          requestorPeer: rfq.requestorPeer ?? rfq.requesterPeerId,
+        },
       });
     };
     window.addEventListener("afos:agent-rfq", handler);
@@ -2632,6 +2650,8 @@ export default function ChatPage() {
     }
 
     setExecutingId(msgId);
+    // Signal that we are about to initiate a swap — suppress echo-back rfq_broadcast cards
+    isInitiatingSwapRef.current = true;
 
     // ── Derive the signing wallet for the audit trail in TxSuccessCard ──────────
     const signingWalletForAudit: { name: string; address: string } | undefined = (() => {
@@ -3430,6 +3450,8 @@ export default function ChatPage() {
       }
     } finally {
       setExecutingId(null);
+      // Clear the in-flight flag so future rfq_broadcast messages are not suppressed
+      isInitiatingSwapRef.current = false;
     }
   }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum, initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias, lightPeer]);
 
@@ -3550,11 +3572,37 @@ export default function ChatPage() {
               tnkPeerCount={remotePeers.filter(p => p.pairs.some(pair => pair.toUpperCase().includes("TNK"))).length}
               tnkSubnetOnline={tnkSubnetStatus?.online}
               anyWalletConnected={anyWalletConnected}
-              onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
+              onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount, rfqData) => {
                 // Mark as accepted immediately to transition card to "Locking funds…" state
                 setAcceptedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
-                const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;
-                handleSend(text);
+                // Bug 2 fix: call lightPeer.acceptRfq directly so Tap Wallet opens for TNK HTLC lock.
+                // Previously this went through handleSend → LLM chat flow which never triggered acceptRfq.
+                if (rfqData) {
+                  // Build an IncomingRfq override from the stored card data so acceptRfq
+                  // doesn't need to look up incomingRfqs (which may have expired or been cleared).
+                  const rfqOverride = {
+                    rfqId,
+                    fromToken: rfqData.fromToken,
+                    toToken: rfqData.toToken,
+                    amount: rfqData.amount,
+                    fromChain: rfqData.fromChain,
+                    toChain: rfqData.toChain,
+                    requestorPeer: rfqData.requestorPeer ?? rfqData.requesterPeerId ?? "unknown",
+                    expiresAt: rfqData.expiresAt,
+                    suggestedRate: rfqData.rate,
+                    suggestedOutAmount: rfqData.outAmount,
+                    status: "pending" as const,
+                    receivedAt: Date.now(),
+                    secretHashHex: rfqData.secretHashHex,
+                    counterpartyAddress: rfqData.counterpartyAddress ?? rfqData.requesterWallet,
+                    requesterWallet: rfqData.requesterWallet,
+                    isInitiator: false,
+                  };
+                  void lightPeer.acceptRfq(rfqId, rfqOverride);
+                } else {
+                  // Fallback: look up from incomingRfqs state (legacy path)
+                  void lightPeer.acceptRfq(rfqId);
+                }
               }}
               onDeclineRfq={(rfqId) => {
                 // Mark as declined immediately to hide the card

@@ -109,6 +109,11 @@ export interface ChatMessage {
     requesterAlias?: string;
     requesterPeerId?: string;
     expiresAt: number;
+    // HTLC fields needed by acceptRfq to build the IncomingRfq object
+    secretHashHex?: string;
+    counterpartyAddress?: string;
+    requesterWallet?: string;
+    requestorPeer?: string;
   };
 }
 

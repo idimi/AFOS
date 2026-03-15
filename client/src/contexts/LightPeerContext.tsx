@@ -135,7 +135,7 @@ export interface LightPeerState {
   bitcoinAddress: string | null;
   // Actions
   setPrefs: (prefs: Partial<LightPeerPrefs>) => void;
-  acceptRfq: (rfqId: string) => Promise<void>;
+  acceptRfq: (rfqId: string, rfqOverride?: IncomingRfq) => Promise<void>;
   rejectRfq: (rfqId: string) => void;
   /**
    * Initiate HTLC lock as the REQUESTER (Agent A).
@@ -1185,7 +1185,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       // IMPORTANT: preserve r.requesterPeerId (Agent A's actual peerId) when present.
       // Do NOT overwrite it with fromPeerId — fromPeerId may be 'agent' (server fallback)
       // which would break the echo-filter in ChatPage (rfq.requesterPeerId === myPeerId).
-      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...r, requesterPeerId: r.requesterPeerId ?? fromPeerId } }));
+      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...r, requesterPeerId: r.requesterPeerId ?? fromPeerId, requestorPeer: fromPeerId } }));
       // Auto-accept guard logic (same as agent_rfq path)
       const prefs_b = prefsRef.current as LightPeerPrefs & {
         autoAcceptRfq?: boolean;
@@ -1310,7 +1310,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         return [incoming, ...prev].slice(0, 20);
       });
       // Dispatch to chat page so the agent shows the incoming swap card
-      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: rfq }));
+      // Include requestorPeer so ChatPage can call acceptRfq directly without looking up incomingRfqs
+      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...rfq, requestorPeer: rfq.requesterPeerId ?? rfq.requesterAlias ?? "unknown" } }));
       // Auto-accept if enabled and within configured limits
       const prefs_ = prefsRef.current as LightPeerPrefs & {
         autoAcceptRfq?: boolean;
