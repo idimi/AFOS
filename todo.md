@@ -3287,3 +3287,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## Pending Card Tooltip
 
 - [x] Add tooltip to Pending stat card explaining HTLC pending state
+
+## Phantom Wallet Persistence Fix
+
+- [x] Audit WalletContext and MultiChainWallet for Phantom reconnect logic
+- [x] Implement silentRestorePhantom() with injection polling + onlyIfTrusted connect (mirrors silentRestoreTapWallet)
+- [x] ETH restored via eth_accounts (read-only), BTC via requestAccounts (silent), accountsChanged listener re-registered
+- [x] Auto-reconnect timer reduced from 800ms to 0ms — Phantom handles its own injection wait internally

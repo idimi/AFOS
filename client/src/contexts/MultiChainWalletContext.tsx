@@ -1391,11 +1391,195 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
     }
   }, [waitForTracNetwork]);
 
+  // ── Silent Phantom restore (no popup) ─────────────────────────────────────
+  // Mirrors silentRestoreTapWallet: polls for window.phantom injection (up to 3s),
+  // then uses connect({ onlyIfTrusted: true }) — the official Phantom silent reconnect
+  // API that returns the public key if already authorised and throws if not.
+  // ETH is restored via eth_accounts (read-only). BTC via requestAccounts (already silent).
+  const silentRestorePhantom = useCallback(async () => {
+    // ── Step 1: Wait for window.phantom to be injected ──────────────────────
+    const waitForPhantom = (ms = 3000): Promise<boolean> => {
+      if (window.phantom?.solana) return Promise.resolve(true);
+      return new Promise<boolean>(resolve => {
+        let resolved = false;
+        const done = (found: boolean, via: string) => {
+          if (resolved) return;
+          resolved = true;
+          clearInterval(interval);
+          if (found) console.log(`[AFOS] Phantom: detected via ${via}`);
+          else console.warn(`[AFOS] Phantom: not detected after ${ms}ms`);
+          resolve(found);
+        };
+        let elapsed = 0;
+        const step = 100;
+        const interval = setInterval(() => {
+          elapsed += step;
+          if (window.phantom?.solana) done(true, `poll after ${elapsed}ms`);
+          else if (elapsed >= ms) done(false, "timeout");
+        }, step);
+      });
+    };
+
+    const detected = await waitForPhantom(3000);
+    if (!detected) {
+      console.log("[AFOS] Silent Phantom restore: extension not detected, removing phantom from session");
+      removeFromWalletSession(["phantom", "eth"]);
+      return;
+    }
+
+    const ph = window.phantom!;
+    const connectedChains: Chain[] = [];
+    let solanaAddress: string | undefined;
+    let ethereumAddress: string | undefined;
+    let bitcoinAddress: string | undefined;
+
+    try {
+      // ── Step 2: Solana — connect({ onlyIfTrusted: true }) ────────────────────
+      // This is the official Phantom silent reconnect API. It resolves immediately
+      // with the public key if the site is already trusted, and throws if not.
+      if (ph.solana?.isPhantom) {
+        try {
+          const resp = await withTimeout(
+            ph.solana.connect({ onlyIfTrusted: true }),
+            5000,
+            "phantom.solana.connect onlyIfTrusted"
+          );
+          solanaAddress = resp.publicKey.toString();
+          connectedChains.push("solana");
+          console.log(`[AFOS] Phantom SOL silently restored: ${shortAddr(solanaAddress)}`);
+        } catch (solErr) {
+          // onlyIfTrusted throws if the user hasn't approved this site yet
+          // or if the user revoked the connection inside Phantom.
+          const msg = solErr instanceof Error ? solErr.message : String(solErr);
+          if (msg.includes("trusted") || msg.includes("not connected") || msg.includes("User rejected")) {
+            console.log("[AFOS] Phantom SOL: not trusted / revoked — clearing session");
+            removeFromWalletSession(["phantom", "eth"]);
+            return;
+          }
+          console.warn("[AFOS] Phantom SOL silent restore failed:", solErr);
+        }
+      }
+
+      // ── Step 3: Ethereum — eth_accounts (read-only, no popup) ────────────────
+      if (ph.ethereum) {
+        try {
+          const accounts = await withTimeout(
+            ph.ethereum.request({ method: "eth_accounts" }) as Promise<string[]>,
+            5000,
+            "phantom.ethereum eth_accounts"
+          );
+          if (accounts?.length) {
+            ethereumAddress = accounts[0];
+            connectedChains.push("ethereum");
+            const [balanceHex, priceUsd, usdcBal, usdtBal] = await Promise.all([
+              ph.ethereum.request({ method: "eth_getBalance", params: [ethereumAddress, "latest"] }) as Promise<string>,
+              fetchEthPriceUsd(),
+              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDC, ethereumAddress, 6),
+              fetchErc20Balance(ph.ethereum, ERC20_CONTRACTS.USDT, ethereumAddress, 6),
+            ]);
+            const balanceEth = parseInt(balanceHex, 16) / 1e18;
+            setErc20Balances({ usdc: usdcBal, usdt: usdtBal });
+            setEthereum({
+              chain: "ethereum",
+              walletName: "Phantom",
+              address: ethereumAddress,
+              shortAddress: shortAddr(ethereumAddress),
+              balance: balanceEth.toFixed(4),
+              balanceUsd: balanceEth * priceUsd,
+              symbol: "ETH",
+              connected: true,
+              connecting: false,
+              isPhantom: true,
+            });
+            // Re-register accountsChanged listener
+            ph.ethereum.on?.("accountsChanged", (accs: unknown) => {
+              const newAccs = accs as string[];
+              if (!newAccs?.length) { disconnectPhantom(); }
+              else { setEthereum(prev => prev ? { ...prev, address: newAccs[0], shortAddress: shortAddr(newAccs[0]) } : null); }
+            });
+            console.log(`[AFOS] Phantom ETH silently restored: ${shortAddr(ethereumAddress)}`);
+          }
+        } catch (ethErr) {
+          console.warn("[AFOS] Phantom ETH silent restore failed (non-fatal):", ethErr);
+        }
+      }
+
+      // ── Step 4: Bitcoin — requestAccounts (already silent in Phantom) ─────────
+      if (ph.bitcoin?.isPhantom) {
+        try {
+          const btcAccounts = await withTimeout(
+            ph.bitcoin.requestAccounts(),
+            5000,
+            "phantom.bitcoin.requestAccounts"
+          );
+          const paymentAcc = btcAccounts.find(a => a.purpose === "payment" || a.addressType === "p2wpkh" || a.addressType === "p2tr") ?? btcAccounts[0];
+          if (paymentAcc) {
+            bitcoinAddress = paymentAcc.address;
+            connectedChains.push("bitcoin");
+            const [btcResult, btcPriceUsd] = await Promise.all([
+              fetchBtcBalanceFromMempool(bitcoinAddress),
+              fetchBtcPriceUsd(),
+            ]);
+            const btc = btcResult?.btc ?? "0.00000000";
+            const sats = btcResult?.sats ?? 0;
+            setBitcoin({
+              chain: "bitcoin",
+              walletName: "Phantom",
+              address: bitcoinAddress,
+              shortAddress: shortAddr(bitcoinAddress),
+              balance: btc,
+              balanceUsd: (sats / 1e8) * btcPriceUsd,
+              symbol: "BTC",
+              connected: true,
+              connecting: false,
+              isPhantom: true,
+            });
+            console.log(`[AFOS] Phantom BTC silently restored: ${shortAddr(bitcoinAddress)}`);
+          }
+        } catch (btcErr) {
+          console.warn("[AFOS] Phantom BTC silent restore failed (non-fatal):", btcErr);
+        }
+      }
+
+      if (connectedChains.length === 0) {
+        console.log("[AFOS] Phantom silent restore: no chains reconnected — clearing session");
+        removeFromWalletSession(["phantom", "eth"]);
+        return;
+      }
+
+      // ── Step 5: Update phantomMultiChain state ────────────────────────────────
+      setPhantomMultiChain({
+        connected: true,
+        chains: connectedChains,
+        solanaAddress,
+        ethereumAddress,
+        bitcoinAddress,
+      });
+
+      // Fetch SOL balances in background
+      if (solanaAddress) {
+        fetchSolanaBalancesForAddress(solanaAddress)
+          .then(result => {
+            if (!result) return;
+            setPhantomMultiChain(prev => prev ? { ...prev, solanaBalances: result.balances, solanaTotalUsd: result.totalUsd } : null);
+          })
+          .catch(() => {});
+      }
+
+      // Set preferred BTC wallet to Phantom if BTC was connected
+      if (bitcoinAddress) setPreferredBtcWallet("phantom");
+
+      console.log(`[AFOS] Phantom silently restored chains: ${connectedChains.join(", ")}`);
+    } catch (err) {
+      console.warn("[AFOS] Phantom silent restore failed:", err);
+      removeFromWalletSession(["phantom", "eth"]);
+    }
+  }, [disconnectPhantom, setPreferredBtcWallet]);
+
   // ── Auto-reconnect on mount ─────────────────────────────────────────────────────────
   // Silently restores ALL previously connected wallets on page load without showing any popup.
-  // Supports simultaneous multi-wallet restore: e.g., Phantom + Tap Wallet both reconnect.
   //
-  // For Phantom: checks window.phantom.solana.publicKey (already approved, no prompt).
+  // For Phantom: uses silentRestorePhantom() which polls for injection + onlyIfTrusted connect.
   // For MetaMask ETH: uses eth_accounts (read-only, no popup) to verify the session.
   // For Tap Wallet (BTC + TNK): uses getAddress() (read-only, no popup) via silentRestoreTapWallet.
   // For MetaMask BTC: calls connectBitcoin which handles its own silent checks.
@@ -1407,7 +1591,9 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       return;
     }
 
-    // Wait 800ms for wallet extensions to inject into window
+    // Kick off reconnect immediately — silentRestorePhantom handles its own injection wait.
+    // Use 0ms delay so Phantom restore starts on the next tick; the function itself polls
+    // for window.phantom injection for up to 3s, so no fixed delay is needed here.
     const timer = setTimeout(async () => {
       const reconnectPromises: Promise<void>[] = [];
 
@@ -1416,13 +1602,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
         reconnectPromises.push(
           (async () => {
             try {
-              if (window.phantom?.solana?.publicKey) {
-                // Extension reports it is already connected — reconnect silently
-                await connectPhantomRef.current?.();
-              } else {
-                // Session is stale (user revoked in Phantom) — remove from session
-                removeFromWalletSession(["phantom", "eth"]);
-              }
+              await silentRestorePhantom();
             } catch (_) {
               removeFromWalletSession(["phantom", "eth"]);
             }
@@ -1485,7 +1665,7 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
       // Mark reconnect as complete — allows the stale-preference cleanup effect to run
       reconnectCompleteRef.current = true;
-    }, 800);
+    }, 0);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
