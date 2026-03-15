@@ -195,12 +195,23 @@ export default function TapWalletSignCard({
     }
     try {
       setSignState("signing");
-      // Parse the payload to extract HTLC parameters
-      const tnkLockData = JSON.parse(Buffer.from(tnkLockTxPayload, "base64").toString("utf-8")) as {
+      // Parse the payload to extract HTLC parameters.
+      // The server encodes the payload as:
+      //   { type: "htlc_lock", value: { htlcId, secretHash, amountRaw, locktime, sender, recipient } }
+      // amountRaw is in the smallest unit (8 decimals), so divide by 1e8 for the human-readable amount.
+      const rawPayload = JSON.parse(Buffer.from(tnkLockTxPayload, "base64").toString("utf-8")) as {
+        type?: string;
+        value?: { htlcId?: string; secretHash?: string; amountRaw?: string; locktime?: number; sender?: string; recipient?: string };
+        // Legacy flat format fallback
         to?: string; amount?: string; secretHash?: string; htlcId?: string;
       };
-      const toAddress = tnkLockData.to ?? "";
-      const amount = tnkLockData.amount ?? String(tnkAmount ?? 0);
+      // Support both the trac-peer nested format and any legacy flat format
+      const htlcValue = rawPayload.value;
+      const toAddress = htlcValue?.recipient ?? rawPayload.to ?? "";
+      const amountRaw = htlcValue?.amountRaw;
+      const amount = amountRaw
+        ? (parseInt(amountRaw, 10) / 1e8).toFixed(8)
+        : (rawPayload.amount ?? String(tnkAmount ?? 0));
       // Trigger the Tap Wallet popup via sendTNK
       const result = await tap.sendTNK(toAddress, amount);
       if (!result?.success && !result?.txHash) throw new Error(result?.error ?? "TNK send failed");
