@@ -2761,6 +2761,7 @@ export default function ChatPage() {
           slippage:    1,
           openId,
           senderPeerId: myPeerId ?? undefined,
+          senderAlias:  myPeerAlias ?? undefined,
         });
         toast.dismiss("eth-swap");
         // Remove the broadcasting placeholder
@@ -2927,6 +2928,11 @@ export default function ChatPage() {
             toChain:          quoteData.toChain as SupportedChain,
             amount:           quoteData.fromAmount,
             openId,
+            // Pass sender's peer identity so the server includes requesterPeerId in the broadcast,
+            // enabling the echo-filter in LightPeerContext to suppress the incoming_rfq card for Agent A.
+            senderPeerId: myPeerId ?? undefined,
+            senderAlias:  myPeerAlias ?? undefined,
+            rfqTtlMs:     lightPeer.prefs.quoteTtlMs ?? 120_000,
             // recipientAddress = user's Trac Network address for both directions
             recipientAddress: userTnkAddr,
           });

@@ -1478,10 +1478,12 @@ export const chatRouter = router({
         openId:       z.string().optional(),
         /** Sender's signaling peerId — used to notify Agent A on HTLC expiry */
         senderPeerId: z.string().optional(),
+        /** Sender's peer alias — shown to the counterparty in the incoming RFQ card */
+        senderAlias:  z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId: ethSenderPeerId } = input;
+      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId: ethSenderPeerId, senderAlias: ethSenderAlias } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1532,6 +1534,7 @@ export const chatRouter = router({
           toChain,
           amount,
           prices:     p2pPrices,
+          senderPeerId: ethSenderPeerId,
           senderWallet: fromAddress,
         });
       }
@@ -1608,14 +1611,32 @@ export const chatRouter = router({
             amount,
             outAmount:       p2pQuote.outAmount ?? 0,
             rate:            p2pQuote.rate ?? 0,
+            requesterAlias:  ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
+            requesterPeerId: ethSenderPeerId,
             requesterWallet: fromAddress ?? undefined,
             expiresAt:       Date.now() + 60_000,
             secretHashHex:   secretHash,
           });
+          // Broadcast to all peers with requesterPeerId so Agent A's echo-filter works
+          broadcastRfqToAll(ethSenderPeerId ?? undefined, {
+            rfqId:           p2pQuote.rfqId,
+            fromToken:       fromSymbol,
+            toToken:         toSymbol,
+            fromChain,
+            toChain,
+            amount,
+            outAmount:       p2pQuote.outAmount ?? 0,
+            rate:            p2pQuote.rate ?? 0,
+            requesterAlias:  ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
+            requesterPeerId: ethSenderPeerId ?? undefined,
+            expiresAt:       Date.now() + 60_000,
+            secretHashHex:   secretHash,
+            timestamp:       Date.now(),
+          });
         }
         return {
           success:  true,
-          route:    "IntercomSwap P2P" as const,
+          route:    "AFOS P2P" as const,
           p2pQuote: { ...p2pQuote, secretHashHex: secretHash },
           // htlcLockTx is non-null when ETH_HTLC_ADDRESS is set (contract deployed)
           tx:       htlcLockTx,
