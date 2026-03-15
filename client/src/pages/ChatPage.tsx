@@ -2553,7 +2553,7 @@ export default function ChatPage() {
     })();
 
     try {
-      // ── BTC swaps: use executeBtcSwap (agent HTLC) or btcSignPsbt (browser light peer) ──
+      // ── BTC swaps: AFOS P2P primary + direct HTLC fallback (same pattern as Solana) ──
       if (quoteData.fromChain === "bitcoin" || quoteData.toChain === "bitcoin") {
         const btcAddress = bitcoin?.address ?? "";
         if (!btcAddress) {
@@ -2561,47 +2561,112 @@ export default function ChatPage() {
           setExecutingId(null);
           return;
         }
-
-        toast.loading("Initiating BTC HTLC lock\u2026", { id: "btc-htlc" });
-        const result = await executeBtcSwap.mutateAsync({
+        // Step 1: inject a "Broadcasting" status message — same pattern as Solana
+        setMessages(prev => [...prev, {
+          id: `broadcasting-${msgId}`,
+          role: "assistant" as const,
+          content: "\u23f3 Broadcasting to P2P network\u2026 waiting for a peer to accept your swap.",
+          type: "text" as const,
+          timestamp: Date.now(),
+        }]);
+        toast.loading("Finding P2P peer for BTC swap\u2026", { id: "btc-p2p" });
+        // Step 2: call buildSwapTx — same as Solana/ETH
+        const btcResult = await buildSwapTx.mutateAsync({
+          quoteResponse:  quoteData.quoteResponse,
+          userPublicKey:  btcAddress,
+          fromToken:      quoteData.fromToken,
+          toToken:        quoteData.toToken,
+          fromChain:      (quoteData.fromChain as SupportedChain) ?? "bitcoin",
+          toChain:        (quoteData.toChain   as SupportedChain) ?? "bitcoin",
+          amount:         quoteData.fromAmount,
+          openId,
+          senderPeerId:   myPeerId ?? undefined,
+          senderAlias:    myPeerAlias ?? undefined,
+          rfqTtlMs:       lightPeer.prefs.quoteTtlMs ?? 120_000,
+        });
+        toast.dismiss("btc-p2p");
+        // Remove the broadcasting placeholder
+        setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));
+        // Step 3: P2P route matched — same pattern as Solana
+        if (btcResult.route === "AFOS P2P") {
+          const p2p = btcResult.p2pQuote;
+          const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
+          toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} \u2014 signing HTLC lock\u2026` });
+          // Update quote card to tx_success state
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
+          ));
+          // Inject swap_progress card for live tracking
+          const btcProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
+          const btcHtlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
+          // Track this rfqId so we suppress the echo-back incoming_rfq card
+          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+          setMessages(prev => [...prev, {
+            id: btcProgressMsgId,
+            role: "assistant" as const,
+            content: "",
+            type: "swap_progress" as const,
+            timestamp: Date.now(),
+            swapProgressData: {
+              rfqId:      p2p?.rfqId ?? btcProgressMsgId,
+              fromAmount: quoteData.fromAmount,
+              fromToken:  quoteData.fromToken,
+              toAmount:   p2p?.outAmount ?? quoteData.toAmount,
+              toToken:    quoteData.toToken,
+              phase:      "locking" as const,
+              peerAlias:  peerLabel,
+              expiresAt:  btcHtlcExpiry,
+              rate:       p2p?.rate ?? quoteData.rate,
+              fromChain:  (quoteData.fromChain as string) ?? "bitcoin",
+              toChain:    (quoteData.toChain   as string) ?? "bitcoin",
+              startedAt:  Date.now(),
+            },
+          }]);
+          setExecutingId(null);
+          // Step 4: trigger HTLC lock signing via LightPeerContext — same as Solana
+          if (p2p?.rfqId) {
+            void initiateHtlcLock({
+              rfqId:              p2p.rfqId,
+              fromToken:          quoteData.fromToken,
+              toToken:            quoteData.toToken,
+              fromChain:          (quoteData.fromChain as string) ?? "bitcoin",
+              toChain:            (quoteData.toChain   as string) ?? "bitcoin",
+              amount:             quoteData.fromAmount,
+              outAmount:          p2p.outAmount ?? quoteData.toAmount,
+              rate:               p2p.rate ?? quoteData.rate,
+              counterpartyPeerId: p2p.peerId ?? undefined,
+              counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+              secretHashHex:      p2p.secretHashHex ?? undefined,
+            });
+          }
+          return;
+        }
+        // No P2P peer — fallback to executeBtcSwap (direct HTLC via agent wallet)
+        toast.loading("No P2P peer \u2014 initiating direct BTC HTLC lock\u2026", { id: "btc-htlc" });
+        const btcFallback = await executeBtcSwap.mutateAsync({
           senderAddress: btcAddress,
-          amountBtc: quoteData.fromChain === "bitcoin" ? quoteData.fromAmount : quoteData.toAmount,
-          expiryHours: 24,
-          network: "mainnet",
-          senderPeerId: myPeerId ?? undefined,
+          amountBtc:     quoteData.fromChain === "bitcoin" ? quoteData.fromAmount : quoteData.toAmount,
+          expiryHours:   24,
+          network:       "mainnet",
+          senderPeerId:  myPeerId ?? undefined,
+          toToken:       quoteData.toToken,
+          toChain:       (quoteData.toChain as SupportedChain) ?? "bitcoin",
         });
         toast.dismiss("btc-htlc");
-
-        if (result.success) {
-          const isDemoStr = result.demo ? " [DEMO]" : "";
-          toast.success(`BTC HTLC lock initiated${isDemoStr}`, {
-            description: `Tx: ${result.txid?.slice(0, 12)}\u2026`,
-          });
-
+        if (btcFallback.success) {
+          const isDemoStr = btcFallback.demo ? " [DEMO]" : "";
+          toast.success(`BTC HTLC lock initiated${isDemoStr}`, { description: `Tx: ${btcFallback.txid?.slice(0, 12)}\u2026` });
           setMessages(prev => prev.map(m =>
-            m.id === msgId
-              ? { ...m, type: "tx_success" as const, txHash: result.txid ?? "", signedBy: signingWalletForAudit }
-              : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: btcFallback.txid ?? "", signedBy: signingWalletForAudit } : m
           ));
-
-          addMessage({
-            role: "assistant",
-            content: result.message ?? `BTC HTLC lock created. ${result.nextStep ?? "Waiting for counterparty."}`,
-            type: "text",
-          });
+          addMessage({ role: "assistant", content: btcFallback.message ?? `BTC HTLC lock created. ${btcFallback.nextStep ?? "Waiting for counterparty."}`, type: "text" });
         } else {
-          addMessage({
-            role: "assistant",
-            content: result.message ?? "BTC HTLC lock could not be completed. Please try again.",
-            type: "error",
-          });
+          addMessage({ role: "assistant", content: btcFallback.message ?? "BTC HTLC lock could not be completed. Please try again.", type: "error" });
         }
-
         setExecutingId(null);
         return;
       }
-
-      // ── Ethereum swaps: AFOS P2P primary + 1inch fallback ────────────────
+      // ── Ethereum swaps: AFOS P2P primary + 1inch fallback ────────────────────
       if (quoteData.fromChain === "ethereum" || quoteData.toChain === "ethereum") {
         const ethAddress = ethereum?.address ?? "";
         if (!ethAddress) {
@@ -2631,13 +2696,13 @@ export default function ChatPage() {
           senderPeerId: myPeerId ?? undefined,
         });
         toast.dismiss("eth-swap");
-
+        // Remove the broadcasting placeholder
+        setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));
         if (!ethResult.success) {
           addMessage({ role: "assistant", content: ethResult.message ?? "ETH swap route unavailable. Please try again.", type: "error" });
           setExecutingId(null);
           return;
         }
-
         // P2P route: unified flow — same pattern as SOL P2P (swap_progress card + initiateHtlcLock)
         if (ethResult.route === "AFOS P2P") {
           const p2p = ethResult.p2pQuote as { peerAlias?: string; peerId?: string; rfqId?: string; outAmount?: number; rate?: number; htlcExpiresAt?: number; secretHashHex?: string; counterpartyPubKey?: string; counterpartyAddress?: string } | null | undefined;
@@ -2795,7 +2860,8 @@ export default function ChatPage() {
             recipientAddress: userTnkAddr,
           });
           toast.dismiss("tnk-htlc");
-
+          // Remove the broadcasting placeholder
+          setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));
           // SOL→TNK: user signs the Solana lock transaction
           if (isSolToTnk && (tnkSolResult as { route?: string }).route === "AFOS SOL→TNK") {
             const solLockTx = (tnkSolResult as { swapTransaction?: string | null }).swapTransaction;
@@ -2935,45 +3001,110 @@ export default function ChatPage() {
           return;
         }
 
-        // TNK → BTC or other non-Solana destination: legacy executeAgentSwap path
-        const btcAddress = bitcoin?.address ?? "";
-        if (!btcAddress) {
+        // TNK → BTC or other non-Solana destination: AFOS P2P via buildSwapTx (same pattern as Solana)
+        const tnkBtcAddress = bitcoin?.address ?? "";
+        if (!tnkBtcAddress) {
           toast.error("Trac Network wallet not connected", {
             description: "Please connect your Tap Wallet (BTC+TNK) to execute TNK swaps.",
           });
           setExecutingId(null);
           return;
         }
-        toast.loading("Routing TNK swap via AFOS P2P HTLC…", { id: "tnk-swap" });
-        const tnkResult = await executeAgentSwap.mutateAsync({
+        // Inject a "Broadcasting" status message — same pattern as Solana
+        setMessages(prev => [...prev, {
+          id: `broadcasting-${msgId}`,
+          role: "assistant" as const,
+          content: "\u23f3 Broadcasting to P2P network\u2026 waiting for a peer to accept your swap.",
+          type: "text" as const,
+          timestamp: Date.now(),
+        }]);
+        toast.loading("Finding P2P peer for TNK swap\u2026", { id: "tnk-p2p" });
+        const tnkBtcResult = await buildSwapTx.mutateAsync({
+          quoteResponse:  quoteData.quoteResponse,
+          userPublicKey:  tnkBtcAddress,
+          fromToken:      quoteData.fromToken,
+          toToken:        quoteData.toToken,
+          fromChain:      "trac_network" as SupportedChain,
+          toChain:        (quoteData.toChain as SupportedChain) ?? "bitcoin",
+          amount:         quoteData.fromAmount,
+          openId,
+          senderPeerId:   myPeerId ?? undefined,
+          senderAlias:    myPeerAlias ?? undefined,
+          rfqTtlMs:       lightPeer.prefs.quoteTtlMs ?? 120_000,
+        });
+        toast.dismiss("tnk-p2p");
+        // Remove the broadcasting placeholder
+        setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));
+        if (tnkBtcResult.route === "AFOS P2P") {
+          const p2p = tnkBtcResult.p2pQuote;
+          const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
+          toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} \u2014 locking HTLC\u2026` });
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
+          ));
+          const tnkBtcProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
+          const tnkBtcHtlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
+          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+          setMessages(prev => [...prev, {
+            id: tnkBtcProgressMsgId,
+            role: "assistant" as const,
+            content: "",
+            type: "swap_progress" as const,
+            timestamp: Date.now(),
+            swapProgressData: {
+              rfqId:      p2p?.rfqId ?? tnkBtcProgressMsgId,
+              fromAmount: quoteData.fromAmount,
+              fromToken:  quoteData.fromToken,
+              toAmount:   p2p?.outAmount ?? quoteData.toAmount,
+              toToken:    quoteData.toToken,
+              phase:      "locking" as const,
+              peerAlias:  peerLabel,
+              expiresAt:  tnkBtcHtlcExpiry,
+              rate:       p2p?.rate ?? quoteData.rate,
+              fromChain:  "trac_network",
+              toChain:    (quoteData.toChain as string) ?? "bitcoin",
+              startedAt:  Date.now(),
+            },
+          }]);
+          setExecutingId(null);
+          if (p2p?.rfqId) {
+            void initiateHtlcLock({
+              rfqId:              p2p.rfqId,
+              fromToken:          quoteData.fromToken,
+              toToken:            quoteData.toToken,
+              fromChain:          "trac_network",
+              toChain:            (quoteData.toChain as string) ?? "bitcoin",
+              amount:             quoteData.fromAmount,
+              outAmount:          p2p.outAmount ?? quoteData.toAmount,
+              rate:               p2p.rate ?? quoteData.rate,
+              counterpartyPeerId: p2p.peerId ?? undefined,
+              counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+              secretHashHex:      p2p.secretHashHex ?? undefined,
+            });
+          }
+          return;
+        }
+        // No P2P peer — fallback to executeAgentSwap
+        toast.loading("No P2P peer \u2014 routing via agent HTLC\u2026", { id: "tnk-agent" });
+        const tnkAgentResult = await executeAgentSwap.mutateAsync({
           fromToken:  quoteData.fromToken,
           toToken:    quoteData.toToken,
           amount:     quoteData.fromAmount,
           fromChain:  "trac_network",
           toChain:    (quoteData.toChain as SupportedChain) ?? "bitcoin",
         });
-        toast.dismiss("tnk-swap");
-        if (tnkResult.success) {
-          const isDemoStr = tnkResult.demo ? " [DEMO]" : "";
+        toast.dismiss("tnk-agent");
+        if (tnkAgentResult.success) {
+          const isDemoStr = tnkAgentResult.demo ? " [DEMO]" : "";
           toast.success(`TNK swap initiated${isDemoStr}`, {
-            description: tnkResult.txHash ? `Tx: ${tnkResult.txHash.slice(0, 14)}…` : "Awaiting counterparty",
+            description: tnkAgentResult.txHash ? `Tx: ${tnkAgentResult.txHash.slice(0, 14)}\u2026` : "Awaiting counterparty",
           });
           setMessages(prev => prev.map(m =>
-            m.id === msgId
-              ? { ...m, type: "tx_success" as const, txHash: tnkResult.txHash ?? "pending", signedBy: signingWalletForAudit }
-              : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: tnkAgentResult.txHash ?? "pending", signedBy: signingWalletForAudit } : m
           ));
-          addMessage({
-            role: "assistant",
-            content: tnkResult.message ?? `TNK swap submitted${isDemoStr}. ${tnkResult.nextStep ?? "Waiting for HTLC settlement."}`,
-            type: "text",
-          });
+          addMessage({ role: "assistant", content: tnkAgentResult.message ?? `TNK swap submitted${isDemoStr}. ${tnkAgentResult.nextStep ?? "Waiting for HTLC settlement."}`, type: "text" });
         } else {
-          addMessage({
-            role: "assistant",
-            content: tnkResult.message ?? "TNK swap could not be completed. Please try again.",
-            type: "error",
-          });
+          addMessage({ role: "assistant", content: tnkAgentResult.message ?? "TNK swap could not be completed. Please try again.", type: "error" });
         }
         setExecutingId(null);
         return;
@@ -3003,7 +3134,8 @@ export default function ChatPage() {
         senderAlias:  myPeerAlias ?? undefined,
         rfqTtlMs:     lightPeer.prefs.quoteTtlMs ?? 120_000,
       });
-
+      // Remove the broadcasting placeholder
+      setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));
       // P2P route matched: trigger HTLC lock signing for Agent A (the requester)
       console.error("[HTLC-DEBUG] buildSwapTx result", { route: solResult.route, hasP2pQuote: !!solResult.p2pQuote, hasSwapTx: !!solResult.swapTransaction });
       if (solResult.route === "AFOS P2P") {
@@ -3164,7 +3296,7 @@ export default function ChatPage() {
     } finally {
       setExecutingId(null);
     }
-  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum, initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias]);
+  }, [connected, publicKey, buildSwapTx, executeEthSwap, executeBtcSwap, executeAgentSwap, sendTransaction, addMessage, openWalletForChain, bitcoin, ethereum, initiateHtlcLock, phantomSolAddr, openId, myPeerId, myPeerAlias, lightPeer]);
 
   const handleCancelSwap = useCallback((msgId: string) => {
     setCancelledIds(prev => { const next = new Set(prev); next.add(msgId); return next; });
