@@ -183,7 +183,7 @@ function SettlementBadge({ ms, via }: { ms: number; via: string | null }) {
   // > 5min = slow (monitor fallback)
 
   // Map settledVia to a human-readable label
-  const viaLabel = via === "helius_webhook" ? "Webhook"
+  const viaLabel = (via === "helius_webhook" || via === "helius_claim") ? "Webhook"
     : via === "browser_notify" ? "Browser"
     : via === "monitor_fallback" ? "Monitor"
     : via === "admin_force_claim" ? "Admin"

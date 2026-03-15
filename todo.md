@@ -3239,3 +3239,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show "Tap Wallet not responding" toast immediately on dormant SW instead of waiting 8s timeout
 - [x] Add Retry button to dormant toast that re-invokes connectTapWallet
 - [x] Add loadingLabel="Waking up Tap Wallet..." to PrimaryCTA for better UX during ping
+
+## Helius Webhook Claim Handler Fix
+
+- [x] Fix claim handler to read HTLC PDA from accounts[1] (not accounts[0] which is the caller)
+- [x] Extract 32-byte preimage from claim instruction data (bytes 8-40 after discriminator)
+- [x] Derive SHA-256 secretHash from preimage for fallback DB lookup
+- [x] Update htlcSwaps to completed with claimTxId and claimedAt on claim event
+- [x] Add fallback lookup by secretHash if PDA lookup finds no pending row
+- [x] Update htlcSecrets to completed with settledVia=helius_claim on claim event
+- [x] Add claimTxId and claimedAt columns to htlc_swaps DB table
+- [x] Add helius_claim to VIA_LABELS in SettlementBadge and HeliusWebhookHealthCard
+- [x] Add 35 unit tests covering claim account layout, preimage extraction, and label mapping
