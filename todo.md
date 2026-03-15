@@ -3269,3 +3269,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Add consistent mt-4 spacing between tab switcher and search bar (Open Trades + Refunds tabs)
 - [x] Add consistent mt-4 spacing between search bar and tab content (Open Trades + Refunds tabs)
+
+## Recover Funds End-to-End + Badge Fix + Empty State
+
+- [x] Audit all Recover Funds button surfaces (RefundBanner, Refunds tab card, Open Trades card)
+- [x] Wire Recover Funds in Refunds tab card → buildSolanaHtlcRefundTx + Phantom sign/send + post-recovery DB update
+- [x] Wire Recover Funds in RefundBanner → deep-links to Refunds tab via defaultTab prop on SwapHistory
+- [x] Wire Recover Funds in Open Trades card → executeEarlyRefund already fully wired for SOL/TNK/ETH/BTC
+- [x] Fix RefundCard right-side chip: "Claimed" → "Recovered" to match badge label; add Locked/Expired chip for pending/expired status
+- [x] Add rich empty-state to Refunds tab: animated ShieldCheck icon, reassurance chips, "All clear" headline

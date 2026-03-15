@@ -293,7 +293,12 @@ interface Filters {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function SwapHistory() {
+interface SwapHistoryProps {
+  /** If provided, pre-selects this tab on mount (used for deep-linking from RefundBanner). */
+  defaultTab?: "history" | "open" | "refunds";
+}
+
+export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
   // Auth context — used for admin "All Swaps" toggle
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -329,7 +334,7 @@ export default function SwapHistory() {
 
   const hasWallet = connectedAddresses.length > 0;
 
-  const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
+  const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">(defaultTab ?? "history");
   const [filters, setFilters] = useState<Filters>({
     search: "", status: "All", dateRange: "All time", chain: "all",
   });

@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
   Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap, RefreshCw,
-  ShieldAlert, CheckCheck, Undo2, TrendingDown,
+  ShieldAlert, CheckCheck, Undo2, TrendingDown, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -1564,7 +1564,7 @@ function RefundCard({
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
               style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
+              <span className="text-[10px] font-mono text-emerald-400">Recovered</span>
             </div>
           )}
           {refund.status === "refunded" && (
@@ -1572,6 +1572,15 @@ function RefundCard({
               style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}>
               <CheckCircle2 className="w-3 h-3 text-cyan-400" />
               <span className="text-[10px] font-mono text-cyan-400">Refunded</span>
+            </div>
+          )}
+          {(refund.status === "pending" || refund.status === "expired") && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <Clock className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {refund.status === "expired" ? "Expired" : "Locked"}
+              </span>
             </div>
           )}
           {/* Detail drawer button */}
@@ -1973,12 +1982,53 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
           {claimable.length >= 2 && <ClaimAllButton claimable={claimable} />}
         </div>
 
-        {refunds.length === 0 && (
-          <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-            <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No refunds needed</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
-          </div>
+        {refunds.length === 0 && !isScanning && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative overflow-hidden rounded-2xl py-14 px-6 text-center"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+          >
+            {/* Background watermark */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <ShieldCheck className="w-48 h-48 opacity-[0.025] text-emerald-400" />
+            </div>
+
+            {/* Icon ring */}
+            <div className="relative mx-auto mb-5 w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>
+              <ShieldCheck className="w-7 h-7 text-emerald-400" />
+              {/* Animated pulse ring */}
+              <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
+                style={{ background: "rgba(16,185,129,0.3)" }} />
+            </div>
+
+            <h3 className="text-base font-bold text-foreground mb-1">All clear — no stuck funds</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto leading-relaxed">
+              All your HTLCs have settled successfully. Your funds are safe.
+            </p>
+
+            {/* Three reassurance chips */}
+            <div className="flex items-center justify-center gap-2 mt-5 flex-wrap">
+              {[
+                { icon: <CheckCircle2 className="w-3 h-3" />, label: "Swaps settled", color: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.25)", text: "#10b981" },
+                { icon: <ShieldCheck className="w-3 h-3" />, label: "Non-custodial", color: "rgba(6,182,212,0.12)", border: "rgba(6,182,212,0.25)", text: "#06b6d4" },
+                { icon: <RotateCcw className="w-3 h-3" />, label: "Auto-monitored", color: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", text: "#8b5cf6" },
+              ].map(chip => (
+                <div key={chip.label}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-semibold"
+                  style={{ background: chip.color, border: `1px solid ${chip.border}`, color: chip.text }}>
+                  {chip.icon}
+                  {chip.label}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-muted-foreground/40 mt-4">
+              If a future swap gets stuck, it will appear here automatically.
+            </p>
+          </motion.div>
         )}
 
         {refunds.map(refund => (
