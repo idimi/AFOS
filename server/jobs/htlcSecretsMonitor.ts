@@ -166,6 +166,13 @@ async function runHtlcSecretsCheck(): Promise<void> {
           let initiatorAddress   = row.initiatorAddress;
           let counterpartyAddress = row.counterpartyAddress;
 
+          // Tier 1b: use counterpartyWallets.solana from htlc_secrets row itself
+          // (populated by saveHtlcSecret when senderWallets is available)
+          if (!counterpartyAddress && (row.counterpartyWallets as { solana?: string } | null)?.solana) {
+            counterpartyAddress = (row.counterpartyWallets as { solana?: string }).solana ?? null;
+            console.log(`[HtlcSecretsMonitor] Resolved counterpartyAddress from htlc_secrets.counterpartyWallets.solana for rfqId=${row.rfqId}`);
+          }
+
           if (!initiatorAddress || !counterpartyAddress) {
             console.log(
               `[HtlcSecretsMonitor] Missing wallet addresses for rfqId=${row.rfqId} — looking up from htlc_swaps`

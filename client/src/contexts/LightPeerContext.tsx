@@ -775,7 +775,20 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   // Maps rfqId → counterpartyPeerId, populated from getPendingRevealHtlcs and htlc_locked messages.
   // Used by the on-chain poll fallback so it can send the P2P reveal signal even when
   // the htlc_locked message was dropped.
-  const counterpartyPeerIdByRfqRef = useRef<Record<string, string>>({});
+  // Seeded from localStorage on mount so it survives page refreshes.
+  const counterpartyPeerIdByRfqRef = useRef<Record<string, string>>(
+    (() => {
+      try {
+        const stored = localStorage.getItem("afos_counterparty_peer_map");
+        return stored ? (JSON.parse(stored) as Record<string, string>) : {};
+      } catch { return {}; }
+    })()
+  );
+  const persistCounterpartyPeerMap = useCallback(() => {
+    try {
+      localStorage.setItem("afos_counterparty_peer_map", JSON.stringify(counterpartyPeerIdByRfqRef.current));
+    } catch { /* ignore */ }
+  }, []);
 
   // Stable ref to acceptRfq so the signaling handlers (agent_rfq, rfq_broadcast)
   // always call the latest version — avoids stale closure where solConnected is false.
@@ -2588,8 +2601,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     }
     // Store counterpartyPeerId so the on-chain poll fallback can send the P2P reveal
     // signal even when the htlc_locked message was dropped.
+    // Persist to localStorage so it survives page refreshes.
     if (counterpartyPeerId) {
       counterpartyPeerIdByRfqRef.current[rfqId] = counterpartyPeerId;
+      persistCounterpartyPeerMap();
     }
     // Build a synthetic IncomingRfq for Agent A (the requester).
     // Agent A locks their SOURCE tokens (fromToken on fromChain).

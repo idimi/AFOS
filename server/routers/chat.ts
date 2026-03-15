@@ -1254,7 +1254,8 @@ export const chatRouter = router({
           // On-chain HTLC tracking
           htlcId:             `htlc_a_${p2pQuote.rfqId.slice(0, 22)}`,
           initiatorAddress:   userPublicKey ?? undefined,
-          counterpartyAddress: p2pQuote.counterpartyPubKey ?? undefined, // Agent B's Solana wallet — needed for auto-claim
+          counterpartyAddress: p2pQuote.counterpartyPubKey ?? p2pQuote.counterpartyAddress ?? undefined, // Agent B's wallet — needed for auto-claim
+          counterpartyWallets: p2pQuote.counterpartyWallets ?? undefined, // Full multi-chain map for Tier 1 auto-claim
           fromToken:          (fromToken ?? "SOL").toUpperCase(),
           toToken:            (toToken ?? "USDT").toUpperCase(),
         }).catch(() => {/* non-fatal */});
@@ -1603,6 +1604,8 @@ export const chatRouter = router({
             fromChain:          fromChain as "bitcoin" | "ethereum" | "solana" | "trac_network",
             toChain:            toChain   as "bitcoin" | "ethereum" | "solana" | "trac_network",
           initiatorAddress:   fromAddress ?? undefined,
+          counterpartyAddress: p2pQuote.counterpartyAddress ?? undefined, // Agent B's ETH wallet
+          counterpartyWallets: p2pQuote.counterpartyWallets ?? undefined, // Full multi-chain map
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    ethSenderPeerId ?? undefined,
           expiresAt:          BigInt(Date.now() + 3600_000),
@@ -1912,6 +1915,8 @@ export const chatRouter = router({
           fromChain:          "bitcoin",
           toChain:            (input.toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           initiatorAddress:   input.senderAddress ?? undefined,
+          counterpartyAddress: p2pQuote.counterpartyAddress ?? undefined, // Agent B's BTC wallet
+          counterpartyWallets: p2pQuote.counterpartyWallets ?? undefined, // Full multi-chain map
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    btcSenderPeerId ?? undefined,
           expiresAt:          BigInt(Date.now() + expiryHours * 3_600_000),
@@ -2017,10 +2022,19 @@ export const chatRouter = router({
         btcExpiryHours: z.number().int().positive().optional().default(24),
         /** Manus OAuth openId — used to enforce per-user settings (maxTxAmountUsd, preferredRoute) */
         openId: z.string().optional(),
+        /** Sender's signaling peerId — used to exclude sender from P2P broadcast */
+        senderPeerId: z.string().optional(),
+        /** Full multi-chain wallet map — persisted in htlc_swaps for auto-claim */
+        senderWallets: z.object({
+          solana:       z.string().optional(),
+          ethereum:     z.string().optional(),
+          bitcoin:      z.string().optional(),
+          trac_network: z.string().optional(),
+        }).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl, btcNetwork, btcExpiryHours, openId } = input;
+      const { fromToken, toToken, amount, fromChain, toChain, rpcUrl, btcNetwork, btcExpiryHours, openId, senderPeerId: agentSenderPeerId, senderWallets: agentSenderWallets } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -2111,17 +2125,23 @@ export const chatRouter = router({
           toChain:       (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           expiresAt:     BigInt(Date.now() + btcExpiryHours * 3_600_000),
           status:        "locked",
+          initiatorPeerId: agentSenderPeerId ?? undefined,
+          initiatorAddress: agentSenderWallets?.trac_network ?? undefined, // TNK initiator wallet
         }).catch(() => {/* non-fatal */});
         // Broadcast to all peers so they can see the TNK RFQ
-        broadcastRfqToAll(undefined, {
+        // Pass agentSenderPeerId so Agent A's echo-filter skips their own broadcast.
+        // Pass agentSenderWallets so Agent B knows all of Agent A's addresses for auto-claim.
+        broadcastRfqToAll(agentSenderPeerId ?? undefined, {
           rfqId:     tnkRfqId,
           fromToken: fromToken.toUpperCase(),
           toToken:   toToken.toUpperCase(),
           fromChain: "trac_network",
           toChain:   toChain ?? "bitcoin",
           amount,
-          secretHashHex: tnkSecretHash,
-          expiresAt:     Date.now() + 60_000,
+          secretHashHex:   tnkSecretHash,
+          expiresAt:       Date.now() + 60_000,
+          requesterPeerId: agentSenderPeerId ?? undefined,
+          requesterWallets: agentSenderWallets ?? undefined,
         });
         const tnkResult = await executeTnkAgentSwap({
           fromToken,
