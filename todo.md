@@ -3408,3 +3408,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: notifyAgentBLocked now calls claimTnkHtlc(htlcIdA, secretHex) when fromChain=trac_network; claimSolanaHtlc only for Solana fromChain
 - [x] Fix: HtlcSecretsMonitor retry now calls claimTnkHtlc when fromChain=trac_network or toChain=trac_network (previously skipped all non-Solana rows)
 - [x] TypeScript: 0 errors (tsc --noEmit clean)
+
+## TNK Claim Timing Fix (Mar 15, 2026)
+- [x] Root cause: `notifyAgentBLocked` fires immediately when Agent B locks USDT, but Agent A's `htlc_lock` subnet tx is not yet confirmed — `getTnkHtlcState` returns null, server logs "HTLC not found" and skips Claim A
+- [x] Fix: Rewrote `tnkHtlcClaim.ts` — `waitForTnkHtlcLocked` polls subnet with exponential backoff (3s→15s, up to 90s) until HTLC appears in "locked" status before proceeding with claim
+- [x] Fix: `agentSendTnk` now retries up to 3 times with 2s×attempt backoff on transient failure
+- [x] Rescue: Sent 2 stuck TNK from escrow wallet (trac1..7zx9z) to Agent B (trac1..wmfy8) — txHash: fdc0c1d2a16f3322320489f7eaeca36ba38c4f23457d28956f8b56578ecd29bc
