@@ -36,6 +36,7 @@ import { getUserSettings, saveHtlcSecret, getHtlcSecret, updateHtlcSecretStatus,
 import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq, storePeerInboxRfq, drainPeerInbox } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
+import { claimTnkHtlc } from "../tnkHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 import { initiateSolToTnkSwap } from "../agentSwapSolToTnk";
@@ -2945,17 +2946,34 @@ export const chatRouter = router({
         const isAlreadyClaimed = (e: unknown) =>
           e instanceof Error && (e.message.includes("AlreadyClaimed") || e.message.includes("already claimed") || e.message.includes("not found on-chain"));
 
+        const fromChainVal = row.fromChain ?? "solana";
+        const toChainVal   = row.toChain   ?? "solana";
+
         // Claim Agent A's lock → release to Agent B
         let claimATxId: string | undefined;
         try {
-          const claimA = await claimSolanaHtlc({
-            htlcId:           htlcIdA,
-            secretHex:        row.secretHex,
-            recipientAddress: senderWallet,
-            tokenSymbol:      tokenSymA,
-          });
-          claimATxId = claimA.txSignature;
-          console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimATxId}`);
+          if (fromChainVal === "trac_network") {
+            // Agent A locked TNK on Trac Network — claim via TNK contract
+            const agentBTnkAddress = (senderWallets?.trac_network) ??
+              (row.counterpartyWallets as { trac_network?: string } | null)?.trac_network ??
+              senderWallet;
+            const claimA = await claimTnkHtlc(htlcIdA, row.secretHex);
+            if (claimA.ok) {
+              claimATxId = claimA.contractTxHash ?? claimA.sendTxHash;
+              console.log(`[AgentBWebhook] Claimed Agent A TNK → Agent B (${String(agentBTnkAddress).slice(0,8)}…): tx=${claimATxId?.slice(0,16)}…`);
+            } else {
+              console.error(`[AgentBWebhook] Claim A (TNK) failed for rfqId=${rfqId.slice(0, 12)}: ${claimA.error}`);
+            }
+          } else {
+            const claimA = await claimSolanaHtlc({
+              htlcId:           htlcIdA,
+              secretHex:        row.secretHex,
+              recipientAddress: senderWallet,
+              tokenSymbol:      tokenSymA,
+            });
+            claimATxId = claimA.txSignature;
+            console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimATxId}`);
+          }
         } catch (errA) {
           if (isAlreadyClaimed(errA)) {
             console.log(`[AgentBWebhook] Claim A already settled on-chain rfqId=${rfqId.slice(0, 12)} — continuing to Claim B`);
@@ -2967,14 +2985,25 @@ export const chatRouter = router({
         // Claim Agent B's lock → release to Agent A (always attempt regardless of Claim A result)
         let claimBTxId: string | undefined;
         try {
-          const claimB = await claimSolanaHtlc({
-            htlcId:           htlcIdB,
-            secretHex:        row.secretHex,
-            recipientAddress: initiatorAddress,
-            tokenSymbol:      tokenSymB,
-          });
-          claimBTxId = claimB.txSignature;
-          console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimBTxId}`);
+          if (toChainVal === "trac_network") {
+            // Agent B locked TNK on Trac Network — claim via TNK contract
+            const claimB = await claimTnkHtlc(htlcIdB, row.secretHex);
+            if (claimB.ok) {
+              claimBTxId = claimB.contractTxHash ?? claimB.sendTxHash;
+              console.log(`[AgentBWebhook] Claimed Agent B TNK → Agent A: tx=${claimBTxId?.slice(0,16)}…`);
+            } else {
+              console.error(`[AgentBWebhook] Claim B (TNK) failed for rfqId=${rfqId.slice(0, 12)}: ${claimB.error}`);
+            }
+          } else {
+            const claimB = await claimSolanaHtlc({
+              htlcId:           htlcIdB,
+              secretHex:        row.secretHex,
+              recipientAddress: initiatorAddress,
+              tokenSymbol:      tokenSymB,
+            });
+            claimBTxId = claimB.txSignature;
+            console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimBTxId}`);
+          }
         } catch (errB) {
           if (isAlreadyClaimed(errB)) {
             console.log(`[AgentBWebhook] Claim B already settled on-chain rfqId=${rfqId.slice(0, 12)}`);

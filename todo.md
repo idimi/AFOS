@@ -3398,3 +3398,13 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Verify: HtlcSecretsMonitor already had independent-claims pattern (no change needed)
 - [x] Rescue: Manually claimed stuck HTLC #30013 (Agent B's USDT lock) — tx: 2cXC28DVk9aPxDVce6RtwYFJEQBjfy4SSP7te41VmAvrYWoZGzz6rjpB8bL9x1dUQkCn4jgCL6kwShtCGimvbyB1
 - [x] DB: Updated htlc_swaps HTLC 30013 status to completed; updated htlc_secrets counterpartyRevealTxId
+
+## TNK Escrow Release Bug (Mar 15, 2026)
+- [ ] Bug: After Agent A locks TNK into escrow contract, TNK is not autonomously released to Agent B after secret reveal — tnkHtlcMonitor must detect the revealed secret and call the escrow contract to release TNK to Agent B's trac_network address
+- [ ] Fix: tnkHtlcMonitor should watch for htlc_swaps rows with chain=trac_network + status=pending, check if the secret has been revealed (htlc_secrets.status=revealed/completed), then call the TNK contract release function
+- [ ] Rescue: Manually release stuck TNK from escrow to Agent B wallet (trac1..wmfy8)
+## TNK Claim Path Fix (Mar 15, 2026)
+- [x] Root cause: notifyAgentBLocked called claimSolanaHtlc for Claim A even when fromChain=trac_network — TNK was never released from escrow to Agent B
+- [x] Fix: notifyAgentBLocked now calls claimTnkHtlc(htlcIdA, secretHex) when fromChain=trac_network; claimSolanaHtlc only for Solana fromChain
+- [x] Fix: HtlcSecretsMonitor retry now calls claimTnkHtlc when fromChain=trac_network or toChain=trac_network (previously skipped all non-Solana rows)
+- [x] TypeScript: 0 errors (tsc --noEmit clean)

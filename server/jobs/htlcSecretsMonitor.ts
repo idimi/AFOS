@@ -22,6 +22,7 @@
 import { getActiveHtlcSecrets, updateHtlcSecretStatus, getHtlcSwapAddresses } from "../db";
 import { sendToPeer, getPeerWalletAddress } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
+import { claimTnkHtlc } from "../tnkHtlcClaim";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -155,9 +156,12 @@ async function runHtlcSecretsCheck(): Promise<void> {
             `(revealed ${Math.round(revealedAgeMs / 60_000)}m ago) — retrying server-side claims`
           );
 
-          // Only retry Solana claims for now (ETH/BTC claim retry is a future enhancement)
-          if (row.fromChain !== "solana" && row.toChain !== "solana") {
-            console.log(`[HtlcSecretsMonitor] Skipping non-Solana retry for rfqId=${row.rfqId}`);
+          // Retry Solana and Trac Network claims; ETH/BTC claim retry is a future enhancement
+          const fromChainVal = row.fromChain ?? "solana";
+          const toChainVal   = row.toChain   ?? "solana";
+          const supportedChains = new Set(["solana", "trac_network"]);
+          if (!supportedChains.has(fromChainVal) && !supportedChains.has(toChainVal)) {
+            console.log(`[HtlcSecretsMonitor] Skipping non-Solana/TNK retry for rfqId=${row.rfqId}`);
             continue;
           }
 
@@ -238,17 +242,34 @@ async function runHtlcSecretsCheck(): Promise<void> {
 
           // ── Claim A: release Agent A's locked fromToken → Agent B ────────────
           try {
-            const claimA = await claimSolanaHtlc({
-              htlcId:           htlcIdA,
-              secretHex:        row.secretHex,
-              recipientAddress: counterpartyAddress,
-              tokenSymbol:      tokenSymA,
-            });
-            claimATxSig = claimA.txSignature;
-            claimASuccess = true;
-            console.log(
-              `[HtlcSecretsMonitor] Retry claim A success: ${claimA.txSignature} | rfqId=${row.rfqId}`
-            );
+            if (fromChainVal === "trac_network") {
+              // Agent A locked TNK on Trac Network
+              const agentBTnkAddress = (row.counterpartyWallets as { trac_network?: string } | null)?.trac_network
+                ?? counterpartyAddress;
+              const claimA = await claimTnkHtlc(htlcIdA, row.secretHex);
+              if (claimA.ok) {
+                claimATxSig = claimA.contractTxHash ?? claimA.sendTxHash;
+                claimASuccess = true;
+                console.log(`[HtlcSecretsMonitor] Retry claim A (TNK) success: tx=${claimATxSig?.slice(0,16)}… | rfqId=${row.rfqId}`);
+              } else if (claimA.error?.includes("already") || claimA.error?.includes("claimed")) {
+                claimASuccess = true;
+                console.log(`[HtlcSecretsMonitor] Claim A (TNK) already settled rfqId=${row.rfqId}`);
+              } else {
+                console.error(`[HtlcSecretsMonitor] Retry claim A (TNK) failed rfqId=${row.rfqId}: ${claimA.error}`);
+              }
+            } else {
+              const claimA = await claimSolanaHtlc({
+                htlcId:           htlcIdA,
+                secretHex:        row.secretHex,
+                recipientAddress: counterpartyAddress,
+                tokenSymbol:      tokenSymA,
+              });
+              claimATxSig = claimA.txSignature;
+              claimASuccess = true;
+              console.log(
+                `[HtlcSecretsMonitor] Retry claim A success: ${claimA.txSignature} | rfqId=${row.rfqId}`
+              );
+            }
           } catch (errA) {
             if (isAlreadyClaimedError(errA)) {
               claimASuccess = true;
@@ -263,16 +284,30 @@ async function runHtlcSecretsCheck(): Promise<void> {
 
           // ── Claim B: release Agent B's locked toToken → Agent A ──────────────
           try {
-            const claimB = await claimSolanaHtlc({
-              htlcId:           htlcIdB,
-              secretHex:        row.secretHex,
-              recipientAddress: initiatorAddress,
-              tokenSymbol:      tokenSymB,
-            });
-            claimBSuccess = true;
-            console.log(
-              `[HtlcSecretsMonitor] Retry claim B success: ${claimB.txSignature} | rfqId=${row.rfqId}`
-            );
+            if (toChainVal === "trac_network") {
+              // Agent B locked TNK on Trac Network
+              const claimB = await claimTnkHtlc(htlcIdB, row.secretHex);
+              if (claimB.ok) {
+                claimBSuccess = true;
+                console.log(`[HtlcSecretsMonitor] Retry claim B (TNK) success: tx=${(claimB.contractTxHash ?? claimB.sendTxHash)?.slice(0,16)}… | rfqId=${row.rfqId}`);
+              } else if (claimB.error?.includes("already") || claimB.error?.includes("claimed")) {
+                claimBSuccess = true;
+                console.log(`[HtlcSecretsMonitor] Claim B (TNK) already settled rfqId=${row.rfqId}`);
+              } else {
+                console.error(`[HtlcSecretsMonitor] Retry claim B (TNK) failed rfqId=${row.rfqId}: ${claimB.error}`);
+              }
+            } else {
+              const claimB = await claimSolanaHtlc({
+                htlcId:           htlcIdB,
+                secretHex:        row.secretHex,
+                recipientAddress: initiatorAddress,
+                tokenSymbol:      tokenSymB,
+              });
+              claimBSuccess = true;
+              console.log(
+                `[HtlcSecretsMonitor] Retry claim B success: ${claimB.txSignature} | rfqId=${row.rfqId}`
+              );
+            }
           } catch (errB) {
             if (isAlreadyClaimedError(errB)) {
               claimBSuccess = true;
