@@ -3219,3 +3219,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Remove "Trac Network" badge chip from Trac tab ConnectedCard (redundant when already on Trac tab)
 - [x] Ensure explorer link uses Trac Network explorer URL (https://explorer.trac.network/address/...)
+
+## Bitcoin Tab Consolidated Balance (Mar 2026)
+
+- [x] When both Tap Wallet and Phantom/MetaMask are connected on Bitcoin tab, show a consolidated BALANCES section summing both BTC amounts and USD values into one total portfolio display

@@ -909,6 +909,39 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                         Tap a wallet above to set it as the active BTC signer for swaps.
                       </p>
 
+                      {/* Consolidated BTC balances */}
+                      {(() => {
+                        const tapUsd = tapWallet.balanceUsd ?? 0;
+                        const otherUsd = otherWallet?.balanceUsd ?? 0;
+                        const totalUsd = tapUsd + otherUsd;
+                        // Parse BTC amounts from balance strings like "0.00123456 BTC"
+                        const parseBtc = (s: string) => parseFloat(s?.replace(/[^0-9.]/g, "") || "0") || 0;
+                        const tapBtc = parseBtc(tapWallet.balance);
+                        const otherBtc = parseBtc(otherWallet?.balance ?? "0");
+                        const totalBtc = tapBtc + otherBtc;
+                        return (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Balances</p>
+                            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl"
+                              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
+                                  style={{ background: "rgba(247,147,26,0.3)", color: "#F7931A" }}>B</div>
+                                <span className="text-sm font-semibold text-foreground">BTC</span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-mono font-semibold text-foreground">{totalBtc.toFixed(8)} BTC</p>
+                                <p className="text-[10px] text-muted-foreground">${totalUsd.toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between px-3.5 py-2">
+                              <span className="text-xs text-muted-foreground">Total portfolio</span>
+                              <span className="text-sm font-bold text-foreground">${totalUsd.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Disconnect both */}
                       <div className="flex gap-2">
                         <button
