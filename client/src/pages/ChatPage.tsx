@@ -2424,8 +2424,9 @@ export default function ChatPage() {
 
         // Build Solscan proof links
         const chain = data.chain ?? cardData.fromChain ?? "solana";
-        const explorerBase = chain === "ethereum" ? "https://etherscan.io/tx/" :
-                             chain === "bitcoin"  ? "https://mempool.space/tx/" :
+        const explorerBase = chain === "ethereum"     ? "https://etherscan.io/tx/" :
+                             chain === "bitcoin"      ? "https://mempool.space/tx/" :
+                             chain === "trac_network" ? "https://explorer.trac.network/tx/" :
                              "https://solscan.io/tx/";
         const txLinks: string[] = [];
         if (data.agentBClaimTxId) txLinks.push(`[↗ ${cardData.fromToken ?? "Token A"} claim](${explorerBase}${data.agentBClaimTxId})`);

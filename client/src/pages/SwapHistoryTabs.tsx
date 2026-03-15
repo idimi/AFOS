@@ -1876,7 +1876,7 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
     return (
       <div className="flex items-center justify-center py-16 gap-2">
         <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-        <span className="text-xs text-muted-foreground">Scanning SOL · ETH · BTC chains...</span>
+        <span className="text-xs text-muted-foreground">Scanning SOL · ETH · BTC · TNK chains...</span>
       </div>
     );
   }
@@ -1890,7 +1890,7 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
             style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.2)" }}
           >
             <Loader2 className="w-3 h-3 text-cyan-400 animate-spin flex-shrink-0" />
-            <span className="text-cyan-300/80">Scanning SOL · ETH · BTC chains for unclaimed HTLCs...</span>
+            <span className="text-cyan-300/80">Scanning SOL · ETH · BTC · TNK chains for unclaimed HTLCs...</span>
           </div>
         )}
         {!hasWallet && !onChainLoading && (

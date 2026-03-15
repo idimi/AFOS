@@ -743,6 +743,50 @@ export const historyRouter = router({
         console.warn("[myOnChainRefunds] BTC scan failed:", err);
       }
 
+      // ── Phase 4: TNK (Trac Network) — query DB for pending HTLCs ─────────────
+      try {
+        const db = await getDb();
+        if (db) {
+          const pendingTnk = await db
+            .select()
+            .from(htlcSwaps)
+            .where(and(
+              eq(htlcSwaps.chain, "trac_network"),
+              eq(htlcSwaps.status, "pending"),
+            ))
+            .limit(50);
+          const nowSec = Math.floor(Date.now() / 1000);
+          for (const row of pendingTnk) {
+            try {
+              // TNK uses Unix timestamps for locktime (same as Solana)
+              const isUnixTimelock = row.locktime > 1_000_000_000;
+              const timelockExpired = isUnixTimelock && row.locktime < nowSec;
+              // Filter by sender address
+              const tnkSender = row.senderAddress ?? "";
+              if (filterBySender && tnkSender && !walletSet.has(tnkSender.toLowerCase())) continue;
+              results.push({
+                htlcId: row.htlcId ?? row.htlcAddress,
+                pdaAddress: row.htlcAddress,
+                senderAddress: row.senderAddress ?? "unknown",
+                amount: row.amountHuman,
+                amountHuman: row.amountHuman,
+                token: "TNK",
+                chain: "trac_network",
+                timelockExpiry: isUnixTimelock ? row.locktime : 0,
+                timelockExpired,
+                dbStatus: row.status,
+                rfqId: row.rfqId ?? null,
+                secretHash: row.secretHash,
+              });
+            } catch {
+              // skip
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[myOnChainRefunds] TNK scan failed:", err);
+      }
+
       return { htlcs: results };
     }),
 

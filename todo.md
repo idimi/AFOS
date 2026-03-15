@@ -3358,3 +3358,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [ ] Bug 1: Agent A still sees "AFOS Agent P2P Match" card — requesterPeerId guard not working (myPeerId may be undefined when check runs)
 - [ ] Bug 2: Tap Wallet never opens to sign TNK HTLC lock — acceptRfq hits early return ("passed early return check" in debug console)
+
+## TNK HTLC Improvements
+
+- [ ] TNK HTLC refund on History page Refund tab (matching SOL pattern)
+- [ ] Pass signTracTx tx hash through swap flow to TNK Swap Confirmed card
+- [ ] Add TNK balance display in wallet balance row
