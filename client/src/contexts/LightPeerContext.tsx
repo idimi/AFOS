@@ -687,6 +687,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (row.initiatorAddress) {
             agentAWalletByRfqRef.current[row.rfqId] = row.initiatorAddress;
           }
+          // Populate counterpartyPeerIdByRfqRef so the on-chain poll fallback
+          // can send the P2P reveal signal even when htlc_locked was dropped.
+          if (row.counterpartyPeerId) {
+            counterpartyPeerIdByRfqRef.current[row.rfqId] = row.counterpartyPeerId;
+          }
           // Trigger autonomous reveal with a small stagger to avoid hammering the server
           const staggerMs = rows.indexOf(row) * 2000;
           setTimeout(() => void triggerAutoReveal(row), staggerMs);
@@ -724,13 +729,13 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             // Check if already revealed (avoid double-reveal)
             const alreadyRevealed = htlcRevealedSecrets[rfqId];
             if (alreadyRevealed) continue;
-            // Trigger auto-reveal
+            // Trigger auto-reveal — use stored counterpartyPeerId if available
             void triggerAutoReveal({
               rfqId,
               htlcId: `htlc_a_${rfqId.slice(0, 22)}`,
               initiatorAddress,
               counterpartyAddress: null,
-              counterpartyPeerId: null,
+              counterpartyPeerId: counterpartyPeerIdByRfqRef.current[rfqId] ?? null,
               fromChain: "solana",
               expiresAt: BigInt(Date.now() + 3_600_000),
             });
@@ -767,6 +772,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("afos_agent_a_wallet_map", JSON.stringify(agentAWalletByRfqRef.current));
     } catch { /* ignore */ }
   }, []);
+  // Maps rfqId → counterpartyPeerId, populated from getPendingRevealHtlcs and htlc_locked messages.
+  // Used by the on-chain poll fallback so it can send the P2P reveal signal even when
+  // the htlc_locked message was dropped.
+  const counterpartyPeerIdByRfqRef = useRef<Record<string, string>>({});
+
   // Stable ref to acceptRfq so the signaling handlers (agent_rfq, rfq_broadcast)
   // always call the latest version — avoids stale closure where solConnected is false.
   const acceptRfqRef = useRef<(rfqId: string, rfqOverride?: IncomingRfq) => Promise<void>>(() => Promise.resolve());
@@ -2538,6 +2548,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
       agentAWalletByRfqRef.current[rfqId] = agentAResolvedWallet;
       persistAgentAWalletMap(); // persist so auto-reveal works after page refresh
       console.log(`[HTLC] Stored agentAWallet=${agentAResolvedWallet.slice(0,8)}... for rfqId=${rfqId.slice(0,8)}`);
+    }
+    // Store counterpartyPeerId so the on-chain poll fallback can send the P2P reveal
+    // signal even when the htlc_locked message was dropped.
+    if (counterpartyPeerId) {
+      counterpartyPeerIdByRfqRef.current[rfqId] = counterpartyPeerId;
     }
     // Build a synthetic IncomingRfq for Agent A (the requester).
     // Agent A locks their SOURCE tokens (fromToken on fromChain).
