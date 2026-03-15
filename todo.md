@@ -3294,3 +3294,11 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Implement silentRestorePhantom() with injection polling + onlyIfTrusted connect (mirrors silentRestoreTapWallet)
 - [x] ETH restored via eth_accounts (read-only), BTC via requestAccounts (silent), accountsChanged listener re-registered
 - [x] Auto-reconnect timer reduced from 800ms to 0ms — Phantom handles its own injection wait internally
+
+## Swap Quote UI Fixes
+
+- [x] Fix "You send" pill: shows BTC address for Tap Wallet instead of TNK/Trac address — now uses tnkWallet.shortAddress
+- [x] Fix "You receive" pill: same trac_network → TNK address fix
+- [x] Fix deriveWalletForChain: removed BTC address fallback for trac_network
+- [x] Fix chain badge: "TNK→SOL" misleading when output is USDT — ChainPill now shows "USDT" with chain superscript badge
+- [x] Improve USDT chain disambiguation UX: USDT colored by destination chain (purple=SOL, blue=ETH) with tiny chain badge

@@ -150,16 +150,62 @@ const CHAIN_PILL_STYLES: Record<string, { color: string; label: string }> = {
   trac_network: { color: "#F97316", label: "TNK" },
 };
 
-function ChainPill({ fromChain, toChain }: { fromChain?: string; toChain?: string }) {
-  if (!fromChain || !toChain || fromChain === toChain) return null;
+// Stablecoins that should show the token name colored by their destination chain
+const STABLECOINS = new Set(["USDT", "USDC", "DAI", "BUSD", "TUSD", "FRAX"]);
+
+function ChainPill({ fromChain, toChain, fromToken, toToken }: {
+  fromChain?: string;
+  toChain?: string;
+  fromToken?: string;
+  toToken?: string;
+}) {
+  if (!fromChain || !toChain) return null;
   const from = CHAIN_PILL_STYLES[fromChain] ?? { color: "#aaa", label: fromChain.toUpperCase() };
   const to   = CHAIN_PILL_STYLES[toChain]   ?? { color: "#aaa", label: toChain.toUpperCase() };
+
+  // For stablecoin outputs: show the token symbol colored by the destination chain
+  // e.g. TNK → USDT(SOL) renders as: [TNK] → [USDT] with a tiny [SOL] superscript in purple
+  const isStablecoinOut = toToken && STABLECOINS.has(toToken.toUpperCase());
+  const isStablecoinIn  = fromToken && STABLECOINS.has(fromToken.toUpperCase());
+  const isSameChain = fromChain === toChain;
+
+  // Build the "from" label: use token symbol if it's a stablecoin, else chain label
+  const fromLabel = isStablecoinIn ? fromToken!.toUpperCase() : from.label;
+  const fromColor = isStablecoinIn ? from.color : from.color;
+
+  // Build the "to" label: use token symbol if it's a stablecoin, else chain label
+  const toLabel = isStablecoinOut ? toToken!.toUpperCase() : to.label;
+  const toColor = to.color; // always chain color for the token
+
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#ccc" }}>
-      <span style={{ color: from.color }}>{from.label}</span>
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+      style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#ccc" }}
+      title={isStablecoinOut ? `${fromToken ?? from.label} → ${toLabel} on ${to.label} chain` : undefined}
+    >
+      <span style={{ color: fromColor }}>{fromLabel}</span>
       <span className="opacity-50">→</span>
-      <span style={{ color: to.color }}>{to.label}</span>
+      {/* For stablecoins: show token name + tiny chain indicator */}
+      {isStablecoinOut ? (
+        <span className="inline-flex items-center gap-0.5">
+          <span style={{ color: toColor }}>{toLabel}</span>
+          {!isSameChain && (
+            <span
+              className="text-[8px] font-bold px-0.5 py-px rounded"
+              style={{
+                background: `${toColor}20`,
+                color: toColor,
+                border: `1px solid ${toColor}40`,
+                lineHeight: 1,
+              }}
+            >
+              {to.label}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span style={{ color: toColor }}>{toLabel}</span>
+      )}
     </span>
   );
 }
@@ -236,11 +282,9 @@ function QuoteCard({
       return null;
     }
     if (c === "trac_network") {
+      // Always use the Trac Network address — never fall back to BTC address
       if (activeTnk?.connected)
         return { name: activeTnk.walletName, address: activeTnk.shortAddress };
-      // Fall back to Tap Wallet BTC address as proxy
-      if (bitcoinTap?.connected)
-        return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
       return null;
     }
     if (c === "ethereum") {
@@ -309,7 +353,7 @@ function QuoteCard({
               {tnkPeerCount > 0 ? `${tnkPeerCount} TNK peer${tnkPeerCount !== 1 ? "s" : ""}` : "No TNK peers"}
             </span>
           )}
-          <ChainPill fromChain={data.fromChain} toChain={data.toChain} />
+          <ChainPill fromChain={data.fromChain} toChain={data.toChain} fromToken={data.fromToken} toToken={data.toToken} />
           <RouteBadge route={data.route} />
         </div>
       </div>
@@ -1430,8 +1474,26 @@ function MessageBubble({
                     <span>\u26A1</span> No peer found — routing via {msg.dexName ?? "DEX"}
                   </span>
                 )}
-                {/* BTC signer badge — shown when the swap involves Bitcoin on the send side */}
-                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "bitcoin" || msg.quoteData?.fromChain === "trac_network") && (() => {
+                {/* Signer badge — shown when the swap involves Bitcoin or TNK on the send side */}
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain === "trac_network" && (() => {
+                  // TNK swap: show Trac Network address (NOT the BTC address)
+                  const tnkAddr = tnkWallet?.connected ? tnkWallet.shortAddress : null;
+                  const tnkName = tnkWallet?.connected ? (tnkWallet.walletName ?? 'Tap Wallet') : null;
+                  if (!tnkName) return null;
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }}
+                      title={`You will sign with ${tnkName} Trac address (${tnkAddr})`}
+                    >
+                      <span style={{ fontSize: "9px" }}>⬡</span>
+                      <span>You send: {tnkName}</span>
+                      {tnkAddr && <span className="font-mono opacity-70">· {tnkAddr}</span>}
+                    </span>
+                  );
+                })()}
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain === "bitcoin" && (() => {
+                  // BTC swap: show Bitcoin address
                   const activeBtcName = preferredBtcWallet === 'tap'
                     ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                     : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
@@ -1457,7 +1519,10 @@ function MessageBubble({
                   if (!toChain) return null;
                   let receiveName: string | null = null;
                   let receiveAddr: string | null = null;
-                  if (toChain === "bitcoin" || toChain === "trac_network") {
+                  if (toChain === "trac_network") {
+                    // TNK receive: show Trac Network address (NOT BTC address)
+                    if (tnkWallet?.connected) { receiveName = tnkWallet.walletName ?? 'Tap Wallet'; receiveAddr = tnkWallet.shortAddress ?? null; }
+                  } else if (toChain === "bitcoin") {
                     const activeBtcName = preferredBtcWallet === 'tap'
                       ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                       : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
@@ -1474,19 +1539,23 @@ function MessageBubble({
                     if (solAddr) { receiveName = solName; receiveAddr = solAddr; }
                   }
                   if (!receiveName) return null;
-                  const isBtcReceive = toChain === "bitcoin" || toChain === "trac_network";
+                  const isBtcReceive = toChain === "bitcoin";
+                  const isTnkReceive = toChain === "trac_network";
+                  const receiveBadgeStyle = isBtcReceive
+                    ? { background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }
+                    : isTnkReceive
+                    ? { background: "rgba(249,115,22,0.12)", color: "#F97316", border: "1px solid rgba(249,115,22,0.3)" }
+                    : { background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" };
                   return (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                      style={isBtcReceive
-                        ? { background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }
-                        : { background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }
-                      }
+                      style={receiveBadgeStyle}
                       title={`You will receive to ${receiveName} (${receiveAddr})`}
                     >
                       {isBtcReceive && <span>&#x20BF;</span>}
+                      {isTnkReceive && <span style={{ fontSize: "9px" }}>⬡</span>}
                       <span>You receive: {receiveName}</span>
-                      {receiveAddr && <span className="font-mono opacity-70">\u00b7 {receiveAddr}</span>}
+                      {receiveAddr && <span className="font-mono opacity-70">· {receiveAddr}</span>}
                     </span>
                   );
                 })()}
