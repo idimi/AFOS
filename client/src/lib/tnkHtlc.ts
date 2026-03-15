@@ -6,7 +6,7 @@
  *   The AFOS trac-peer subnet runs a deterministic HTLC state machine contract.
  *   Locking TNK is a two-step atomic operation:
  *
- *   Step 1 — sendTNK:
+ *   Step 1 — sendTNK (or buildTracTx + pushTracTx):
  *     Transfer TNK to the HTLC contract address via tap.sendTNK().
  *     This is the actual value transfer recorded on the Trac Network ledger.
  *
@@ -24,6 +24,12 @@
  *
  * trac-peer contract reference:
  *   https://docs.trac.network/documentation/developers/mainnet/dapp-developer-guide/app-dev
+ *
+ * IMPORTANT — signTracTx response shape:
+ *   The Tap Wallet signTracTx() returns { tx: string; signature: string }.
+ *   It does NOT return { success, txHash }. A non-null response with a
+ *   non-empty `tx` or `signature` field means the signing succeeded.
+ *   The txHash for the contract command is derived from the `tx` field.
  */
 
 /** The AFOS HTLC contract address on Trac Network (operator-configured) */
@@ -66,6 +72,33 @@ export interface TnkHtlcLockResult {
   senderAddress: string;
 }
 
+// ─── Tap Wallet API type guard ────────────────────────────────────────────────
+
+/**
+ * Resolve the Tap Wallet provider from window globals.
+ * Tap Wallet injects both window.tapprotocol (BTC) and window.tracnetwork (TNK).
+ * For TNK operations we prefer window.tracnetwork which has sendTNK / signTracTx.
+ */
+function getTapWallet() {
+  // window.tracnetwork is the TNK-specific provider; window.tapprotocol is BTC-only.
+  // We cast to any here because the Window interface is extended in MultiChainWalletContext.tsx
+  // and is not directly importable in this utility module.
+  const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
+  if (!tap) {
+    throw new Error(
+      "Tap Wallet not detected. Please install the Tap Wallet extension and refresh the page."
+    );
+  }
+  return tap as {
+    requestAccount: () => Promise<string>;
+    getBalance: () => Promise<string>;
+    signMessage: (message: string) => Promise<{ signature: string; publicKey: string; address: string }>;
+    sendTNK: (from: string, to: string, amount: string) => Promise<{ txHash: string; success: boolean }>;
+    signTracTx: (contractTx: unknown) => Promise<{ tx: string; signature: string }>;
+    getNetwork?: () => Promise<string>;
+  };
+}
+
 // ─── Core lock function ───────────────────────────────────────────────────────
 
 /**
@@ -76,35 +109,46 @@ export interface TnkHtlcLockResult {
  *   2. Send TNK to the HTLC contract address via sendTNK()
  *   3. Sign a signTracTx htlc_lock command to register the HTLC in the subnet
  *   4. Return both tx hashes for the counterparty to verify on-chain
+ *
+ * NOTE: signTracTx returns { tx: string; signature: string } — NOT { success, txHash }.
+ *       A non-null result with a non-empty tx/signature is a success.
  */
 export async function executeTnkHtlcLock(
   params: TnkHtlcLockParams
 ): Promise<TnkHtlcLockResult> {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
-  if (!tap) {
-    throw new Error(
-      "Tap Wallet not detected. Please install the Tap Wallet extension."
-    );
-  }
+  const tap = getTapWallet();
 
   const { amount, secretHash, timelockSeconds, recipientAddress, htlcId } = params;
   const locktime = Math.floor(Date.now() / 1000) + timelockSeconds;
   const expiresAt = new Date(locktime * 1000).toISOString();
 
-  // Step 1: Get the connected address
-  const senderAddress: string = await tap.requestAccount();
+  // Step 1: Get the connected address (triggers Tap Wallet popup if not yet connected)
+  let senderAddress: string;
+  try {
+    senderAddress = await tap.requestAccount();
+  } catch (err) {
+    throw new Error(
+      `Tap Wallet: failed to get account — ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
   if (!senderAddress) {
-    throw new Error("Tap Wallet: no account connected.");
+    throw new Error("Tap Wallet: no account connected. Please connect your Tap Wallet.");
   }
 
-  // Step 2: Send TNK to the HTLC contract address
-  const sendResult = await tap.sendTNK(
-    senderAddress,
-    AFOS_TNK_CONTRACT_ADDRESS,
-    amount
-  );
+  // Step 2: Send TNK to the HTLC contract address (triggers Tap Wallet signing popup)
+  let sendResult: { txHash: string; success: boolean };
+  try {
+    sendResult = await tap.sendTNK(senderAddress, AFOS_TNK_CONTRACT_ADDRESS, amount);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // User cancelled the sendTNK popup — propagate as user rejection
+    if (msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied")) {
+      throw new Error(`User rejected the TNK transfer: ${msg}`);
+    }
+    throw new Error(`TNK contract transfer failed: ${msg}`);
+  }
 
-  if (!sendResult?.success) {
+  if (!sendResult?.success || !sendResult?.txHash) {
     throw new Error(
       `TNK contract transfer failed: ${JSON.stringify(sendResult)}`
     );
@@ -112,9 +156,9 @@ export async function executeTnkHtlcLock(
 
   const sendTxHash: string = sendResult.txHash;
 
-  // Step 3: Sign a signTracTx htlc_lock contract command
-  // This registers the HTLC parameters in the subnet state machine.
-  // The contract will only release funds when sha256(preimage) == secretHash.
+  // Step 3: Sign a signTracTx htlc_lock contract command (second Tap Wallet popup)
+  // signTracTx returns { tx: string; signature: string } — NOT { success, txHash }.
+  // A non-null result with a non-empty tx or signature field means the signing succeeded.
   const contractCommand = {
     subnet:    AFOS_TNK_SUBNET_ID,
     contract:  "htlc",
@@ -133,27 +177,35 @@ export async function executeTnkHtlcLock(
   let contractTxHash: string;
   try {
     const contractResult = await tap.signTracTx(contractCommand);
-    if (!contractResult?.success) {
-      // Log orphaned sendTNK — the server refund monitor will catch this
+    // signTracTx returns { tx: string; signature: string }
+    // A non-null result with a non-empty tx or signature field means success.
+    if (!contractResult || (!contractResult.tx && !contractResult.signature)) {
       console.error(
-        `[TNK HTLC] signTracTx failed after sendTNK. ` +
+        `[TNK HTLC] signTracTx returned empty result after sendTNK. ` +
         `Orphaned sendTxHash: ${sendTxHash}. ` +
         `The server refund monitor will return funds after timelock expiry.`,
         contractResult
       );
       throw new Error(
-        `TNK contract lock failed: ${JSON.stringify(contractResult)}. ` +
+        `TNK contract lock failed: signTracTx returned no result. ` +
         `Your TNK transfer (${sendTxHash}) will be refunded after the timelock expires.`
       );
     }
-    contractTxHash = contractResult.txHash ?? contractResult.contractTxHash ?? sendTxHash;
+    // Derive a display txHash from the signed tx payload or the sendTxHash as fallback
+    contractTxHash = (contractResult as any).txHash
+      ?? (contractResult.tx ? `sig_${contractResult.tx.slice(0, 32)}` : sendTxHash);
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // User cancelled the signTracTx popup
+    if (msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("denied")) {
+      throw new Error(`User rejected the HTLC contract signing: ${msg}`);
+    }
     // Re-throw with context if it's not already our error
     if (err instanceof Error && err.message.includes("refunded after")) {
       throw err;
     }
     throw new Error(
-      `TNK contract lock failed: ${err instanceof Error ? err.message : String(err)}. ` +
+      `TNK contract lock failed: ${msg}. ` +
       `Your TNK transfer (${sendTxHash}) will be refunded after the timelock expires.`
     );
   }
@@ -201,8 +253,7 @@ export async function executeTnkHtlcLockLegacy(params: {
   timelockSeconds: number;
   escrowAddress?: string;
 }): Promise<TnkHtlcLegacyLockResult> {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
-  if (!tap) throw new Error("Tap Wallet not detected.");
+  const tap = getTapWallet();
 
   const escrow = params.escrowAddress ?? AFOS_TNK_CONTRACT_ADDRESS;
   const expiresAt = new Date(Date.now() + params.timelockSeconds * 1000).toISOString();
@@ -237,8 +288,7 @@ export async function requestTnkHtlcRefund(params: {
   htlcId?: string;
   escrowAddress?: string;
 }): Promise<{ refundRequestSignature: string; requestedAt: string }> {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
-  if (!tap) throw new Error("Tap Wallet not detected.");
+  const tap = getTapWallet();
 
   const escrow = params.escrowAddress ?? AFOS_TNK_CONTRACT_ADDRESS;
   const requestedAt = new Date().toISOString();
@@ -257,9 +307,8 @@ export async function requestTnkHtlcRefund(params: {
  * Get the TNK balance of the connected Tap Wallet account.
  */
 export async function getTnkBalance(): Promise<string> {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
-  if (!tap) return "0";
   try {
+    const tap = getTapWallet();
     const raw = await tap.getBalance();
     return typeof raw === "string" ? raw : "0";
   } catch {
@@ -271,9 +320,8 @@ export async function getTnkBalance(): Promise<string> {
  * Get the connected Tap Wallet trac1... address.
  */
 export async function getTnkAddress(): Promise<string | null> {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
-  if (!tap) return null;
   try {
+    const tap = getTapWallet();
     return await tap.requestAccount();
   } catch {
     return null;
@@ -285,7 +333,7 @@ export async function getTnkAddress(): Promise<string | null> {
  * Returns false for older wallet versions that only support sendTNK.
  */
 export function isTnkContractModeSupported(): boolean {
-  const tap = (window as any).tapprotocol ?? (window as any).tracnetwork;
+  const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
   return typeof tap?.signTracTx === "function";
 }
 

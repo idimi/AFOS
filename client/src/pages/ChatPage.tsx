@@ -1513,6 +1513,7 @@ function MessageBubble({
   solShortAddress,
   solWalletName,
   onOpenWalletModal,
+  onDismissMsg,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -1560,6 +1561,8 @@ function MessageBubble({
   solWalletName?: string | null;
   /** Opens the Connect Wallet modal pre-focused on the given chain tab */
   onOpenWalletModal?: (chain: SupportedChain) => void;
+  /** Called when user dismisses a terminal-state incoming_rfq or swap_progress card */
+  onDismissMsg?: (msgId: string) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -1995,7 +1998,7 @@ function MessageBubble({
             ) && (
               <div className="flex justify-end pt-1">
                 <button
-                  onClick={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
+                  onClick={() => onDismissMsg?.(msg.id)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all hover:opacity-90 active:scale-95"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }}
                 >
@@ -2010,12 +2013,8 @@ function MessageBubble({
         {msg.type === "swap_progress" && msg.swapProgressData && (
           <SwapProgressCard
             data={msg.swapProgressData}
-            onDismiss={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
-            onMarkFailed={(errorMsg) => setMessages(prev => prev.map(m =>
-              m.id === msg.id && m.swapProgressData
-                ? { ...m, swapProgressData: { ...m.swapProgressData, phase: "expired" as const, errorMsg } }
-                : m
-            ))}
+            onDismiss={() => onDismissMsg?.(msg.id)}
+            onMarkFailed={(errorMsg) => onDismissMsg?.(msg.id)}
           />
         )}
 
@@ -3558,6 +3557,7 @@ export default function ChatPage() {
               onOpenWalletModal={(chain) => { setWalletModalChain(chain); setShowWalletModal(true); }}
               acceptedRfqIds={acceptedRfqIds}
               declinedRfqIds={declinedRfqIds}
+              onDismissMsg={(msgId) => setMessages(prev => prev.filter(m => m.id !== msgId))}
             />
           ) : null
         ))}
