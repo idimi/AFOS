@@ -1303,30 +1303,20 @@ function SwapProgressCard({
             </p>
           </div>
         )}
-        {/* ── Dismiss button (always shown so users can clear stuck cards) ── */}
-        {onDismiss && (
+        {/* ── Dismiss button (only shown on terminal states: failed, expired, or confirmed) ── */}
+        {onDismiss && (isFailed || isDone) && (
           <div className="flex justify-end pt-1">
             <button
               onClick={onDismiss}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all hover:opacity-90 active:scale-95"
               style={{
-                background: isFailed
-                  ? "rgba(248,113,113,0.08)"
-                  : isDone
-                  ? "rgba(52,211,153,0.08)"
-                  : "rgba(255,255,255,0.04)",
-                border: `1px solid ${
-                  isFailed
-                    ? "rgba(248,113,113,0.25)"
-                    : isDone
-                    ? "rgba(52,211,153,0.25)"
-                    : "rgba(255,255,255,0.1)"
-                }`,
-                color: isFailed ? "#f87171" : isDone ? "#34d399" : "rgba(255,255,255,0.35)",
+                background: isFailed ? "rgba(248,113,113,0.08)" : "rgba(52,211,153,0.08)",
+                border: `1px solid ${isFailed ? "rgba(248,113,113,0.25)" : "rgba(52,211,153,0.25)"}`,
+                color: isFailed ? "#f87171" : "#34d399",
               }}
             >
               <span style={{ fontSize: "10px" }}>✕</span>
-              <span>{isFailed || isDone ? "Dismiss" : "Clear"}</span>
+              <span>Dismiss</span>
             </button>
           </div>
         )}
@@ -2672,8 +2662,12 @@ export default function ChatPage() {
           // Inject swap_progress card for live tracking
           const btcProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
           const btcHtlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
-          // Track this rfqId so we suppress the echo-back incoming_rfq card
-          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+          // Track this rfqId so we suppress the echo-back incoming_rfq card.
+          // Also retroactively remove any incoming_rfq echo that arrived before buildSwapTx resolved.
+          if (p2p?.rfqId) {
+            initiatedSwapRfqIds.current.add(p2p.rfqId);
+            setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
+          }
           setMessages(prev => [...prev, {
             id: btcProgressMsgId,
             role: "assistant" as const,
@@ -2788,8 +2782,12 @@ export default function ChatPage() {
           // Inject swap progress card for live tracking
           const ethProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
           const ethHtlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
-          // Track this rfqId so we suppress the echo-back incoming_rfq card
-          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+          // Track this rfqId so we suppress the echo-back incoming_rfq card.
+          // Also retroactively remove any incoming_rfq echo that arrived before buildSwapTx resolved.
+          if (p2p?.rfqId) {
+            initiatedSwapRfqIds.current.add(p2p.rfqId);
+            setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
+          }
           setMessages(prev => [...prev, {
             id: ethProgressMsgId,
             role: "assistant" as const,
@@ -3022,8 +3020,12 @@ export default function ChatPage() {
             // Inject swap progress card for live tracking
             const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
             const htlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
-            // Track this rfqId so we suppress the echo-back incoming_rfq card
-            if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+            // Track this rfqId so we suppress the echo-back incoming_rfq card.
+            // Also retroactively remove any incoming_rfq echo that arrived before buildSwapTx resolved.
+            if (p2p?.rfqId) {
+              initiatedSwapRfqIds.current.add(p2p.rfqId);
+              setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
+            }
             setMessages(prev => [...prev, {
               id: progressMsgId,
               role: "assistant" as const,
@@ -3117,7 +3119,10 @@ export default function ChatPage() {
           ));
           const tnkBtcProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
           const tnkBtcHtlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
-          if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+          if (p2p?.rfqId) {
+            initiatedSwapRfqIds.current.add(p2p.rfqId);
+            setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
+          }
           setMessages(prev => [...prev, {
             id: tnkBtcProgressMsgId,
             role: "assistant" as const,
@@ -3223,8 +3228,12 @@ export default function ChatPage() {
         const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
         // Use the actual HTLC timelock from server (1 hour), not a hardcoded 10 min
         const htlcExpiry = (p2p as { htlcExpiresAt?: number } | null)?.htlcExpiresAt ?? Date.now() + 3_600_000;
-        // Track this rfqId so we suppress the echo-back incoming_rfq card
-        if (p2p?.rfqId) initiatedSwapRfqIds.current.add(p2p.rfqId);
+        // Track this rfqId so we suppress the echo-back incoming_rfq card.
+        // Also retroactively remove any incoming_rfq echo that arrived before buildSwapTx resolved.
+        if (p2p?.rfqId) {
+          initiatedSwapRfqIds.current.add(p2p.rfqId);
+          setMessages(prev => prev.filter(m => !(m.type === "incoming_rfq" && m.incomingRfqData?.rfqId === p2p.rfqId)));
+        }
         setMessages(prev => [...prev, {
           id: progressMsgId,
           role: "assistant" as const,
