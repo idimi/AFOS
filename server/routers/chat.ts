@@ -1281,6 +1281,9 @@ export const chatRouter = router({
           rate:            p2pQuote.rate ?? 0,
           requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
           requesterPeerId: senderPeerId ?? undefined,
+          // requesterWallet is Agent A's address — Agent B uses this as counterpartyAddress
+          // in their HTLC lock so funds are locked for Agent A to claim.
+          requesterWallet: userPublicKey,
           expiresAt:       rfqExpiresAt,
           secretHashHex:   htlcSecretHash,
           timestamp:       Date.now(),
@@ -1641,6 +1644,8 @@ export const chatRouter = router({
             rate:            p2pQuote.rate ?? 0,
             requesterAlias:  ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
             requesterPeerId: ethSenderPeerId ?? undefined,
+            // requesterWallet is Agent A's ETH address — Agent B uses this as counterpartyAddress
+            requesterWallet: fromAddress ?? undefined,
             expiresAt:       Date.now() + 60_000,
             secretHashHex:   secretHash,
             timestamp:       Date.now(),
@@ -1790,6 +1795,8 @@ export const chatRouter = router({
         rfqId?: string;
         peerId?: string;
         counterpartyPubKey?: string;
+        counterpartyAddress?: string;
+        counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
         rate?: number;
         outAmount?: number;
         route?: string;

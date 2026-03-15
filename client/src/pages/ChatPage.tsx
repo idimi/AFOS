@@ -2845,7 +2845,7 @@ export default function ChatPage() {
         }
         // P2P route: unified flow — same pattern as SOL P2P (swap_progress card + initiateHtlcLock)
         if (ethResult.route === "AFOS P2P") {
-          const p2p = ethResult.p2pQuote as { peerAlias?: string; peerId?: string; rfqId?: string; outAmount?: number; rate?: number; htlcExpiresAt?: number; secretHashHex?: string; counterpartyPubKey?: string; counterpartyAddress?: string } | null | undefined;
+          const p2p = ethResult.p2pQuote as { peerAlias?: string; peerId?: string; rfqId?: string; outAmount?: number; rate?: number; htlcExpiresAt?: number; secretHashHex?: string; counterpartyPubKey?: string; counterpartyAddress?: string; counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } } | null | undefined;
           const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
           toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} — locking HTLC…` });
           // Update quote card to tx_success state
@@ -3236,7 +3236,8 @@ export default function ChatPage() {
               rate:               p2p.rate ?? quoteData.rate,
               counterpartyPeerId: p2p.peerId ?? undefined,
               // For TNK HTLC lock: use the peer's trac_network address (not their BTC/ETH address)
-              counterpartyWallet: (p2p as { counterpartyWallets?: { trac_network?: string } }).counterpartyWallets?.trac_network ?? p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+              // p2p is typed as P2PQuoteResult which includes counterpartyWallets — no cast needed
+              counterpartyWallet: p2p?.counterpartyWallets?.trac_network ?? p2p?.counterpartyPubKey ?? p2p?.counterpartyAddress ?? undefined,
               secretHashHex:      p2p.secretHashHex ?? undefined,
             });
           }
