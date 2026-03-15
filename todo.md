@@ -3264,3 +3264,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Auto-dismiss RefundBanner when claimableCount drops to 0 (reactive, no reload needed)
 - [x] Add "Why is this stuck?" tooltip on STUCK FUNDS badge in RefundCard
 - [x] Replace manual Re-sync button with automatic background sync (no user action needed)
+
+## UI Spacing — SwapHistory Tabs
+
+- [x] Add consistent mt-4 spacing between tab switcher and search bar (Open Trades + Refunds tabs)
+- [x] Add consistent mt-4 spacing between search bar and tab content (Open Trades + Refunds tabs)

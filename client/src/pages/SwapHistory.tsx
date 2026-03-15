@@ -570,19 +570,25 @@ export default function SwapHistory() {
         ))}
       </div>
 
-      {/* Shared search bar for HTLC tabs */}
+      {/* Shared search bar for HTLC tabs — mt-4 gives breathing room from the tab switcher */}
       {(activeTab === "open" || activeTab === "refunds") && (
-        <HtlcSearchBar value={htlcSearch} onChange={setHtlcSearch} />
+        <div className="mt-4">
+          <HtlcSearchBar value={htlcSearch} onChange={setHtlcSearch} />
+        </div>
       )}
 
       {/* Open Trades Tab */}
       {activeTab === "open" && (
-        <OpenTradesTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+        <div className="mt-4">
+          <OpenTradesTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+        </div>
       )}
 
       {/* Refunds Tab */}
       {activeTab === "refunds" && (
-        <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} adminOverride={adminGlobalView} />
+        <div className="mt-4">
+          <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} adminOverride={adminGlobalView} />
+        </div>
       )}
 
       {/* History Tab */}
