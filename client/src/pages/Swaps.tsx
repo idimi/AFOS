@@ -31,7 +31,6 @@ import { usePeerReputation } from "../hooks/usePeerReputation";
 import { trpc } from "@/lib/trpc";
 import { AfosLogo } from "@/components/AfosLogo";
 import { usePrices, useTokenPrice } from "../contexts/PriceContext";
-import { getTnkBalance } from "../lib/tnkHtlc";
 import TapWalletSignCard from "../components/TapWalletSignCard";
 import { usePairDepth, formatDepth, depthColor } from "../hooks/usePairDepth";
 
@@ -2584,22 +2583,19 @@ export default function Swaps({ onNavigateToChat, onNavigateToSettings }: { onNa
       const raw = btcWallet.balance.split(' ')[0];
       map['BTC'] = parseFloat(raw) || 0;
     }
-    // TNK balance is fetched asynchronously — see tnkBalance state below
     return map;
   }, [solBalances, ethWallet, btcWallet, erc20Balances, phantomMultiChain]);
 
-  // TNK balance: fetched asynchronously from Tap Wallet (window.tracnetwork)
-  const [tnkBalance, setTnkBalance] = useState<number>(0);
-  useEffect(() => {
-    let cancelled = false;
-    const fetchTnk = async () => {
-      const raw = await getTnkBalance();
-      if (!cancelled) setTnkBalance(parseFloat(raw) || 0);
-    };
-    fetchTnk();
-    const iv = setInterval(fetchTnk, 30_000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, []);
+  // TNK balance: read directly from MultiChainWalletContext tracNetwork state.
+  // MultiChainWalletContext already keeps this fresh on connect and via its own 30s interval.
+  // Using a standalone getTnkBalance() poll was unreliable because window.tapprotocol/tracnetwork
+  // may not be injected yet at component mount time, causing the balance to show 0.
+  const tnkBalance = useMemo(() => {
+    if (!tnkWallet?.connected || !tnkWallet?.balance) return 0;
+    // balance is stored as "1234.56 TNK" — strip the symbol and parse
+    const numStr = tnkWallet.balance.replace(/[^\d.]/g, '');
+    return parseFloat(numStr) || 0;
+  }, [tnkWallet?.connected, tnkWallet?.balance]);
 
   // Helper: get the display balance for a token (live if connected, static fallback)
   const getTokenBalance = useCallback((token: typeof TOKENS[0]): number => {

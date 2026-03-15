@@ -1746,8 +1746,11 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
 
     const btcInterval = setInterval(refreshBtcBalance, 30_000);
     const tnkInterval = setInterval(refreshTnkBalance, 30_000);
+    // Also run an immediate TNK refresh so the balance is current when the component mounts
+    refreshTnkBalance();
     return () => { clearInterval(btcInterval); clearInterval(tnkInterval); };
-  }, [bitcoin?.connected, bitcoin?.address]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bitcoin?.connected, bitcoin?.address, tracNetwork?.connected, tracNetwork?.address]);
 
   // ── Tap Wallet accountsChanged cleanup on disconnect ───────────────────────
   // The listener is registered inside connectTapWallet. When the user disconnects
