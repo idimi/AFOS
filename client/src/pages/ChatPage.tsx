@@ -2102,7 +2102,7 @@ export default function ChatPage() {
       addMessage({
         role: "assistant",
         type: "incoming_rfq",
-        content: `The AFOS agent matched you with **@${alias}** who wants to swap **${rfq.amount.toFixed(4)} ${rfq.fromToken}** for your **${rfq.outAmount.toFixed(4)} ${rfq.toToken}**. Do you want to accept this P2P swap?`,
+        content: `The AFOS agent matched you with **@${alias}** who wants to swap **${rfq.outAmount.toFixed(4)} ${rfq.toToken}** for your **${rfq.amount.toFixed(4)} ${rfq.fromToken}**. Do you want to accept this P2P swap?`,
         incomingRfqData: rfq,
       });
     };
