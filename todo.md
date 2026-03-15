@@ -3414,3 +3414,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix: Rewrote `tnkHtlcClaim.ts` — `waitForTnkHtlcLocked` polls subnet with exponential backoff (3s→15s, up to 90s) until HTLC appears in "locked" status before proceeding with claim
 - [x] Fix: `agentSendTnk` now retries up to 3 times with 2s×attempt backoff on transient failure
 - [x] Rescue: Sent 2 stuck TNK from escrow wallet (trac1..7zx9z) to Agent B (trac1..wmfy8) — txHash: fdc0c1d2a16f3322320489f7eaeca36ba38c4f23457d28956f8b56578ecd29bc
+
+## Autonomous TNK HTLC Claim — Solana-like Pattern (Mar 15, 2026)
+- [x] Investigate MSB node on oracle server and trac-msb transfer API — tracapi.trac.network is the public MSB HTTP API
+- [x] Implement real TNK on-chain transfer via trac-crypto-api + tracapi.trac.network/v1/broadcast-transaction (server/tnkOnChainTransfer.ts)
+- [x] Replace stub agentSendTnk with real broadcastTnkTransfer in tnkHtlcClaim.ts — fully autonomous claim flow
+- [x] Fix htlcMonitor.ts WrongSender spam — skip refunding htlc_b_* (Agent B's locks) since server cannot sign with SOL_HTLC_KEY
+- [x] Add trac_network to pathFinder.ts chain enums and DIRECT_PAIRS — TNK↔SOL now a supported direct pair
+- [x] Rescue 2 stuck TNK: escrow trac1..u7zx9z → Agent B trac1..wmfy8 — 2 TNK transferred on-chain (txHash: fdc0c1d2a16f3322320489f7eaeca36ba38c4f23457d28956f8b56578ecd29bc)
+- [x] Fee note: TNK transfers require 0.03 TNK fee; escrow must hold amount+fee; top-up 1 TNK was provided by user

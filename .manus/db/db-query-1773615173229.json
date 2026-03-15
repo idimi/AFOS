@@ -1,0 +1,38 @@
+{
+  "query": "SELECT id, rfqId, status, secretHex, secretHashHex, fromChain, toChain, initiatorAddress, counterpartyAddress, counterpartyWallets, settledVia, createdAt FROM htlc_secrets WHERE (fromChain = 'trac_network' OR toChain = 'trac_network') AND status != 'completed' ORDER BY id DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, rfqId, status, secretHex, secretHashHex, fromChain, toChain, initiatorAddress, counterpartyAddress, counterpartyWallets, settledVia, createdAt FROM htlc_secrets WHERE (fromChain = 'trac_network' OR toChain = 'trac_network') AND status != 'completed' ORDER BY id DESC;",
+  "rows": [
+    {
+      "id": "30020",
+      "rfqId": "rfq_1773593476092_lp-0464c",
+      "status": "expired",
+      "secretHex": "af0931c7c40e09e427948c9368671a493f43f9d117d40a6b272402848f46da1d",
+      "secretHashHex": "ef97f88a4af8f6ea6bab7e2f21f5175af2387e118e19801e595dbc937d9a45f1",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "counterpartyWallets": "NULL",
+      "settledVia": "NULL",
+      "createdAt": "2026-03-15 16:51:16"
+    },
+    {
+      "id": "20",
+      "rfqId": "rfq_tnk_1773181171831_a6unxp",
+      "status": "expired",
+      "secretHex": "fd7ce99c3bf07ff225fdb43485942a2d294dc6294a0dd1675a277622f03972d0",
+      "secretHashHex": "4a651253ca7c625c812d46ea4e8bdd6d0ec0a1af06fc8c9a02e0ee1c1670c4af",
+      "fromChain": "trac_network",
+      "toChain": "solana",
+      "initiatorAddress": "NULL",
+      "counterpartyAddress": "NULL",
+      "counterpartyWallets": "NULL",
+      "settledVia": "NULL",
+      "createdAt": "2026-03-10 22:19:31"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\trfqId\tstatus\tsecretHex\tsecretHashHex\tfromChain\ttoChain\tinitiatorAddress\tcounterpartyAddress\tcounterpartyWallets\tsettledVia\tcreatedAt\n30020\trfq_1773593476092_lp-0464c\texpired\taf0931c7c40e09e427948c9368671a493f43f9d117d40a6b272402848f46da1d\tef97f88a4af8f6ea6bab7e2f21f5175af2387e118e19801e595dbc937d9a45f1\ttrac_network\tsolana\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tNULL\tNULL\t2026-03-15 16:51:16\n20\trfq_tnk_1773181171831_a6unxp\texpired\tfd7ce99c3bf07ff225fdb43485942a2d294dc6294a0dd1675a277622f03972d0\t4a651253ca7c625c812d46ea4e8bdd6d0ec0a1af06fc8c9a02e0ee1c1670c4af\ttrac_network\tsolana\tNULL\tNULL\tNULL\tNULL\t2026-03-10 22:19:31\n",
+  "stderr": "",
+  "execution_time_ms": 55
+}

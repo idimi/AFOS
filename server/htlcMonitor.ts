@@ -277,7 +277,22 @@ async function pollPendingHtlcs(): Promise<void> {
     try {
       if (htlc.chain === "bitcoin")  refundTxId = await triggerBtcRefund(htlc);
       if (htlc.chain === "ethereum") refundTxId = await triggerEthRefund(htlc);
-      if (htlc.chain === "solana")   refundTxId = await triggerSolRefund(htlc);
+      if (htlc.chain === "solana") {
+        // Only refund HTLCs locked by the agent (htlc_a_* prefix).
+        // htlc_b_* rows are Agent B's (counterparty) locks — the server cannot
+        // refund them with SOL_HTLC_KEY (WrongSender). Agent B must refund their own.
+        const htlcIdStr = htlc.htlcId ?? htlc.htlcAddress ?? "";
+        const isCounterpartyLock = htlcIdStr.startsWith("htlc_b_");
+        if (isCounterpartyLock) {
+          console.log(
+            `[HTLC Monitor] [SOL] Skipping refund for ${htlcIdStr} — ` +
+            `counterparty lock (htlc_b_*); Agent B must refund their own HTLC.`
+          );
+          refundTxId = null;
+        } else {
+          refundTxId = await triggerSolRefund(htlc);
+        }
+      }
     } catch (err) {
       console.error(`[HTLC Monitor] Refund trigger failed for HTLC ${htlc.id}:`, err);
       continue;

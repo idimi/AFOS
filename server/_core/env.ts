@@ -26,6 +26,12 @@ export const ENV = {
   tnkHtlcContractAddress: process.env.TNK_HTLC_CONTRACT_ADDRESS ?? "",
   // Agent key for signing trac-peer contract transactions (PKCS8 DER hex)
   tnkAgentKey: process.env.TNK_AGENT_KEY ?? "",
+  // 64-byte Ed25519 secret key (128 hex chars) for the TNK HTLC escrow/agent wallet.
+  // Used to sign real on-chain TNK transfers via tracapi.trac.network.
+  tnkHtlcWif: process.env.TNK_HTLC_WIF ?? "",
+  // The trac1 address derived from TNK_HTLC_WIF — the escrow wallet that holds locked TNK.
+  // Set TNK_ESCROW_ADDRESS in env; if absent, derived at runtime from TNK_HTLC_WIF.
+  tnkEscrowAddress: process.env.TNK_ESCROW_ADDRESS ?? process.env.VITE_TNK_ESCROW_ADDRESS ?? "",
   // Server secret for authenticating internal agent/send calls
   afosServerSecret: process.env.AFOS_SERVER_SECRET ?? "",
 };

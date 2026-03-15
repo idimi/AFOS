@@ -1,0 +1,150 @@
+{
+  "query": "SELECT id, htlcId, status, chain, amountRaw, amountHuman, senderAddress, recipientAddress FROM htlc_swaps ORDER BY id DESC;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT id, htlcId, status, chain, amountRaw, amountHuman, senderAddress, recipientAddress FROM htlc_swaps ORDER BY id DESC;",
+  "rows": [
+    {
+      "id": "30014",
+      "htlcId": "htlc_b_rfq_1773612954001_lp-0",
+      "status": "pending",
+      "chain": "solana",
+      "amountRaw": "0.17844193500000002",
+      "amountHuman": "0.17844193500000002",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30013",
+      "htlcId": "htlc_b_rfq_1773610132200_lp-0",
+      "status": "completed",
+      "chain": "solana",
+      "amountRaw": "0.1721414",
+      "amountHuman": "0.1721414",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30012",
+      "htlcId": "htlc_b_rfq_1773536423389_lp-b",
+      "status": "completed",
+      "chain": "solana",
+      "amountRaw": "0.01137632448444799",
+      "amountHuman": "0.01137632448444799",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30011",
+      "htlcId": "htlc_a_rfq_1773536423389_lp-b",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "1",
+      "amountHuman": "1",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    },
+    {
+      "id": "30010",
+      "htlcId": "htlc_b_rfq_1773463153298_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.0112595850248083",
+      "amountHuman": "0.0112595850248083",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30009",
+      "htlcId": "htlc_a_rfq_1773463153298_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "1",
+      "amountHuman": "1",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    },
+    {
+      "id": "30008",
+      "htlcId": "htlc_b_rfq_1773461593322_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.8838722",
+      "amountHuman": "0.8838722",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30007",
+      "htlcId": "htlc_a_rfq_1773461593322_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.01",
+      "amountHuman": "0.01",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    },
+    {
+      "id": "30006",
+      "htlcId": "htlc_b_rfq_1773437539943_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.8856695000000001",
+      "amountHuman": "0.8856695000000001",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30005",
+      "htlcId": "htlc_a_rfq_1773437539943_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.01",
+      "amountHuman": "0.01",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    },
+    {
+      "id": "30004",
+      "htlcId": "htlc_b_rfq_1773436152914_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.8889645500000001",
+      "amountHuman": "0.8889645500000001",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30003",
+      "htlcId": "htlc_a_rfq_1773436152914_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.01",
+      "amountHuman": "0.01",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    },
+    {
+      "id": "30002",
+      "htlcId": "htlc_b_rfq_1773434833553_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.8882656",
+      "amountHuman": "0.8882656",
+      "senderAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "recipientAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk"
+    },
+    {
+      "id": "30001",
+      "htlcId": "htlc_a_rfq_1773434833553_lp-e",
+      "status": "refunded",
+      "chain": "solana",
+      "amountRaw": "0.01",
+      "amountHuman": "0.01",
+      "senderAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "recipientAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\thtlcId\tstatus\tchain\tamountRaw\tamountHuman\tsenderAddress\trecipientAddress\n30014\thtlc_b_rfq_1773612954001_lp-0\tpending\tsolana\t0.17844193500000002\t0.17844193500000002\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30013\thtlc_b_rfq_1773610132200_lp-0\tcompleted\tsolana\t0.1721414\t0.1721414\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30012\thtlc_b_rfq_1773536423389_lp-b\tcompleted\tsolana\t0.01137632448444799\t0.01137632448444799\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30011\thtlc_a_rfq_1773536423389_lp-b\trefunded\tsolana\t1\t1\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n30010\thtlc_b_rfq_1773463153298_lp-e\trefunded\tsolana\t0.0112595850248083\t0.0112595850248083\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30009\thtlc_a_rfq_1773463153298_lp-e\trefunded\tsolana\t1\t1\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n30008\thtlc_b_rfq_1773461593322_lp-e\trefunded\tsolana\t0.8838722\t0.8838722\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30007\thtlc_a_rfq_1773461593322_lp-e\trefunded\tsolana\t0.01\t0.01\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n30006\thtlc_b_rfq_1773437539943_lp-e\trefunded\tsolana\t0.8856695000000001\t0.8856695000000001\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30005\thtlc_a_rfq_1773437539943_lp-e\trefunded\tsolana\t0.01\t0.01\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n30004\thtlc_b_rfq_1773436152914_lp-e\trefunded\tsolana\t0.8889645500000001\t0.8889645500000001\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30003\thtlc_a_rfq_1773436152914_lp-e\trefunded\tsolana\t0.01\t0.01\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n30002\thtlc_b_rfq_1773434833553_lp-e\trefunded\tsolana\t0.8882656\t0.8882656\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\n30001\thtlc_a_rfq_1773434833553_lp-e\trefunded\tsolana\t0.01\t0.01\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\n",
+  "stderr": "",
+  "execution_time_ms": 62
+}

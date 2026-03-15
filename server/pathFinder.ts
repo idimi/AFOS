@@ -19,17 +19,19 @@ import { publicProcedure, router } from "./_core/trpc";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type SupportedChain = "bitcoin" | "ethereum" | "solana" | "trac_network";
+
 export interface SwapHop {
   /** Hop index (0-based) */
   hopIndex:   number;
   /** Source token for this hop */
   fromToken:  string;
   /** Source chain for this hop */
-  fromChain:  "bitcoin" | "ethereum" | "solana";
+  fromChain:  SupportedChain;
   /** Destination token for this hop */
   toToken:    string;
   /** Destination chain for this hop */
-  toChain:    "bitcoin" | "ethereum" | "solana";
+  toChain:    SupportedChain;
   /** Estimated rate for this hop (toAmount / fromAmount) */
   estimatedRate: number;
   /** Execution procedure to call for this hop */
@@ -60,32 +62,35 @@ export interface PathFinderResult {
 // ─── Bridge tokens (used as intermediate hops) ───────────────────────────────
 
 const BRIDGE_TOKENS = [
-  { symbol: "USDT", chain: "solana"   as const },
-  { symbol: "USDT", chain: "ethereum" as const },
-  { symbol: "USDC", chain: "solana"   as const },
-  { symbol: "USDC", chain: "ethereum" as const },
+  { symbol: "USDT", chain: "solana"   as SupportedChain },
+  { symbol: "USDT", chain: "ethereum" as SupportedChain },
+  { symbol: "USDC", chain: "solana"   as SupportedChain },
+  { symbol: "USDC", chain: "ethereum" as SupportedChain },
 ];
 
 // ─── Supported direct pairs per chain ────────────────────────────────────────
 // Pairs that can be swapped without an intermediate hop.
 
 const DIRECT_PAIRS: Record<string, string[]> = {
-  "SOL/solana":    ["USDT/solana", "USDC/solana"],
-  "USDT/solana":   ["SOL/solana", "USDC/solana"],
-  "USDC/solana":   ["SOL/solana", "USDT/solana"],
-  "ETH/ethereum":  ["USDT/ethereum", "USDC/ethereum"],
-  "USDT/ethereum": ["ETH/ethereum", "USDC/ethereum"],
-  "USDC/ethereum": ["ETH/ethereum", "USDT/ethereum"],
-  "BTC/bitcoin":   ["USDT/solana", "USDT/ethereum", "SOL/solana", "ETH/ethereum"],
+  "SOL/solana":          ["USDT/solana", "USDC/solana", "TNK/trac_network"],
+  "USDT/solana":         ["SOL/solana", "USDC/solana"],
+  "USDC/solana":         ["SOL/solana", "USDT/solana"],
+  "ETH/ethereum":        ["USDT/ethereum", "USDC/ethereum"],
+  "USDT/ethereum":       ["ETH/ethereum", "USDC/ethereum"],
+  "USDC/ethereum":       ["ETH/ethereum", "USDT/ethereum"],
+  "BTC/bitcoin":         ["USDT/solana", "USDT/ethereum", "SOL/solana", "ETH/ethereum"],
+  // Trac Network (TNK) — direct P2P swap with SOL
+  "TNK/trac_network":    ["SOL/solana"],
 };
 
 function tokenKey(symbol: string, chain: string): string {
   return `${symbol}/${chain}`;
 }
 
-function getProcedure(fromChain: "bitcoin" | "ethereum" | "solana"): SwapHop["procedure"] {
-  if (fromChain === "bitcoin")  return "executeBtcSwap";
-  if (fromChain === "ethereum") return "executeEthSwap";
+function getProcedure(fromChain: SupportedChain): SwapHop["procedure"] {
+  if (fromChain === "bitcoin")      return "executeBtcSwap";
+  if (fromChain === "ethereum")     return "executeEthSwap";
+  // trac_network and solana both use the same P2P HTLC flow (buildSwapTx)
   return "buildSwapTx";
 }
 
@@ -131,6 +136,7 @@ const PRICE_ESTIMATES: Record<string, number> = {
   SOL:  85,
   USDT: 1,
   USDC: 1,
+  TNK:  0.05, // approximate TNK price in USD — updated dynamically via Oracle VM
 };
 
 function estimateRate(fromToken: string, toToken: string): number {
@@ -143,9 +149,9 @@ function estimateRate(fromToken: string, toToken: string): number {
 
 export async function findSwapPath(
   fromToken:  string,
-  fromChain:  "bitcoin" | "ethereum" | "solana",
+  fromChain:  SupportedChain,
   toToken:    string,
-  toChain:    "bitcoin" | "ethereum" | "solana",
+  toChain:    SupportedChain,
   amount:     number
 ): Promise<PathFinderResult> {
   const fromKey = tokenKey(fromToken, fromChain);
@@ -269,9 +275,9 @@ export const pathFinderRouter = router({
     .input(
       z.object({
         fromToken:  z.string(),
-        fromChain:  z.enum(["bitcoin", "ethereum", "solana"]),
+        fromChain:  z.enum(["bitcoin", "ethereum", "solana", "trac_network"]),
         toToken:    z.string(),
-        toChain:    z.enum(["bitcoin", "ethereum", "solana"]),
+        toChain:    z.enum(["bitcoin", "ethereum", "solana", "trac_network"]),
         amount:     z.number().positive(),
       })
     )
