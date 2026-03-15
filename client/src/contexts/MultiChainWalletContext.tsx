@@ -931,6 +931,40 @@ export function MultiChainWalletProvider({ children }: { children: ReactNode }) 
       });
       return;
     }
+
+    // ── Wake-up ping: ensure the MV3 service worker is alive before calling requestAccount ──
+    // Chrome kills MV3 service workers after ~30s of inactivity. If the SW is dormant,
+    // calling requestAccount() will hang for the full 8s timeout before failing.
+    // Instead, we send a cheap getNetwork() ping first (3s timeout). If it succeeds,
+    // the SW is awake and requestAccount() will work immediately. If it fails, we show
+    // the "sleeping" toast right away without wasting 8 more seconds.
+    const swWakeResult = await (async () => {
+      if (!window.tracnetwork?.getNetwork) return "ok"; // no getNetwork — skip ping, proceed
+      try {
+        await Promise.race([
+          window.tracnetwork.getNetwork(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sw_dormant")), 3000)),
+        ]);
+        return "ok";
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return msg.includes("sw_dormant") ? "dormant" : "ok"; // non-timeout errors are fine
+      }
+    })();
+
+    if (swWakeResult === "dormant") {
+      // SW is sleeping — show the helpful toast immediately
+      toast.error("Tap Wallet not responding", {
+        description: "The Tap Wallet background service is sleeping. Click the Tap Wallet (₿) icon in your Chrome toolbar to wake it up, then try connecting again.",
+        duration: 15000,
+        action: {
+          label: "Retry",
+          onClick: () => connectTapWallet(),
+        },
+      });
+      return;
+    }
+
     try {
       // ── Step 1: Connect TNK via window.tracnetwork ─────────────────────────────────────
       console.log("[AFOS] Tap Wallet: calling tracnetwork.requestAccount()\u2026");

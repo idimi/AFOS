@@ -760,6 +760,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
                     <PrimaryCTA
                       label="Connect Tap Wallet"
+                      loadingLabel="Waking up Tap Wallet…"
                       gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
                       shadow="rgba(249,115,22,0.3)"
                       loading={btcConnecting}
@@ -1209,8 +1210,8 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
   );
 }
 
-function PrimaryCTA({ label, gradient, shadow, onClick, loading }: {
-  label: string; gradient: string; shadow: string; onClick: () => void; loading?: boolean;
+function PrimaryCTA({ label, gradient, shadow, onClick, loading, loadingLabel }: {
+  label: string; gradient: string; shadow: string; onClick: () => void; loading?: boolean; loadingLabel?: string;
 }) {
   return (
     <button
@@ -1220,7 +1221,7 @@ function PrimaryCTA({ label, gradient, shadow, onClick, loading }: {
       style={{ background: gradient, color: "white", boxShadow: `0 4px 20px ${shadow}` }}
     >
       {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-      {label}
+      {loading && loadingLabel ? loadingLabel : label}
     </button>
   );
 }

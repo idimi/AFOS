@@ -3232,3 +3232,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix autoRefund.ts: add DB correction for claimed/refunded HTLCs found during scan
 - [x] Fix mapHtlcToRefund: improve failReason text to accurately reflect HTLC state
 - [x] Add corrected count to AutoRefundResult for monitoring
+
+## Tap Wallet Dormant SW Fix
+
+- [x] Add wake-up ping (getNetwork, 3s timeout) before requestAccount in connectTapWallet
+- [x] Show "Tap Wallet not responding" toast immediately on dormant SW instead of waiting 8s timeout
+- [x] Add Retry button to dormant toast that re-invokes connectTapWallet
+- [x] Add loadingLabel="Waking up Tap Wallet..." to PrimaryCTA for better UX during ping
