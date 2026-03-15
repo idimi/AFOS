@@ -3327,3 +3327,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## BTC Wallet Picker Visibility Fix
 
 - [x] Hide "Which Bitcoin wallet to use?" picker when swap does not involve Bitcoin — removed trac_network from isBtcSwap condition
+
+## Incoming RFQ Card Perspective Fix
+
+- [x] Fix "AFOS Agent P2P Match" card: shows peer's perspective (You send 0.1769 USDT / You receive 1 TNK) but should show user's own perspective (You send 1 TNK / You receive 0.1769 USDT) — swap fromToken/toToken/amount/outAmount display
+- [x] Fix "Unexpected swap route: AFOS P2P" error when user clicks Confirm Swap on TNK→USDT quote card

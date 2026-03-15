@@ -1802,15 +1802,17 @@ function MessageBubble({
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs">
+              {/* incomingRfqData is from the PEER's perspective: peer sends fromToken, receives toToken.
+                  From the USER's perspective (counterparty): user sends fromToken, receives toToken. */}
               <div className="rounded-lg p-2" style={{ background: "var(--muted)" }}>
                 <p className="text-muted-foreground mb-0.5">You send</p>
-                <p className="font-semibold text-foreground">{msg.incomingRfqData.outAmount.toFixed(4)} {msg.incomingRfqData.toToken}</p>
-                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.toChain}</p>
+                <p className="font-semibold text-foreground">{msg.incomingRfqData.amount.toFixed(4)} {msg.incomingRfqData.fromToken}</p>
+                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.fromChain}</p>
               </div>
               <div className="rounded-lg p-2" style={{ background: "var(--muted)" }}>
                 <p className="text-muted-foreground mb-0.5">You receive</p>
-                <p className="font-semibold text-foreground">{msg.incomingRfqData.amount.toFixed(4)} {msg.incomingRfqData.fromToken}</p>
-                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.fromChain}</p>
+                <p className="font-semibold text-foreground">{msg.incomingRfqData.outAmount.toFixed(4)} {msg.incomingRfqData.toToken}</p>
+                <p className="text-muted-foreground text-[10px]">{msg.incomingRfqData.toChain}</p>
               </div>
             </div>
             {/* HTLC countdown timer — shown on accepted cards where Agent B has locked funds */}
@@ -1826,8 +1828,8 @@ function MessageBubble({
             )}
             {(() => {
                 // Determine which chain the user needs to SEND on for this incoming RFQ
-                // In an incoming RFQ, the user sends toToken on toChain (they receive fromToken)
-                const rfqSendChain = msg.incomingRfqData?.toChain as SupportedChain | undefined;
+                // The user sends fromToken on fromChain (same direction as the peer's request)
+                const rfqSendChain = msg.incomingRfqData?.fromChain as SupportedChain | undefined;
                 const rfqSendChainLabel = rfqSendChain === 'bitcoin' ? 'Bitcoin'
                   : rfqSendChain === 'ethereum' ? 'Ethereum'
                   : rfqSendChain === 'trac_network' ? 'Trac'
@@ -2769,6 +2771,42 @@ export default function ChatPage() {
                 htlcIdA:      r2.htlcIdA      ?? "",
                 htlcIdB:      r2.htlcIdB      ?? "",
                 rfqId:        r2.rfqId        ?? `rfq_tnk_sol_${Date.now()}`,
+                tnkAmount:    quoteData.fromAmount,
+                outAmount:    r2.outAmount,
+                toToken:      quoteData.toToken,
+                htlcExpiresAt: r2.htlcExpiresAt,
+              },
+            });
+            setExecutingId(null);
+            return;
+          }
+
+          // AFOS P2P route: P2P peer matched for TNK swap — same flow as AFOS TNK→SOL (user locks TNK via Tap Wallet)
+          if ((tnkSolResult as { route?: string }).route === "AFOS P2P") {
+            const tnkPayload = (tnkSolResult as { tnkLockTxPayload?: string | null }).tnkLockTxPayload;
+            if (!tnkPayload) {
+              addMessage({ role: "assistant", content: (tnkSolResult as { message?: string }).message ?? "TNK P2P swap failed — no lock payload returned.", type: "error" });
+              setExecutingId(null);
+              return;
+            }
+            const r2 = tnkSolResult as {
+              htlcIdA?: string; htlcIdB?: string; rfqId?: string;
+              outAmount?: number; message?: string; htlcExpiresAt?: number;
+            };
+            addMessage({
+              role: "assistant",
+              content: r2.message ?? `P2P swap ready. Lock ${quoteData.fromAmount.toFixed(4)} ${quoteData.fromToken} in Tap Wallet to receive ${(r2.outAmount ?? 0).toFixed(4)} ${quoteData.toToken}.`,
+              type: "text",
+            });
+            addMessage({
+              role: "assistant",
+              content: "",
+              type: "tnk_sign_card",
+              tnkSignCardData: {
+                tnkLockTxPayload: tnkPayload,
+                htlcIdA:      r2.htlcIdA      ?? "",
+                htlcIdB:      r2.htlcIdB      ?? "",
+                rfqId:        r2.rfqId        ?? `rfq_p2p_${Date.now()}`,
                 tnkAmount:    quoteData.fromAmount,
                 outAmount:    r2.outAmount,
                 toToken:      quoteData.toToken,
