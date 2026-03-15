@@ -2475,6 +2475,43 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           if (rfq.requestorPeer && signalingRef.current) {
             signalingRef.current.sendHtlcLocked(rfq.requestorPeer, rfqId, tnkDisplayTxHash, "trac_network", rfq.amount);
           }
+          // Record the TNK HTLC deposit in the DB so tnkHtlcMonitor can detect it
+          // and release the counterparty's funds (SOL/USDT/ETH/BTC) to the user.
+          {
+            const tnkDepositPayload = {
+              chain: "trac_network" as const,
+              txHash: tnkDisplayTxHash,
+              senderAddress: tnkWalletCtx?.address ?? "",
+              recipientAddress: tnkRecipient,
+              escrowAddress: result.contractAddress ?? tnkRecipient,
+              amountRaw: String(Math.round(tnkLockAmount * 1e8)),
+              token: "TNK",
+              secretHash,
+              timelock: Math.floor(Date.now() / 1000) + 600,
+              rfqId,
+              peerId: rfq.requestorPeer ?? undefined,
+              htlcId: tnkHtlcId,
+              isAgentA: isAgentATnk,
+              counterpartyAddress: isAgentATnk
+                ? (rfq.counterpartyAddress ?? rfq.requesterWallet ?? undefined)
+                : (rfq.requesterWallet ?? rfq.counterpartyAddress ?? undefined),
+              counterpartyWallets: rfq.requesterWallets ?? undefined,
+            };
+            try {
+              const res = await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ "0": { json: tnkDepositPayload } }),
+              });
+              if (!res.ok) {
+                saveFailedDeposit(tnkDepositPayload);
+                console.warn("[HTLC] recordHtlcDeposit (TNK) failed (", res.status, ") — saved to localStorage for retry");
+              }
+            } catch (recordErr) {
+              saveFailedDeposit(tnkDepositPayload);
+              console.warn("[HTLC] recordHtlcDeposit (TNK) network error — saved to localStorage for retry", recordErr);
+            }
+          }
           toast.success("TNK locked on-chain", {
             description: `${rfq.amount.toFixed(4)} TNK locked in HTLC contract · Tx: ${tnkDisplayTxHash.slice(0, 16)}…`,
             action: {
