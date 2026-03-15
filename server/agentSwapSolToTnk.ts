@@ -32,6 +32,7 @@ import { submitTnkHtlcLock } from "./tnkHtlcContract.js";
 import { saveHtlcSecret } from "./db.js";
 import { recordSwapAnalytic } from "./htlcMonitor.js";
 import type { SupportedChain } from "@shared/const";
+import { TNK_NETWORK_FEE_TNK } from "@shared/const";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const AFOS_HTLC_PROGRAM_ID = new PublicKey(
@@ -184,7 +185,14 @@ export async function initiateSolToTnkSwap(params: {
   // Fee calculation
   const feeAmountOut  = tnkOutAmount * (P2P_FEE_BPS / 10000);
   const netTnkOut     = tnkOutAmount - feeAmountOut;
-  const tnkAmountRaw  = BigInt(Math.round(netTnkOut * 10 ** TNK_DECIMALS)).toString();
+  // The subnet lock amount includes the Trac Network transfer fee (0.03 TNK) so
+  // the escrow holds enough for the autonomous claim to broadcast without a top-up.
+  // IMPORTANT: The subnet lock records (netTnkOut + fee) but the claim transfer
+  // sends only netTnkOut to the user — the fee is deducted from the escrow by the network.
+  const tnkLockAmount    = netTnkOut + TNK_NETWORK_FEE_TNK;  // escrow holds this
+  const tnkAmountRaw     = BigInt(Math.round(tnkLockAmount * 10 ** TNK_DECIMALS)).toString(); // subnet lock amount
+  // Net amount the user actually receives (what broadcastTnkTransfer will send)
+  const tnkNetAmountRaw  = BigInt(Math.round(netTnkOut * 10 ** TNK_DECIMALS)).toString();
 
   // ── Step 2: Lock TNK on Trac Network (agent as maker) ────────────────────────
   let tnkLockTxHash: string | null = null;

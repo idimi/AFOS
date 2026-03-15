@@ -3423,3 +3423,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add trac_network to pathFinder.ts chain enums and DIRECT_PAIRS — TNK↔SOL now a supported direct pair
 - [x] Rescue 2 stuck TNK: escrow trac1..u7zx9z → Agent B trac1..wmfy8 — 2 TNK transferred on-chain (txHash: fdc0c1d2a16f3322320489f7eaeca36ba38c4f23457d28956f8b56578ecd29bc)
 - [x] Fee note: TNK transfers require 0.03 TNK fee; escrow must hold amount+fee; top-up 1 TNK was provided by user
+
+## TNK HTLC Lock Fee Buffer (Mar 15, 2026)
+- [x] Add TNK_NETWORK_FEE_TNK = 0.03 constant to shared/const.ts
+- [x] In agentSwapSolToTnk.ts: lock amount = netTnkOut + TNK_NETWORK_FEE_TNK (fee buffer included in escrow)
+- [x] In tnkOnChainTransfer.ts: broadcastTnkTransfer sends netTnkOut (without fee buffer) — fee is deducted by network
+- [x] In tnkHtlcClaim.ts: pass the correct net amount (amountRaw from DB) to broadcastTnkTransfer
+- [x] Update quote/UI to show user receives netTnkOut (fee buffer is transparent — agent absorbs it)

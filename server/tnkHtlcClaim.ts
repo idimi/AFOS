@@ -29,7 +29,10 @@ import { getTnkHtlcState, submitTnkHtlcClaim, isTnkPeerHealthy } from "./tnkHtlc
 import { broadcastTnkTransfer, getTnkOnChainBalance } from "./tnkOnChainTransfer";
 
 /** Maximum time (ms) to wait for Agent A's htlc_lock to appear on the subnet */
-const HTLC_CONFIRM_TIMEOUT_MS = 90_000;
+// Allow test override via env var to avoid 90s wait in unit tests
+const HTLC_CONFIRM_TIMEOUT_MS = process.env.TNK_HTLC_CONFIRM_TIMEOUT_MS
+  ? parseInt(process.env.TNK_HTLC_CONFIRM_TIMEOUT_MS, 10)
+  : 90_000;
 /** Initial backoff (ms) between subnet state polls */
 const HTLC_POLL_INITIAL_MS = 3_000;
 /** Backoff multiplier */
@@ -124,6 +127,10 @@ async function executeRealTnkTransfer(params: {
       return { success: true, txHash: result.txHash };
     }
     lastError = result.error ?? "unknown error";
+    // Permanent errors — do not retry
+    if (lastError.includes("TNK_HTLC_WIF") || lastError.includes("address") || lastError.includes("invalid")) {
+      return { success: false, error: lastError };
+    }
     if (attempt < maxRetries) {
       console.warn(`[TNK Claim] broadcastTnkTransfer attempt ${attempt} failed: ${lastError} — retrying in ${2000 * attempt}ms…`);
       await sleep(2_000 * attempt);
@@ -150,23 +157,19 @@ export interface TnkClaimResult {
  */
 export async function claimTnkHtlc(htlcId: string, preimage: string): Promise<TnkClaimResult> {
   const healthy = await isTnkPeerHealthy();
-
   if (!healthy) {
-    // Peer is down — we can still attempt the on-chain transfer if we have the state cached
-    console.warn(`[TNK Claim] trac-peer unreachable for HTLC ${htlcId} — attempting DB-based direct on-chain claim`);
+    // Peer is down — return immediately. The monitor will retry when peer recovers.
+    return { ok: false, error: `trac-peer-unreachable: peer node is down for HTLC ${htlcId}` };
   }
-
   // Wait for Agent A's htlc_lock to be confirmed on the subnet (up to 90s)
   const waitResult = await waitForTnkHtlcLocked(htlcId);
   const contractState = "state" in waitResult ? waitResult.state : null;
-
-  if (!contractState && healthy) {
+  if (!contractState) {
     // Peer is healthy but state not found — genuine failure
     return { ok: false, error: ("error" in waitResult) ? waitResult.error : "unknown subnet error" };
   }
-
   // Verify preimage hash if we have subnet state
-  if (contractState) {
+  {
     const computedHash = sha256Hex(preimage);
     if (computedHash !== contractState.secretHash) {
       return { ok: false, error: `Preimage mismatch: sha256=${computedHash} != ${contractState.secretHash}` };
@@ -188,37 +191,21 @@ export async function claimTnkHtlc(htlcId: string, preimage: string): Promise<Tn
   }
 
   // Step 2: Execute REAL on-chain TNK transfer via tracapi.trac.network
-  // This is the actual blockchain transfer — not a stub.
-  let sendResult: { success: boolean; txHash?: string; error?: string } = { success: false, error: "not-executed" };
-
-  if (contractState) {
-    // Use subnet state for from/to/amount
-    sendResult = await executeRealTnkTransfer({
-      from: contractState.sender,
-      to: contractState.recipient,
-      amountRaw: contractState.amountRaw,
-    });
-  } else {
-    // Peer down — look up swap details from DB
-    try {
-      const db = await getDb();
-      if (db) {
-        const swaps = await db.select().from(htlcSwaps).where(eq(htlcSwaps.htlcId, htlcId));
-        const swap = swaps[0];
-        if (swap && swap.senderAddress && swap.recipientAddress && swap.amountRaw) {
-          sendResult = await executeRealTnkTransfer({
-            from: swap.senderAddress,   // escrow/sender wallet that holds the locked TNK
-            to: swap.recipientAddress,
-            amountRaw: swap.amountRaw,
-          });
-        } else {
-          return { ok: false, error: `Cannot find swap details for HTLC ${htlcId} in DB (missing senderAddress/recipientAddress/amountRaw)` };
-        }
-      }
-    } catch (dbErr) {
-      return { ok: false, error: `DB lookup failed: ${dbErr instanceof Error ? dbErr.message : String(dbErr)}` };
-    }
-  }
+  // contractState is guaranteed non-null here (we returned early if null above).
+  // amountRaw may be a decimal string (e.g. "5.0") from older subnet state or tests;
+  // truncate to integer before converting to BigInt.
+  const amountRawInt = contractState.amountRaw.includes(".")
+    ? contractState.amountRaw.split(".")[0]
+    : contractState.amountRaw;
+  const lockedRaw = BigInt(amountRawInt);
+  // The subnet lock amount includes the 0.03 TNK network fee buffer.
+  // Subtract the fee so the user receives exactly netTnkOut.
+  const netTransferRaw = lockedRaw > TNK_FEE ? lockedRaw - TNK_FEE : lockedRaw;
+  const sendResult = await executeRealTnkTransfer({
+    from: contractState.sender,
+    to: contractState.recipient,
+    amountRaw: netTransferRaw.toString(),
+  });
 
   if (!sendResult.success) {
     console.error(`[TNK Claim] CRITICAL: Contract claimed but on-chain transfer failed for HTLC ${htlcId}:`, sendResult.error);

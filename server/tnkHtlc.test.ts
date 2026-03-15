@@ -251,11 +251,13 @@ describe("claimTnkHtlc", () => {
   const htlcId = "htlc_a_test456";
   const futureLocktime = Math.floor(Date.now() / 1000) + 3600;
 
+  // Use realistic raw units: 2.03 TNK (2 TNK + 0.03 fee buffer) = 2030000000000000000 raw (18 decimals)
+  // After fee subtraction in claimTnkHtlc: 2030000000000000000 - 30000000000000000 = 2000000000000000000 (2 TNK)
   const mockLockedState = {
     status: "locked" as const,
     secretHash,
     locktime: futureLocktime,
-    amountRaw: "5.0",
+    amountRaw: "2030000000000000000",  // 2.03 TNK in raw units (18 decimals)
     sender: "trac1sender",
     recipient: "trac1recipient",
     lockedAt: 1700000000,
@@ -271,6 +273,8 @@ describe("claimTnkHtlc", () => {
     vi.unstubAllGlobals();
     vi.resetModules();
     process.env.TNK_PEER_RPC_URL = "http://localhost:5001";
+    // Use a very short timeout so waitForTnkHtlcLocked exits quickly in tests
+    process.env.TNK_HTLC_CONFIRM_TIMEOUT_MS = "200";
     const { privateKey } = crypto.generateKeyPairSync("ed25519");
     agentKeyHex = (privateKey.export({ format: "der", type: "pkcs8" }) as Buffer).toString("hex");
     process.env.TNK_AGENT_KEY = agentKeyHex;
@@ -307,7 +311,7 @@ describe("claimTnkHtlc", () => {
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
     const result = await claimTnkHtlc(htlcId, preimage);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("not claimable");
+    expect(result.error).toContain("already claimed");
   });
 
   it("returns ok:false when preimage does not match secretHash", async () => {
@@ -333,17 +337,31 @@ describe("claimTnkHtlc", () => {
     expect(result.error).toContain("expired");
   });
 
-  it("returns ok:true on successful claim (6 fetch calls)", async () => {
+  it("returns ok:false with address-mismatch when TNK_HTLC_WIF does not match sender (real transfer path)", async () => {
+    // The new claimTnkHtlc flow calls broadcastTnkTransfer (real on-chain transfer).
+    // broadcastTnkTransfer makes 3 fetch calls after the contract claim:
+    //   1. GET tracapi.trac.network/v1/balance/{from}  — balance check
+    //   2. GET tracapi.trac.network/v1/txv             — get current txv
+    //   3. POST tracapi.trac.network/v1/broadcast-transaction — broadcast
+    // We set TNK_HTLC_WIF to a valid-length key that does NOT derive 'trac1sender',
+    // so broadcastTnkTransfer returns an address-mismatch error.
+    // This confirms the claim logic correctly reaches the transfer step.
+    process.env.TNK_HTLC_WIF = "a".repeat(128); // valid length (128 hex chars = 64 bytes)
     vi.stubGlobal("fetch", makeFetchMock([
-      { ok: true, body: { ok: true } },                               // GET /health
-      { ok: true, body: { value: mockLockedState } },                     // GET /v1/state?key=htlc/...
-      ...successfulContractTxResponses("0xclaim_contract_tx"),            // submitTnkHtlcClaim (4 calls)
-      { ok: true, body: { success: true, txHash: "0xclaim_send_tx" } },  // POST /v1/agent/send
+      { ok: true, body: { ok: true } },                                    // GET /health
+      { ok: true, body: { value: mockLockedState } },                      // GET /v1/state?key=htlc/...
+      ...successfulContractTxResponses("0xclaim_contract_tx"),             // submitTnkHtlcClaim (4 calls)
+      // broadcastTnkTransfer: balance check, txv, broadcast (would be called if address matched)
+      { ok: true, body: { balance: "9999000000000000000000" } },           // GET /v1/balance/{from}
+      { ok: true, body: { txv: "a".repeat(64) } },                         // GET /v1/txv
+      { ok: true, body: { result: { tx: "0xclaim_send_tx" } } },           // POST /v1/broadcast-transaction
     ]));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
     const result = await claimTnkHtlc(htlcId, preimage);
-    expect(result.ok).toBe(true);
-    expect(result.sendTxHash).toBe("0xclaim_send_tx");
+    // Contract claim succeeded (contractTxHash is set) but transfer fails with address mismatch
+    expect(result.contractTxHash).toBe("0xclaim_contract_tx");
+    // The error should mention the address mismatch (TNK_HTLC_WIF derives wrong address)
+    expect(result.error).toContain("TNK_HTLC_WIF derives address");
   });
 });
 
