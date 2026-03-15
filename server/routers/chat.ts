@@ -1253,20 +1253,25 @@ export const chatRouter = router({
           secretHashHex:   htlcSecretHash,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
-        // Broadcast to ALL peers so the RFQ appears in the Live Order Book for everyone
+        // Broadcast to ALL peers so the RFQ appears in the Live Order Book for everyone.
+        // IMPORTANT: requesterPeerId MUST be included so Agent A's rfq_broadcast handler
+        // can echo-filter its own RFQ (r.requesterPeerId === peerId guard in LightPeerContext).
+        // Without this, Agent A receives the broadcast before buildSwapTx returns (WebSocket
+        // is faster than HTTP), so initiatedSwapRfqIds is still empty and the card is shown.
         broadcastRfqToAll(senderPeerId ?? undefined, {
-          rfqId:          p2pQuote.rfqId,
-          fromToken:      (fromToken ?? "SOL").toUpperCase(),
-          toToken:        (toToken ?? "USDT").toUpperCase(),
-          fromChain:      fromChain ?? "solana",
-          toChain:        toChain ?? "solana",
-          amount:         amount ?? 0,
-          outAmount:      p2pQuote.outAmount ?? 0,
-          rate:           p2pQuote.rate ?? 0,
-          requesterAlias: senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
-          expiresAt:      rfqExpiresAt,
-          secretHashHex:  htlcSecretHash,
-          timestamp:      Date.now(),
+          rfqId:           p2pQuote.rfqId,
+          fromToken:       (fromToken ?? "SOL").toUpperCase(),
+          toToken:         (toToken ?? "USDT").toUpperCase(),
+          fromChain:       fromChain ?? "solana",
+          toChain:         toChain ?? "solana",
+          amount:          amount ?? 0,
+          outAmount:       p2pQuote.outAmount ?? 0,
+          rate:            p2pQuote.rate ?? 0,
+          requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
+          requesterPeerId: senderPeerId ?? undefined,
+          expiresAt:       rfqExpiresAt,
+          secretHashHex:   htlcSecretHash,
+          timestamp:       Date.now(),
         });
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({

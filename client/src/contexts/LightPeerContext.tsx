@@ -1155,8 +1155,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         secretHashHex?: string;
       };
       if (!r.rfqId || !r.fromToken || !r.toToken) return;
-      // Echo-filter: ignore our own broadcasts
-      if (r.requesterPeerId && r.requesterPeerId === peerId) return;
+      // Echo-filter: ignore our own broadcasts.
+      // Check both r.requesterPeerId (set by server when requesterPeerId is included in the rfq object)
+      // and fromPeerId (the outer broadcast sender field) as belt-and-suspenders.
+      if (peerId && (r.requesterPeerId === peerId || fromPeerId === peerId)) return;
       const incoming: IncomingRfq = {
         rfqId: r.rfqId,
         fromToken: r.fromToken,
@@ -1178,8 +1180,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         if (prev.some(x => x.rfqId === r.rfqId)) return prev;
         return [incoming, ...prev].slice(0, 20);
       });
-      // Dispatch to chat page so the agent shows the incoming swap card
-      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...r, requesterPeerId: fromPeerId } }));
+      // Dispatch to chat page so the agent shows the incoming swap card.
+      // IMPORTANT: preserve r.requesterPeerId (Agent A's actual peerId) when present.
+      // Do NOT overwrite it with fromPeerId — fromPeerId may be 'agent' (server fallback)
+      // which would break the echo-filter in ChatPage (rfq.requesterPeerId === myPeerId).
+      window.dispatchEvent(new CustomEvent("afos:agent-rfq", { detail: { ...r, requesterPeerId: r.requesterPeerId ?? fromPeerId } }));
       // Auto-accept guard logic (same as agent_rfq path)
       const prefs_b = prefsRef.current as LightPeerPrefs & {
         autoAcceptRfq?: boolean;
