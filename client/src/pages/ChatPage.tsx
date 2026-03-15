@@ -711,7 +711,24 @@ const SWAP_CELEBRATION_MESSAGES = [
     `💸 That's a wrap! ${fromAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${from} out, ${toAmt.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${to} in. Fully on-chain, fully yours.`,
 ];
 
+const TNK_ESCROW_ADDRESS = (import.meta.env.VITE_TNK_ESCROW_ADDRESS as string | undefined) ?? "";
+
 function getExplorerInfo(txHash: string, chain: string) {
+  if (chain === "trac_network") {
+    // TNK swap txHash is the rfqId (e.g. rfq_1773…lp-0464c) — link to the escrow address on Trac Explorer
+    const escrow = TNK_ESCROW_ADDRESS;
+    if (escrow) {
+      return {
+        explorerUrl: `https://explorer.trac.network/address/${escrow}`,
+        explorerLabel: `Trac Explorer: ${escrow.slice(0, 8)}…${escrow.slice(-6)}`,
+      };
+    }
+    const isTxHash = /^[0-9a-f]{64}$/i.test(txHash);
+    return {
+      explorerUrl: isTxHash ? `https://explorer.trac.network/tx/${txHash}` : `https://explorer.trac.network`,
+      explorerLabel: isTxHash ? `Trac Explorer: ${txHash.slice(0, 8)}…${txHash.slice(-8)}` : "View on Trac Explorer",
+    };
+  }
   if (chain === "bitcoin") {
     const isTxid = /^[0-9a-f]{64}$/i.test(txHash);
     return {
@@ -2062,7 +2079,13 @@ function MessageBubble({
           const fromChain = msg.quoteData.fromChain?.toLowerCase();
           let receivedBy: { name: string; address: string } | undefined;
           if (toChain && toChain !== fromChain) {
-            if (toChain === "bitcoin" || toChain === "trac_network") {
+            if (toChain === "trac_network") {
+              // For TNK receive: show the agent's escrow trac address as the recipient
+              const escrow = TNK_ESCROW_ADDRESS;
+              if (escrow) {
+                receivedBy = { name: 'Trac Escrow', address: `${escrow.slice(0, 6)}…${escrow.slice(-4)}` };
+              }
+            } else if (toChain === "bitcoin") {
               const activeBtcName = preferredBtcWallet === 'tap'
                 ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                 : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
