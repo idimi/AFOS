@@ -3381,3 +3381,6 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 ## Bug Fix: Stale Quote Card (Mar 15, 2026)
 - [x] Bug: Second swap request (e.g. TNK→USDT after TNK→SOL) shows the previous quote card data instead of the new quote — fixed by filtering out pending (non-executing) quote_card messages when a new swap intent is detected
+
+## Bug Fix: TNK HTLC Wrong Counterparty Address (Mar 15, 2026)
+- [ ] Bug: TNK→USDT HTLC lock passes Solana address as counterpartyWallet to Tap Wallet instead of peer's trac_network address — Tap Wallet rejects with "Invalid TRAC address format"
