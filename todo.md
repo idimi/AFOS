@@ -3308,3 +3308,12 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] HTLC progress card: stablecoin chain-coloring applied inline (isStablecoinOut shows token+chain badge like ChainPill)
 - [x] "You send" pill: short address already shown via tnkAddr (confirmed in code review)
 - [x] TNK swap: yellow "Connect Trac wallet to sign" warning pill shown in route badges + Confirm button disabled with amber styling when tnkWallet not connected
+
+## Universal Wallet-Missing Guards
+
+- [x] Clickable warning pill opens Connect Wallet modal to correct chain tab (TNK, BTC, SOL, ETH)
+- [x] Accept RFQ button: same tnkWalletMissing guard for TNK swaps
+- [x] Accept RFQ button: same guards for BTC, SOL, ETH wallets missing (IIFE with rfqWalletMissing)
+- [x] QuoteCard Confirm button: universal missingFromWallet guard for all chains
+- [x] Show TNK "Receiving to" address with amber ⬡ pill (separate from BTC orange pill)
+- [x] Route badge warning pills: BTC, SOL, ETH missing wallet warnings added (clickable, open modal)

@@ -224,6 +224,7 @@ function QuoteCard({
   bitcoinTap,
   preferredBtcWallet,
   setPreferredBtcWallet,
+  onOpenWalletModal,
 }: {
   data: QuoteData;
   onConfirm: () => void;
@@ -242,6 +243,8 @@ function QuoteCard({
   preferredBtcWallet?: import("@/contexts/MultiChainWalletContext").BtcProviderType | null;
   /** Callback to set the preferred BTC wallet */
   setPreferredBtcWallet?: (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => void;
+  /** Opens the Connect Wallet modal pre-focused on the given chain tab */
+  onOpenWalletModal?: (chain: SupportedChain) => void;
 }) {
   const { connected: solConnected } = useWallet();
   const { bitcoin: activeBitcoin } = useMultiChainWallet();
@@ -271,9 +274,37 @@ function QuoteCard({
   const { ethereum: activeEthereum, tracNetwork: activeTnk, phantomMultiChain } = useMultiChainWallet();
   const { shortAddress: solShortAddress } = useWallet();
 
-  // TNK swap: warn when Trac wallet is not connected
-  const isTnkSwap = data.fromChain === "trac_network";
-  const tnkWalletMissing = isTnkSwap && !activeTnk?.connected;
+  // Universal wallet-missing guard — covers all four chains on both send and receive sides
+  const isSolConnected = !!(phantomMultiChain?.solanaAddress || solShortAddress);
+  const isBtcConnected = !!(localBtcWallet === 'tap' ? bitcoinTap?.connected : activeBitcoin?.connected);
+  const isEthConnected = !!activeEthereum?.connected;
+  const isTnkConnected = !!activeTnk?.connected;
+
+  const isChainConnected = (chain: SupportedChain | undefined): boolean => {
+    switch (chain) {
+      case 'bitcoin': return isBtcConnected;
+      case 'ethereum': return isEthConnected;
+      case 'trac_network': return isTnkConnected;
+      default: return isSolConnected; // solana
+    }
+  };
+
+  const chainLabel = (chain: SupportedChain | undefined): string => {
+    switch (chain) {
+      case 'bitcoin': return 'Bitcoin';
+      case 'ethereum': return 'Ethereum';
+      case 'trac_network': return 'Trac';
+      default: return 'Solana';
+    }
+  };
+
+  const missingFromWallet = connected && !isChainConnected(data.fromChain) ? data.fromChain ?? 'solana' : null;
+  // isCrossChain is declared below after deriveWalletForChain; inline the check here to avoid forward-reference
+  const missingToWallet = connected && data.fromChain && data.toChain && data.fromChain !== data.toChain && !isChainConnected(data.toChain) ? data.toChain ?? 'solana' : null;
+  const confirmBlocked = !!(missingFromWallet);
+
+  // Legacy alias kept for any remaining references
+  const tnkWalletMissing = missingFromWallet === 'trac_network';
 
   /** Derive wallet info for a given chain */
   const deriveWalletForChain = (chain: SupportedChain | undefined): { name: string; address: string } | null => {
@@ -500,25 +531,23 @@ function QuoteCard({
         {connected ? (
           <div className="flex-1 flex flex-col gap-1">
             <button
-              onClick={onConfirm}
-              disabled={isExecuting || tnkWalletMissing}
+              onClick={confirmBlocked ? () => onOpenWalletModal?.(missingFromWallet as SupportedChain) : onConfirm}
+              disabled={isExecuting}
               className="w-full py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
-              title={tnkWalletMissing ? "Connect your Trac wallet (Tap Wallet) before confirming" : undefined}
+              title={confirmBlocked ? `Connect your ${chainLabel(missingFromWallet as SupportedChain)} wallet to sign this swap` : undefined}
               style={{
-                background: tnkWalletMissing
+                background: confirmBlocked
                   ? "rgba(234,179,8,0.08)"
                   : isExecuting ? "rgba(16,185,129,0.1)" : "linear-gradient(135deg, #9945FF, #14F195)",
-                color: tnkWalletMissing ? "#eab308" : isExecuting ? "#10b981" : "white",
-                border: tnkWalletMissing
+                color: confirmBlocked ? "#eab308" : isExecuting ? "#10b981" : "white",
+                border: confirmBlocked
                   ? "1px solid rgba(234,179,8,0.35)"
                   : isExecuting ? "1px solid rgba(16,185,129,0.3)" : "none",
-                opacity: tnkWalletMissing ? 0.7 : 1,
-                cursor: tnkWalletMissing ? "not-allowed" : undefined,
               }}>
               {isExecuting ? (
                 <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Signing…</>
-              ) : tnkWalletMissing ? (
-                <><span style={{ fontSize: "12px" }}>⚠</span> Connect Trac wallet to sign</>
+              ) : confirmBlocked ? (
+                <><span style={{ fontSize: "12px" }}>⚠</span> Connect {chainLabel(missingFromWallet as SupportedChain)} wallet to sign</>
               ) : (
                 <><CheckCircle2 className="w-3.5 h-3.5" /> Confirm Swap</>
               )}
@@ -547,7 +576,7 @@ function QuoteCard({
             )}
             {/* Destination wallet hint — shown for cross-chain swaps */}
             {destinationWallet && !isExecuting && (
-              data.toChain === "bitcoin" || data.toChain === "trac_network" ? (
+              data.toChain === "bitcoin" ? (
                 /* BTC destination: prominent orange pill */
                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                   <span className="text-[10px] text-muted-foreground">Receiving to</span>
@@ -556,6 +585,19 @@ function QuoteCard({
                     style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
                   >
                     <span>&#x20BF;</span>
+                    <span>{destinationWallet.name}</span>
+                  </span>
+                  <span className="font-mono text-[10px] opacity-60">{destinationWallet.address}</span>
+                </div>
+              ) : data.toChain === "trac_network" ? (
+                /* TNK destination: amber pill with ⬡ icon */
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">Receiving to</span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(245,158,11,0.12)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.3)" }}
+                  >
+                    <span>&#x2B21;</span>
                     <span>{destinationWallet.name}</span>
                   </span>
                   <span className="font-mono text-[10px] opacity-60">{destinationWallet.address}</span>
@@ -1395,6 +1437,7 @@ function MessageBubble({
   phantomMultiChain,
   solShortAddress,
   solWalletName,
+  onOpenWalletModal,
 }: {
   msg: ChatMessage;
   onConfirmSwap: (msgId: string, quoteData: QuoteData) => void;
@@ -1436,6 +1479,8 @@ function MessageBubble({
   solShortAddress?: string | null;
   /** Solana wallet name — used for SOL receive badge */
   solWalletName?: string | null;
+  /** Opens the Connect Wallet modal pre-focused on the given chain tab */
+  onOpenWalletModal?: (chain: SupportedChain) => void;
 }) {
   const isUser = msg.role === "user";
 
@@ -1512,16 +1557,17 @@ function MessageBubble({
                   const tnkAddr = tnkWallet?.connected ? tnkWallet.shortAddress : null;
                   const tnkName = tnkWallet?.connected ? (tnkWallet.walletName ?? 'Tap Wallet') : null;
                   if (!tnkName) {
-                    // Wallet not connected — show yellow warning so user knows what's missing
+                    // Wallet not connected — show clickable yellow warning that opens the modal
                     return (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      <button
+                        onClick={() => onOpenWalletModal?.('trac_network')}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity"
                         style={{ background: "rgba(234,179,8,0.12)", color: "#eab308", border: "1px solid rgba(234,179,8,0.35)" }}
-                        title="Connect your Tap Wallet to sign this TNK swap"
+                        title="Click to connect your Tap Wallet for this TNK swap"
                       >
                         <span style={{ fontSize: "9px" }}>⚠</span>
                         <span>Connect Trac wallet to sign</span>
-                      </span>
+                      </button>
                     );
                   }
                   return (
@@ -1544,7 +1590,17 @@ function MessageBubble({
                   const btcAddr = preferredBtcWallet === 'tap'
                     ? bitcoinTap?.shortAddress
                     : bitcoin?.shortAddress;
-                  if (!activeBtcName) return null;
+                  if (!activeBtcName) return (
+                    <button
+                      onClick={() => onOpenWalletModal?.('bitcoin')}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ background: "rgba(234,179,8,0.12)", color: "#eab308", border: "1px solid rgba(234,179,8,0.35)" }}
+                      title="Click to connect your Bitcoin wallet for this swap"
+                    >
+                      <span style={{ fontSize: "9px" }}>⚠</span>
+                      <span>Connect Bitcoin wallet to sign</span>
+                    </button>
+                  );
                   return (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
@@ -1554,6 +1610,62 @@ function MessageBubble({
                       <span>&#x20BF;</span>
                       <span>You send: {activeBtcName}</span>
                       {btcAddr && <span className="font-mono opacity-70">· {btcAddr}</span>}
+                    </span>
+                  );
+                })()}
+                {/* SOL send badge — shown for Solana swaps */}
+                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "solana" || !msg.quoteData?.fromChain) && (() => {
+                  const solAddr = phantomMultiChain?.solanaAddress
+                    ? `${phantomMultiChain.solanaAddress.slice(0, 4)}\u2026${phantomMultiChain.solanaAddress.slice(-4)}`
+                    : (solShortAddress ?? null);
+                  const solName = phantomMultiChain?.solanaAddress ? 'Phantom' : (solWalletName ?? null);
+                  if (!solAddr || !solName) return (
+                    <button
+                      onClick={() => onOpenWalletModal?.('solana')}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ background: "rgba(234,179,8,0.12)", color: "#eab308", border: "1px solid rgba(234,179,8,0.35)" }}
+                      title="Click to connect your Solana wallet for this swap"
+                    >
+                      <span style={{ fontSize: "9px" }}>⚠</span>
+                      <span>Connect Solana wallet to sign</span>
+                    </button>
+                  );
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(153,69,255,0.12)", color: "#9945FF", border: "1px solid rgba(153,69,255,0.3)" }}
+                      title={`You will sign with ${solName} (${solAddr})`}
+                    >
+                      <span style={{ fontSize: "9px" }}>●</span>
+                      <span>You send: {solName}</span>
+                      <span className="font-mono opacity-70">· {solAddr}</span>
+                    </span>
+                  );
+                })()}
+                {/* ETH send badge — shown for Ethereum swaps */}
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain === "ethereum" && (() => {
+                  const ethName = ethereum?.connected ? (ethereum.walletName ?? 'MetaMask') : null;
+                  const ethAddr = ethereum?.connected ? ethereum.shortAddress : null;
+                  if (!ethName) return (
+                    <button
+                      onClick={() => onOpenWalletModal?.('ethereum')}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer hover:opacity-80 transition-opacity"
+                      style={{ background: "rgba(234,179,8,0.12)", color: "#eab308", border: "1px solid rgba(234,179,8,0.35)" }}
+                      title="Click to connect your Ethereum wallet for this swap"
+                    >
+                      <span style={{ fontSize: "9px" }}>⚠</span>
+                      <span>Connect Ethereum wallet to sign</span>
+                    </button>
+                  );
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(98,126,234,0.12)", color: "#627EEA", border: "1px solid rgba(98,126,234,0.3)" }}
+                      title={`You will sign with ${ethName} (${ethAddr})`}
+                    >
+                      <span style={{ fontSize: "9px" }}>◆</span>
+                      <span>You send: {ethName}</span>
+                      {ethAddr && <span className="font-mono opacity-70">· {ethAddr}</span>}
                     </span>
                   );
                 })()}
@@ -1645,6 +1757,7 @@ function MessageBubble({
               bitcoinTap={bitcoinTap}
               preferredBtcWallet={preferredBtcWallet}
               setPreferredBtcWallet={setPreferredBtcWallet}
+              onOpenWalletModal={onOpenWalletModal}
             />
           </div>
         )}
@@ -1692,17 +1805,42 @@ function MessageBubble({
                 lockTxId={refundableHtlcs?.[msg.incomingRfqData.rfqId]?.lockTxId}
               />
             )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => {
-                  const rfq = msg.incomingRfqData!;
-                  onAcceptRfq?.(rfq.rfqId, rfq.fromToken, rfq.toToken, rfq.amount, rfq.outAmount);
-                }}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
-                style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
-              >
-                Accept Swap
-              </button>
+            {(() => {
+                // Determine which chain the user needs to SEND on for this incoming RFQ
+                // In an incoming RFQ, the user sends toToken on toChain (they receive fromToken)
+                const rfqSendChain = msg.incomingRfqData?.toChain as SupportedChain | undefined;
+                const rfqSendChainLabel = rfqSendChain === 'bitcoin' ? 'Bitcoin'
+                  : rfqSendChain === 'ethereum' ? 'Ethereum'
+                  : rfqSendChain === 'trac_network' ? 'Trac'
+                  : 'Solana';
+                const rfqWalletMissing = rfqSendChain === 'bitcoin'
+                  ? !(preferredBtcWallet === 'tap' ? bitcoinTap?.connected : bitcoin?.connected)
+                  : rfqSendChain === 'ethereum' ? !ethereum?.connected
+                  : rfqSendChain === 'trac_network' ? !tnkWallet?.connected
+                  : !(phantomMultiChain?.solanaAddress || solShortAddress);
+                return (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (rfqWalletMissing) {
+                          onOpenWalletModal?.(rfqSendChain ?? 'solana');
+                          return;
+                        }
+                        const rfq = msg.incomingRfqData!;
+                        onAcceptRfq?.(rfq.rfqId, rfq.fromToken, rfq.toToken, rfq.amount, rfq.outAmount);
+                      }}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1"
+                      style={rfqWalletMissing
+                        ? { background: "rgba(234,179,8,0.1)", color: "#eab308", border: "1px solid rgba(234,179,8,0.3)" }
+                        : { background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}
+                      title={rfqWalletMissing ? `Connect your ${rfqSendChainLabel} wallet to accept this swap` : undefined}
+                    >
+                      {rfqWalletMissing ? (
+                        <><span style={{ fontSize: "11px" }}>⚠</span> Connect {rfqSendChainLabel} wallet</>
+                      ) : (
+                        'Accept Swap'
+                      )}
+                    </button>
               <button
                 onClick={() => {
                   const rfq = msg.incomingRfqData!;
@@ -1713,7 +1851,9 @@ function MessageBubble({
               >
                 Decline
               </button>
-            </div>
+                  </div>
+                );
+              })()}
             {/* Claim Funds — shown when Agent A has revealed the secret and not yet claimed */}
             {htlcRevealedSecrets?.[msg.incomingRfqData.rfqId] && !claimedRfqIds?.has(msg.incomingRfqData.rfqId) && onClaimHtlc && (
               <button
@@ -2995,6 +3135,7 @@ export default function ChatPage() {
               phantomMultiChain={phantomMultiChain}
               solShortAddress={shortAddress}
               solWalletName={walletName}
+              onOpenWalletModal={(chain) => { setWalletModalChain(chain); setShowWalletModal(true); }}
             />
           ) : null
         ))}
