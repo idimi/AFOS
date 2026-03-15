@@ -2125,8 +2125,11 @@ export const chatRouter = router({
           toChain:       (toChain ?? "bitcoin") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           expiresAt:     BigInt(Date.now() + btcExpiryHours * 3_600_000),
           status:        "locked",
-          initiatorPeerId: agentSenderPeerId ?? undefined,
+          initiatorPeerId:  agentSenderPeerId ?? undefined,
           initiatorAddress: agentSenderWallets?.trac_network ?? undefined, // TNK initiator wallet
+          // fromToken/toToken are required by HtlcSecretsMonitor for SPL token detection
+          fromToken: fromToken.toUpperCase(),
+          toToken:   toToken.toUpperCase(),
         }).catch(() => {/* non-fatal */});
         // Broadcast to all peers so they can see the TNK RFQ
         // Pass agentSenderPeerId so Agent A's echo-filter skips their own broadcast.

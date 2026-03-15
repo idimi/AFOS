@@ -3279,6 +3279,15 @@ export default function ChatPage() {
           amount:     quoteData.fromAmount,
           fromChain:  "trac_network",
           toChain:    (quoteData.toChain as SupportedChain) ?? "bitcoin",
+          // Pass sender identity so the server can echo-filter the broadcast and
+          // persist wallet addresses in htlc_secrets for auto-claim fallback.
+          senderPeerId: myPeerId ?? undefined,
+          senderWallets: {
+            ...(tnkSenderAddress          ? { trac_network: tnkSenderAddress }          : {}),
+            ...(effectivePublicKey        ? { solana: effectivePublicKey.toString() }    : {}),
+            ...(ethereum?.address         ? { ethereum: ethereum.address }               : {}),
+            ...(bitcoin?.address          ? { bitcoin: bitcoin.address }                 : {}),
+          },
         });
         toast.dismiss("tnk-agent");
         if (tnkAgentResult.success) {
