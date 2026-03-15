@@ -2718,6 +2718,13 @@ export default function ChatPage() {
           senderPeerId:   myPeerId ?? undefined,
           senderAlias:    myPeerAlias ?? undefined,
           rfqTtlMs:       lightPeer.prefs.quoteTtlMs ?? 120_000,
+          // Full wallet map so Agent B can auto-claim on any chain without a peer registry lookup
+          senderWallets: {
+            ...(btcAddress           ? { bitcoin: btcAddress }                  : {}),
+            ...(effectivePublicKey   ? { solana: effectivePublicKey.toString() } : {}),
+            ...(ethereum?.address    ? { ethereum: ethereum.address }            : {}),
+            ...(tnkWallet?.address   ? { trac_network: tnkWallet.address }       : {}),
+          },
         });
         toast.dismiss("btc-p2p");
         // Remove the broadcasting placeholder
@@ -2824,16 +2831,23 @@ export default function ChatPage() {
           timestamp: Date.now(),
         }]);
         const ethResult = await executeEthSwap.mutateAsync({
-          fromAddress: ethAddress,
-          fromToken:   quoteData.fromToken,
-          toToken:     quoteData.toToken,
-          fromChain:   (quoteData.fromChain as SupportedChain) ?? "ethereum",
-          toChain:     (quoteData.toChain   as SupportedChain) ?? "ethereum",
-          amount:      quoteData.fromAmount,
-          slippage:    1,
+          fromAddress:  ethAddress,
+          fromToken:    quoteData.fromToken,
+          toToken:      quoteData.toToken,
+          fromChain:    (quoteData.fromChain as SupportedChain) ?? "ethereum",
+          toChain:      (quoteData.toChain   as SupportedChain) ?? "ethereum",
+          amount:       quoteData.fromAmount,
+          slippage:     1,
           openId,
-          senderPeerId: myPeerId ?? undefined,
-          senderAlias:  myPeerAlias ?? undefined,
+          senderPeerId:  myPeerId ?? undefined,
+          senderAlias:   myPeerAlias ?? undefined,
+          // Full wallet map so Agent B can auto-claim on any chain without a peer registry lookup
+          senderWallets: {
+            ...(ethAddress              ? { ethereum: ethAddress }               : {}),
+            ...(effectivePublicKey      ? { solana: effectivePublicKey.toString() } : {}),
+            ...(bitcoin?.address        ? { bitcoin: bitcoin.address }            : {}),
+            ...(tnkWallet?.address      ? { trac_network: tnkWallet.address }     : {}),
+          },
         });
         toast.dismiss("eth-swap");
         // Remove the broadcasting placeholder
@@ -3002,11 +3016,18 @@ export default function ChatPage() {
             openId,
             // Pass sender's peer identity so the server includes requesterPeerId in the broadcast,
             // enabling the echo-filter in LightPeerContext to suppress the incoming_rfq card for Agent A.
-            senderPeerId: myPeerId ?? undefined,
-            senderAlias:  myPeerAlias ?? undefined,
-            rfqTtlMs:     lightPeer.prefs.quoteTtlMs ?? 120_000,
+            senderPeerId:     myPeerId ?? undefined,
+            senderAlias:      myPeerAlias ?? undefined,
+            rfqTtlMs:         lightPeer.prefs.quoteTtlMs ?? 120_000,
             // recipientAddress = user's Trac Network address for both directions
             recipientAddress: userTnkAddr,
+            // Full wallet map so Agent B can auto-claim on any chain without a peer registry lookup
+            senderWallets: {
+              ...(userSolAddr             ? { solana: userSolAddr }                   : {}),
+              ...(ethereum?.address       ? { ethereum: ethereum.address }             : {}),
+              ...(bitcoin?.address        ? { bitcoin: bitcoin.address }               : {}),
+              ...(tnkWallet?.address      ? { trac_network: tnkWallet.address }        : {}),
+            },
           });
           toast.dismiss("tnk-htlc");
           // Remove the broadcasting placeholder
@@ -3185,6 +3206,13 @@ export default function ChatPage() {
           senderPeerId:   myPeerId ?? undefined,
           senderAlias:    myPeerAlias ?? undefined,
           rfqTtlMs:       lightPeer.prefs.quoteTtlMs ?? 120_000,
+          // Full wallet map so Agent B can auto-claim on any chain without a peer registry lookup
+          senderWallets: {
+            ...(tnkSenderAddress     ? { trac_network: tnkSenderAddress }       : {}),
+            ...(effectivePublicKey   ? { solana: effectivePublicKey.toString() } : {}),
+            ...(ethereum?.address    ? { ethereum: ethereum.address }            : {}),
+            ...(bitcoin?.address     ? { bitcoin: bitcoin.address }              : {}),
+          },
         });
         toast.dismiss("tnk-p2p");
         // Remove the broadcasting placeholder
@@ -3289,9 +3317,16 @@ export default function ChatPage() {
         openId,
         // Pass sender's peer identity so the server can: (1) exclude them from peer
         // matching, and (2) attribute the agent_rfq notification correctly.
-        senderPeerId: myPeerId ?? undefined,
-        senderAlias:  myPeerAlias ?? undefined,
-        rfqTtlMs:     lightPeer.prefs.quoteTtlMs ?? 120_000,
+        senderPeerId:   myPeerId ?? undefined,
+        senderAlias:    myPeerAlias ?? undefined,
+        rfqTtlMs:       lightPeer.prefs.quoteTtlMs ?? 120_000,
+        // Full wallet map so Agent B can auto-claim on any chain without a peer registry lookup
+        senderWallets: {
+          ...(effectivePublicKey ? { solana: effectivePublicKey.toString() } : {}),
+          ...(ethereum?.address  ? { ethereum: ethereum.address }            : {}),
+          ...(bitcoin?.address   ? { bitcoin: bitcoin.address }              : {}),
+          ...(tnkWallet?.address ? { trac_network: tnkWallet.address }       : {}),
+        },
       });
       // Remove the broadcasting placeholder
       setMessages(prev => prev.filter(m => m.id !== `broadcasting-${msgId}`));

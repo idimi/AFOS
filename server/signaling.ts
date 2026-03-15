@@ -200,6 +200,8 @@ export interface PeerInboxRfq {
   requesterAlias?: string;
   requesterPeerId?: string;
   requesterWallet?: string;
+  /** Full multi-chain wallet map for the requester (Agent A). Enables cross-chain auto-claim. */
+  requesterWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
   expiresAt: number;
   secretHashHex?: string;
   timestamp: number;

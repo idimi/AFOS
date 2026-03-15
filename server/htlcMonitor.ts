@@ -362,36 +362,41 @@ export function stopHtlcMonitor(): void {
  * Called by executeBtcSwap / executeEthSwap / buildSwapTx after locking funds.
  */
 export async function recordHtlcLock(params: {
-
-  chain:         SupportedChain;
-  htlcAddress:   string;
-  secretHash:    string;
-  lockTxId?:     string;
-  amountRaw:     string;
-  amountHuman:   string;
-  locktime:      number;
-  peerId?:       string;
-  rfqId?:        string;
-  toToken?:      string;
-  toChain?:      SupportedChain;
-  senderAddress?: string;
+  chain:              SupportedChain;
+  htlcAddress:        string;
+  secretHash:         string;
+  lockTxId?:          string;
+  amountRaw:          string;
+  amountHuman:        string;
+  locktime:           number;
+  peerId?:            string;
+  rfqId?:             string;
+  toToken?:           string;
+  toChain?:           SupportedChain;
+  senderAddress?:     string;
+  /** Single-chain counterparty address (same chain as this lock) */
+  counterpartyAddress?: string;
+  /** Full multi-chain wallet map for the counterparty — enables cross-chain auto-claim */
+  counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
 }): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const [result] = await db.insert(htlcSwaps).values({
-    chain:         params.chain,
-    htlcAddress:   params.htlcAddress,
-    secretHash:    params.secretHash,
-    lockTxId:      params.lockTxId,
-    amountRaw:     params.amountRaw,
-    amountHuman:   params.amountHuman,
-    locktime:      params.locktime,
-    status:        "pending",
-    peerId:        params.peerId,
-    rfqId:         params.rfqId,
-    toToken:       params.toToken,
-    toChain:       params.toChain,
-    senderAddress: params.senderAddress,
+    chain:               params.chain,
+    htlcAddress:         params.htlcAddress,
+    secretHash:          params.secretHash,
+    lockTxId:            params.lockTxId,
+    amountRaw:           params.amountRaw,
+    amountHuman:         params.amountHuman,
+    locktime:            params.locktime,
+    status:              "pending",
+    peerId:              params.peerId,
+    rfqId:               params.rfqId,
+    toToken:             params.toToken,
+    toChain:             params.toChain,
+    senderAddress:       params.senderAddress,
+    counterpartyAddress: params.counterpartyAddress,
+    counterpartyWallets: params.counterpartyWallets,
   });
   return (result as { insertId: number }).insertId;
 }

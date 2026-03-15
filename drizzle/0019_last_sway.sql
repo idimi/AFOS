@@ -1,0 +1,1 @@
+ALTER TABLE `htlc_swaps` ADD `counterpartyWallets` json;

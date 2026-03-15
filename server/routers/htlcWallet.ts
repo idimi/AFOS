@@ -582,6 +582,17 @@ export const htlcWalletRouter = router({
        * without needing a separate htlc_secrets lookup.
        */
       counterpartyAddress: z.string().optional(),
+      /**
+       * Full multi-chain wallet address map for the counterparty.
+       * JSON: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string }
+       * Enables HtlcSecretsMonitor to auto-claim on any chain without a peer registry lookup.
+       */
+      counterpartyWallets: z.object({
+        solana:       z.string().optional(),
+        ethereum:     z.string().optional(),
+        bitcoin:      z.string().optional(),
+        trac_network: z.string().optional(),
+      }).optional(),
     }))
     .mutation(async ({ input }) => {
       try {
@@ -603,6 +614,7 @@ export const htlcWalletRouter = router({
           rfqId: input.rfqId ?? null,
           peerId: input.peerId ?? null,
           counterpartyAddress: input.counterpartyAddress ?? null,
+          counterpartyWallets: input.counterpartyWallets ?? null,
         });
         console.log(`[HTLC] Recorded deposit: ${input.chain} ${input.amountRaw} ${input.token} tx=${input.txHash}`);
         return { success: true };

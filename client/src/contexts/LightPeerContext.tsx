@@ -71,6 +71,8 @@ export interface IncomingRfq {
   counterpartyAddress?: string;
   /** Agent A's wallet address (alias for counterpartyAddress, used in HTLC lock logic). */
   requesterWallet?: string;
+  /** Full multi-chain wallet map for Agent A (the initiator). Enables cross-chain auto-claim. */
+  requesterWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
   /** True when this RFQ was created by initiateHtlcLock (Agent A / requester).
    *  When false/undefined, this is Agent B (counterparty) who should lock the toToken. */
   isInitiator?: boolean;
@@ -382,6 +384,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     chain: string; txHash: string; senderAddress: string; recipientAddress: string;
     escrowAddress: string; amountRaw: string; token: string; secretHash: string;
     timelock: number; rfqId: string; peerId?: string; htlcId: string; isAgentA: boolean;
+    counterpartyAddress?: string;
+    counterpartyWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
     savedAt: number; // ms timestamp for TTL
   };
 
@@ -412,14 +416,18 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              "0": { json: {
-                chain: payload.chain, txHash: payload.txHash,
-                senderAddress: payload.senderAddress, recipientAddress: payload.recipientAddress,
-                escrowAddress: payload.escrowAddress, amountRaw: payload.amountRaw,
-                token: payload.token, secretHash: payload.secretHash,
-                timelock: payload.timelock, rfqId: payload.rfqId,
-                peerId: payload.peerId, htlcId: payload.htlcId, isAgentA: payload.isAgentA,
-              }}
+              "0": {
+                json: {
+                  chain: payload.chain, txHash: payload.txHash,
+                  senderAddress: payload.senderAddress, recipientAddress: payload.recipientAddress,
+                  escrowAddress: payload.escrowAddress, amountRaw: payload.amountRaw,
+                  token: payload.token, secretHash: payload.secretHash,
+                  timelock: payload.timelock, rfqId: payload.rfqId,
+                  peerId: payload.peerId, htlcId: payload.htlcId, isAgentA: payload.isAgentA,
+                  counterpartyAddress: payload.counterpartyAddress,
+                  counterpartyWallets: payload.counterpartyWallets,
+                },
+              },
             }),
           });
           if (!res.ok) {
@@ -1153,6 +1161,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         rfqId?: string; fromToken?: string; toToken?: string; fromChain?: string; toChain?: string;
         amount?: number; outAmount?: number; rate?: number; expiresAt?: number;
         requesterAlias?: string; requesterPeerId?: string; requesterWallet?: string;
+        requesterWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
         secretHashHex?: string;
       };
       if (!r.rfqId || !r.fromToken || !r.toToken) return;
@@ -1173,9 +1182,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         suggestedOutAmount: r.outAmount ?? 0,
         status: "pending",
         receivedAt: Date.now(),
-        secretHashHex: r.secretHashHex,
+        secretHashHex:      r.secretHashHex,
         counterpartyAddress: r.requesterWallet,
-        requesterWallet: r.requesterWallet,
+        requesterWallet:     r.requesterWallet,
+        requesterWallets:    r.requesterWallets,
       };
       setIncomingRfqs(prev => {
         if (prev.some(x => x.rfqId === r.rfqId)) return prev;
@@ -1300,10 +1310,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         status: "pending",
         receivedAt: Date.now(),
         // Critical for atomicity: preserve Agent A's secret hash so both sides lock to the same hash
-        secretHashHex: rfq.secretHashHex,
+        secretHashHex:       rfq.secretHashHex,
         // Agent A's wallet address — used as counterparty in Agent B's HTLC lock
         counterpartyAddress: rfq.requesterWallet,
-        requesterWallet: rfq.requesterWallet,
+        requesterWallet:     rfq.requesterWallet,
+        // Agent A's full multi-chain wallet map — enables cross-chain auto-claim
+        requesterWallets:    (rfq as { requesterWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } }).requesterWallets,
       };
       setIncomingRfqs(prev => {
         if (prev.some(r => r.rfqId === rfq.rfqId)) return prev;
@@ -2159,6 +2171,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               counterpartyAddress: isAgentA
                 ? recipientPubkey.toBase58()   // Agent B's address
                 : (rfq.requesterWallet ?? rfq.counterpartyAddress ?? undefined),  // Agent A's address
+              // Full multi-chain wallet map for the counterparty — enables HtlcSecretsMonitor
+              // to auto-claim on any chain without a separate peer registry lookup.
+              counterpartyWallets: rfq.requesterWallets ?? undefined,
             };
             try {
               const res = await fetch("/api/trpc/htlcWallet.recordHtlcDeposit?batch=1", {

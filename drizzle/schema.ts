@@ -1,4 +1,4 @@
-import { bigint, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { bigint, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -74,6 +74,13 @@ export const htlcSwaps = mysqlTable("htlc_swaps", {
    * Stored here so HtlcSecretsMonitor can auto-claim without a separate htlc_secrets lookup.
    */
   counterpartyAddress: varchar("counterpartyAddress", { length: 128 }),
+  /**
+   * Full multi-chain wallet address map for the counterparty.
+   * JSON object: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string }
+   * Allows HtlcSecretsMonitor to auto-claim on any chain without a separate peer registry lookup.
+   * Supersedes counterpartyAddress for cross-chain swaps (e.g. TNK→USDT, TNK→ETH, TNK→BTC).
+   */
+  counterpartyWallets: json("counterpartyWallets").$type<{ solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string }>(),
   createdAt:        timestamp("createdAt").defaultNow().notNull(),
   updatedAt:        timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   refundedAt:       timestamp("refundedAt"),
@@ -466,6 +473,12 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
   initiatorAddress:    varchar("initiatorAddress", { length: 128 }),
   /** Agent B wallet address (counterparty — locks toToken, receives fromToken) */
   counterpartyAddress: varchar("counterpartyAddress", { length: 128 }),
+  /**
+   * Full multi-chain wallet address map for the counterparty.
+   * JSON: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string }
+   * Enables HtlcSecretsMonitor to auto-claim on any chain without a live peer registry lookup.
+   */
+  counterpartyWallets: json("counterpartyWallets").$type<{ solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string }>(),
   /** Token symbol locked by Agent A (e.g. SOL, ETH) */
   fromToken:           varchar("fromToken", { length: 16 }),
   /** Token symbol locked by Agent B (e.g. USDT, USDC) */

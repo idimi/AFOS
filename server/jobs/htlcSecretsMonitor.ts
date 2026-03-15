@@ -174,6 +174,12 @@ async function runHtlcSecretsCheck(): Promise<void> {
             initiatorAddress    = initiatorAddress    ?? fallback.initiatorAddress;
             counterpartyAddress = counterpartyAddress ?? fallback.counterpartyAddress;
 
+            // Tier 2b: use counterpartyWallets.solana from htlc_swaps if single-chain address is missing
+            if (!counterpartyAddress && fallback.counterpartyWallets?.solana) {
+              counterpartyAddress = fallback.counterpartyWallets.solana;
+              console.log(`[HtlcSecretsMonitor] Resolved counterpartyAddress from counterpartyWallets.solana for rfqId=${row.rfqId}`);
+            }
+
             if (!initiatorAddress || !counterpartyAddress) {
               // Tier 3: try live signaling registry — peer may still be online
               if (!initiatorAddress && row.initiatorPeerId) {

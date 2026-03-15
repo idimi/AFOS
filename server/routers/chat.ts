@@ -461,6 +461,8 @@ function sendAgentRfqToPeer(params: {
   requesterAlias?: string;
   requesterPeerId?: string;
   requesterWallet?: string;
+  /** Full multi-chain wallet map for Agent A (the initiator). Enables cross-chain auto-claim. */
+  requesterWallets?: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string };
   expiresAt: number;
   /** SHA-256 hash of the HTLC secret (hex). Agent B MUST lock to this hash so the swap is atomic. */
   secretHashHex?: string;
@@ -479,6 +481,7 @@ function sendAgentRfqToPeer(params: {
     requesterAlias:  params.requesterAlias ?? "Anonymous",
     requesterPeerId: params.requesterPeerId,
     requesterWallet: params.requesterWallet,
+    requesterWallets: params.requesterWallets,
     expiresAt:       params.expiresAt,
     // Critical for atomicity: Agent B must lock to this exact hash
     secretHashHex:   params.secretHashHex,
@@ -498,6 +501,7 @@ function sendAgentRfqToPeer(params: {
     requesterAlias:  params.requesterAlias ?? "Anonymous",
     requesterPeerId: params.requesterPeerId,
     requesterWallet: params.requesterWallet,
+    requesterWallets: params.requesterWallets,
     expiresAt:       params.expiresAt,
     secretHashHex:   params.secretHashHex,
     timestamp:       now,
@@ -1169,10 +1173,17 @@ export const chatRouter = router({
         rfqTtlMs:       z.number().int().min(10_000).max(600_000).optional().default(120_000),
         /** Recipient address on the destination chain (required for SOL → TNK cross-chain swaps) */
         recipientAddress: z.string().optional(),
+        /** Full multi-chain wallet map for Agent A — persisted so Agent B can auto-claim on any chain */
+        senderWallets: z.object({
+          solana:       z.string().optional(),
+          ethereum:     z.string().optional(),
+          bitcoin:      z.string().optional(),
+          trac_network: z.string().optional(),
+        }).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias, rfqTtlMs, recipientAddress } = input;
+      const { quoteResponse, userPublicKey, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId, senderAlias, rfqTtlMs, recipientAddress, senderWallets } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1258,11 +1269,12 @@ export const chatRouter = router({
           amount:          amount ?? 0,
           outAmount:       p2pQuote.outAmount ?? 0,
           rate:            p2pQuote.rate ?? 0,
-          requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
-          requesterPeerId: senderPeerId,
-          requesterWallet: userPublicKey,
-          expiresAt:       rfqExpiresAt,
-          secretHashHex:   htlcSecretHash,
+          requesterAlias:   senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
+          requesterPeerId:  senderPeerId,
+          requesterWallet:  userPublicKey,
+          requesterWallets: senderWallets ?? undefined,
+          expiresAt:        rfqExpiresAt,
+          secretHashHex:    htlcSecretHash,
         });
         console.log(`[AFOS buildSwapTx] agent_rfq ${delivered ? "delivered" : "NOT delivered (peer offline)"} to ${p2pQuote.peerId?.slice(0, 12)}…`);
         // Broadcast to ALL peers so the RFQ appears in the Live Order Book for everyone.
@@ -1271,22 +1283,23 @@ export const chatRouter = router({
         // Without this, Agent A receives the broadcast before buildSwapTx returns (WebSocket
         // is faster than HTTP), so initiatedSwapRfqIds is still empty and the card is shown.
         broadcastRfqToAll(senderPeerId ?? undefined, {
-          rfqId:           p2pQuote.rfqId,
-          fromToken:       (fromToken ?? "SOL").toUpperCase(),
-          toToken:         (toToken ?? "USDT").toUpperCase(),
-          fromChain:       fromChain ?? "solana",
-          toChain:         toChain ?? "solana",
-          amount:          amount ?? 0,
-          outAmount:       p2pQuote.outAmount ?? 0,
-          rate:            p2pQuote.rate ?? 0,
-          requesterAlias:  senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
-          requesterPeerId: senderPeerId ?? undefined,
+          rfqId:            p2pQuote.rfqId,
+          fromToken:        (fromToken ?? "SOL").toUpperCase(),
+          toToken:          (toToken ?? "USDT").toUpperCase(),
+          fromChain:        fromChain ?? "solana",
+          toChain:          toChain ?? "solana",
+          amount:           amount ?? 0,
+          outAmount:        p2pQuote.outAmount ?? 0,
+          rate:             p2pQuote.rate ?? 0,
+          requesterAlias:   senderAlias ?? userPublicKey?.slice(0, 8) ?? "Anonymous",
+          requesterPeerId:  senderPeerId ?? undefined,
           // requesterWallet is Agent A's address — Agent B uses this as counterpartyAddress
           // in their HTLC lock so funds are locked for Agent A to claim.
-          requesterWallet: userPublicKey,
-          expiresAt:       rfqExpiresAt,
-          secretHashHex:   htlcSecretHash,
-          timestamp:       Date.now(),
+          requesterWallet:  userPublicKey,
+          requesterWallets: senderWallets ?? undefined,
+          expiresAt:        rfqExpiresAt,
+          secretHashHex:    htlcSecretHash,
+          timestamp:        Date.now(),
         });
         // Record P2P swap event to analytics DB (non-blocking)
         void recordSwapAnalytic({
@@ -1495,10 +1508,17 @@ export const chatRouter = router({
         senderPeerId: z.string().optional(),
         /** Sender's peer alias — shown to the counterparty in the incoming RFQ card */
         senderAlias:  z.string().optional(),
+        /** Full multi-chain wallet map for Agent A — persisted so Agent B can auto-claim on any chain */
+        senderWallets: z.object({
+          solana:       z.string().optional(),
+          ethereum:     z.string().optional(),
+          bitcoin:      z.string().optional(),
+          trac_network: z.string().optional(),
+        }).optional(),
       })
     )
     .mutation(async ({ input }) => {
-      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId: ethSenderPeerId, senderAlias: ethSenderAlias } = input;
+      const { fromAddress, fromToken, toToken, fromChain, toChain, amount, openId, senderPeerId: ethSenderPeerId, senderAlias: ethSenderAlias, senderWallets: ethSenderWallets } = input;
 
       // ── Load user settings & enforce limits ───────────────────────────────
       const userPrefs = openId ? await getUserSettings(openId) : DEFAULT_USER_SETTINGS;
@@ -1611,7 +1631,9 @@ export const chatRouter = router({
             rfqId:       p2pQuote.rfqId  ?? undefined,
             toToken:     toSymbol,
             toChain:     toChain as "bitcoin" | "ethereum" | "solana",
-            senderAddress: fromAddress,
+            senderAddress:       fromAddress,
+            counterpartyAddress: p2pQuote.counterpartyAddress ?? undefined,
+            counterpartyWallets: p2pQuote.counterpartyWallets ?? undefined,
           }).catch(() => {/* non-fatal */});
         }
         // Notify Agent B with the secretHashHex so they lock to the same hash
@@ -1626,28 +1648,30 @@ export const chatRouter = router({
             amount,
             outAmount:       p2pQuote.outAmount ?? 0,
             rate:            p2pQuote.rate ?? 0,
-            requesterAlias:  ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
-            requesterPeerId: ethSenderPeerId,
-            requesterWallet: fromAddress ?? undefined,
-            expiresAt:       Date.now() + 60_000,
-            secretHashHex:   secretHash,
+            requesterAlias:   ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
+            requesterPeerId:  ethSenderPeerId,
+            requesterWallet:  fromAddress ?? undefined,
+            requesterWallets: ethSenderWallets ?? undefined,
+            expiresAt:        Date.now() + 60_000,
+            secretHashHex:    secretHash,
           });
           // Broadcast to all peers with requesterPeerId so Agent A's echo-filter works
           broadcastRfqToAll(ethSenderPeerId ?? undefined, {
-            rfqId:           p2pQuote.rfqId,
-            fromToken:       fromSymbol,
-            toToken:         toSymbol,
+            rfqId:            p2pQuote.rfqId,
+            fromToken:        fromSymbol,
+            toToken:          toSymbol,
             fromChain,
             toChain,
             amount,
-            outAmount:       p2pQuote.outAmount ?? 0,
-            rate:            p2pQuote.rate ?? 0,
-            requesterAlias:  ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
-            requesterPeerId: ethSenderPeerId ?? undefined,
+            outAmount:        p2pQuote.outAmount ?? 0,
+            rate:             p2pQuote.rate ?? 0,
+            requesterAlias:   ethSenderAlias ?? ethSenderPeerId?.slice(0, 8) ?? "Anonymous",
+            requesterPeerId:  ethSenderPeerId ?? undefined,
             // requesterWallet is Agent A's ETH address — Agent B uses this as counterpartyAddress
-            requesterWallet: fromAddress ?? undefined,
-            expiresAt:       Date.now() + 60_000,
-            secretHashHex:   secretHash,
+            requesterWallet:  fromAddress ?? undefined,
+            requesterWallets: ethSenderWallets ?? undefined,
+            expiresAt:        Date.now() + 60_000,
+            secretHashHex:    secretHash,
             timestamp:       Date.now(),
           });
         }

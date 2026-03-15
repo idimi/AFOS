@@ -477,23 +477,29 @@ export async function getActiveHtlcSecrets(): Promise<HtlcSecret[]> {
 /**
  * Look up wallet addresses for a given rfqId from the htlc_swaps table.
  * Used by the monitor as a fallback when counterpartyAddress is not stored in htlc_secrets.
- * Returns { initiatorAddress, counterpartyAddress } — either may be null.
+ * Returns { initiatorAddress, counterpartyAddress, counterpartyWallets } — either may be null.
  */
 export async function getHtlcSwapAddresses(
   rfqId: string,
-): Promise<{ initiatorAddress: string | null; counterpartyAddress: string | null }> {
+): Promise<{
+  initiatorAddress: string | null;
+  counterpartyAddress: string | null;
+  counterpartyWallets: { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } | null;
+}> {
   const db = await getDb();
-  if (!db) return { initiatorAddress: null, counterpartyAddress: null };
+  if (!db) return { initiatorAddress: null, counterpartyAddress: null, counterpartyWallets: null };
   // Fetch both Agent A and Agent B rows for this rfqId.
   // Each row now stores:
   //   senderAddress       — the wallet that locked funds (this agent's address)
   //   recipientAddress    — who will receive the funds on claim (the other agent)
   //   counterpartyAddress — explicitly stored other-agent address (most reliable)
+  //   counterpartyWallets — full multi-chain wallet map for the counterparty
   //   htlcId              — 'htlc_a_...' for Agent A, 'htlc_b_...' for Agent B
   const rows = await db.select({
     senderAddress:       htlcSwaps.senderAddress,
     recipientAddress:    htlcSwaps.recipientAddress,
     counterpartyAddress: htlcSwaps.counterpartyAddress,
+    counterpartyWallets: htlcSwaps.counterpartyWallets,
     htlcId:              htlcSwaps.htlcId,
   }).from(htlcSwaps)
     .where(eq(htlcSwaps.rfqId, rfqId))
@@ -523,7 +529,14 @@ export async function getHtlcSwapAddresses(
     rowA?.counterpartyAddress ??
     rowA?.recipientAddress ?? null;
 
-  return { initiatorAddress, counterpartyAddress };
+  // counterpartyWallets: prefer Agent A's stored map (they received Agent B's wallets),
+  // fall back to Agent B's stored map (they received Agent A's wallets).
+  const counterpartyWallets =
+    (rowA?.counterpartyWallets as { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } | null) ??
+    (rowB?.counterpartyWallets as { solana?: string; ethereum?: string; bitcoin?: string; trac_network?: string } | null) ??
+    null;
+
+  return { initiatorAddress, counterpartyAddress, counterpartyWallets };
 }
 
 /** Get recently settled (completed/expired/refunded) HTLC secrets for the history panel */
