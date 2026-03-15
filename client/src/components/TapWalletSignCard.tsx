@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Copy, Check, ExternalLink, Smartphone, Loader2, CheckCircle2, Clock, AlertTriangle, QrCode, Lock as LockIcon, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { executeTnkHtlcLock } from "@/lib/tnkHtlc";
 
 interface TapWalletSignCardProps {
   /** Optional callback fired when the swap is confirmed as settled (status=completed).
@@ -183,8 +184,10 @@ export default function TapWalletSignCard({
     void tryAutoSign();
   }, [tryAutoSign]);
 
-  // Direct Tap Wallet sign — triggers the wallet popup immediately via sendTNK
-  // Used when auto-sign is not available (no submitContractTx/signTracTx API)
+  // Direct Tap Wallet sign — triggers the wallet popup via executeTnkHtlcLock
+  // Uses the proper 2-step HTLC lock:
+  //   Step 1: sendTNK(from, to, amount) — transfers TNK to the HTLC contract address
+  //   Step 2: signTracTx(htlc_lock) — registers HTLC parameters in the subnet state machine
   const handleDirectSign = useCallback(async () => {
     const tap = (window as any).tracnetwork ?? (window as any).tapprotocol;
     if (!tap) {
@@ -207,15 +210,29 @@ export default function TapWalletSignCard({
       };
       // Support both the trac-peer nested format and any legacy flat format
       const htlcValue = rawPayload.value;
-      const toAddress = htlcValue?.recipient ?? rawPayload.to ?? "";
       const amountRaw = htlcValue?.amountRaw;
       const amount = amountRaw
         ? (parseInt(amountRaw, 10) / 1e8).toFixed(8)
         : (rawPayload.amount ?? String(tnkAmount ?? 0));
-      // Trigger the Tap Wallet popup via sendTNK
-      const result = await tap.sendTNK(toAddress, amount);
-      if (!result?.success && !result?.txHash) throw new Error(result?.error ?? "TNK send failed");
-      const hash = result?.txHash ?? "pending";
+      const secretHash = htlcValue?.secretHash ?? (rawPayload as any).secretHash ?? "";
+      const htlcId = htlcValue?.htlcId ?? (rawPayload as any).htlcId ?? htlcIdB;
+      const recipientAddress = htlcValue?.recipient ?? (rawPayload as any).to ?? "";
+      // Timelock: derive remaining seconds from the locktime unix timestamp in the payload
+      const locktimeUnix = htlcValue?.locktime ?? 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const timelockSeconds = locktimeUnix > nowSec ? locktimeUnix - nowSec : 3600;
+
+      // Use the proper 2-step HTLC lock via executeTnkHtlcLock:
+      //   1. sendTNK(from, recipientAddress, amount) — transfers TNK to HTLC contract
+      //   2. signTracTx(htlc_lock) — registers HTLC params in subnet state machine
+      const lockResult = await executeTnkHtlcLock({
+        amount,
+        secretHash,
+        timelockSeconds,
+        recipientAddress,
+        htlcId,
+      });
+      const hash = lockResult.contractTxHash ?? lockResult.sendTxHash ?? "pending";
       setTxHash(hash);
       setSignState("signed");
       toast.success("TNK lock submitted!", {
@@ -224,15 +241,15 @@ export default function TapWalletSignCard({
       onSigned?.(hash);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel")) {
+      if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancel") || msg.toLowerCase().includes("rejected")) {
         setSignState("pending");
         toast.info("Transaction cancelled");
       } else {
         setSignState("pending");
-        toast.error("TNK sign failed", { description: msg.slice(0, 80) });
+        toast.error("TNK sign failed", { description: msg.slice(0, 120) });
       }
     }
-  }, [tnkLockTxPayload, tnkAmount, toToken, onSigned]);
+  }, [tnkLockTxPayload, tnkAmount, toToken, onSigned, htlcIdB]);
 
   const handleCopy = async () => {
     try {
