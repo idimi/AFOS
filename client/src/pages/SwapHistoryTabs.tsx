@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
   Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap, RefreshCw,
-  ShieldAlert, CheckCheck, Undo2, TrendingDown, ShieldCheck,
+  ShieldAlert, CheckCheck, Undo2, TrendingDown, ShieldCheck, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -1129,6 +1129,11 @@ function RefundCard({
   const expiredAgoLabel = useTimeSince(isUnixTimelock ? refund.locktime : 0);
 
   const claimRefund = useCallback(async () => {
+    // Helper: clear the dismissed flag so RefundBanner reappears if there are still stuck HTLCs,
+    // and disappears immediately if this was the last one (banner checks claimableCount === 0).
+    const dismissRefundBanner = () =>
+      sessionStorage.removeItem("afos_refund_banner_dismissed");
+
     // Solana claim — the user's wallet is the on-chain sender (they locked the HTLC).
     // The user signs the refund tx directly with their Phantom wallet.
     if (refund.chain === "solana") {
@@ -1197,6 +1202,7 @@ function RefundCard({
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
         await utils.history.myOnChainRefunds.invalidate();
+        dismissRefundBanner();
         toast.success("Refund successful! SOL returned to your wallet.", {
           id: toastId,
           duration: 8000,
@@ -1219,6 +1225,7 @@ function RefundCard({
             await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: "already-settled" });
             await utils.history.refunds.invalidate();
             await utils.history.myOnChainRefunds.invalidate();
+            dismissRefundBanner();
           } catch { /* ignore DB update errors */ }
           toast.success("Already refunded on-chain", {
             id: toastId,
@@ -1235,6 +1242,7 @@ function RefundCard({
               await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
               await utils.history.refunds.invalidate();
               await utils.history.myOnChainRefunds.invalidate();
+              dismissRefundBanner();
               toast.success("Refund confirmed (delayed)!", {
                 id: toastId,
                 duration: 8000,
@@ -1286,6 +1294,7 @@ function RefundCard({
           refundTxId: result.refundRequestSignature.slice(0, 64),
         });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("TNK refund request submitted!", {
           description: `Signed at ${new Date(result.requestedAt).toLocaleTimeString()} — agent will process the on-chain refund`,
         });
@@ -1336,6 +1345,7 @@ function RefundCard({
         toast.dismiss("eth-refund-sign");
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("ETH refund submitted!", {
           description: (
             <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
@@ -1404,6 +1414,7 @@ function RefundCard({
         toast.dismiss("btc-refund-broadcast");
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txid });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("BTC refund broadcast!", {
           description: (
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
@@ -1856,6 +1867,7 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
   const refunds = [...dbRefunds, ...onChainRefunds];
   const hasWallet = walletAddresses.length > 0;
   const claimable = refunds.filter(r => r.status === "claimable");
+  const pending = refunds.filter(r => r.status === "pending");
   const claimed = refunds.filter(r => r.status === "claimed");
   const refunded = refunds.filter(r => r.status === "refunded");
   const isScanning = isLoading || onChainLoading;
@@ -1899,7 +1911,7 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
         )}
 
         {/* Stat cards — redesigned */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
 
           {/* Stuck Funds */}
           <div className="relative overflow-hidden rounded-2xl p-4"
@@ -1914,6 +1926,22 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
             <div className="text-3xl font-bold font-mono text-amber-400 leading-none tabular-nums">{claimable.length}</div>
             <div className="text-[10px] text-amber-400/50 mt-2">
               {claimable.length === 0 ? "All clear" : claimable.length === 1 ? "1 HTLC needs recovery" : `${claimable.length} HTLCs need recovery`}
+            </div>
+          </div>
+
+          {/* Pending — locked HTLCs not yet expired */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <Lock className="w-16 h-16 text-blue-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-widest">Pending</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-blue-400 leading-none tabular-nums">{pending.length}</div>
+            <div className="text-[10px] text-blue-400/50 mt-2">
+              {pending.length === 0 ? "None in-flight" : pending.length === 1 ? "1 HTLC locked" : `${pending.length} HTLCs locked`}
             </div>
           </div>
 

@@ -3278,3 +3278,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Wire Recover Funds in Open Trades card → executeEarlyRefund already fully wired for SOL/TNK/ETH/BTC
 - [x] Fix RefundCard right-side chip: "Claimed" → "Recovered" to match badge label; add Locked/Expired chip for pending/expired status
 - [x] Add rich empty-state to Refunds tab: animated ShieldCheck icon, reassurance chips, "All clear" headline
+
+## Auto-Dismiss Banner + Pending Stat Card
+
+- [x] Auto-dismiss RefundBanner after successful recovery in RefundCard (all chains: SOL confirmed/already-settled/delayed, TNK, ETH, BTC)
+- [x] Add "Pending" stat card to Refunds tab (locked HTLCs not yet expired) — responsive 2/3/5-col grid
