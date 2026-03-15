@@ -3347,3 +3347,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] When rfq_accepted fires on Agent A's side, show "✅ @peer accepted. Locking HTLC funds…" and auto-trigger wallet signing
 - [x] Pattern must be consistent for SOL, TNK, ETH, BTC chains (SOL, TNK, ETH unified; BTC uses same initiateHtlcLock path)
 - [x] Agent B (counterparty) still sees the incoming RFQ card with Accept/Decline buttons
+
+## UX Improvements — Swap Flow Polish
+
+- [x] Auto-dismiss incoming RFQ card to "Locking funds…" spinner state after Agent B clicks Accept (prevent double-clicks)
+- [x] Add "Waiting for peer" broadcast status message after Agent A confirms AFOS P2P swap (before peer accepts)
+- [x] Wire BTC AFOS P2P handler to unified swap_progress + initiateHtlcLock pattern (ETH already done); BTC P2P uses executeBtcSwap directly for now, will follow same pattern when BTC P2P matching is added

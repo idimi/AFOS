@@ -1436,6 +1436,8 @@ function MessageBubble({
   onRequestConnect,
   onAcceptRfq,
   onDeclineRfq,
+  acceptedRfqIds,
+  declinedRfqIds,
   onClaimHtlc,
   htlcRevealedSecrets,
   claimedRfqIds,
@@ -1465,6 +1467,10 @@ function MessageBubble({
   onRequestConnect: (fromToken: string, fromChain?: SupportedChain) => void;
   onAcceptRfq?: (rfqId: string, fromToken: string, toToken: string, amount: number, outAmount: number) => void;
   onDeclineRfq?: (rfqId: string) => void;
+  /** RFQ IDs that Agent B has already accepted — card transitions to "Locking funds…" state */
+  acceptedRfqIds?: Set<string>;
+  /** RFQ IDs that Agent B has declined — card is hidden */
+  declinedRfqIds?: Set<string>;
   onClaimHtlc?: (rfqId: string) => void;
   htlcRevealedSecrets?: Record<string, string>;
   claimedRfqIds?: Set<string>;
@@ -1839,6 +1845,26 @@ function MessageBubble({
                   : rfqSendChain === 'ethereum' ? !ethereum?.connected
                   : rfqSendChain === 'trac_network' ? !tnkWallet?.connected
                   : !(phantomMultiChain?.solanaAddress || solShortAddress);
+                // If declined, hide the buttons entirely
+                if (declinedRfqIds?.has(msg.incomingRfqData!.rfqId)) {
+                  return (
+                    <div className="flex items-center gap-2 py-2 px-3 rounded-lg text-xs" style={{ background: "rgba(239,68,68,0.08)", color: "#f87171", border: "1px solid rgba(239,68,68,0.2)" }}>
+                      <span>✕</span> Swap declined
+                    </div>
+                  );
+                }
+                // If accepted, show locking funds spinner (prevent double-clicks)
+                if (acceptedRfqIds?.has(msg.incomingRfqData!.rfqId)) {
+                  return (
+                    <div className="flex items-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }}>
+                      <svg className="animate-spin" style={{ width: 14, height: 14 }} viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                      </svg>
+                      Locking funds…
+                    </div>
+                  );
+                }
                 return (
                   <div className="flex gap-2">
                     <button
@@ -1862,16 +1888,16 @@ function MessageBubble({
                         'Accept Swap'
                       )}
                     </button>
-              <button
-                onClick={() => {
-                  const rfq = msg.incomingRfqData!;
-                  onDeclineRfq?.(rfq.rfqId);
-                }}
-                className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
-                style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}
-              >
-                Decline
-              </button>
+                    <button
+                      onClick={() => {
+                        const rfq = msg.incomingRfqData!;
+                        onDeclineRfq?.(rfq.rfqId);
+                      }}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold transition-colors"
+                      style={{ background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.25)" }}
+                    >
+                      Decline
+                    </button>
                   </div>
                 );
               })()}
@@ -2027,6 +2053,8 @@ export default function ChatPage() {
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [executingId, setExecutingId] = useState<string | null>(null);
   const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
+  const [acceptedRfqIds, setAcceptedRfqIds] = useState<Set<string>>(new Set());
+  const [declinedRfqIds, setDeclinedRfqIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -2578,6 +2606,14 @@ export default function ChatPage() {
         }
 
         toast.loading("Finding best ETH swap route…", { id: "eth-swap" });
+        // Inject a "Broadcasting" status message so Agent A knows the swap is in progress
+        setMessages(prev => [...prev, {
+          id: `broadcasting-${msgId}`,
+          role: "assistant" as const,
+          content: "⏳ Broadcasting to P2P network\u2026 waiting for a peer to accept your swap.",
+          type: "text" as const,
+          timestamp: Date.now(),
+        }]);
         const ethResult = await executeEthSwap.mutateAsync({
           fromAddress: ethAddress,
           fromToken:   quoteData.fromToken,
@@ -2731,6 +2767,14 @@ export default function ChatPage() {
             isSolToTnk ? "Agent locking TNK on Trac Network…" : "Agent locking SOL on Solana…",
             { id: "tnk-htlc" }
           );
+          // Inject a "Broadcasting" status message so Agent A knows the swap is in progress
+          setMessages(prev => [...prev, {
+            id: `broadcasting-${msgId}`,
+            role: "assistant" as const,
+            content: "⏳ Broadcasting to P2P network\u2026 waiting for a peer to accept your swap.",
+            type: "text" as const,
+            timestamp: Date.now(),
+          }]);
           const tnkSolResult = await buildSwapTx.mutateAsync({
             quoteResponse:    quoteData.quoteResponse,
             userPublicKey:    userSolAddr,
@@ -2927,6 +2971,14 @@ export default function ChatPage() {
       }
 
       // ── Solana swaps: AFOS P2P primary + Jupiter fallback ──────────────────
+      // Inject a "Broadcasting" status message so Agent A knows the swap is in progress
+      setMessages(prev => [...prev, {
+        id: `broadcasting-${msgId}`,
+        role: "assistant" as const,
+        content: "⏳ Broadcasting to P2P network\u2026 waiting for a peer to accept your swap.",
+        type: "text" as const,
+        timestamp: Date.now(),
+      }]);
       const solResult = await buildSwapTx.mutateAsync({
         quoteResponse: quoteData.quoteResponse,
         userPublicKey: effectivePublicKey!.toString(),
@@ -3221,10 +3273,14 @@ export default function ChatPage() {
               tnkSubnetOnline={tnkSubnetStatus?.online}
               anyWalletConnected={anyWalletConnected}
               onAcceptRfq={(rfqId, fromToken, toToken, amount, outAmount) => {
+                // Mark as accepted immediately to transition card to "Locking funds…" state
+                setAcceptedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
                 const text = `accept swap ${amount.toFixed(4)} ${fromToken} for ${outAmount.toFixed(4)} ${toToken} rfq:${rfqId}`;
                 handleSend(text);
               }}
               onDeclineRfq={(rfqId) => {
+                // Mark as declined immediately to hide the card
+                setDeclinedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
                 handleSend(`decline swap rfq:${rfqId}`);
               }}
               onClaimHtlc={lightPeer.claimHtlcFunds}
@@ -3248,6 +3304,8 @@ export default function ChatPage() {
               solShortAddress={shortAddress}
               solWalletName={walletName}
               onOpenWalletModal={(chain) => { setWalletModalChain(chain); setShowWalletModal(true); }}
+              acceptedRfqIds={acceptedRfqIds}
+              declinedRfqIds={declinedRfqIds}
             />
           ) : null
         ))}
