@@ -3200,6 +3200,7 @@ export default function ChatPage() {
                 counterpartyPeerId: p2p.peerId ?? undefined,
                  // For TNK HTLC lock: use the peer's trac_network address (not their SOL address)
                 counterpartyWallet: p2p.counterpartyWallets?.trac_network ?? p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+                counterpartyWallets: p2p.counterpartyWallets,
                 secretHashHex:      p2p.secretHashHex ?? undefined,
               });
             }
@@ -3313,6 +3314,7 @@ export default function ChatPage() {
               // For TNK HTLC lock: use the peer's trac_network address (not their BTC/ETH address)
               // p2p is typed as P2PQuoteResult which includes counterpartyWallets — no cast needed
               counterpartyWallet: p2p?.counterpartyWallets?.trac_network ?? p2p?.counterpartyPubKey ?? p2p?.counterpartyAddress ?? undefined,
+              counterpartyWallets: p2p?.counterpartyWallets,
               secretHashHex:      p2p.secretHashHex ?? undefined,
             });
           }

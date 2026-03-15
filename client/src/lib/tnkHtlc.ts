@@ -135,13 +135,21 @@ export async function executeTnkHtlcLock(
     throw new Error("Tap Wallet: no account connected. Please connect your Tap Wallet.");
   }
 
-  // Step 2: Send TNK to the recipient address (triggers Tap Wallet signing popup).
-  // On Trac Network, the HTLC is enforced by the subnet state machine — not a smart contract.
-  // The user sends TNK directly to the counterparty's address (the agent's escrow address),
-  // and the subnet contract records the HTLC parameters to enforce the timelock and secret hash.
+  // Step 2: Send TNK to the HTLC CONTRACT address (triggers Tap Wallet signing popup).
+  // IMPORTANT: The TNK must be sent to the HTLC escrow/contract address — NOT to the counterparty
+  // (recipientAddress) directly. The recipientAddress is only used in the signTracTx contract
+  // command (Step 3) as the beneficiary who can claim by revealing the preimage.
+  // The HTLC contract holds the TNK and enforces the timelock + secret hash atomically.
+  if (!AFOS_TNK_CONTRACT_ADDRESS || AFOS_TNK_CONTRACT_ADDRESS.includes("placeholder")) {
+    throw new Error(
+      "TNK HTLC contract address is not configured. " +
+      "Please set VITE_TNK_HTLC_CONTRACT_ADDRESS or VITE_TNK_ESCROW_ADDRESS in the project secrets."
+    );
+  }
   let sendResult: { txHash: string; success: boolean };
   try {
-    sendResult = await tap.sendTNK(senderAddress, recipientAddress, amount);
+    // Send to the HTLC contract address, not to recipientAddress (Agent B's personal address)
+    sendResult = await tap.sendTNK(senderAddress, AFOS_TNK_CONTRACT_ADDRESS, amount);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     // User cancelled the sendTNK popup — propagate as user rejection
