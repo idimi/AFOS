@@ -2938,37 +2938,62 @@ export const chatRouter = router({
       const tokenSymA    = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined;
       const tokenSymB    = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined;
 
-      // Fire-and-forget: trigger both claims immediately
+      // Fire-and-forget: trigger both claims independently
+      // Each claim is attempted separately so an AlreadyClaimed on one side
+      // does NOT prevent the other side from being claimed.
       void (async () => {
+        const isAlreadyClaimed = (e: unknown) =>
+          e instanceof Error && (e.message.includes("AlreadyClaimed") || e.message.includes("already claimed") || e.message.includes("not found on-chain"));
+
+        // Claim Agent A's lock → release to Agent B
+        let claimATxId: string | undefined;
         try {
-          // Claim Agent A's lock → release to Agent B
           const claimA = await claimSolanaHtlc({
             htlcId:           htlcIdA,
             secretHex:        row.secretHex,
             recipientAddress: senderWallet,
             tokenSymbol:      tokenSymA,
           });
-          console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimA.txSignature}`);
+          claimATxId = claimA.txSignature;
+          console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimATxId}`);
+        } catch (errA) {
+          if (isAlreadyClaimed(errA)) {
+            console.log(`[AgentBWebhook] Claim A already settled on-chain rfqId=${rfqId.slice(0, 12)} — continuing to Claim B`);
+          } else {
+            console.error(`[AgentBWebhook] Claim A failed for rfqId=${rfqId.slice(0, 12)}:`, errA instanceof Error ? errA.message : errA);
+          }
+        }
 
-          // Claim Agent B's lock → release to Agent A
+        // Claim Agent B's lock → release to Agent A (always attempt regardless of Claim A result)
+        let claimBTxId: string | undefined;
+        try {
           const claimB = await claimSolanaHtlc({
             htlcId:           htlcIdB,
             secretHex:        row.secretHex,
             recipientAddress: initiatorAddress,
             tokenSymbol:      tokenSymB,
           });
-          console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimB.txSignature}`);
+          claimBTxId = claimB.txSignature;
+          console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimBTxId}`);
+        } catch (errB) {
+          if (isAlreadyClaimed(errB)) {
+            console.log(`[AgentBWebhook] Claim B already settled on-chain rfqId=${rfqId.slice(0, 12)}`);
+          } else {
+            console.error(`[AgentBWebhook] Claim B failed for rfqId=${rfqId.slice(0, 12)}:`, errB instanceof Error ? errB.message : errB);
+          }
+        }
 
+        // Mark completed if at least one claim succeeded (or both were already settled)
+        if (claimATxId || claimBTxId) {
           await updateHtlcSecretStatus(rfqId, "completed", {
-            revealTxId: claimA.txSignature,
-            counterpartyRevealTxId: claimB.txSignature,
+            ...(claimATxId ? { revealTxId: claimATxId } : {}),
+            ...(claimBTxId ? { counterpartyRevealTxId: claimBTxId } : {}),
             settledAt: new Date(),
             settledVia: "browser_notify",
           });
-          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed successfully (browser_notify)`);
-        } catch (err) {
-          // Non-fatal: HtlcSecretsMonitor will retry after 5 minutes
-          console.error(`[AgentBWebhook] Auto-claim failed for rfqId=${rfqId.slice(0, 12)}:`, err instanceof Error ? err.message : err);
+          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed (browser_notify) claimA=${claimATxId ?? "skipped"} claimB=${claimBTxId ?? "skipped"}`);
+        } else {
+          console.warn(`[AgentBWebhook] Both claims failed/skipped for rfqId=${rfqId.slice(0, 12)} — HtlcSecretsMonitor will retry`);
         }
       })();
 

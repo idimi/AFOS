@@ -1,0 +1,22 @@
+{
+  "query": "SELECT rfqId, secretHex, htlcId, initiatorAddress, counterpartyAddress, counterpartyWallets, fromToken, toToken, status, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773610132200%' LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, secretHex, htlcId, initiatorAddress, counterpartyAddress, counterpartyWallets, fromToken, toToken, status, createdAt FROM htlc_secrets WHERE rfqId LIKE '%1773610132200%' LIMIT 5;",
+  "rows": [
+    {
+      "rfqId": "rfq_1773610132200_lp-0464c",
+      "secretHex": "75057fe63d74534b142990be5c43b90be20a9a5893a6a6064fecbc85147caf41",
+      "htlcId": "htlc_a_rfq_1773610132200_lp-0",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "counterpartyWallets": "{\"bitcoin\": \"bc1pgtedlxe5fs0mrcajfhj8hxwrjmst2vxxpwc0u7dhlfwnpffa0ersaudlea\", \"ethereum\": \"0x8dfa0fe587f08eb0c4ea887e855ea4736ceacd15\", \"solana\": \"CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\", \"trac_network\": \"trac1qj4a9cg7w777wj8pmkdga0624r3uq69ktejvfq2d4uytcr6zq45q0wmfy8\"}",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "status": "completed",
+      "createdAt": "2026-03-15 21:28:52"
+    }
+  ],
+  "messages": [],
+  "stdout": "rfqId\tsecretHex\thtlcId\tinitiatorAddress\tcounterpartyAddress\tcounterpartyWallets\tfromToken\ttoToken\tstatus\tcreatedAt\nrfq_1773610132200_lp-0464c\t75057fe63d74534b142990be5c43b90be20a9a5893a6a6064fecbc85147caf41\thtlc_a_rfq_1773610132200_lp-0\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t{\"bitcoin\": \"bc1pgtedlxe5fs0mrcajfhj8hxwrjmst2vxxpwc0u7dhlfwnpffa0ersaudlea\", \"ethereum\": \"0x8dfa0fe587f08eb0c4ea887e855ea4736ceacd15\", \"solana\": \"CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\", \"trac_network\": \"trac1qj4a9cg7w777wj8pmkdga0624r3uq69ktejvfq2d4uytcr6zq45q0wmfy8\"}\tTNK\tUSDT\tcompleted\t2026-03-15 21:28:52\n",
+  "stderr": "",
+  "execution_time_ms": 87
+}

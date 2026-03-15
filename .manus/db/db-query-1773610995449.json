@@ -1,0 +1,23 @@
+{
+  "query": "SELECT rfqId, status, fromToken, toToken, initiatorAddress, counterpartyAddress, counterpartyWallets, htlcId, settledAt, settledVia, updatedAt FROM htlc_secrets WHERE rfqId LIKE '%1773610132200%';",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute SELECT rfqId, status, fromToken, toToken, initiatorAddress, counterpartyAddress, counterpartyWallets, htlcId, settledAt, settledVia, updatedAt FROM htlc_secrets WHERE rfqId LIKE '%1773610132200%';",
+  "rows": [
+    {
+      "rfqId": "rfq_1773610132200_lp-0464c",
+      "status": "completed",
+      "fromToken": "TNK",
+      "toToken": "USDT",
+      "initiatorAddress": "AuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk",
+      "counterpartyAddress": "CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW",
+      "counterpartyWallets": "{\"bitcoin\": \"bc1pgtedlxe5fs0mrcajfhj8hxwrjmst2vxxpwc0u7dhlfwnpffa0ersaudlea\", \"ethereum\": \"0x8dfa0fe587f08eb0c4ea887e855ea4736ceacd15\", \"solana\": \"CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\", \"trac_network\": \"trac1qj4a9cg7w777wj8pmkdga0624r3uq69ktejvfq2d4uytcr6zq45q0wmfy8\"}",
+      "htlcId": "htlc_a_rfq_1773610132200_lp-0",
+      "settledAt": "NULL",
+      "settledVia": "NULL",
+      "updatedAt": "2026-03-15 21:30:06"
+    }
+  ],
+  "messages": [],
+  "stdout": "rfqId\tstatus\tfromToken\ttoToken\tinitiatorAddress\tcounterpartyAddress\tcounterpartyWallets\thtlcId\tsettledAt\tsettledVia\tupdatedAt\nrfq_1773610132200_lp-0464c\tcompleted\tTNK\tUSDT\tAuSUBiVV1FYnCkBiqKCAHWesvDm6BQipQ3hcRcvg6HQk\tCzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\t{\"bitcoin\": \"bc1pgtedlxe5fs0mrcajfhj8hxwrjmst2vxxpwc0u7dhlfwnpffa0ersaudlea\", \"ethereum\": \"0x8dfa0fe587f08eb0c4ea887e855ea4736ceacd15\", \"solana\": \"CzP3GvDsLFfwqvPRm3hCtVYHP7PcnbUEqNBssevqepiW\", \"trac_network\": \"trac1qj4a9cg7w777wj8pmkdga0624r3uq69ktejvfq2d4uytcr6zq45q0wmfy8\"}\thtlc_a_rfq_1773610132200_lp-0\tNULL\tNULL\t2026-03-15 21:30:06\n",
+  "stderr": "",
+  "execution_time_ms": 58
+}

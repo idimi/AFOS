@@ -3392,3 +3392,9 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Fix: initiateHtlcLock called with chain=trac_network but toChain=solana mismatch — Agent B locks on wrong chain
 - [ ] Fix: acceptRfq passes hasSignaling:true but sendToPeer fails silently when counterpartyPeerId not stored
 - [ ] Fix: agentAWallet stored but counterpartyPeerId not persisted in htlc_secrets during TNK acceptRfq
+
+## AgentBWebhook AlreadyClaimed Fix (Mar 15, 2026)
+- [x] Fix: AgentBWebhook stops on AlreadyClaimed error during Claim A, preventing Claim B execution — split into independent try/catch blocks so Claim B always runs regardless of Claim A result
+- [x] Verify: HtlcSecretsMonitor already had independent-claims pattern (no change needed)
+- [x] Rescue: Manually claimed stuck HTLC #30013 (Agent B's USDT lock) — tx: 2cXC28DVk9aPxDVce6RtwYFJEQBjfy4SSP7te41VmAvrYWoZGzz6rjpB8bL9x1dUQkCn4jgCL6kwShtCGimvbyB1
+- [x] DB: Updated htlc_swaps HTLC 30013 status to completed; updated htlc_secrets counterpartyRevealTxId
