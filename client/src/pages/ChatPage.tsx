@@ -919,7 +919,15 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
             {signedBy && (
               <p className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
                 <span className="shrink-0">Sent from</span>
-                {(chain === "bitcoin" || chain === "trac_network") ? (
+                {chain === "trac_network" ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(255,140,0,0.12)", color: "#FF8C00", border: "1px solid rgba(255,140,0,0.25)" }}
+                  >
+                    <span>&#x20AE;</span>
+                    <span>{signedBy.name}</span>
+                  </span>
+                ) : chain === "bitcoin" ? (
                   <span
                     className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
                     style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.25)" }}
@@ -936,7 +944,15 @@ function TxSuccessCard({ txHash, fromToken, toToken, fromAmount, toAmount, fromC
             {receivedBy && (
               <p className="text-[10px] text-muted-foreground flex items-center gap-1 flex-wrap">
                 <span className="shrink-0">Received to</span>
-                {(destChain === "bitcoin" || destChain === "trac_network") ? (
+                {destChain === "trac_network" ? (
+                  <span
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: "rgba(255,140,0,0.12)", color: "#FF8C00", border: "1px solid rgba(255,140,0,0.25)" }}
+                  >
+                    <span>&#x20AE;</span>
+                    <span>{receivedBy.name}</span>
+                  </span>
+                ) : destChain === "bitcoin" ? (
                   <span
                     className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full font-bold"
                     style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.25)" }}
@@ -2595,7 +2611,12 @@ export default function ChatPage() {
     // ── Derive the signing wallet for the audit trail in TxSuccessCard ──────────
     const signingWalletForAudit: { name: string; address: string } | undefined = (() => {
       const chain = fromChainNorm;
-      if (chain === "bitcoin" || chain === "trac_network") {
+      // TNK swaps are signed with the Tap Wallet (Trac Network), not the Bitcoin wallet
+      if (chain === "trac_network") {
+        if (tnkWallet?.connected) return { name: tnkWallet.walletName ?? "Tap Wallet", address: tnkWallet.shortAddress };
+        return undefined;
+      }
+      if (chain === "bitcoin") {
         if (preferredBtcWallet === "tap" && bitcoinTap?.connected) {
           return { name: "Tap Wallet", address: bitcoinTap.shortAddress };
         }
