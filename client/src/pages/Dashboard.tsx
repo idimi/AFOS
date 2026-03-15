@@ -2850,8 +2850,8 @@ function statusTextColor(s: ServiceStatus): string {
 
 /** Shared hook — runs the health checks and exposes service state */
 function useStackHealth() {
-  // check — fetches block heights for all 4 chains in parallel (public procedure)
-  const { data: chainStatusData } = trpc.nodeHealth.check.useQuery(undefined, {
+  // chainStatus — fetches block heights for all 4 chains in parallel (public procedure)
+  const { data: chainStatusData } = trpc.nodeHealth.chainStatus.useQuery(undefined, {
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
