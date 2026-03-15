@@ -3164,3 +3164,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 
 - [x] Fix RFQ card perspective: "You send" now shows fromToken/amount (user's original swap direction) instead of toToken/outAmount (peer's perspective)
 - [x] Fix "Unexpected swap route: AFOS P2P" error: Added AFOS P2P route handler in TNK swap path — triggers initiateHtlcLock and shows swap progress card, same as SOL P2P path
+
+## TNK Quote Card — Bitcoin Wallet Picker / Signing Wallet Bugs
+
+- [x] Hide "WHICH BITCOIN WALLET TO USE?" picker for non-BTC swaps (TNK→SOL should not show it)
+- [x] Rename picker label to "WHICH TRAC NETWORK WALLET TO USE?" when fromChain is trac_network
+- [x] Fix "You send: Phantom · bc1qpv...6kwj" — should show Tap Wallet + Trac address for TNK swaps, not Phantom BTC address
+- [x] Fix signing wallet badge: show Tap Wallet for TNK fromChain, not Bitcoin wallet

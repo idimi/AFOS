@@ -207,12 +207,16 @@ function QuoteCard({
     preferredBtcWallet ?? null
   );
 
-  // Show BTC wallet picker when both Phantom/MetaMask BTC and Tap Wallet BTC are connected
-  const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin" ||
-    data.fromChain === "trac_network" || data.toChain === "trac_network";
+  // Show BTC wallet picker ONLY for bitcoin-chain swaps
+  const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin";
+  // TNK (Trac Network) swaps are separate — they use Tap Wallet, not a BTC picker
+  const isTnkSwap = data.fromChain === "trac_network" || data.toChain === "trac_network";
   const hasPhantomMetaMaskBtc = activeBitcoin?.connected && activeBitcoin.walletName !== "Tap Wallet";
   const hasTapBtc = bitcoinTap?.connected;
-  const showBtcPicker = isBtcSwap && hasPhantomMetaMaskBtc && hasTapBtc;
+  // BTC picker: only show when BOTH Phantom/MetaMask BTC AND Tap Wallet BTC are connected, AND it's a BTC swap (not TNK)
+  const showBtcPicker = isBtcSwap && !isTnkSwap && hasPhantomMetaMaskBtc && hasTapBtc;
+  // TNK picker: show when Tap Wallet is connected and it's a TNK swap (Tap Wallet is the only TNK wallet)
+  const showTnkPicker = isTnkSwap && hasTapBtc;
 
   // Helper to update both local and global preference
   const handleSetBtcWallet = (p: import("@/contexts/MultiChainWalletContext").BtcProviderType | null) => {
@@ -392,7 +396,7 @@ function QuoteCard({
         )}
       </div>
 
-      {/* BTC wallet picker — shown when both Phantom/MetaMask BTC and Tap Wallet BTC are connected */}
+      {/* BTC wallet picker — shown ONLY for bitcoin-chain swaps when both Phantom/MetaMask BTC and Tap Wallet BTC are connected */}
       {showBtcPicker && (
         <div className="px-4 pb-3">
           <div className="rounded-xl p-3 space-y-2"
@@ -440,6 +444,32 @@ function QuoteCard({
         </div>
       )}
 
+      {/* TNK wallet indicator — shown for Trac Network swaps; Tap Wallet is the only supported wallet */}
+      {showTnkPicker && (
+        <div className="px-4 pb-3">
+          <div className="rounded-xl p-3 space-y-2"
+            style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#818cf8" }}>
+              Trac Network wallet
+            </p>
+            <div className="flex gap-2">
+              <div
+                className="flex-1 py-2 px-3 rounded-lg text-xs font-semibold flex items-center gap-2"
+                style={{
+                  background: "rgba(99,102,241,0.2)",
+                  border: "1px solid rgba(99,102,241,0.5)",
+                  color: "#818cf8",
+                }}
+              >
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: "#818cf8" }} />
+                Tap Wallet
+                <span className="ml-auto text-[9px] opacity-70">{bitcoinTap?.shortAddress}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2">
         <button
@@ -469,7 +499,7 @@ function QuoteCard({
             {/* Signing wallet hint — shown when a wallet is identified */}
             {signingWallet && !isExecuting && (
               isBtcSwap ? (
-                /* BTC swap: more prominent signing indicator with wallet name + address */
+                /* BTC swap: orange ₿ pill */
                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                   <span className="text-[10px] text-muted-foreground">Signing with</span>
                   <span
@@ -477,6 +507,19 @@ function QuoteCard({
                     style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
                   >
                     <span>&#x20BF;</span>
+                    <span>{signingWallet.name}</span>
+                  </span>
+                  <span className="font-mono text-[10px] opacity-60">{signingWallet.address}</span>
+                </div>
+              ) : isTnkSwap ? (
+                /* TNK swap: indigo Trac Network pill */
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">Signing with</span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}
+                  >
+                    <span style={{ fontSize: "9px" }}>TNK</span>
                     <span>{signingWallet.name}</span>
                   </span>
                   <span className="font-mono text-[10px] opacity-60">{signingWallet.address}</span>
@@ -490,8 +533,8 @@ function QuoteCard({
             )}
             {/* Destination wallet hint — shown for cross-chain swaps */}
             {destinationWallet && !isExecuting && (
-              data.toChain === "bitcoin" || data.toChain === "trac_network" ? (
-                /* BTC destination: prominent orange pill */
+              data.toChain === "bitcoin" ? (
+                /* BTC destination: prominent orange ₿ pill */
                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                   <span className="text-[10px] text-muted-foreground">Receiving to</span>
                   <span
@@ -499,6 +542,19 @@ function QuoteCard({
                     style={{ background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }}
                   >
                     <span>&#x20BF;</span>
+                    <span>{destinationWallet.name}</span>
+                  </span>
+                  <span className="font-mono text-[10px] opacity-60">{destinationWallet.address}</span>
+                </div>
+              ) : data.toChain === "trac_network" ? (
+                /* TNK destination: indigo Trac Network pill */
+                <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-muted-foreground">Receiving to</span>
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                    style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}
+                  >
+                    <span style={{ fontSize: "9px" }}>TNK</span>
                     <span>{destinationWallet.name}</span>
                   </span>
                   <span className="font-mono text-[10px] opacity-60">{destinationWallet.address}</span>
@@ -1381,7 +1437,7 @@ function MessageBubble({
                   </span>
                 )}
                 {/* BTC signer badge — shown when the swap involves Bitcoin on the send side */}
-                {msg.routeBadge === "p2p" && (msg.quoteData?.fromChain === "bitcoin" || msg.quoteData?.fromChain === "trac_network") && (() => {
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain === "bitcoin" && (() => {
                   const activeBtcName = preferredBtcWallet === 'tap'
                     ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                     : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
@@ -1401,18 +1457,44 @@ function MessageBubble({
                     </span>
                   );
                 })()}
+                {/* TNK signer badge — shown when the swap involves Trac Network on the send side */}
+                {msg.routeBadge === "p2p" && msg.quoteData?.fromChain === "trac_network" && (() => {
+                  // TNK swaps use Tap Wallet (tnkWallet) — NOT the BTC wallet
+                  const tnkName = tnkWallet?.connected ? (tnkWallet.walletName ?? 'Tap Wallet') : null;
+                  const tnkAddr = tnkWallet?.connected ? tnkWallet.shortAddress : null;
+                  if (!tnkName) return null;
+                  return (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{ background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }}
+                      title={`You will sign with ${tnkName} (${tnkAddr}) on Trac Network`}
+                    >
+                      <span style={{ fontSize: "9px" }}>TNK</span>
+                      <span>You send: {tnkName}</span>
+                      {tnkAddr && <span className="font-mono opacity-70">· {tnkAddr}</span>}
+                    </span>
+                  );
+                })()}
                 {/* "You receive" badge — shown for cross-chain P2P swaps to show the destination wallet */}
                 {msg.routeBadge === "p2p" && msg.quoteData?.fromChain !== msg.quoteData?.toChain && (() => {
                   const toChain = msg.quoteData?.toChain;
                   if (!toChain) return null;
                   let receiveName: string | null = null;
                   let receiveAddr: string | null = null;
-                  if (toChain === "bitcoin" || toChain === "trac_network") {
+                  let isBtcReceive = false;
+                  let isTnkReceive = false;
+                  if (toChain === "bitcoin") {
+                    // BTC destination: use BTC wallet (Phantom BTC or Tap Wallet)
                     const activeBtcName = preferredBtcWallet === 'tap'
                       ? (bitcoinTap?.connected ? 'Tap Wallet' : null)
                       : (bitcoin?.connected ? (bitcoin.walletName ?? 'Phantom') : null);
                     const btcAddr = preferredBtcWallet === 'tap' ? bitcoinTap?.shortAddress : bitcoin?.shortAddress;
-                    if (activeBtcName) { receiveName = activeBtcName; receiveAddr = btcAddr ?? null; }
+                    if (activeBtcName) { receiveName = activeBtcName; receiveAddr = btcAddr ?? null; isBtcReceive = true; }
+                  } else if (toChain === "trac_network") {
+                    // TNK destination: use Trac Network wallet (tnkWallet / Tap Wallet TNK)
+                    const tnkName = tnkWallet?.connected ? (tnkWallet.walletName ?? 'Tap Wallet') : null;
+                    const tnkAddr = tnkWallet?.connected ? tnkWallet.shortAddress : null;
+                    if (tnkName) { receiveName = tnkName; receiveAddr = tnkAddr ?? null; isTnkReceive = true; }
                   } else if (toChain === "ethereum") {
                     if (ethereum?.connected) { receiveName = ethereum.walletName ?? 'MetaMask'; receiveAddr = ethereum.shortAddress ?? null; }
                   } else {
@@ -1424,17 +1506,20 @@ function MessageBubble({
                     if (solAddr) { receiveName = solName; receiveAddr = solAddr; }
                   }
                   if (!receiveName) return null;
-                  const isBtcReceive = toChain === "bitcoin" || toChain === "trac_network";
                   return (
                     <span
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                      style={isBtcReceive
-                        ? { background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }
-                        : { background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }
+                      style={
+                        isBtcReceive
+                          ? { background: "rgba(247,147,26,0.12)", color: "#F7931A", border: "1px solid rgba(247,147,26,0.3)" }
+                          : isTnkReceive
+                            ? { background: "rgba(99,102,241,0.12)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }
+                            : { background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.3)" }
                       }
                       title={`You will receive to ${receiveName} (${receiveAddr})`}
                     >
                       {isBtcReceive && <span>&#x20BF;</span>}
+                      {isTnkReceive && <span style={{ fontSize: "9px" }}>TNK</span>}
                       <span>You receive: {receiveName}</span>
                       {receiveAddr && <span className="font-mono opacity-70">· {receiveAddr}</span>}
                     </span>
