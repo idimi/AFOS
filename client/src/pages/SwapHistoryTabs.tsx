@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
   Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap, RefreshCw,
+  ShieldAlert, CheckCheck, Undo2, TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -1888,19 +1889,75 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
           </div>
         )}
 
+        {/* Stat cards — redesigned */}
         <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: "Stuck Funds", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
-            { label: "Recovered", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
-            { label: "Refunded", value: refunded.length, color: "text-cyan-400", bg: "rgba(6,182,212,0.1)", border: "rgba(6,182,212,0.25)" },
-            { label: "At Risk", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
-          ].map(stat => (
-            <div key={stat.label} className="rounded-xl p-3 text-center"
-              style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>
-              <div className={`text-lg font-bold font-mono ${stat.color}`}>{stat.value}</div>
-              <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+
+          {/* Stuck Funds */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <ShieldAlert className="w-16 h-16 text-amber-400" />
             </div>
-          ))}
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-widest">Stuck Funds</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-amber-400 leading-none tabular-nums">{claimable.length}</div>
+            <div className="text-[10px] text-amber-400/50 mt-2">
+              {claimable.length === 0 ? "All clear" : claimable.length === 1 ? "1 HTLC needs recovery" : `${claimable.length} HTLCs need recovery`}
+            </div>
+          </div>
+
+          {/* Recovered */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <CheckCheck className="w-16 h-16 text-emerald-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-widest">Recovered</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-emerald-400 leading-none tabular-nums">{claimed.length}</div>
+            <div className="text-[10px] text-emerald-400/50 mt-2">
+              {claimed.length === 0 ? "None yet" : claimed.length === 1 ? "1 HTLC reclaimed" : `${claimed.length} HTLCs reclaimed`}
+            </div>
+          </div>
+
+          {/* Refunded */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <Undo2 className="w-16 h-16 text-cyan-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+              <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Refunded</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-cyan-400 leading-none tabular-nums">{refunded.length}</div>
+            <div className="text-[10px] text-cyan-400/50 mt-2">
+              {refunded.length === 0 ? "None" : refunded.length === 1 ? "1 HTLC returned" : `${refunded.length} HTLCs returned`}
+            </div>
+          </div>
+
+          {/* At Risk */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.06]">
+              <TrendingDown className="w-16 h-16 text-muted-foreground" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+              <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">At Risk</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-foreground leading-none tabular-nums">
+              ${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}
+            </div>
+            <div className="text-[10px] text-muted-foreground/40 mt-2">
+              {claimable.length === 0 ? "No exposure" : "USD value locked"}
+            </div>
+          </div>
+
         </div>
 
         {/* Auto-sync status row: subtle indicator + Claim All */}
