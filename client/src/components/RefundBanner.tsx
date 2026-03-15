@@ -9,7 +9,7 @@
  * Shows a banner with count + total amount + link to History → Refunds tab.
  * Dismissed state is stored in sessionStorage (resets on page reload).
  */
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { AlertTriangle, X, ArrowRight } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
@@ -113,6 +113,18 @@ export default function RefundBanner({ walletAddresses, onNavigateToRefunds }: R
       .map(([sym, amt]) => `${amt.toFixed(sym === "BTC" ? 8 : 4)} ${sym}`)
       .join(" + ");
   }, [onChainClaimable, dbClaimable]);
+
+  // Track previous count to detect when it drops to 0 after being > 0
+  const prevCountRef = useRef(claimableCount);
+  useEffect(() => {
+    const prev = prevCountRef.current;
+    prevCountRef.current = claimableCount;
+    // If count just dropped to 0 after being positive, auto-dismiss the banner
+    if (prev > 0 && claimableCount === 0 && dismissed) {
+      sessionStorage.removeItem("afos_refund_banner_dismissed");
+      setDismissed(false);
+    }
+  }, [claimableCount, dismissed]);
 
   // Don't render if no wallet connected, dismissed, or no claimable HTLCs
   if (!enabled || claimableCount === 0) return null;

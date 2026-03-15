@@ -3259,3 +3259,8 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [ ] Remove Claim button for any HTLC where on-chain PDA is closed (already settled)
 - [ ] Show Claim only when myOnChainRefunds returns the HTLC as genuinely claimable
 - [ ] Add clear UX label: "Funds stuck on-chain — recover your tokens" not generic "CLAIMABLE"
+
+## Refunds Tab UX Improvements
+- [x] Auto-dismiss RefundBanner when claimableCount drops to 0 (reactive, no reload needed)
+- [x] Add "Why is this stuck?" tooltip on STUCK FUNDS badge in RefundCard
+- [x] Replace manual Re-sync button with automatic background sync (no user action needed)

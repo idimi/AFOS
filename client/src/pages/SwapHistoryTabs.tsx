@@ -6,7 +6,7 @@
  *   - On-chain claim refund button (Solana: buildSolanaHtlcRefundTx + Phantom sign/send)
  *   - HTLC detail drawer (slide-over with full HTLC details + explorer links)
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
@@ -20,6 +20,7 @@ import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adap
 import { PublicKey } from "@solana/web3.js";
 import type { SupportedChain } from "@shared/const";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
@@ -1461,6 +1462,21 @@ function RefundCard({
                refund.status === "pending"   ? "LOCKED" :
                "EXPIRED"}
             </span>
+            {refund.status === "claimable" && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-amber-400/60 cursor-help flex-shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    <p className="font-semibold mb-1">Why is this stuck?</p>
+                    <p className="text-muted-foreground leading-relaxed">
+                      The swap timelock expired before the counterparty settled. Your funds are still locked in an on-chain HTLC escrow. Recovering is safe, non-custodial, and returns funds directly to your wallet.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {/* Live countdown for pending/locked HTLCs */}
             {refund.status === "pending" && isUnixTimelock && !countdownExpired && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono"
@@ -1770,29 +1786,30 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
 }
 
 export function RefundsTab({ walletAddresses, search = "", adminOverride = false }: TabProps) {
-  const { data, isLoading, refetch: refetchDb } = trpc.history.refunds.useQuery(
+  const { data, isLoading } = trpc.history.refunds.useQuery(
     { walletAddresses, search, adminOverride },
     { refetchInterval: 30000 }
   );
   // On-chain scanner — always runs, finds HTLCs not in DB too
-  const { data: onChainData, isLoading: onChainLoading, refetch: refetchOnChain } = trpc.history.myOnChainRefunds.useQuery(
+  const { data: onChainData, isLoading: onChainLoading, dataUpdatedAt: onChainUpdatedAt } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses, adminOverride },
-    { refetchInterval: 60000 }
+    { refetchInterval: 30000 }  // auto-sync every 30s — no manual button needed
   );
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
 
-  const handleResync = async () => {
-    setIsSyncing(true);
-    try {
-      await Promise.all([refetchDb(), refetchOnChain()]);
-      toast.success("Re-synced from chain", { description: "HTLC states refreshed from on-chain data" });
-    } catch {
-      toast.error("Re-sync failed", { description: "Could not fetch on-chain state. Try again." });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  // Compute a human-readable "last synced X ago" label
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceRender(n => n + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const lastSyncedLabel = useMemo(() => {
+    if (!onChainUpdatedAt) return null;
+    const secs = Math.floor((Date.now() - onChainUpdatedAt) / 1000);
+    if (secs < 10) return "just now";
+    if (secs < 60) return `${secs}s ago`;
+    return `${Math.floor(secs / 60)}m ago`;
+  }, [onChainUpdatedAt, /* re-evaluate on forceRender tick */]);
 
   // Merge DB refunds with on-chain scanner results (deduplicate by htlcId)
   const dbRefunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
@@ -1886,23 +1903,16 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
           ))}
         </div>
 
-        {/* Header row: Re-sync button + Claim All */}
+        {/* Auto-sync status row: subtle indicator + Claim All */}
         <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={handleResync}
-            disabled={isSyncing || onChainLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: isSyncing ? "rgba(6,182,212,0.15)" : "rgba(6,182,212,0.07)",
-              border: "1px solid rgba(6,182,212,0.25)",
-              color: "rgb(103,232,249)",
-              opacity: isSyncing ? 0.7 : 1,
-            }}
-            title="Re-scan all chains for unclaimed HTLCs"
-          >
-            <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Syncing..." : "Re-sync from chain"}
-          </button>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+            {onChainLoading
+              ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> <span>Syncing chains...</span></>
+              : lastSyncedLabel
+                ? <><RefreshCw className="w-2.5 h-2.5" /> <span>Synced {lastSyncedLabel} · auto-updates every 30s</span></>
+                : null
+            }
+          </div>
           {claimable.length >= 2 && <ClaimAllButton claimable={claimable} />}
         </div>
 
