@@ -1002,13 +1002,34 @@ function getExplorerUrl(chain: string | undefined, txHash: string): string {
   }
 }
 
-function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgressData"]> }) {
+function SwapProgressCard({
+  data,
+  onDismiss,
+  onMarkFailed,
+}: {
+  data: NonNullable<ChatMessage["swapProgressData"]>;
+  onDismiss?: () => void;
+  onMarkFailed?: (errorMsg: string) => void;
+}) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (data.phase === "confirmed" || data.phase === "failed" || data.phase === "expired") return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [data.phase]);
+  // Auto-mark as expired when expiresAt passes and swap is still in progress
+  useEffect(() => {
+    if (!data.expiresAt || data.phase === "confirmed" || data.phase === "failed" || data.phase === "expired") return;
+    const remaining = data.expiresAt - Date.now();
+    if (remaining <= 0) {
+      onMarkFailed?.("HTLC window expired. Funds will be refunded automatically.");
+      return;
+    }
+    const t = setTimeout(() => {
+      onMarkFailed?.("HTLC window expired. Funds will be refunded automatically.");
+    }, remaining);
+    return () => clearTimeout(t);
+  }, [data.expiresAt, data.phase, onMarkFailed]);
 
   const currentIdx = SWAP_PHASES.findIndex(p => p.key === data.phase);
   const isDone = data.phase === "confirmed";
@@ -1280,6 +1301,23 @@ function SwapProgressCard({ data }: { data: NonNullable<ChatMessage["swapProgres
             <p className="text-[11px]" style={{ color: "#f87171" }}>
               {data.errorMsg ?? (isExpired ? "HTLC window expired. Funds will be refunded automatically." : "Swap could not be completed.")}
             </p>
+          </div>
+        )}
+        {/* ── Dismiss button (shown when failed, expired, or confirmed) ── */}
+        {(isFailed || isDone) && onDismiss && (
+          <div className="flex justify-end pt-1">
+            <button
+              onClick={onDismiss}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all hover:opacity-90 active:scale-95"
+              style={{
+                background: isFailed ? "rgba(248,113,113,0.08)" : "rgba(52,211,153,0.08)",
+                border: `1px solid ${isFailed ? "rgba(248,113,113,0.25)" : "rgba(52,211,153,0.25)"}`,
+                color: isFailed ? "#f87171" : "#34d399",
+              }}
+            >
+              <span style={{ fontSize: "10px" }}>✕</span>
+              <span>Dismiss</span>
+            </button>
           </div>
         )}
 
@@ -1933,11 +1971,36 @@ function MessageBubble({
                 ↩ Funds refunded successfully
               </div>
             )}
+            {/* Dismiss button — shown when card is in a terminal state (declined, claimed, refunded) */}
+            {(
+              declinedRfqIds?.has(msg.incomingRfqData.rfqId) ||
+              claimedRfqIds?.has(msg.incomingRfqData.rfqId) ||
+              refundedRfqIds?.has(msg.incomingRfqData.rfqId)
+            ) && (
+              <div className="flex justify-end pt-1">
+                <button
+                  onClick={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }}
+                >
+                  <span style={{ fontSize: "10px" }}>✕</span>
+                  <span>Dismiss</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
         {/* Live swap progress tracker */}
         {msg.type === "swap_progress" && msg.swapProgressData && (
-          <SwapProgressCard data={msg.swapProgressData} />
+          <SwapProgressCard
+            data={msg.swapProgressData}
+            onDismiss={() => setMessages(prev => prev.filter(m => m.id !== msg.id))}
+            onMarkFailed={(errorMsg) => setMessages(prev => prev.map(m =>
+              m.id === msg.id && m.swapProgressData
+                ? { ...m, swapProgressData: { ...m.swapProgressData, phase: "expired" as const, errorMsg } }
+                : m
+            ))}
+          />
         )}
 
         {/* TNK→SOL sign card */}
