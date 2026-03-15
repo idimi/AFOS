@@ -3336,3 +3336,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## RFQ Match Message Text Direction Fix
 
 - [x] Fix agent message: "who wants to swap 1.0000 TNK for your 0.0020 SOL" should be "who wants to swap 0.0020 SOL for your 1.0000 TNK" — peer (Agent B) offers toToken, user provides fromToken
+
+## RFQ Match Message — Wrong Alias
+
+- [x] Fix: "matched you with @AuSUBiVV" shows the user's own alias instead of the counterparty's alias — requesterAlias is being set to the wrong peer

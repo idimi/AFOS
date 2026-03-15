@@ -2098,6 +2098,9 @@ export default function ChatPage() {
         expiresAt: number;
       };
       if (!rfq?.rfqId) return;
+      // Skip RFQs that we ourselves initiated — broadcastRfqToAll sends to all peers
+      // including the sender, so we must filter out our own RFQs here
+      if (rfq.requesterPeerId && rfq.requesterPeerId === myPeerId) return;
       const alias = rfq.requesterAlias ?? rfq.requesterPeerId?.slice(0, 8) ?? "Someone";
       addMessage({
         role: "assistant",
@@ -2108,7 +2111,7 @@ export default function ChatPage() {
     };
     window.addEventListener("afos:agent-rfq", handler);
     return () => window.removeEventListener("afos:agent-rfq", handler);
-  }, [addMessage]);
+  }, [addMessage, myPeerId]);
 
   // Listen for rfq_accepted events — counterparty accepted our swap request
   useEffect(() => {
