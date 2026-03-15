@@ -2597,19 +2597,55 @@ export default function ChatPage() {
           return;
         }
 
-        // P2P route: HTLC will be coordinated by LightPeerContext / Oracle VM
+        // P2P route: unified flow — same pattern as SOL P2P (swap_progress card + initiateHtlcLock)
         if (ethResult.route === "AFOS P2P") {
-          const p2pQ = ethResult.p2pQuote as { peerId?: string; rfqId?: string } | null | undefined;
-          toast.success("P2P peer matched!", { description: `Peer: ${p2pQ?.peerId ?? "unknown"}` });
+          const p2p = ethResult.p2pQuote as { peerAlias?: string; peerId?: string; rfqId?: string; outAmount?: number; rate?: number; htlcExpiresAt?: number; secretHashHex?: string; counterpartyPubKey?: string; counterpartyAddress?: string } | null | undefined;
+          const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
+          toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} — locking HTLC…` });
+          // Update quote card to tx_success state
           setMessages(prev => prev.map(m =>
-            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2pQ?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
+            m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
           ));
-          addMessage({
-            role: "assistant",
-            content: ethResult.nextStep ?? ethResult.message ?? "AFOS P2P peer matched. Coordinating HTLC via Oracle VM.",
-            type: "text",
-          });
+          // Inject swap progress card for live tracking
+          const ethProgressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
+          const ethHtlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
+          setMessages(prev => [...prev, {
+            id: ethProgressMsgId,
+            role: "assistant" as const,
+            content: "",
+            type: "swap_progress" as const,
+            timestamp: Date.now(),
+            swapProgressData: {
+              rfqId: p2p?.rfqId ?? ethProgressMsgId,
+              fromAmount: quoteData.fromAmount,
+              fromToken: quoteData.fromToken,
+              toAmount: p2p?.outAmount ?? quoteData.toAmount,
+              toToken: quoteData.toToken,
+              phase: "locking" as const,
+              peerAlias: peerLabel,
+              expiresAt: ethHtlcExpiry,
+              rate: p2p?.rate ?? quoteData.rate,
+              fromChain: (quoteData.fromChain as string) ?? "ethereum",
+              toChain: (quoteData.toChain as string) ?? "ethereum",
+              startedAt: Date.now(),
+            },
+          }]);
           setExecutingId(null);
+          if (p2p?.rfqId) {
+            void initiateHtlcLock({
+              rfqId:              p2p.rfqId,
+              fromToken:          quoteData.fromToken,
+              toToken:            quoteData.toToken,
+              fromChain:          (quoteData.fromChain as string) ?? "ethereum",
+              toChain:            (quoteData.toChain as string) ?? "ethereum",
+              amount:             quoteData.fromAmount,
+              outAmount:          p2p.outAmount ?? quoteData.toAmount,
+              rate:               p2p.rate ?? quoteData.rate,
+              counterpartyPeerId: p2p.peerId ?? undefined,
+              counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+              secretHashHex:      p2p.secretHashHex ?? undefined,
+            });
+          }
           return;
         }
 
@@ -2784,39 +2820,55 @@ export default function ChatPage() {
             return;
           }
 
-          // AFOS P2P route: P2P peer matched for TNK swap — same flow as AFOS TNK→SOL (user locks TNK via Tap Wallet)
+          // AFOS P2P route: unified flow — same pattern as SOL P2P (swap_progress card + initiateHtlcLock)
           if ((tnkSolResult as { route?: string }).route === "AFOS P2P") {
-            const tnkPayload = (tnkSolResult as { tnkLockTxPayload?: string | null }).tnkLockTxPayload;
-            if (!tnkPayload) {
-              addMessage({ role: "assistant", content: (tnkSolResult as { message?: string }).message ?? "TNK P2P swap failed — no lock payload returned.", type: "error" });
-              setExecutingId(null);
-              return;
-            }
-            const r2 = tnkSolResult as {
-              htlcIdA?: string; htlcIdB?: string; rfqId?: string;
-              outAmount?: number; message?: string; htlcExpiresAt?: number;
-            };
-            addMessage({
-              role: "assistant",
-              content: r2.message ?? `P2P swap ready. Lock ${quoteData.fromAmount.toFixed(4)} ${quoteData.fromToken} in Tap Wallet to receive ${(r2.outAmount ?? 0).toFixed(4)} ${quoteData.toToken}.`,
-              type: "text",
-            });
-            addMessage({
-              role: "assistant",
+            const p2p = (tnkSolResult as { p2pQuote?: { peerAlias?: string; peerId?: string; rfqId?: string; outAmount?: number; rate?: number; htlcExpiresAt?: number; secretHashHex?: string; counterpartyPubKey?: string; counterpartyAddress?: string } }).p2pQuote;
+            const peerLabel = p2p?.peerAlias ?? p2p?.peerId?.slice(0, 8) ?? "peer";
+            toast.success("P2P peer matched!", { description: `Peer: @${peerLabel} — locking HTLC…` });
+            // Update quote card to tx_success state
+            setMessages(prev => prev.map(m =>
+              m.id === msgId ? { ...m, type: "tx_success" as const, txHash: p2p?.rfqId ?? "p2p", signedBy: signingWalletForAudit } : m
+            ));
+            // Inject swap progress card for live tracking
+            const progressMsgId = `progress-${p2p?.rfqId ?? Date.now()}`;
+            const htlcExpiry = p2p?.htlcExpiresAt ?? Date.now() + 3_600_000;
+            setMessages(prev => [...prev, {
+              id: progressMsgId,
+              role: "assistant" as const,
               content: "",
-              type: "tnk_sign_card",
-              tnkSignCardData: {
-                tnkLockTxPayload: tnkPayload,
-                htlcIdA:      r2.htlcIdA      ?? "",
-                htlcIdB:      r2.htlcIdB      ?? "",
-                rfqId:        r2.rfqId        ?? `rfq_p2p_${Date.now()}`,
-                tnkAmount:    quoteData.fromAmount,
-                outAmount:    r2.outAmount,
-                toToken:      quoteData.toToken,
-                htlcExpiresAt: r2.htlcExpiresAt,
+              type: "swap_progress" as const,
+              timestamp: Date.now(),
+              swapProgressData: {
+                rfqId: p2p?.rfqId ?? progressMsgId,
+                fromAmount: quoteData.fromAmount,
+                fromToken: quoteData.fromToken,
+                toAmount: p2p?.outAmount ?? quoteData.toAmount,
+                toToken: quoteData.toToken,
+                phase: "locking" as const,
+                peerAlias: peerLabel,
+                expiresAt: htlcExpiry,
+                rate: p2p?.rate ?? quoteData.rate,
+                fromChain: (quoteData.fromChain as string) ?? "trac_network",
+                toChain: (quoteData.toChain as string) ?? "solana",
+                startedAt: Date.now(),
               },
-            });
+            }]);
             setExecutingId(null);
+            if (p2p?.rfqId) {
+              void initiateHtlcLock({
+                rfqId:              p2p.rfqId,
+                fromToken:          quoteData.fromToken,
+                toToken:            quoteData.toToken,
+                fromChain:          (quoteData.fromChain as string) ?? "trac_network",
+                toChain:            (quoteData.toChain as string) ?? "solana",
+                amount:             quoteData.fromAmount,
+                outAmount:          p2p.outAmount ?? quoteData.toAmount,
+                rate:               p2p.rate ?? quoteData.rate,
+                counterpartyPeerId: p2p.peerId ?? undefined,
+                counterpartyWallet: p2p.counterpartyPubKey ?? p2p.counterpartyAddress ?? undefined,
+                secretHashHex:      p2p.secretHashHex ?? undefined,
+              });
+            }
             return;
           }
 

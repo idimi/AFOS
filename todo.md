@@ -3340,3 +3340,10 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 ## RFQ Match Message — Wrong Alias
 
 - [x] Fix: "matched you with @AuSUBiVV" shows the user's own alias instead of the counterparty's alias — requesterAlias is being set to the wrong peer
+
+## Unified Swap Flow — All Chains
+
+- [x] Agent A (initiator) should never see a second Accept/Decline card — replace with auto-proceeding status notification when peer accepts
+- [x] When rfq_accepted fires on Agent A's side, show "✅ @peer accepted. Locking HTLC funds…" and auto-trigger wallet signing
+- [x] Pattern must be consistent for SOL, TNK, ETH, BTC chains (SOL, TNK, ETH unified; BTC uses same initiateHtlcLock path)
+- [x] Agent B (counterparty) still sees the incoming RFQ card with Accept/Decline buttons
