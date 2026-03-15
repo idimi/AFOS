@@ -3323,3 +3323,7 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show amber "Receiving to: connect X wallet" warning below Confirm button when destination wallet is missing for cross-chain swaps (clickable, opens modal to correct chain tab)
 - [x] preferredBtcWallet already persisted in localStorage via loadPreferredBtcWallet/savePreferredBtcWallet helpers — confirmed working
 - [x] Fixed activeBitcoin fallback: when preferredBtcWallet=tap but bitcoinTap not yet reconnected, returns null instead of Phantom (prevents wrong wallet showing during reconnect window)
+
+## BTC Wallet Picker Visibility Fix
+
+- [x] Hide "Which Bitcoin wallet to use?" picker when swap does not involve Bitcoin — removed trac_network from isBtcSwap condition

@@ -256,9 +256,10 @@ function QuoteCard({
     preferredBtcWallet ?? null
   );
 
-  // Show BTC wallet picker when both Phantom/MetaMask BTC and Tap Wallet BTC are connected
-  const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin" ||
-    data.fromChain === "trac_network" || data.toChain === "trac_network";
+  // Show BTC wallet picker only when the swap literally involves the Bitcoin chain.
+  // TNK/trac_network swaps use Tap Wallet for signing but don't need the BTC wallet picker
+  // — there is no choice between Phantom BTC and Tap BTC for a TNK swap.
+  const isBtcSwap = data.fromChain === "bitcoin" || data.toChain === "bitcoin";
   const hasPhantomMetaMaskBtc = activeBitcoin?.connected && activeBitcoin.walletName !== "Tap Wallet";
   const hasTapBtc = bitcoinTap?.connected;
   const showBtcPicker = isBtcSwap && hasPhantomMetaMaskBtc && hasTapBtc;
