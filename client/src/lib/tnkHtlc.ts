@@ -146,6 +146,19 @@ export async function executeTnkHtlcLock(
       "Please set VITE_TNK_HTLC_CONTRACT_ADDRESS or VITE_TNK_ESCROW_ADDRESS in the project secrets."
     );
   }
+
+  // Guard: recipientAddress must be a valid trac1... address.
+  // If Agent B hasn't registered a Trac Network address, the signTracTx contract
+  // command would have an empty recipient field and the subnet would reject the lock.
+  if (!recipientAddress || !recipientAddress.startsWith("trac1")) {
+    throw new Error(
+      recipientAddress
+        ? `Invalid Trac Network recipient address: "${recipientAddress}". ` +
+          "Expected a trac1… address. The counterparty may not have a Tap Wallet connected."
+        : "Agent B has no Trac Network address — cannot lock TNK for this peer. " +
+          "Ask the counterparty to connect their Tap Wallet and re-register on the P2P network."
+    );
+  }
   let sendResult: { txHash: string; success: boolean };
   try {
     // Send to the HTLC contract address, not to recipientAddress (Agent B's personal address)
