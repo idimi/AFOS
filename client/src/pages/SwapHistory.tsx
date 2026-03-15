@@ -183,7 +183,7 @@ function SettlementBadge({ ms, via }: { ms: number; via: string | null }) {
   // > 5min = slow (monitor fallback)
 
   // Map settledVia to a human-readable label
-  const viaLabel = via === "helius_webhook" ? "Webhook"
+  const viaLabel = (via === "helius_webhook" || via === "helius_claim") ? "Webhook"
     : via === "browser_notify" ? "Browser"
     : via === "monitor_fallback" ? "Monitor"
     : via === "admin_force_claim" ? "Admin"
@@ -293,7 +293,12 @@ interface Filters {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function SwapHistory() {
+interface SwapHistoryProps {
+  /** If provided, pre-selects this tab on mount (used for deep-linking from RefundBanner). */
+  defaultTab?: "history" | "open" | "refunds";
+}
+
+export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
   // Auth context — used for admin "All Swaps" toggle
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -329,7 +334,7 @@ export default function SwapHistory() {
 
   const hasWallet = connectedAddresses.length > 0;
 
-  const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">("history");
+  const [activeTab, setActiveTab] = useState<"history" | "open" | "refunds">(defaultTab ?? "history");
   const [filters, setFilters] = useState<Filters>({
     search: "", status: "All", dateRange: "All time", chain: "all",
   });
@@ -570,19 +575,25 @@ export default function SwapHistory() {
         ))}
       </div>
 
-      {/* Shared search bar for HTLC tabs */}
+      {/* Shared search bar for HTLC tabs — mt-4 gives breathing room from the tab switcher */}
       {(activeTab === "open" || activeTab === "refunds") && (
-        <HtlcSearchBar value={htlcSearch} onChange={setHtlcSearch} />
+        <div className="mt-4">
+          <HtlcSearchBar value={htlcSearch} onChange={setHtlcSearch} />
+        </div>
       )}
 
       {/* Open Trades Tab */}
       {activeTab === "open" && (
-        <OpenTradesTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+        <div className="mt-4">
+          <OpenTradesTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} />
+        </div>
       )}
 
       {/* Refunds Tab */}
       {activeTab === "refunds" && (
-        <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} adminOverride={adminGlobalView} />
+        <div className="mt-4">
+          <RefundsTab walletAddresses={walletAddresses} search={debouncedHtlcSearch} adminOverride={adminGlobalView} />
+        </div>
       )}
 
       {/* History Tab */}

@@ -357,10 +357,11 @@ async function startServer() {
       try {
         const { runAutoRefund } = await import("../jobs/autoRefund");
         const result = await runAutoRefund();
-        if (result.autoRefunded > 0 || result.userNotified > 0) {
+        if (result.autoRefunded > 0 || result.userNotified > 0 || result.corrected > 0) {
           console.log(
             `[AutoRefund] Scanned ${result.scanned} expired HTLCs. ` +
             `Auto-refunded: ${result.autoRefunded}, User-notified: ${result.userNotified}` +
+            (result.corrected > 0 ? `, DB-corrected: ${result.corrected}` : "") +
             (result.errors.length > 0 ? `, Errors: ${result.errors.length}` : "")
           );
         }

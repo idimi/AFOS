@@ -42,6 +42,7 @@ function speedTier(ms: number | null): { label: string; color: string } {
 
 const VIA_LABELS: Record<string, { label: string; color: string }> = {
   helius_webhook: { label: "Webhook", color: "#22c55e" },
+  helius_claim:   { label: "Webhook", color: "#22c55e" }, // claim events via Helius webhook
   browser_notify: { label: "Browser", color: "#3b82f6" },
   monitor_fallback: { label: "Monitor", color: "#f59e0b" },
   admin_force_claim: { label: "Admin", color: "#a78bfa" },

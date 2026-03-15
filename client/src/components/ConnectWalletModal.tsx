@@ -270,7 +270,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
   // Ethereum + Bitcoin + Phantom multi-chain
   const {
     ethereum, bitcoin, bitcoinTap, tracNetwork,
-    phantomMultiChain,
+    phantomMultiChain, phantomBtcBalance,
     preferredBtcWallet, setPreferredBtcWallet,
     connectEthereum, connectBitcoin,
     connectPhantomMultiChain,
@@ -590,12 +590,6 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                           Trac Network
                         </span>
                       )}
-                      {/* Show truncated BTC address so user can confirm which account is connected */}
-                      {bitcoin?.connected && bitcoin.walletName === "Tap Wallet" && bitcoin.shortAddress && (
-                        <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[110px]">
-                          {bitcoin.shortAddress}
-                        </span>
-                      )}
                     </div>
                   </div>
                   <button
@@ -732,15 +726,12 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                   <ConnectedCard
                     walletName={tracNetwork.walletName}
                     shortAddress={tracNetwork.shortAddress}
-                    explorerUrl={`https://trac.network/address/${tracNetwork.address}`}
+                    explorerUrl={`https://explorer.trac.network/address/${tracNetwork.address}`}
                     balances={[
-                      // Show BTC balance first when Tap Wallet is the wallet (connects both BTC + TNK)
-                      ...(bitcoin?.connected && bitcoin.walletName === "Tap Wallet"
-                        ? [{ symbol: "BTC", amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]
-                        : []),
+                      // Only show TNK balance on Trac Network tab — BTC balance belongs on the Bitcoin tab
                       { symbol: "TNK", amount: tracNetwork.balance, usdValue: tracNetwork.balanceUsd },
                     ]}
-                    totalUsd={(bitcoin?.connected && bitcoin.walletName === "Tap Wallet" ? bitcoin.balanceUsd : 0) + tracNetwork.balanceUsd}
+                    totalUsd={tracNetwork.balanceUsd}
                     accentColor="#F97316"
                     onDisconnect={disconnectTracNetwork}
                   />
@@ -758,7 +749,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       chains={["bitcoin", "trac_network"]}
                       customChips={[
                         { label: "BTC", color: "#F7931A" },
-                        { label: "TNK (Trac Network)", color: "#F97316" },
+                        { label: "TNK", color: "#F97316" },
                       ]}
                       accentColor="#F97316"
                       bg="rgba(249,115,22,0.08)"
@@ -769,6 +760,7 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
                     <PrimaryCTA
                       label="Connect Tap Wallet"
+                      loadingLabel="Waking up Tap Wallet…"
                       gradient="linear-gradient(135deg,#F97316 0%,#FBBF24 100%)"
                       shadow="rgba(249,115,22,0.3)"
                       loading={btcConnecting}
@@ -780,17 +772,37 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
               {/* ── BITCOIN ── */}
               {activeChain === "bitcoin" && (() => {
-                // Determine if multiple BTC wallets are connected simultaneously
-                const tapConnected = bitcoinTap?.connected ?? false;
-                const phantomOrMmConnected = !!(bitcoin?.connected && bitcoin.walletName !== "Tap Wallet");
+                // Detect each wallet independently:
+                // - Tap Wallet BTC is always in bitcoinTap (separate state)
+                // - Phantom/MetaMask BTC: check phantomMultiChain.bitcoinAddress OR bitcoin state that isn't Tap Wallet
+                const tapConnected = !!(bitcoinTap?.connected);
+                // When Tap is the active/preferred wallet, bitcoin state is set to Tap Wallet.
+                // Detect Phantom/MetaMask BTC independently via phantomMultiChain or the raw bitcoin state.
+                const phantomBtcConnected = !!(phantomMultiChain?.bitcoinAddress);
+                const metamaskBtcConnected = !!(bitcoin?.connected && !bitcoin.isPhantom && bitcoin.walletName !== "Tap Wallet");
+                const phantomOrMmConnected = phantomBtcConnected || metamaskBtcConnected;
                 const bothConnected = tapConnected && phantomOrMmConnected;
 
                 if (bothConnected) {
                   // ── Multi-wallet picker: both Tap Wallet and Phantom/MetaMask BTC are connected ──
                   const tapWallet = bitcoinTap!;
-                  const otherWallet = bitcoin?.walletName !== "Tap Wallet" ? bitcoin! : null;
+                  // Reconstruct the non-tap wallet: prefer the raw bitcoin state if it's not Tap, else use phantomMultiChain data
+                  const rawNonTap = bitcoin?.walletName !== "Tap Wallet" ? bitcoin : null;
+                  const otherWallet: typeof bitcoin = rawNonTap ?? (phantomMultiChain?.bitcoinAddress ? {
+                    chain: "bitcoin",
+                    connected: true,
+                    connecting: false,
+                    walletName: "Phantom",
+                    address: phantomMultiChain.bitcoinAddress,
+                    shortAddress: `${phantomMultiChain.bitcoinAddress.slice(0, 6)}\u2026${phantomMultiChain.bitcoinAddress.slice(-6)}`,
+                    balance: phantomBtcBalance?.balance ?? "... BTC",
+                    balanceUsd: phantomBtcBalance?.balanceUsd ?? 0,
+                    symbol: "BTC",
+                    isPhantom: true,
+                  } : null);
                   const activePref = preferredBtcWallet;
-                  const isTapActive = activePref === "tap" || (!activePref && bitcoin?.walletName === "Tap Wallet");
+                  // isTapActive: true if preference is tap, OR if no preference and bitcoin state is Tap Wallet
+                  const isTapActive = activePref === "tap" || (!activePref && (bitcoin?.walletName === "Tap Wallet" || !phantomOrMmConnected));
                   const isOtherActive = !isTapActive;
 
                   return (
@@ -807,70 +819,129 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       </div>
 
                       {/* Tap Wallet option */}
-                      <button
-                        onClick={() => setPreferredBtcWallet("tap")}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
-                        style={{
-                          background: isTapActive ? "rgba(249,115,22,0.12)" : "var(--muted)",
-                          border: isTapActive ? "1.5px solid rgba(249,115,22,0.45)" : "1px solid var(--border)",
-                          boxShadow: isTapActive ? "0 0 0 2px rgba(249,115,22,0.12)" : "none",
-                        }}
-                      >
-                        <img src={TAP_ICON} alt="Tap Wallet" className="w-8 h-8 rounded-xl shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-bold text-foreground">Tap Wallet</p>
-                            {isTapActive && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}>ACTIVE</span>
-                            )}
+                      <div className="relative">
+                        <button
+                          onClick={() => setPreferredBtcWallet("tap")}
+                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                          style={{
+                            background: isTapActive ? "rgba(249,115,22,0.12)" : "var(--muted)",
+                            border: isTapActive ? "1.5px solid rgba(249,115,22,0.45)" : "1px solid var(--border)",
+                            boxShadow: isTapActive ? "0 0 0 2px rgba(249,115,22,0.12)" : "none",
+                          }}
+                        >
+                          <img src={TAP_ICON} alt="Tap Wallet" className="w-8 h-8 rounded-xl shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-bold text-foreground">Tap Wallet</p>
+                              {isTapActive && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                  style={{ background: "rgba(249,115,22,0.2)", color: "#F97316" }}>ACTIVE</span>
+                              )}
+                            </div>
+                            <p className="text-[11px] font-mono text-muted-foreground truncate">{tapWallet.shortAddress}</p>
+                            <p className="text-[10px] text-muted-foreground">{tapWallet.balance}</p>
                           </div>
-                          <p className="text-[11px] font-mono text-muted-foreground truncate">{tapWallet.shortAddress}</p>
-                          <p className="text-[10px] text-muted-foreground">{tapWallet.balance}</p>
-                        </div>
-                        <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                          style={{ borderColor: isTapActive ? "#F97316" : "var(--border)" }}>
-                          {isTapActive && <div className="w-2 h-2 rounded-full" style={{ background: "#F97316" }} />}
-                        </div>
-                      </button>
+                          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                            style={{ borderColor: isTapActive ? "#F97316" : "var(--border)" }}>
+                            {isTapActive && <div className="w-2 h-2 rounded-full" style={{ background: "#F97316" }} />}
+                          </div>
+                        </button>
+                        {/* Explorer link — positioned top-right, stops propagation so it doesn't trigger wallet selection */}
+                        <a
+                          href={`https://mempool.space/address/${tapWallet.address}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="absolute top-2.5 right-10 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                          title="View on mempool.space"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
 
                       {/* Phantom / MetaMask option */}
                       {otherWallet && (
-                        <button
-                          onClick={() => setPreferredBtcWallet(otherWallet.isPhantom ? "phantom" : "metamask")}
-                          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
-                          style={{
-                            background: isOtherActive ? "rgba(171,159,242,0.12)" : "var(--muted)",
-                            border: isOtherActive ? "1.5px solid rgba(171,159,242,0.45)" : "1px solid var(--border)",
-                            boxShadow: isOtherActive ? "0 0 0 2px rgba(171,159,242,0.12)" : "none",
-                          }}
-                        >
-                          <img
-                            src={otherWallet.isPhantom ? PHANTOM_ICON : METAMASK_ICON}
-                            alt={otherWallet.walletName}
-                            className="w-8 h-8 rounded-xl shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="text-sm font-bold text-foreground">{otherWallet.walletName}</p>
-                              {isOtherActive && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
-                                  style={{ background: "rgba(171,159,242,0.2)", color: "#AB9FF2" }}>ACTIVE</span>
-                              )}
+                        <div className="relative">
+                          <button
+                            onClick={() => setPreferredBtcWallet(otherWallet.isPhantom ? "phantom" : "metamask")}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all text-left"
+                            style={{
+                              background: isOtherActive ? "rgba(171,159,242,0.12)" : "var(--muted)",
+                              border: isOtherActive ? "1.5px solid rgba(171,159,242,0.45)" : "1px solid var(--border)",
+                              boxShadow: isOtherActive ? "0 0 0 2px rgba(171,159,242,0.12)" : "none",
+                            }}
+                          >
+                            <img
+                              src={otherWallet.isPhantom ? PHANTOM_ICON : METAMASK_ICON}
+                              alt={otherWallet.walletName}
+                              className="w-8 h-8 rounded-xl shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-sm font-bold text-foreground">{otherWallet.walletName}</p>
+                                {isOtherActive && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                    style={{ background: "rgba(171,159,242,0.2)", color: "#AB9FF2" }}>ACTIVE</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] font-mono text-muted-foreground truncate">{otherWallet.shortAddress}</p>
+                              <p className="text-[10px] text-muted-foreground">{otherWallet.balance}</p>
                             </div>
-                            <p className="text-[11px] font-mono text-muted-foreground truncate">{otherWallet.shortAddress}</p>
-                            <p className="text-[10px] text-muted-foreground">{otherWallet.balance}</p>
-                          </div>
-                          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
-                            style={{ borderColor: isOtherActive ? "#AB9FF2" : "var(--border)" }}>
-                            {isOtherActive && <div className="w-2 h-2 rounded-full" style={{ background: "#AB9FF2" }} />}
-                          </div>
-                        </button>
+                            <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0"
+                              style={{ borderColor: isOtherActive ? "#AB9FF2" : "var(--border)" }}>
+                              {isOtherActive && <div className="w-2 h-2 rounded-full" style={{ background: "#AB9FF2" }} />}
+                            </div>
+                          </button>
+                          {/* Explorer link */}
+                          <a
+                            href={`https://mempool.space/address/${otherWallet.address}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="absolute top-2.5 right-10 p-1 rounded-md text-muted-foreground hover:text-foreground transition-colors"
+                            title="View on mempool.space"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </div>
                       )}
 
                       <p className="text-[10px] text-muted-foreground text-center px-2">
                         Tap a wallet above to set it as the active BTC signer for swaps.
                       </p>
+
+                      {/* Consolidated BTC balances */}
+                      {(() => {
+                        const tapUsd = tapWallet.balanceUsd ?? 0;
+                        const otherUsd = otherWallet?.balanceUsd ?? 0;
+                        const totalUsd = tapUsd + otherUsd;
+                        // Parse BTC amounts from balance strings like "0.00123456 BTC"
+                        const parseBtc = (s: string) => parseFloat(s?.replace(/[^0-9.]/g, "") || "0") || 0;
+                        const tapBtc = parseBtc(tapWallet.balance);
+                        const otherBtc = parseBtc(otherWallet?.balance ?? "0");
+                        const totalBtc = tapBtc + otherBtc;
+                        return (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest px-1">Balances</p>
+                            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl"
+                              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold"
+                                  style={{ background: "rgba(247,147,26,0.3)", color: "#F7931A" }}>B</div>
+                                <span className="text-sm font-semibold text-foreground">BTC</span>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-mono font-semibold text-foreground">{totalBtc.toFixed(8)} BTC</p>
+                                <p className="text-[10px] text-muted-foreground">${totalUsd.toFixed(2)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between px-3.5 py-2">
+                              <span className="text-xs text-muted-foreground">Total portfolio</span>
+                              <span className="text-sm font-bold text-foreground">${totalUsd.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {/* Disconnect both */}
                       <div className="flex gap-2">
@@ -893,16 +964,66 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
 
                 // ── Single wallet connected ──
                 if (bitcoin?.connected) {
+                  // Determine which other wallet type could be connected as a second BTC wallet
+                  const isTapActive = bitcoin.walletName === "Tap Wallet";
                   return (
-                    <ConnectedCard
-                      walletName={bitcoin.walletName}
-                      shortAddress={bitcoin.shortAddress}
-                      explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
-                      balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
-                      totalUsd={bitcoin.balanceUsd}
-                      accentColor="#F7931A"
-                      onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
-                    />
+                    <>
+                      <ConnectedCard
+                        walletName={bitcoin.walletName}
+                        shortAddress={bitcoin.shortAddress}
+                        explorerUrl={`https://mempool.space/address/${bitcoin.address}`}
+                        balances={[{ symbol: bitcoin.symbol, amount: bitcoin.balance, usdValue: bitcoin.balanceUsd }]}
+                        totalUsd={bitcoin.balanceUsd}
+                        accentColor="#F7931A"
+                        onDisconnect={bitcoin.isPhantom ? disconnectPhantom : (bitcoin.walletName === "Tap Wallet" ? disconnectTracNetwork : disconnectBitcoin)}
+                      />
+
+                      {/* ── Add second BTC wallet section ── */}
+                      <div className="mt-1 space-y-2">
+                        <p className="text-[11px] text-muted-foreground text-center font-medium tracking-wide uppercase opacity-60">
+                          Add a second BTC wallet
+                        </p>
+
+                        {/* When Tap is active — show Phantom + MetaMask connect buttons */}
+                        {isTapActive && (
+                          <>
+                            <PhantomMultiChainButton
+                              loading={phantomConnecting}
+                              onClick={connectPhantomMultiChain}
+                            />
+                            <WalletButton
+                              icon={METAMASK_ICON}
+                              name="MetaMask"
+                              desc="Native BTC · ETH · SOL · Multichain"
+                              chains={["solana", "ethereum", "bitcoin"]}
+                              accentColor="#F6851B"
+                              bg="rgba(247,147,26,0.08)"
+                              border="rgba(247,147,26,0.2)"
+                              loading={btcConnecting}
+                              onClick={() => connectBitcoin("metamask")}
+                            />
+                          </>
+                        )}
+
+                        {/* When Phantom/MetaMask is active — show Tap Wallet connect button */}
+                        {!isTapActive && (
+                          <WalletButton
+                            icon={TAP_ICON}
+                            name="Tap Wallet"
+                            desc="BTC + TNK (Trac Network)"
+                            chains={["bitcoin"]}
+                            customChips={[
+                              { label: "BTC", color: "#F7931A" },
+                              { label: "TNK", color: "#F97316" },
+                            ]}
+                            bg="rgba(255,153,0,0.08)"
+                            border="rgba(255,153,0,0.2)"
+                            loading={btcConnecting}
+                            onClick={() => connectBitcoin("tap")}
+                          />
+                        )}
+                      </div>
+                    </>
                   );
                 }
 
@@ -938,10 +1059,10 @@ export default function ConnectWalletModal({ open, onClose, defaultChain = "trac
                       name="Tap Wallet"
                       desc="BTC + TNK (Trac Network)"
                       chains={["bitcoin"]}
-                      customChips={[
-                        { label: "BTC", color: "#F7931A" },
-                        { label: "TNK (Trac Network)", color: "#888888", themeText: true },
-                      ]}
+                          customChips={[
+                            { label: "BTC", color: "#F7931A" },
+                            { label: "TNK", color: "#F97316" },
+                          ]}
                       bg="rgba(255,153,0,0.08)"
                       border="rgba(255,153,0,0.2)"
                       loading={btcConnecting}
@@ -1059,8 +1180,8 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
           <div className="flex items-center gap-1 mt-0.5">
             {customChips!.map(chip => (
               <span key={chip.label}
-                className={`text-[9px] font-medium px-1 py-0.5 rounded${chip.themeText ? " text-foreground" : ""}`}
-                style={{ background: `${chip.color}22`, ...(chip.themeText ? {} : { color: chip.color }) }}>
+                className={`text-[9px] font-medium px-1 py-0.5 rounded-full${chip.themeText ? " text-foreground" : ""}`}
+                style={{ background: `${chip.color}18`, ...(chip.themeText ? {} : { color: chip.color }) }}>
                 {chip.label}
               </span>
             ))}
@@ -1068,7 +1189,7 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
         ) : isMultiChain ? (
           <div className="flex items-center gap-1 mt-0.5">
             {chains.map(c => (
-              <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded"
+              <span key={c} className="text-[9px] font-medium px-1 py-0.5 rounded-full"
                 style={{ background: `${CHAIN_DOTS[c]}18`, color: CHAIN_DOTS[c] }}>
                 {c === "solana" ? "SOL" : c === "ethereum" ? "ETH" : "BTC"}
               </span>
@@ -1089,8 +1210,8 @@ function WalletButton({ icon, name, desc, chains, bg, border, onClick, loading, 
   );
 }
 
-function PrimaryCTA({ label, gradient, shadow, onClick, loading }: {
-  label: string; gradient: string; shadow: string; onClick: () => void; loading?: boolean;
+function PrimaryCTA({ label, gradient, shadow, onClick, loading, loadingLabel }: {
+  label: string; gradient: string; shadow: string; onClick: () => void; loading?: boolean; loadingLabel?: string;
 }) {
   return (
     <button
@@ -1100,15 +1221,19 @@ function PrimaryCTA({ label, gradient, shadow, onClick, loading }: {
       style={{ background: gradient, color: "white", boxShadow: `0 4px 20px ${shadow}` }}
     >
       {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-      {label}
+      {loading && loadingLabel ? loadingLabel : label}
     </button>
   );
 }
 
-function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalUsd, accentColor, onDisconnect }: {
+function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalUsd, accentColor, onDisconnect, chains, addresses }: {
   walletName: string; shortAddress: string; explorerUrl?: string;
   balances: { symbol: string; amount: string; usdValue: number }[];
   totalUsd: number; accentColor: string; onDisconnect: () => void;
+  /** Chain badge chips to show below the wallet name */
+  chains?: { label: string; color: string }[];
+  /** Multiple addresses to show (overrides shortAddress when provided) */
+  addresses?: { label: string; address: string; shortAddress: string; explorerUrl?: string }[];
 }) {
   return (
     <>
@@ -1121,15 +1246,52 @@ function ConnectedCard({ walletName, shortAddress, explorerUrl, balances, totalU
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-emerald-400">{walletName}</p>
-            <p className="text-[11px] font-mono text-muted-foreground truncate">{shortAddress}</p>
+            {/* Chain badges */}
+            {chains && chains.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {chains.map(c => (
+                  <span key={c.label}
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: `${c.color}22`, color: c.color, border: `1px solid ${c.color}44` }}>
+                    {c.label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Single address (when no multi-address list) */}
+            {!addresses && (
+              <p className="text-[11px] font-mono text-muted-foreground truncate mt-0.5">{shortAddress}</p>
+            )}
           </div>
-          {explorerUrl && (
+          {/* Single explorer link when no multi-address list */}
+          {!addresses && explorerUrl && (
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
               className="text-muted-foreground hover:text-foreground transition-colors" title="View on explorer">
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
         </div>
+        {/* Multi-address rows */}
+        {addresses && addresses.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            {addresses.map(addr => (
+              <div key={addr.label} className="flex items-center gap-2 px-2 py-1.5 rounded-xl"
+                style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                  style={{ background: `${accentColor}22`, color: accentColor, border: `1px solid ${accentColor}44` }}>
+                  {addr.label}
+                </span>
+                <p className="text-[11px] font-mono text-muted-foreground truncate flex-1">{addr.shortAddress}</p>
+                {addr.explorerUrl && (
+                  <a href={addr.explorerUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-muted-foreground hover:text-foreground transition-colors shrink-0" title="View on explorer">
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {balances.length > 0 && (

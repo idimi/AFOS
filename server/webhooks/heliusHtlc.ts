@@ -245,11 +245,96 @@ async function processHtlcEvent(event: HeliusRawEvent): Promise<void> {
     }
 
     if (instructionType === "claim") {
-      // Update htlc_swaps: status → completed
-      await database.update(htlcSwaps)
-        .set({ status: "completed", updatedAt: new Date() })
-        .where(eq(htlcSwaps.htlcAddress, htlcPda));
-      console.log(`[HeliusWebhook] Marked HTLC ${htlcPda.slice(0, 12)}… as completed (tx: ${sig.slice(0, 16)}…)`);
+      // ── Claim instruction account layout (from afosHtlcProgram.ts buildClaimInstruction):
+      //   accounts[0] = caller (signer)
+      //   accounts[1] = htlcPda  ← the HTLC PDA we want
+      //   accounts[2] = recipient
+      //   accounts[3] = vaultAta
+      //   accounts[4] = recipientAta
+      //   accounts[5] = tokenProgram
+      //   accounts[6] = systemProgram
+      // The first account (accounts[0]) is the caller's wallet, NOT the PDA.
+      // We must use accounts[1] for the HTLC PDA.
+      const claimHtlcPda = ix.accounts?.[1] ?? htlcPda; // htlcPda fallback = accounts[0] (legacy)
+
+      // ── Extract 32-byte preimage from instruction data (bytes 8–40 after discriminator)
+      let preimageHex: string | null = null;
+      let secretHashHex: string | null = null;
+      try {
+        const rawData = ix.data;
+        let dataBytes: number[] | null = null;
+        if (typeof rawData === "string" && rawData.length > 0) {
+          try { dataBytes = Array.from(decodeBase58(rawData)); } catch { /* not base58 */ }
+        } else if (Array.isArray(rawData)) {
+          dataBytes = rawData;
+        }
+        if (dataBytes && dataBytes.length >= 40) {
+          const preimageBytes = dataBytes.slice(8, 40);
+          preimageHex = Buffer.from(preimageBytes).toString("hex");
+          // Derive SHA-256 hash of the preimage for fallback lookup
+          const { createHash } = await import("crypto");
+          secretHashHex = createHash("sha256").update(Buffer.from(preimageBytes)).digest("hex");
+        }
+      } catch (parseErr) {
+        console.warn(`[HeliusWebhook] Could not parse preimage from claim data:`, parseErr);
+      }
+
+      const now = new Date();
+
+      // ── Primary lookup: by htlcAddress (PDA) ─────────────────────────────────
+      const updateResult = await database.update(htlcSwaps)
+        .set({ status: "completed", claimTxId: sig, claimedAt: now, updatedAt: now })
+        .where(and(
+          eq(htlcSwaps.htlcAddress, claimHtlcPda),
+          eq(htlcSwaps.status, "pending"),
+        ));
+
+      const rowsUpdated = (updateResult as unknown as { rowsAffected?: number }[])?.[0]?.rowsAffected ?? 0;
+
+      if (rowsUpdated > 0) {
+        console.log(`[HeliusWebhook] ✅ Claim: marked HTLC ${claimHtlcPda.slice(0, 12)}… as completed (tx: ${sig.slice(0, 16)}…)`);
+      } else {
+        // ── Fallback lookup: by secretHash (derived from preimage in instruction data) ──
+        // This handles cases where the PDA address in the DB doesn't match (e.g. legacy rows)
+        if (secretHashHex) {
+          const fallbackResult = await database.update(htlcSwaps)
+            .set({ status: "completed", claimTxId: sig, claimedAt: now, updatedAt: now })
+            .where(and(
+              eq(htlcSwaps.secretHash, secretHashHex),
+              eq(htlcSwaps.status, "pending"),
+            ));
+          const fallbackRows = (fallbackResult as unknown as { rowsAffected?: number }[])?.[0]?.rowsAffected ?? 0;
+          if (fallbackRows > 0) {
+            console.log(`[HeliusWebhook] ✅ Claim (fallback by secretHash): marked ${fallbackRows} HTLC(s) as completed (tx: ${sig.slice(0, 16)}…)`);
+          } else {
+            console.log(`[HeliusWebhook] ℹ️ Claim: no pending htlc_swaps row found for PDA ${claimHtlcPda.slice(0, 12)}… or secretHash — already completed or unknown HTLC`);
+          }
+        } else {
+          console.log(`[HeliusWebhook] ℹ️ Claim: no pending htlc_swaps row found for PDA ${claimHtlcPda.slice(0, 12)}… — already completed or unknown HTLC`);
+        }
+      }
+
+      // ── Also update htlcSecrets if we have the secretHash ─────────────────────
+      // This ensures the RefundBanner count drops immediately.
+      if (secretHashHex) {
+        await database.update(htlcSecrets)
+          .set({ status: "completed", revealTxId: sig, settledAt: now, settledVia: "helius_claim", updatedAt: now })
+          .where(and(
+            eq(htlcSecrets.secretHashHex, secretHashHex),
+          ));
+      } else {
+        // Fallback: look up htlcSecrets by rfqId from the htlcSwaps row we just updated
+        const [swapRow] = await database
+          .select({ rfqId: htlcSwaps.rfqId })
+          .from(htlcSwaps)
+          .where(eq(htlcSwaps.htlcAddress, claimHtlcPda))
+          .limit(1);
+        if (swapRow?.rfqId) {
+          await database.update(htlcSecrets)
+            .set({ status: "completed", revealTxId: sig, settledAt: now, settledVia: "helius_claim", updatedAt: now })
+            .where(eq(htlcSecrets.rfqId, swapRow.rfqId));
+        }
+      }
 
     } else if (instructionType === "refund") {
       // Update htlc_swaps: status → refunded, refundTxId set

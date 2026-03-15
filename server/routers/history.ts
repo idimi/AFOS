@@ -15,7 +15,7 @@ import { TRPCError } from "@trpc/server";
 import { publicProcedure, protectedProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { swapAnalytics, htlcSwaps, htlcSecrets } from "../../drizzle/schema";
-import { eq, and, gte, desc, count, inArray, or, sql, like, lt } from "drizzle-orm";
+import { eq, and, gte, desc, count, inArray, or, sql, like, lt, notExists } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -205,8 +205,24 @@ export const historyRouter = router({
 
       const isWalletScoped = input.walletAddresses.length > 0;
 
+      // Exclude pending HTLCs where swap_analytics confirms the swap completed.
+      // This prevents ghost "open trade" entries for successfully settled swaps.
+      const notCompletedInAnalytics = notExists(
+        db.select({ one: sql`1` })
+          .from(swapAnalytics)
+          .where(
+            and(
+              eq(swapAnalytics.rfqId, htlcSwaps.rfqId),
+              eq(swapAnalytics.status, "completed"),
+            )
+          )
+      );
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const conditions: any[] = [eq(htlcSwaps.status, "pending")];
+      const conditions: any[] = [
+        eq(htlcSwaps.status, "pending"),
+        notCompletedInAnalytics,
+      ];
       if (isWalletScoped) {
         conditions.push(inArray(htlcSwaps.senderAddress, input.walletAddresses));
       }
@@ -344,8 +360,32 @@ export const historyRouter = router({
         eq(htlcSwaps.status, "expired"),
       );
 
+      // Exclude pending HTLCs where swap_analytics confirms the swap completed.
+      // This prevents false CLAIMABLE entries for successfully settled swaps where the
+      // DB status hasn't been updated yet (e.g. Helius webhook cache lag).
+      const notCompletedInAnalytics = notExists(
+        db.select({ one: sql`1` })
+          .from(swapAnalytics)
+          .where(
+            and(
+              eq(swapAnalytics.rfqId, htlcSwaps.rfqId),
+              eq(swapAnalytics.status, "completed"),
+            )
+          )
+      );
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const conditions: any[] = [statusCondition];
+      const conditions: any[] = [
+        statusCondition,
+        // For pending HTLCs only: exclude those with a completed swap in analytics.
+        // Refunded/expired rows are always shown regardless.
+        or(
+          // Non-pending rows (refunded/expired) always pass through
+          or(eq(htlcSwaps.status, "refunded"), eq(htlcSwaps.status, "expired")),
+          // Pending rows only pass if no completed analytics entry exists for this rfqId
+          and(eq(htlcSwaps.status, "pending"), notCompletedInAnalytics),
+        ),
+      ];
       if (isWalletScoped) {
         conditions.push(inArray(htlcSwaps.senderAddress, input.walletAddresses));
       }
@@ -503,18 +543,33 @@ export const historyRouter = router({
             const raw = accValue ? Buffer.from(accValue.data[0], "base64") : null;
 
             if (!raw || raw.length < 186) {
-              // PDA is closed (null) or too short — already refunded/claimed on-chain.
-              // Auto-update DB to refunded. Do NOT write placeholder strings to refundTxId.
+              // PDA is closed (null) or too short — HTLC was either claimed or refunded on-chain.
+              // We can't distinguish from the closed PDA alone, so cross-reference swap_analytics:
+              // if the rfqId has a completed entry → it was claimed (completed).
+              // Otherwise fall back to refunded.
+              let closedStatus: "completed" | "refunded" = "refunded";
+              try {
+                const db2 = await getDb();
+                if (db2 && row.rfqId) {
+                  const [analytic] = await db2.select({ status: swapAnalytics.status })
+                    .from(swapAnalytics)
+                    .where(eq(swapAnalytics.rfqId, row.rfqId))
+                    .limit(1);
+                  if (analytic?.status === "completed") {
+                    closedStatus = "completed";
+                  }
+                }
+              } catch { /* ignore — fall back to refunded */ }
               try {
                 const db2 = await getDb();
                 if (db2) {
                   await db2.update(htlcSwaps)
-                    .set({ status: "refunded" })
+                    .set({ status: closedStatus })
                     .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
-                  console.log(`[myOnChainRefunds] Auto-marked HTLC ${row.htlcAddress.slice(0,8)} as refunded (PDA closed on-chain)`);
+                  console.log(`[myOnChainRefunds] Auto-marked HTLC ${row.htlcAddress.slice(0,8)} as ${closedStatus} (PDA closed on-chain, rfqId=${row.rfqId ?? 'none'})`);
                 }
               } catch (dbErr) {
-                console.warn(`[myOnChainRefunds] Failed to auto-mark HTLC ${row.htlcAddress.slice(0,8)} as refunded:`, dbErr);
+                console.warn(`[myOnChainRefunds] Failed to auto-mark HTLC ${row.htlcAddress.slice(0,8)}:`, dbErr);
               }
               continue;
             }

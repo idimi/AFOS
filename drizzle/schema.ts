@@ -57,6 +57,10 @@ export const htlcSwaps = mysqlTable("htlc_swaps", {
   toChain:        mysqlEnum("toChain", ["bitcoin", "ethereum", "solana", "trac_network"]),
   /** Refund transaction ID (set when status = refunded) */
   refundTxId:     varchar("refundTxId", { length: 128 }),
+  /** Claim transaction ID (set when status = completed — Agent B claimed the HTLC) */
+  claimTxId:      varchar("claimTxId", { length: 128 }),
+  /** Timestamp when the HTLC was claimed on-chain */
+  claimedAt:      timestamp("claimedAt"),
   /** User's wallet address (sender) */
   senderAddress:    varchar("senderAddress", { length: 128 }),
   /** Recipient wallet address (counterparty who will receive funds on claim) */

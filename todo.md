@@ -3160,14 +3160,170 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Add "You receive" badge in P2P match card mirroring the "You send" badge
 - [x] Persist preferred BTC wallet to localStorage so choice survives page reloads (already implemented via savePreferredBtcWallet)
 
-## TNK→USDT Swap Flow Fixes
+## BTC Wallet UX Polish (Mar 2026 — Round 6)
 
-- [x] Fix RFQ card perspective: "You send" now shows fromToken/amount (user's original swap direction) instead of toToken/outAmount (peer's perspective)
-- [x] Fix "Unexpected swap route: AFOS P2P" error: Added AFOS P2P route handler in TNK swap path — triggers initiateHtlcLock and shows swap progress card, same as SOL P2P path
+- [x] Add counterparty "Receiving to" badge in P2P match card showing peer's receiving address from RFQ data
+- [x] Add wallet-aware swap summary card after swap completes: "Sent X BTC from Tap Wallet \u00b7 Received Y SOL to Phantom" with chain explorer links
+## Wallet Modal Balance Fix (Mar 2026)
 
-## TNK Quote Card — Bitcoin Wallet Picker / Signing Wallet Bugs
+- [x] Remove BTC balance from Trac Network tab — only TNK balance shown there; BTC balance belongs on the Bitcoin tab
 
-- [x] Hide "WHICH BITCOIN WALLET TO USE?" picker for non-BTC swaps (TNK→SOL should not show it)
-- [x] Rename picker label to "WHICH TRAC NETWORK WALLET TO USE?" when fromChain is trac_network
-- [x] Fix "You send: Phantom · bc1qpv...6kwj" — should show Tap Wallet + Trac address for TNK swaps, not Phantom BTC address
-- [x] Fix signing wallet badge: show Tap Wallet for TNK fromChain, not Bitcoin wallet
+## BTC Wallet UX Round 7 (Mar 2026)
+
+- [x] Persist preferredBtcWallet to localStorage so preference survives page reload
+- [x] Fetch live Phantom BTC balance in picker when Tap is the active wallet
+- [x] Add "Switch wallet" chip on single-wallet ConnectedCard in Bitcoin tab
+
+## BTC Wallet Add-Second-Wallet Fix (Mar 2026)
+
+- [x] Fix Bitcoin tab single-wallet view: show Tap Wallet connect button when Phantom is active (and vice versa), so "+ Add wallet" chip is functional
+
+## Wallet Badge Consistency Fix (Mar 2026)
+
+- [x] Standardize Tap Wallet chain badges across all tabs — use same colored pill style as SOL/ETH/BTC on Phantom/MetaMask cards
+
+## BTC Picker Explorer Links (Mar 2026)
+
+- [x] Add mempool.space explorer link icon to both wallet rows in the dual-wallet BTC picker (Tap Wallet row and Phantom/MetaMask row)
+
+## ConnectedCard Badge & Address Fix (Mar 2026)
+
+- [x] Show Bitcoin + Trac Network badges on Tap Wallet connected card (currently only shows Trac Network)
+- [x] Show all 3 addresses on Phantom connected card (SOL, ETH, BTC) and 2 addresses on Tap Wallet card (BTC + TNK)
+
+## Wallet Auto-Reconnect on Page Reload (Mar 2026)
+
+- [x] Persist wallet connection state to localStorage and auto-reconnect Tap Wallet, Phantom, and MetaMask on page load
+
+## preferredBtcWallet Restoration After Parallel Reconnect (Mar 2026)
+
+- [x] Verify preferredBtcWallet is correctly applied after both wallets reconnect in parallel on page load
+- [x] Fix race condition: parallel reconnect may overwrite the stored preference with a default
+
+## Wallet Modal Per-Tab Address Filtering (Mar 2026)
+
+- [x] Ethereum tab: show only ETH address (not SOL/BTC)
+- [x] Solana tab: show only SOL address (not ETH/BTC)
+- [x] Trac Network tab: show only TNK address (not BTC)
+- [x] Bitcoin tab: single-wallet view now shows only BTC address (removed TNK row and chain badges)
+
+## Trac Network Tab Address Clarification (Mar 2026)
+
+- [x] Add "Trac Network" chip label to Trac Network tab ConnectedCard to clarify bc1p address is the TNK identity
+
+## Tap Wallet Connected Banner Simplification (Mar 2026)
+
+- [x] Remove BTC address line from "Tap Wallet connected" banner — keep it simple like Phantom/MetaMask banners
+
+## Trac Network Tab ConnectedCard Cleanup (Mar 2026)
+
+- [x] Remove "Trac Network" badge chip from Trac tab ConnectedCard (redundant when already on Trac tab)
+- [x] Ensure explorer link uses Trac Network explorer URL (https://explorer.trac.network/address/...)
+
+## Bitcoin Tab Consolidated Balance (Mar 2026)
+
+- [x] When both Tap Wallet and Phantom/MetaMask are connected on Bitcoin tab, show a consolidated BALANCES section summing both BTC amounts and USD values into one total portfolio display
+
+## CLAIMABLE Refund Bug Fix
+
+- [x] Investigate false CLAIMABLE refund notifications after successful Solana swaps
+- [x] Fix RefundBanner.tsx: only count DB rows where timelock has actually expired (not all pending HTLCs)
+- [x] Fix autoRefund.ts: correct struct layout (status byte at offset 185, not 152)
+- [x] Fix autoRefund.ts: add DB correction for claimed/refunded HTLCs found during scan
+- [x] Fix mapHtlcToRefund: improve failReason text to accurately reflect HTLC state
+- [x] Add corrected count to AutoRefundResult for monitoring
+
+## Tap Wallet Dormant SW Fix
+
+- [x] Add wake-up ping (getNetwork, 3s timeout) before requestAccount in connectTapWallet
+- [x] Show "Tap Wallet not responding" toast immediately on dormant SW instead of waiting 8s timeout
+- [x] Add Retry button to dormant toast that re-invokes connectTapWallet
+- [x] Add loadingLabel="Waking up Tap Wallet..." to PrimaryCTA for better UX during ping
+
+## Helius Webhook Claim Handler Fix
+
+- [x] Fix claim handler to read HTLC PDA from accounts[1] (not accounts[0] which is the caller)
+- [x] Extract 32-byte preimage from claim instruction data (bytes 8-40 after discriminator)
+- [x] Derive SHA-256 secretHash from preimage for fallback DB lookup
+- [x] Update htlcSwaps to completed with claimTxId and claimedAt on claim event
+- [x] Add fallback lookup by secretHash if PDA lookup finds no pending row
+- [x] Update htlcSecrets to completed with settledVia=helius_claim on claim event
+- [x] Add claimTxId and claimedAt columns to htlc_swaps DB table
+- [x] Add helius_claim to VIA_LABELS in SettlementBadge and HeliusWebhookHealthCard
+- [x] Add 35 unit tests covering claim account layout, preimage extraction, and label mapping
+
+## Claim Button Visibility Fix — Only Show for Real Stuck Tokens
+- [ ] Audit all places where Claim button appears (RefundBanner, Refunds tab, Open Trades)
+- [ ] Define strict criteria: Claim only when PDA is active on-chain + timelock expired + swap NOT completed in analytics
+- [ ] Remove Claim button for any HTLC where swap_analytics shows completed status
+- [ ] Remove Claim button for any HTLC where on-chain PDA is closed (already settled)
+- [ ] Show Claim only when myOnChainRefunds returns the HTLC as genuinely claimable
+- [ ] Add clear UX label: "Funds stuck on-chain — recover your tokens" not generic "CLAIMABLE"
+
+## Refunds Tab UX Improvements
+- [x] Auto-dismiss RefundBanner when claimableCount drops to 0 (reactive, no reload needed)
+- [x] Add "Why is this stuck?" tooltip on STUCK FUNDS badge in RefundCard
+- [x] Replace manual Re-sync button with automatic background sync (no user action needed)
+
+## UI Spacing — SwapHistory Tabs
+
+- [x] Add consistent mt-4 spacing between tab switcher and search bar (Open Trades + Refunds tabs)
+- [x] Add consistent mt-4 spacing between search bar and tab content (Open Trades + Refunds tabs)
+
+## Recover Funds End-to-End + Badge Fix + Empty State
+
+- [x] Audit all Recover Funds button surfaces (RefundBanner, Refunds tab card, Open Trades card)
+- [x] Wire Recover Funds in Refunds tab card → buildSolanaHtlcRefundTx + Phantom sign/send + post-recovery DB update
+- [x] Wire Recover Funds in RefundBanner → deep-links to Refunds tab via defaultTab prop on SwapHistory
+- [x] Wire Recover Funds in Open Trades card → executeEarlyRefund already fully wired for SOL/TNK/ETH/BTC
+- [x] Fix RefundCard right-side chip: "Claimed" → "Recovered" to match badge label; add Locked/Expired chip for pending/expired status
+- [x] Add rich empty-state to Refunds tab: animated ShieldCheck icon, reassurance chips, "All clear" headline
+
+## Auto-Dismiss Banner + Pending Stat Card
+
+- [x] Auto-dismiss RefundBanner after successful recovery in RefundCard (all chains: SOL confirmed/already-settled/delayed, TNK, ETH, BTC)
+- [x] Add "Pending" stat card to Refunds tab (locked HTLCs not yet expired) — responsive 2/3/5-col grid
+
+## Pending Card Tooltip
+
+- [x] Add tooltip to Pending stat card explaining HTLC pending state
+
+## Phantom Wallet Persistence Fix
+
+- [x] Audit WalletContext and MultiChainWallet for Phantom reconnect logic
+- [x] Implement silentRestorePhantom() with injection polling + onlyIfTrusted connect (mirrors silentRestoreTapWallet)
+- [x] ETH restored via eth_accounts (read-only), BTC via requestAccounts (silent), accountsChanged listener re-registered
+- [x] Auto-reconnect timer reduced from 800ms to 0ms — Phantom handles its own injection wait internally
+
+## Swap Quote UI Fixes
+
+- [x] Fix "You send" pill: shows BTC address for Tap Wallet instead of TNK/Trac address — now uses tnkWallet.shortAddress
+- [x] Fix "You receive" pill: same trac_network → TNK address fix
+- [x] Fix deriveWalletForChain: removed BTC address fallback for trac_network
+- [x] Fix chain badge: "TNK→SOL" misleading when output is USDT — ChainPill now shows "USDT" with chain superscript badge
+- [x] Improve USDT chain disambiguation UX: USDT colored by destination chain (purple=SOL, blue=ETH) with tiny chain badge
+
+## Swap Quote + HTLC Card Polish
+
+- [x] HTLC progress card: stablecoin chain-coloring applied inline (isStablecoinOut shows token+chain badge like ChainPill)
+- [x] "You send" pill: short address already shown via tnkAddr (confirmed in code review)
+- [x] TNK swap: yellow "Connect Trac wallet to sign" warning pill shown in route badges + Confirm button disabled with amber styling when tnkWallet not connected
+
+## Universal Wallet-Missing Guards
+
+- [x] Clickable warning pill opens Connect Wallet modal to correct chain tab (TNK, BTC, SOL, ETH)
+- [x] Accept RFQ button: same tnkWalletMissing guard for TNK swaps
+- [x] Accept RFQ button: same guards for BTC, SOL, ETH wallets missing (IIFE with rfqWalletMissing)
+- [x] QuoteCard Confirm button: universal missingFromWallet guard for all chains
+- [x] Show TNK "Receiving to" address with amber ⬡ pill (separate from BTC orange pill)
+- [x] Route badge warning pills: BTC, SOL, ETH missing wallet warnings added (clickable, open modal)
+
+## Destination Wallet Warning + BTC Preference Persistence
+
+- [x] Show amber "Receiving to: connect X wallet" warning below Confirm button when destination wallet is missing for cross-chain swaps (clickable, opens modal to correct chain tab)
+- [x] preferredBtcWallet already persisted in localStorage via loadPreferredBtcWallet/savePreferredBtcWallet helpers — confirmed working
+- [x] Fixed activeBitcoin fallback: when preferredBtcWallet=tap but bitcoinTap not yet reconnected, returns null instead of Phantom (prevents wrong wallet showing during reconnect window)
+
+## BTC Wallet Picker Visibility Fix
+
+- [x] Hide "Which Bitcoin wallet to use?" picker when swap does not involve Bitcoin — removed trac_network from isBtcSwap condition

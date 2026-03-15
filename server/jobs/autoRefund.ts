@@ -17,7 +17,7 @@
  */
 
 import { getDb } from "../db.js";
-import { htlcSwaps } from "../../drizzle/schema.js";
+import { htlcSwaps, swapAnalytics } from "../../drizzle/schema.js";
 import { eq, and, inArray } from "drizzle-orm";
 import { notifyOwner } from "../_core/notification.js";
 
@@ -38,57 +38,76 @@ interface OnChainHtlc {
   secretHash: string;
 }
 
-async function parseHtlcAccountData(raw: Buffer, pdaAddress: string): Promise<OnChainHtlc | null> {
+/**
+ * Parse a Solana HTLC account buffer.
+ *
+ * Correct on-chain struct layout (219 bytes, verified from mainnet hex dumps):
+ *   discriminator(8) + htlcId_fixed32(32) + sender(32) + receiver(32) +
+ *   secretHash(32) + timelock_i64(8) + amount_u64(8) + padding(33) + status(1)
+ *   → Status byte is at offset 185.
+ *
+ * Returns null if the account is too short, already settled, or timelock not expired.
+ * Also returns the raw status byte so callers can update the DB for claimed/refunded HTLCs.
+ */
+async function parseHtlcAccountData(
+  raw: Buffer,
+  pdaAddress: string
+): Promise<{ htlc: OnChainHtlc | null; onChainStatus: number | null }> {
   try {
-    if (raw.length < 153) return null;
+    if (raw.length < 186) return { htlc: null, onChainStatus: null };
 
-    // Verified on-chain struct layout (from mainnet account data):
-    // [0-8]:    discriminator (8 bytes)
-    // [8-40]:   sender pubkey (32 bytes)
-    // [40-72]:  recipient pubkey (32 bytes)
-    // [72-104]: htlcId string (32 bytes, null-padded UTF-8)
-    // [104-136]: secretHash (32 bytes)
-    // [136-144]: timelock i64 LE (8 bytes)
-    // [144-152]: amount u64 LE lamports (8 bytes)
-    // [152]:    status u8 (0=active, 1=claimed, 2=refunded)
     const { PublicKey } = await import("@solana/web3.js");
-    const sender = new PublicKey(raw.slice(8, 40)).toBase58();
 
-    const htlcIdRaw = raw.slice(72, 104);
+    // htlcId is at offset 8 (after discriminator)
+    const htlcIdRaw = raw.slice(8, 40);
     const nullIdx = htlcIdRaw.indexOf(0);
     const htlcId = htlcIdRaw.slice(0, nullIdx >= 0 ? nullIdx : 32).toString("utf8");
 
+    // sender pubkey at offset 40
+    const sender = new PublicKey(raw.slice(40, 72)).toBase58();
+
+    // secretHash at offset 104
     const secretHashHex = raw.slice(104, 136).toString("hex");
+
+    // timelock at offset 136, amount at offset 144
     const timelock = Number(raw.readBigInt64LE(136));
     const amountLamports = raw.readBigUInt64LE(144);
-    const status = raw[152];
 
-    if (status !== 0) return null; // 0 = active/locked
+    // Status byte at offset 185 (0=active, 1=refunded, 2=claimed)
+    const onChainStatus = raw[185];
+
+    if (onChainStatus !== 0) {
+      // HTLC already settled — return status for DB correction but no htlc to process
+      return { htlc: null, onChainStatus };
+    }
 
     const nowSec = Math.floor(Date.now() / 1000);
     const timelockExpired = timelock > 0 && timelock < nowSec;
-    if (!timelockExpired) return null; // only expired ones
+    if (!timelockExpired) return { htlc: null, onChainStatus: 0 }; // still locked, not expired
 
     return {
-      htlcId,
-      pdaAddress,
-      senderAddress: sender,
-      amountHuman: (Number(amountLamports) / 1e9).toFixed(6),
-      token: "SOL",
-      chain: "solana",
-      timelockExpiry: timelock,
-      timelockExpired: true,
-      secretHash: secretHashHex,
+      htlc: {
+        htlcId,
+        pdaAddress,
+        senderAddress: sender,
+        amountHuman: (Number(amountLamports) / 1e9).toFixed(6),
+        token: "SOL",
+        chain: "solana",
+        timelockExpiry: timelock,
+        timelockExpired: true,
+        secretHash: secretHashHex,
+      },
+      onChainStatus: 0,
     };
   } catch {
-    return null;
+    return { htlc: null, onChainStatus: null };
   }
 }
 
-async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
+async function scanSolanaExpiredHtlcs(): Promise<{ expired: OnChainHtlc[]; corrected: number }> {
   try {
     const db = await getDb();
-    if (!db) return [];
+    if (!db) return { expired: [], corrected: 0 };
 
     // Query DB for all pending/locked Solana HTLCs
     const pendingRows = await db
@@ -106,9 +125,10 @@ async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
         )
       );
 
-    if (pendingRows.length === 0) return [];
+    if (pendingRows.length === 0) return { expired: [], corrected: 0 };
 
     const results: OnChainHtlc[] = [];
+    let corrected = 0;
 
     // Check each HTLC on-chain with getAccountInfo (fast, ~150ms per call)
     for (const row of pendingRows) {
@@ -131,23 +151,62 @@ async function scanSolanaExpiredHtlcs(): Promise<OnChainHtlc[]> {
           result?: { value?: { data: [string, string] } | null }
         };
 
-        const accountData = json.result?.value?.data;
-        if (!accountData) continue; // account doesn't exist or was closed
+        const accValue = json.result?.value;
+        const raw = accValue ? Buffer.from(accValue.data[0], "base64") : null;
 
-        const raw = Buffer.from(accountData[0], "base64");
-        const htlc = await parseHtlcAccountData(raw, row.htlcAddress);
-        if (htlc) {
-          results.push(htlc);
+        if (!raw || raw.length < 186) {
+          // PDA is closed (null) or too short — HTLC was either claimed or refunded on-chain.
+          // Cross-reference swap_analytics: if rfqId has a completed entry → claimed.
+          let closedStatus: "completed" | "refunded" = "refunded";
+          try {
+            if (row.rfqId) {
+              const [analytic] = await db.select({ status: swapAnalytics.status })
+                .from(swapAnalytics)
+                .where(eq(swapAnalytics.rfqId, row.rfqId))
+                .limit(1);
+              if (analytic?.status === "completed") {
+                closedStatus = "completed";
+              }
+            }
+          } catch { /* ignore — fall back to refunded */ }
+          try {
+            await db.update(htlcSwaps)
+              .set({ status: closedStatus })
+              .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
+            console.log(`[AutoRefund] Auto-marked HTLC ${row.htlcAddress.slice(0,8)}… as ${closedStatus} (PDA closed, rfqId=${row.rfqId ?? 'none'})`);
+            corrected++;
+          } catch { /* ignore */ }
+          continue;
+        }
+
+        const parsed = await parseHtlcAccountData(raw, row.htlcAddress);
+
+        // If the HTLC was already settled on-chain, correct the DB
+        if (parsed.onChainStatus !== null && parsed.onChainStatus !== 0) {
+          // 1=refunded, 2=claimed
+          const newStatus = parsed.onChainStatus === 2 ? "completed" : "refunded";
+          try {
+            await db.update(htlcSwaps)
+              .set({ status: newStatus })
+              .where(eq(htlcSwaps.htlcAddress, row.htlcAddress));
+            console.log(`[AutoRefund] Auto-corrected HTLC ${row.htlcAddress.slice(0,8)}… to ${newStatus} (on-chain status=${parsed.onChainStatus})`);
+            corrected++;
+          } catch { /* ignore */ }
+          continue;
+        }
+
+        if (parsed.htlc) {
+          results.push(parsed.htlc);
         }
       } catch {
         // skip this HTLC if RPC call fails
       }
     }
 
-    return results;
+    return { expired: results, corrected };
   } catch (err) {
     console.warn("[AutoRefund] Solana scan failed:", err);
-    return [];
+    return { expired: [], corrected: 0 };
   }
 }
 
@@ -207,18 +266,21 @@ export interface AutoRefundResult {
   scanned: number;
   autoRefunded: number;
   userNotified: number;
+  /** Number of DB rows corrected (claimed/refunded on-chain but still pending in DB) */
+  corrected: number;
   errors: string[];
 }
 
 export async function runAutoRefund(): Promise<AutoRefundResult> {
-  const result: AutoRefundResult = { scanned: 0, autoRefunded: 0, userNotified: 0, errors: [] };
+  const result: AutoRefundResult = { scanned: 0, autoRefunded: 0, userNotified: 0, corrected: 0, errors: [] };
 
   try {
     const db = await getDb();
 
     // ── Solana scan (DB-first + getAccountInfo) ──
-    const solExpired = await scanSolanaExpiredHtlcs();
+    const { expired: solExpired, corrected: solCorrected } = await scanSolanaExpiredHtlcs();
     result.scanned += solExpired.length;
+    result.corrected += solCorrected;
 
     const solHtlcKey = process.env.SOL_HTLC_KEY;
     let serverSolAddress: string | null = null;

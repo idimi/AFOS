@@ -45,10 +45,12 @@ import { usePrices } from "../contexts/PriceContext";
 type NavPage = "dashboard" | "chat" | "swaps" | "activity" | "analytics" | "network" | "settings" | "terminal";
 
 // ── Desktop Sidebar ────────────────────────────────────────────────────────
-function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: {
+function DesktopSidebar({ navItems, activePage, setActivePage, onNavigate, open, setOpen }: {
   navItems: { id: NavPage; icon: React.ElementType; label: string; badge?: number }[];
   activePage: NavPage;
   setActivePage: (p: NavPage) => void;
+  /** Optional override for nav clicks — use to reset sub-page state (e.g., swapHistoryDefaultTab) */
+  onNavigate?: (p: NavPage) => void;
   open: boolean;
   setOpen: (v: boolean) => void;
 }) {
@@ -89,7 +91,13 @@ function DesktopSidebar({ navItems, activePage, setActivePage, open, setOpen }: 
           return (
             <button
               key={item.id}
-              onClick={() => setActivePage(item.id)}
+              onClick={() => {
+                if (onNavigate) {
+                  onNavigate(item.id);
+                } else {
+                  setActivePage(item.id);
+                }
+              }}
               title={!open ? item.label : undefined}
               className={`w-full flex items-center gap-3 rounded-xl transition-all text-left ${
                 open ? "px-2.5 py-2.5" : "px-0 py-2.5 justify-center"
@@ -3102,11 +3110,18 @@ export default function Dashboard() {
   };
   const [activePage, setActivePage] = useState<NavPage>("dashboard");
   const [settingsDefaultTab, setSettingsDefaultTab] = useState<"trading" | "network" | "notifications" | "privacy" | "display" | "advanced" | undefined>(undefined);
+  const [swapHistoryDefaultTab, setSwapHistoryDefaultTab] = useState<"history" | "open" | "refunds" | undefined>(undefined);
 
   // Navigate to Settings and optionally jump to a specific tab
   const navigateToSettings = (tab?: "trading" | "network" | "notifications" | "privacy" | "display" | "advanced") => {
     setSettingsDefaultTab(tab);
     setActivePage("settings");
+  };
+
+  // Navigate to History and optionally deep-link to a specific tab
+  const navigateToActivity = (tab?: "history" | "open" | "refunds") => {
+    setSwapHistoryDefaultTab(tab);
+    setActivePage("activity");
   };
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -3309,7 +3324,7 @@ export default function Dashboard() {
       if (prefill) sessionStorage.setItem('afos_chat_prefill', prefill);
       setActivePage("chat");
     }} onNavigateToSettings={() => navigateToSettings("network")} />;
-    if (activePage === "activity") return <SwapHistory />;
+    if (activePage === "activity") return <SwapHistory key={`activity-${swapHistoryDefaultTab ?? "history"}`} defaultTab={swapHistoryDefaultTab} />;
     if (activePage === "settings") return <AgentSettings defaultTab={settingsDefaultTab} />;
     if (activePage === "analytics") return <SwapAnalytics />;
     if (activePage === "network") return <NetworkPage invitePeerId={invitePeerId} onInvitePeerHandled={() => setInvitePeerId(null)} onNavigateToSettings={() => navigateToSettings("network")} />;
@@ -3327,7 +3342,18 @@ export default function Dashboard() {
       onTouchEnd={handleGlobalTouchEnd}
     >
       <div className="relative z-10 flex-shrink-0" style={{ overflow: "visible" }}>
-        <DesktopSidebar navItems={navItems} activePage={activePage} setActivePage={setActivePage} open={sidebarOpen} setOpen={setSidebarOpen} />
+        <DesktopSidebar
+          navItems={navItems}
+          activePage={activePage}
+          setActivePage={setActivePage}
+          onNavigate={(page) => {
+            // Reset swapHistoryDefaultTab when navigating via sidebar so History opens on the default tab
+            if (page === "activity") setSwapHistoryDefaultTab(undefined);
+            setActivePage(page);
+          }}
+          open={sidebarOpen}
+          setOpen={setSidebarOpen}
+        />
       </div>
 
       <div className="flex-1 flex flex-col min-w-0" style={{ overflow: 'clip' }}>
@@ -3657,7 +3683,7 @@ export default function Dashboard() {
                   topbarEth?.address,
                   topbarBtc?.address,
                 ].filter((a): a is string => !!a)}
-                onNavigateToRefunds={() => setActivePage("activity")}
+                onNavigateToRefunds={() => navigateToActivity("refunds")}
               />
 
               {/* ── DESKTOP: 2-column layout ── */}
@@ -3676,7 +3702,7 @@ export default function Dashboard() {
                 <div className="col-span-5 flex flex-col gap-4">
                   <PortfolioCard />
                   <WalletsCard />
-                  <RecentSwapsCard onViewAll={() => setActivePage("activity")} />
+                  <RecentSwapsCard onViewAll={() => navigateToActivity()} />
                   <AgentInsights onNavigateToTerminal={() => setActivePage("terminal")} />
                 </div>
                 </div>
@@ -3703,7 +3729,7 @@ export default function Dashboard() {
                 <MobileWalletStrip onOpenWalletModal={(asset, network, mode) => setWalletModal({ asset, network, mode })} />
 
                 {/* 7. Recent swaps: compact 3-item list */}
-                <MobileRecentSwaps onViewAll={() => setActivePage("activity")} />
+                <MobileRecentSwaps onViewAll={() => navigateToActivity()} />
 
                 {/* 8. Agent activity: compact 5-line feed */}
                 <MobileAgentActivity onNavigateToTerminal={() => setActivePage("terminal")} />

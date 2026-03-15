@@ -6,11 +6,12 @@
  *   - On-chain claim refund button (Solana: buildSolanaHtlcRefundTx + Phantom sign/send)
  *   - HTLC detail drawer (slide-over with full HTLC details + explorer links)
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity, CheckCircle2, AlertTriangle, RotateCcw, Loader2,
   Wallet, Search, ExternalLink, Copy, Info, X, XCircle, Clock, Zap, RefreshCw,
+  ShieldAlert, CheckCheck, Undo2, TrendingDown, ShieldCheck, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -20,6 +21,7 @@ import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adap
 import { PublicKey } from "@solana/web3.js";
 import type { SupportedChain } from "@shared/const";
 import { useMultiChainWallet } from "@/contexts/MultiChainWalletContext";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ─── Shared Props ─────────────────────────────────────────────────────────────
 
@@ -1080,7 +1082,13 @@ function mapHtlcToRefund(row: HtlcSwapRow): RefundRecord {
     amount,
     usdValue,
     peer: row.peerId ?? "P2P Network",
-    failReason: row.status === "expired" ? "HTLC expired — no settlement received" : "Swap refunded by peer",
+    failReason: row.status === "expired"
+      ? "HTLC expired — no settlement received"
+      : row.status === "refunded"
+      ? "Refunded on-chain"
+      : timelockExpired
+      ? "Timelock expired — funds stuck on-chain, recovery available"
+      : "HTLC locked — awaiting settlement",
     htlcExpiry,
     status,
     txHash: isRealTxSig(row.lockTxId) ? row.lockTxId : "",
@@ -1121,6 +1129,11 @@ function RefundCard({
   const expiredAgoLabel = useTimeSince(isUnixTimelock ? refund.locktime : 0);
 
   const claimRefund = useCallback(async () => {
+    // Helper: clear the dismissed flag so RefundBanner reappears if there are still stuck HTLCs,
+    // and disappears immediately if this was the last one (banner checks claimableCount === 0).
+    const dismissRefundBanner = () =>
+      sessionStorage.removeItem("afos_refund_banner_dismissed");
+
     // Solana claim — the user's wallet is the on-chain sender (they locked the HTLC).
     // The user signs the refund tx directly with their Phantom wallet.
     if (refund.chain === "solana") {
@@ -1189,6 +1202,7 @@ function RefundCard({
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
         await utils.history.myOnChainRefunds.invalidate();
+        dismissRefundBanner();
         toast.success("Refund successful! SOL returned to your wallet.", {
           id: toastId,
           duration: 8000,
@@ -1211,6 +1225,7 @@ function RefundCard({
             await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: "already-settled" });
             await utils.history.refunds.invalidate();
             await utils.history.myOnChainRefunds.invalidate();
+            dismissRefundBanner();
           } catch { /* ignore DB update errors */ }
           toast.success("Already refunded on-chain", {
             id: toastId,
@@ -1227,6 +1242,7 @@ function RefundCard({
               await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
               await utils.history.refunds.invalidate();
               await utils.history.myOnChainRefunds.invalidate();
+              dismissRefundBanner();
               toast.success("Refund confirmed (delayed)!", {
                 id: toastId,
                 duration: 8000,
@@ -1278,6 +1294,7 @@ function RefundCard({
           refundTxId: result.refundRequestSignature.slice(0, 64),
         });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("TNK refund request submitted!", {
           description: `Signed at ${new Date(result.requestedAt).toLocaleTimeString()} — agent will process the on-chain refund`,
         });
@@ -1328,6 +1345,7 @@ function RefundCard({
         toast.dismiss("eth-refund-sign");
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txHash });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("ETH refund submitted!", {
           description: (
             <a href={`https://etherscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
@@ -1396,6 +1414,7 @@ function RefundCard({
         toast.dismiss("btc-refund-broadcast");
         await updateHtlcRefund.mutateAsync({ htlcAddress: refund.htlcAddress, refundTxId: txid });
         await utils.history.refunds.invalidate();
+        dismissRefundBanner();
         toast.success("BTC refund broadcast!", {
           description: (
             <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
@@ -1449,12 +1468,27 @@ function RefundCard({
                        refund.status === "pending"   ? "#3b82f6" :
                        "#64748b",
               }}>
-              {refund.status === "claimable" ? "CLAIMABLE" :
-               refund.status === "claimed"   ? "CLAIMED" :
+              {refund.status === "claimable" ? "STUCK FUNDS" :
+               refund.status === "claimed"   ? "RECOVERED" :
                refund.status === "refunded"  ? "REFUNDED" :
                refund.status === "pending"   ? "LOCKED" :
                "EXPIRED"}
             </span>
+            {refund.status === "claimable" && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-amber-400/60 cursor-help flex-shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[220px] text-xs">
+                    <p className="font-semibold mb-1">Why is this stuck?</p>
+                    <p className="text-muted-foreground leading-relaxed">
+                      The swap timelock expired before the counterparty settled. Your funds are still locked in an on-chain HTLC escrow. Recovering is safe, non-custodial, and returns funds directly to your wallet.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {/* Live countdown for pending/locked HTLCs */}
             {refund.status === "pending" && isUnixTimelock && !countdownExpired && (
               <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono"
@@ -1534,14 +1568,14 @@ function RefundCard({
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[10px] font-bold transition-all disabled:opacity-60"
               style={{ background: "rgba(245,158,11,0.15)", border: "1px solid rgba(245,158,11,0.35)", color: "#f59e0b" }}>
               {claiming ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-              {claiming ? "Claiming…" : "Claim"}
+              {claiming ? "Recovering…" : "Recover Funds"}
             </button>
           )}
           {refund.status === "claimed" && (
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
               style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span className="text-[10px] font-mono text-emerald-400">Claimed</span>
+              <span className="text-[10px] font-mono text-emerald-400">Recovered</span>
             </div>
           )}
           {refund.status === "refunded" && (
@@ -1549,6 +1583,15 @@ function RefundCard({
               style={{ background: "rgba(6,182,212,0.1)", border: "1px solid rgba(6,182,212,0.25)" }}>
               <CheckCircle2 className="w-3 h-3 text-cyan-400" />
               <span className="text-[10px] font-mono text-cyan-400">Refunded</span>
+            </div>
+          )}
+          {(refund.status === "pending" || refund.status === "expired") && (
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded-lg shrink-0"
+              style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+              <Clock className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {refund.status === "expired" ? "Expired" : "Locked"}
+              </span>
             </div>
           )}
           {/* Detail drawer button */}
@@ -1764,29 +1807,30 @@ function ClaimAllButton({ claimable }: { claimable: RefundRecord[] }) {
 }
 
 export function RefundsTab({ walletAddresses, search = "", adminOverride = false }: TabProps) {
-  const { data, isLoading, refetch: refetchDb } = trpc.history.refunds.useQuery(
+  const { data, isLoading } = trpc.history.refunds.useQuery(
     { walletAddresses, search, adminOverride },
     { refetchInterval: 30000 }
   );
   // On-chain scanner — always runs, finds HTLCs not in DB too
-  const { data: onChainData, isLoading: onChainLoading, refetch: refetchOnChain } = trpc.history.myOnChainRefunds.useQuery(
+  const { data: onChainData, isLoading: onChainLoading, dataUpdatedAt: onChainUpdatedAt } = trpc.history.myOnChainRefunds.useQuery(
     { walletAddresses, adminOverride },
-    { refetchInterval: 60000 }
+    { refetchInterval: 30000 }  // auto-sync every 30s — no manual button needed
   );
   const [selectedHtlcId, setSelectedHtlcId] = useState<number | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
 
-  const handleResync = async () => {
-    setIsSyncing(true);
-    try {
-      await Promise.all([refetchDb(), refetchOnChain()]);
-      toast.success("Re-synced from chain", { description: "HTLC states refreshed from on-chain data" });
-    } catch {
-      toast.error("Re-sync failed", { description: "Could not fetch on-chain state. Try again." });
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  // Compute a human-readable "last synced X ago" label
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceRender(n => n + 1), 15_000);
+    return () => clearInterval(id);
+  }, []);
+  const lastSyncedLabel = useMemo(() => {
+    if (!onChainUpdatedAt) return null;
+    const secs = Math.floor((Date.now() - onChainUpdatedAt) / 1000);
+    if (secs < 10) return "just now";
+    if (secs < 60) return `${secs}s ago`;
+    return `${Math.floor(secs / 60)}m ago`;
+  }, [onChainUpdatedAt, /* re-evaluate on forceRender tick */]);
 
   // Merge DB refunds with on-chain scanner results (deduplicate by htlcId)
   const dbRefunds: RefundRecord[] = (data?.refunds ?? []).map(mapHtlcToRefund);
@@ -1823,6 +1867,7 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
   const refunds = [...dbRefunds, ...onChainRefunds];
   const hasWallet = walletAddresses.length > 0;
   const claimable = refunds.filter(r => r.status === "claimable");
+  const pending = refunds.filter(r => r.status === "pending");
   const claimed = refunds.filter(r => r.status === "claimed");
   const refunded = refunds.filter(r => r.status === "refunded");
   const isScanning = isLoading || onChainLoading;
@@ -1865,47 +1910,164 @@ export function RefundsTab({ walletAddresses, search = "", adminOverride = false
           </div>
         )}
 
-        <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: "Claimable", value: claimable.length, color: "text-amber-400", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.25)" },
-            { label: "Claimed", value: claimed.length, color: "text-emerald-400", bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.25)" },
-            { label: "Refunded", value: refunded.length, color: "text-cyan-400", bg: "rgba(6,182,212,0.1)", border: "rgba(6,182,212,0.25)" },
-            { label: "At Risk", value: `$${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}`, color: "text-foreground", bg: "var(--muted)", border: "var(--border)" },
-          ].map(stat => (
-            <div key={stat.label} className="rounded-xl p-3 text-center"
-              style={{ background: stat.bg, border: `1px solid ${stat.border}` }}>
-              <div className={`text-lg font-bold font-mono ${stat.color}`}>{stat.value}</div>
-              <div className="text-[9px] text-muted-foreground mt-0.5">{stat.label}</div>
+        {/* Stat cards — redesigned */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+
+          {/* Stuck Funds */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <ShieldAlert className="w-16 h-16 text-amber-400" />
             </div>
-          ))}
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              <span className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-widest">Stuck Funds</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-amber-400 leading-none tabular-nums">{claimable.length}</div>
+            <div className="text-[10px] text-amber-400/50 mt-2">
+              {claimable.length === 0 ? "All clear" : claimable.length === 1 ? "1 HTLC needs recovery" : `${claimable.length} HTLCs need recovery`}
+            </div>
+          </div>
+
+          {/* Pending — locked HTLCs not yet expired */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <Lock className="w-16 h-16 text-blue-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span className="text-[10px] font-semibold text-blue-400/70 uppercase tracking-widest">Pending</span>
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="w-3 h-3 text-blue-400/50 cursor-help ml-0.5 shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[240px] text-xs leading-relaxed">
+                    <p className="font-semibold mb-0.5">In-flight HTLCs</p>
+                    <p>Funds are locked on-chain but the timelock has not expired yet. No action is needed — the swap is still in progress. Once the timelock expires without a claim, these will move to <span className="text-amber-400 font-medium">Stuck Funds</span>.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <div className="text-3xl font-bold font-mono text-blue-400 leading-none tabular-nums">{pending.length}</div>
+            <div className="text-[10px] text-blue-400/50 mt-2">
+              {pending.length === 0 ? "None in-flight" : pending.length === 1 ? "1 HTLC locked" : `${pending.length} HTLCs locked`}
+            </div>
+          </div>
+
+          {/* Recovered */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <CheckCheck className="w-16 h-16 text-emerald-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[10px] font-semibold text-emerald-400/70 uppercase tracking-widest">Recovered</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-emerald-400 leading-none tabular-nums">{claimed.length}</div>
+            <div className="text-[10px] text-emerald-400/50 mt-2">
+              {claimed.length === 0 ? "None yet" : claimed.length === 1 ? "1 HTLC reclaimed" : `${claimed.length} HTLCs reclaimed`}
+            </div>
+          </div>
+
+          {/* Refunded */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "rgba(6,182,212,0.07)", border: "1px solid rgba(6,182,212,0.18)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.07]">
+              <Undo2 className="w-16 h-16 text-cyan-400" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+              <span className="text-[10px] font-semibold text-cyan-400/70 uppercase tracking-widest">Refunded</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-cyan-400 leading-none tabular-nums">{refunded.length}</div>
+            <div className="text-[10px] text-cyan-400/50 mt-2">
+              {refunded.length === 0 ? "None" : refunded.length === 1 ? "1 HTLC returned" : `${refunded.length} HTLCs returned`}
+            </div>
+          </div>
+
+          {/* At Risk */}
+          <div className="relative overflow-hidden rounded-2xl p-4"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.06]">
+              <TrendingDown className="w-16 h-16 text-muted-foreground" />
+            </div>
+            <div className="flex items-center gap-1.5 mb-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/50" />
+              <span className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">At Risk</span>
+            </div>
+            <div className="text-3xl font-bold font-mono text-foreground leading-none tabular-nums">
+              ${claimable.reduce((s, r) => s + r.usdValue, 0).toFixed(2)}
+            </div>
+            <div className="text-[10px] text-muted-foreground/40 mt-2">
+              {claimable.length === 0 ? "No exposure" : "USD value locked"}
+            </div>
+          </div>
+
         </div>
 
-        {/* Header row: Re-sync button + Claim All */}
+        {/* Auto-sync status row: subtle indicator + Claim All */}
         <div className="flex items-center justify-between gap-2">
-          <button
-            onClick={handleResync}
-            disabled={isSyncing || onChainLoading}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-            style={{
-              background: isSyncing ? "rgba(6,182,212,0.15)" : "rgba(6,182,212,0.07)",
-              border: "1px solid rgba(6,182,212,0.25)",
-              color: "rgb(103,232,249)",
-              opacity: isSyncing ? 0.7 : 1,
-            }}
-            title="Re-scan all chains for unclaimed HTLCs"
-          >
-            <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Syncing..." : "Re-sync from chain"}
-          </button>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+            {onChainLoading
+              ? <><Loader2 className="w-2.5 h-2.5 animate-spin" /> <span>Syncing chains...</span></>
+              : lastSyncedLabel
+                ? <><RefreshCw className="w-2.5 h-2.5" /> <span>Synced {lastSyncedLabel} · auto-updates every 30s</span></>
+                : null
+            }
+          </div>
           {claimable.length >= 2 && <ClaimAllButton claimable={claimable} />}
         </div>
 
-        {refunds.length === 0 && (
-          <div className="py-16 text-center rounded-2xl" style={{ background: "var(--card)", border: "1px solid var(--border)" }}>
-            <CheckCircle2 className="w-8 h-8 text-emerald-400/30 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No refunds needed</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">All swaps settled successfully</p>
-          </div>
+        {refunds.length === 0 && !isScanning && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative overflow-hidden rounded-2xl py-14 px-6 text-center"
+            style={{ background: "var(--card)", border: "1px solid var(--border)" }}
+          >
+            {/* Background watermark */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <ShieldCheck className="w-48 h-48 opacity-[0.025] text-emerald-400" />
+            </div>
+
+            {/* Icon ring */}
+            <div className="relative mx-auto mb-5 w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>
+              <ShieldCheck className="w-7 h-7 text-emerald-400" />
+              {/* Animated pulse ring */}
+              <div className="absolute inset-0 rounded-2xl animate-ping opacity-20"
+                style={{ background: "rgba(16,185,129,0.3)" }} />
+            </div>
+
+            <h3 className="text-base font-bold text-foreground mb-1">All clear — no stuck funds</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto leading-relaxed">
+              All your HTLCs have settled successfully. Your funds are safe.
+            </p>
+
+            {/* Three reassurance chips */}
+            <div className="flex items-center justify-center gap-2 mt-5 flex-wrap">
+              {[
+                { icon: <CheckCircle2 className="w-3 h-3" />, label: "Swaps settled", color: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.25)", text: "#10b981" },
+                { icon: <ShieldCheck className="w-3 h-3" />, label: "Non-custodial", color: "rgba(6,182,212,0.12)", border: "rgba(6,182,212,0.25)", text: "#06b6d4" },
+                { icon: <RotateCcw className="w-3 h-3" />, label: "Auto-monitored", color: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", text: "#8b5cf6" },
+              ].map(chip => (
+                <div key={chip.label}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-semibold"
+                  style={{ background: chip.color, border: `1px solid ${chip.border}`, color: chip.text }}>
+                  {chip.icon}
+                  {chip.label}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-muted-foreground/40 mt-4">
+              If a future swap gets stuck, it will appear here automatically.
+            </p>
+          </motion.div>
         )}
 
         {refunds.map(refund => (
