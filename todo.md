@@ -3454,3 +3454,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Updated solTnkSwap.test.ts for fee-inclusive amountRaw; all 425 tests passing
 - [x] TypeScript 0 errors, 425/425 tests passing
 - [x] Checkpoint saved
+
+## On-Chain Proof Links — 6-Proof Cross-Chain + Copy Button
+
+- [x] Add peerEscrowAddress (Agent B's HTLC escrow) column to DB schema
+- [x] Store peerEscrowAddress in notifyAgentBLocked (Agent B's escrow on their chain)
+- [x] Return peerEscrowAddress from getHtlcSecretHash
+- [x] Update all afos:htlc-completed dispatches to carry peerEscrowAddress
+- [x] Update SwapProgressData type to include peerEscrowAddress
+- [x] Show 6 proof links on Agent A SwapProgressCard: Lock Tx, Peer Lock Tx, HTLC Escrow (chain A), HTLC Escrow (chain B), USDT Claim Tx, TNK/SOL Claim Tx
+- [x] Show 6 proof links on Agent B LightPeerPanel card (same structure)
+- [x] Add "Copy Proof" button to confirmed swap cards (copies all explorer links as formatted text)
+- [x] Generalize proof link helper to support ETH (Etherscan) and BTC (mempool.space) future integrations

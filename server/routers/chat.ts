@@ -2629,6 +2629,7 @@ export const chatRouter = router({
         counterpartyRevealTxId: row.counterpartyRevealTxId,
         counterpartyLockTxId:   row.counterpartyLockTxId,
         escrowAddress:          row.escrowAddress,
+        peerEscrowAddress:      row.peerEscrowAddress,
       };
     }),
   /**
@@ -2911,9 +2912,11 @@ export const chatRouter = router({
         bitcoin:      z.string().optional(),
         trac_network: z.string().optional(),
       }).optional(),
+      /** Agent B's HTLC escrow address on their chain (e.g. Solana PDA, ETH contract, BTC P2SH) */
+      peerEscrowAddress: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
-      const { rfqId, htlcIdB, senderWallet, lockTxHash, chain = "solana", senderWallets } = input;
+      const { rfqId, htlcIdB, senderWallet, lockTxHash, chain = "solana", senderWallets, peerEscrowAddress } = input;
 
       // Look up the htlc_secrets row for this rfqId
       const row = await getHtlcSecret(rfqId);
@@ -2944,6 +2947,8 @@ export const chatRouter = router({
         counterpartyWallets: mergedCounterpartyWallets,
         // Store Agent B's lock tx as counterpartyLockTxId — do NOT overwrite Agent A's lockTxId
         counterpartyLockTxId: lockTxHash ?? undefined,
+        // Store Agent B's escrow address on their chain (Solana PDA, ETH contract, BTC P2SH, etc.)
+        peerEscrowAddress: peerEscrowAddress ?? undefined,
       });
 
       // Always derive htlcIdA from rfqId using the canonical format.

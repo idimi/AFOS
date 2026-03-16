@@ -471,6 +471,8 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
   counterpartyLockTxId:   varchar("counterpartyLockTxId", { length: 128 }),
   /** HTLC escrow / PDA address on fromChain (Agent A's escrow contract/account) */
   escrowAddress:          varchar("escrowAddress", { length: 256 }),
+  /** HTLC escrow / PDA address on toChain (Agent B's escrow contract/account) */
+  peerEscrowAddress:      varchar("peerEscrowAddress", { length: 256 }),
   /** HTLC PDA seed used to derive the on-chain PDA (e.g. htlc_rfq_1773...) */
   htlcId:              varchar("htlcId", { length: 128 }),
   /** Agent A wallet address (initiator — locks fromToken, receives toToken) */
