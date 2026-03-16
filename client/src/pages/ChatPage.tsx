@@ -1356,8 +1356,8 @@ function SwapProgressCard({
             </p>
           </div>
         )}
-        {/* ── Dismiss button (only shown on terminal states: failed, expired, or confirmed) ── */}
-        {onDismiss && (isFailed || isDone) && (
+        {/* ── Dismiss button (only shown on failed/expired — NOT on confirmed swaps so users keep on-chain proof) ── */}
+        {onDismiss && isFailed && (
           <div className="flex justify-end pt-1">
             <button
               onClick={onDismiss}
