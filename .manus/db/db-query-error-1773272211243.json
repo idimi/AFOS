@@ -1,8 +1,0 @@
-{
-  "query": "UPDATE htlc_swaps SET status = 'pending', refund_tx_id = NULL, refunded_at = NULL, updated_at = NOW() WHERE htlc_address = '45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ' AND refund_tx_id LIKE 'sol-refund-triggered-%';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute UPDATE htlc_swaps SET status = 'pending', refund_tx_id = NULL, refunded_at = NULL, updated_at = NOW() WHERE htlc_address = '45jdLtyQBrbCMz6wpC1kgtuQZxASH3w5LWg6UhbTYTLQ' AND refund_tx_id LIKE 'sol-refund-triggered-%';",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 1: Unknown column 'htlc_address' in 'where clause'"
-  ]
-}

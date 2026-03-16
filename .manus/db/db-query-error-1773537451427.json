@@ -1,8 +1,0 @@
-{
-  "query": "\nSELECT hs.id, hs.rfqId, hs.chain, hs.status, hs.htlcAddress, hs.locktime,\n       FROM_UNIXTIME(hs.locktime) as locktime_human,\n       CASE WHEN hs.locktime < UNIX_TIMESTAMP() THEN 'EXPIRED' ELSE CONCAT('active, expires in ', ROUND((hs.locktime - UNIX_TIMESTAMP())/60), ' min') END as timelock_state,\n       sa.status as analytics_status, sa.settlementTime, sa.settledVia, sa.solClaimTx, sa.createdAt as trade_created\nFROM htlc_swaps hs\nLEFT JOIN swap_analytics sa ON sa.rfqId = hs.rfqId\nWHERE hs.status = 'pending' AND hs.chain = 'solana'\nORDER BY hs.createdAt DESC\nLIMIT 5;\n",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT hs.id, hs.rfqId, hs.chain, hs.status, hs.htlcAddress, hs.locktime,\n       FROM_UNIXTIME(hs.locktime) as locktime_human,\n       CASE WHEN hs.locktime < UNIX_TIMESTAMP() THEN 'EXPIRED' ELSE CONCAT('active, expires in ', ROUND((hs.locktime - UNIX_TIMESTAMP())/60), ' min') END as timelock_state,\n       sa.status as analytics_status, sa.settlementTime, sa.settledVia, sa.solClaimTx, sa.createdAt as trade_created\nFROM htlc_swaps hs\nLEFT JOIN swap_analytics sa ON sa.rfqId = hs.rfqId\nWHERE hs.status = 'pending' AND hs.chain = 'solana'\nORDER BY hs.createdAt DESC\nLIMIT 5;\n",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 2: Unknown column 'sa.settlementtime' in 'field list'"
-  ]
-}

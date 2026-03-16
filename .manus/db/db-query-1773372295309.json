@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE htlc_swaps \nSET status = 'refunded', \n    refundedAt = NOW(),\n    refundTxId = 'auto-detected-already-refunded'\nWHERE chain = 'solana' \n  AND status IN ('pending', 'locked')\n  AND htlcAddress IN (\n    '8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf',\n    '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6',\n    '5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX'\n  );",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute UPDATE htlc_swaps \nSET status = 'refunded', \n    refundedAt = NOW(),\n    refundTxId = 'auto-detected-already-refunded'\nWHERE chain = 'solana' \n  AND status IN ('pending', 'locked')\n  AND htlcAddress IN (\n    '8WkkEjomx9AHHy8BnAaCyn9Q5EfXLNq8WDMGPhFBqQUf',\n    '4gKNVtZ4dYHwuTXaKN2hXV3CTSzzZYs1y9KQZCbf8TZ6',\n    '5ze9TQPFJcJScSMkrJoVkGEzrifQcBLMvBQ2M2Ej5LGX'\n  );",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 418
-}

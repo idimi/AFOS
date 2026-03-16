@@ -108,3 +108,33 @@ temp/
 
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
+
+# Manus internal tooling (DB query logs, browser logs — never commit)
+.manus/
+.manus-logs/
+
+# Debug and one-off scripts (contain tx hashes, addresses — not needed in repo)
+check_*.mjs
+check_*.cjs
+decode_htlc*.mjs
+test_claim*.mjs
+test_refund_user*.mjs
+simulate_*.mjs
+verify_*.mjs
+prod_audit.mjs
+rescue_*.mjs
+add-auto-accept-cols.mjs
+compute_discriminator.mjs
+extract-icons.mjs
+get-sol-escrow.mjs
+debug_*.md
+debug_notes*.md
+signaling-notes.md
+tnk-audit-gaps.md
+bug-notes.md
+ideas.md
+SWAP_FLOW_PLAN.md
+
+# Local dev tooling (not part of the public codebase)
+scripts/
+trac-peer/

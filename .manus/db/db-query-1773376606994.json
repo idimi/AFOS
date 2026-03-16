@@ -1,9 +1,0 @@
-{
-  "query": "UPDATE htlc_secrets SET status = 'refunded', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773205346880%' AND status = 'revealed';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute UPDATE htlc_secrets SET status = 'refunded', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773205346880%' AND status = 'revealed';",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 368
-}

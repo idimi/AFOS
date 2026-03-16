@@ -1,9 +1,0 @@
-{
-  "query": "\nSELECT id, rfqId, htlcId, senderAddress, recipientAddress, counterpartyAddress, status\nFROM htlc_swaps\nWHERE rfqId = 'rfq_1773283782213_lp-c7de5'\nORDER BY id;\n",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute \nSELECT id, rfqId, htlcId, senderAddress, recipientAddress, counterpartyAddress, status\nFROM htlc_swaps\nWHERE rfqId = 'rfq_1773283782213_lp-c7de5'\nORDER BY id;\n",
-  "rows": [],
-  "messages": [],
-  "stdout": "",
-  "stderr": "",
-  "execution_time_ms": 351
-}

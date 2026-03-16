@@ -1,8 +1,0 @@
-{
-  "query": "UPDATE htlc_swaps SET status = 'claimed', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773375728714%';\nUPDATE htlc_secrets SET status = 'completed', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773375728714%';",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway03.us-east-1.prod.aws.tidbcloud.com --port 4000 --user EGReYKjLSEyHMZC.f446bc9a830a --database Cv4Jvx35N7jGsqrM8y5HAD --execute UPDATE htlc_swaps SET status = 'claimed', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773375728714%';\nUPDATE htlc_secrets SET status = 'completed', updatedAt = NOW() WHERE rfqId LIKE '%rfq_1773375728714%';",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1265 (01000) at line 1: Data truncated for column '%s' at row %d"
-  ]
-}
