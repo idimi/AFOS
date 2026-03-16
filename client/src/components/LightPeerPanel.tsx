@@ -870,8 +870,8 @@ export default function LightPeerPanel() {
                 )}
               </div>
 
-              {/* ── ON-CHAIN PROOF: structured links for all 5 tx types ── */}
-              {(peer.htlcSigning.txHash || peer.htlcSigning.counterpartyLockTxHash || peer.htlcSigning.claimTxHash || peer.htlcSigning.counterpartyClaimTxHash || peer.htlcSigning.htlcEscrowAddress) && (() => {
+              {/* ── ON-CHAIN PROOF: structured links for all 6 tx types ── */}
+              {(peer.htlcSigning.txHash || peer.htlcSigning.counterpartyLockTxHash || peer.htlcSigning.claimTxHash || peer.htlcSigning.counterpartyClaimTxHash || peer.htlcSigning.htlcEscrowAddress || peer.htlcSigning.peerEscrowAddress) && (() => {
                 const fromChain = peer.htlcSigning.fromChain ?? "solana";
                 const toChain   = peer.htlcSigning.toChain   ?? "solana";
                 type ProofLink = { label: string; txId: string; chain: string; color: string; bg: string; border: string };
@@ -882,19 +882,42 @@ export default function LightPeerPanel() {
                 // 2. Agent A's lock tx (counterparty lock = peer lock)
                 if (peer.htlcSigning.counterpartyLockTxHash)
                   proofLinks.push({ label: "Peer Lock Tx", txId: peer.htlcSigning.counterpartyLockTxHash, chain: toChain, color: "#06b6d4", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" });
-                // 3. HTLC escrow address
+                // 3. HTLC escrow address — Agent B's chain (fromChain)
                 if (peer.htlcSigning.htlcEscrowAddress)
-                  proofLinks.push({ label: "HTLC Escrow", txId: peer.htlcSigning.htlcEscrowAddress, chain: fromChain, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
-                // 4. Agent B's claim tx (Agent B claims Agent A's locked toToken)
+                  proofLinks.push({ label: `HTLC Escrow (${peer.htlcSigning.fromToken ?? "A"})`, txId: peer.htlcSigning.htlcEscrowAddress, chain: fromChain, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
+                // 4. HTLC escrow address — Agent A's chain (toChain / peer chain)
+                if (peer.htlcSigning.peerEscrowAddress)
+                  proofLinks.push({ label: `HTLC Escrow (${peer.htlcSigning.toToken ?? "B"})`, txId: peer.htlcSigning.peerEscrowAddress, chain: toChain, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
+                // 5. Agent B's claim tx (Agent B claims Agent A's locked toToken)
                 if (peer.htlcSigning.claimTxHash)
                   proofLinks.push({ label: `${peer.htlcSigning.toToken ?? "Token"} Claim Tx`, txId: peer.htlcSigning.claimTxHash, chain: toChain, color: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.25)" });
-                // 5. Agent A's claim tx (Agent A claims Agent B's locked fromToken)
+                // 6. Agent A's claim tx (Agent A claims Agent B's locked fromToken)
                 if (peer.htlcSigning.counterpartyClaimTxHash)
                   proofLinks.push({ label: `${peer.htlcSigning.fromToken ?? "Token"} Claim Tx`, txId: peer.htlcSigning.counterpartyClaimTxHash, chain: fromChain, color: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.25)" });
                 if (proofLinks.length === 0) return null;
                 return (
                   <div className="mb-4">
-                    <p className="text-[9px] font-semibold tracking-widest uppercase mb-1.5" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+                      {/* Copy Proof button */}
+                      <button
+                        onClick={() => {
+                          const lines: string[] = [`AFOS Atomic Swap Proof — ${peer.htlcSigning!.fromToken ?? "?"} → ${peer.htlcSigning!.toToken ?? "?"}`, `RFQ: ${peer.htlcSigning!.rfqId}`, ""];
+                          proofLinks.forEach(({ label, txId, chain: c }) => {
+                            const href = htlcExplorerUrl(c, txId);
+                            lines.push(`${label}: ${href ?? txId}`);
+                          });
+                          navigator.clipboard.writeText(lines.join("\n")).then(() => {
+                            import("sonner").then(m => m.toast.success("Proof copied to clipboard"));
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium transition-all hover:opacity-90 active:scale-95"
+                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }}
+                      >
+                        <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy Proof
+                      </button>
+                    </div>
                     <div className="flex flex-wrap gap-1.5">
                       {proofLinks.map(({ label, txId, chain, color, bg, border }) => {
                         const href = htlcExplorerUrl(chain, txId);

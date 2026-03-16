@@ -85,7 +85,8 @@ export interface ChatMessage {
     confirmedAt?: number; // unix ms — when the swap was confirmed on-chain
     lockTxId?: string;    // Agent A's own lock tx hash (fromChain)
     peerLockTxId?: string; // Agent B's lock tx hash (toChain) — received via htlc_locked event
-    htlcEscrowAddress?: string; // HTLC escrow/PDA address on fromChain
+    htlcEscrowAddress?: string; // HTLC escrow/PDA address on fromChain (Agent A's chain)
+    peerEscrowAddress?: string;  // HTLC escrow/PDA address on toChain (Agent B's chain)
   };
   /** TNK→SOL HTLC sign card data — shown when buildSwapTx returns route "AFOS TNK→SOL HTLC" */
   tnkSignCardData?: {

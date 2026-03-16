@@ -111,7 +111,8 @@ export interface HtlcSigningState {
   claimTxHash?: string;     // Tx hash of the claim (settlement)
   counterpartyLockTxHash?: string;  // Agent A's lock tx on their chain (seen by Agent B)
   counterpartyClaimTxHash?: string; // Agent A's claim tx (Agent A claims Agent B's funds)
-  htlcEscrowAddress?: string;       // HTLC escrow/PDA address
+  htlcEscrowAddress?: string;       // HTLC escrow/PDA address on fromChain (Agent B's chain)
+  peerEscrowAddress?: string;        // HTLC escrow/PDA address on toChain (Agent A's chain)
 }
 
 export interface LightPeerState {
@@ -583,8 +584,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           } catch { /* non-critical */ }
         }
         const txDataFull = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" })
-          .then(r => r.json()).then((j: Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>) => j?.[0]?.result?.data?.json).catch(() => null);
-        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain, agentBClaimTxId, agentAClaimTxId, lockTxId: txDataFull?.lockTxId, counterpartyLockTxId: txDataFull?.counterpartyLockTxId, escrowAddress: txDataFull?.escrowAddress } }));
+          .then(r => r.json()).then((j: Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string } } } }>) => j?.[0]?.result?.data?.json).catch(() => null);
+        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain, agentBClaimTxId, agentAClaimTxId, lockTxId: txDataFull?.lockTxId, counterpartyLockTxId: txDataFull?.counterpartyLockTxId, escrowAddress: txDataFull?.escrowAddress, peerEscrowAddress: txDataFull?.peerEscrowAddress } }));
         // Clear retry counter on success
         delete revealRetryCountRef.current[rfqId];
         delete revealRetryTimersRef.current[rfqId];
@@ -622,7 +623,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             });
             if (!pollRes.ok) return;
             const pollJson = await pollRes.json();
-            const pollData = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
+            const pollData = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
             if (pollData?.status === "completed") {
               clearInterval(completionPollingRef.current[rfqId]);
               delete completionPollingRef.current[rfqId];
@@ -635,6 +636,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 lockTxId: pollData.lockTxId,
                 counterpartyLockTxId: pollData.counterpartyLockTxId,
                 escrowAddress: pollData.escrowAddress,
+                peerEscrowAddress: pollData.peerEscrowAddress,
               } }));
             }
           } catch (pollErr) {
@@ -1075,7 +1077,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
                 if (!pollRes.ok) return;
                 const pollJson = await pollRes.json();
-                const pollData2 = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
+                const pollData2 = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
                 if (pollData2?.status === "completed") {
                   clearInterval(completionPollingRef.current[rfqId]);
                   delete completionPollingRef.current[rfqId];
@@ -1087,6 +1089,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                     lockTxId: pollData2.lockTxId,
                     counterpartyLockTxId: pollData2.counterpartyLockTxId,
                     escrowAddress: pollData2.escrowAddress,
+                    peerEscrowAddress: pollData2.peerEscrowAddress,
                   } }));
                 }
               } catch { /* non-critical */ }
@@ -2286,7 +2289,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                           const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
                           if (!pollRes.ok) return;
                           const pollJson = await pollRes.json();
-                          const pollDataB = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
+                          const pollDataB = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
                           if (pollDataB?.status === "completed") {
                             clearInterval(completionPollingRef.current[rfqId]);
                             delete completionPollingRef.current[rfqId];
@@ -2298,6 +2301,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                               lockTxId: pollDataB.lockTxId,
                               counterpartyLockTxId: pollDataB.counterpartyLockTxId,
                               escrowAddress: pollDataB.escrowAddress,
+                              peerEscrowAddress: pollDataB.peerEscrowAddress,
                             } }));
                           }
                         } catch { /* non-critical */ }
@@ -2806,12 +2810,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
           // Fetch all 5 proof fields from DB before dispatching completion event
           void (async () => {
-            let proofData: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } | null = null;
+            let proofData: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } | null = null;
             try {
               const proofRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
               if (proofRes.ok) {
                 const proofJson = await proofRes.json();
-                proofData = (proofJson as Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json ?? null;
+                proofData = (proofJson as Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json ?? null;
               }
             } catch { /* non-critical */ }
             window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: {
@@ -2823,6 +2827,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               lockTxId: proofData?.lockTxId,
               counterpartyLockTxId: proofData?.counterpartyLockTxId,
               escrowAddress: proofData?.escrowAddress,
+              peerEscrowAddress: proofData?.peerEscrowAddress,
             } }));
           })();
         } else {
@@ -3119,7 +3124,8 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
         agentAClaimTxId?: string;
         lockTxId?: string;             // Agent A's lock tx
         counterpartyLockTxId?: string; // Agent B's lock tx (peer lock)
-        escrowAddress?: string;        // HTLC escrow/PDA address
+        escrowAddress?: string;        // HTLC escrow/PDA address on fromChain (Agent A's chain)
+        peerEscrowAddress?: string;    // HTLC escrow/PDA address on toChain (Agent B's chain)
       };
       if (!data?.rfqId) return;
       setHtlcSigning(prev => {
@@ -3129,10 +3135,11 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // For Agent B (non-initiator): agentAClaimTxId is the counterparty's claim tx
           // For Agent A (initiator): agentBClaimTxId is the counterparty's claim tx
           counterpartyClaimTxHash: data.agentAClaimTxId ?? data.agentBClaimTxId ?? prev.counterpartyClaimTxHash,
-          // Populate all 5 proof fields
+          // Populate all 6 proof fields
           counterpartyLockTxHash: data.lockTxId ?? prev.counterpartyLockTxHash,
           claimTxHash: data.agentBClaimTxId ?? data.agentAClaimTxId ?? prev.claimTxHash,
           htlcEscrowAddress: data.escrowAddress ?? prev.htlcEscrowAddress,
+          peerEscrowAddress: data.peerEscrowAddress ?? prev.peerEscrowAddress,
         };
       });
     };

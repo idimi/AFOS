@@ -1374,11 +1374,31 @@ function SwapProgressCard({
           </div>
         )}
 
-        {/* ── On-chain proof (confirmed) ── */}
         {/* ── ON-CHAIN PROOF: structured links for all available tx types ── */}
-        {(data.lockTxId || data.peerLockTxId || data.agentBClaimTxId || data.agentAClaimTxId || data.htlcEscrowAddress || data.txHash) && (
+        {(data.lockTxId || data.peerLockTxId || data.agentBClaimTxId || data.agentAClaimTxId || data.htlcEscrowAddress || data.peerEscrowAddress || data.txHash) && (
           <div className="space-y-1.5">
-            <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+              {/* Copy Proof button — copies all explorer links to clipboard */}
+              <button
+                onClick={() => {
+                  const lines: string[] = [`AFOS Atomic Swap Proof — ${data.fromToken ?? "?"} → ${data.toToken ?? "?"}`, `RFQ: ${data.rfqId}`, ""];
+                  if (data.lockTxId)         lines.push(`Lock Tx (${data.fromChain ?? "chain"}): ${getExplorerUrl(data.fromChain, data.lockTxId)}`);
+                  if (data.peerLockTxId)     lines.push(`Peer Lock Tx (${data.toChain ?? "peer chain"}): ${getExplorerUrl(data.toChain ?? data.fromChain, data.peerLockTxId)}`);
+                  if (!data.lockTxId && !data.peerLockTxId && data.txHash) lines.push(`Lock Tx: ${getExplorerUrl(data.fromChain, data.txHash)}`);
+                  if (data.htlcEscrowAddress) lines.push(`HTLC Escrow (${data.fromChain ?? "chain"}): ${getExplorerUrl(data.fromChain, data.htlcEscrowAddress)}`);
+                  if (data.peerEscrowAddress) lines.push(`HTLC Escrow (${data.toChain ?? "peer chain"}): ${getExplorerUrl(data.toChain ?? data.fromChain, data.peerEscrowAddress)}`);
+                  if (data.agentBClaimTxId)  lines.push(`${data.fromToken ?? "A"} Claim Tx: ${getExplorerUrl(data.fromChain, data.agentBClaimTxId)}`);
+                  if (data.agentAClaimTxId)  lines.push(`${data.toToken ?? "B"} Claim Tx: ${getExplorerUrl(data.toChain ?? data.fromChain, data.agentAClaimTxId)}`);
+                  navigator.clipboard.writeText(lines.join("\n")).then(() => { import("sonner").then(m => m.toast.success("Proof copied to clipboard")); });
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-medium transition-all hover:opacity-90 active:scale-95"
+                style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)" }}
+              >
+                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy Proof
+              </button>
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {/* Agent A's own lock tx */}
               {data.lockTxId && (
@@ -1413,15 +1433,26 @@ function SwapProgressCard({
                   <span className="font-mono opacity-60">{data.txHash.slice(0, 7)}…</span>
                 </a>
               )}
-              {/* HTLC escrow address */}
+              {/* HTLC escrow address — Agent A's chain (fromChain) */}
               {data.htlcEscrowAddress && (
                 <a href={getExplorerUrl(data.fromChain, data.htlcEscrowAddress)} target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
                   style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", color: "#a78bfa" }}
                 >
                   <ExternalLink className="w-2.5 h-2.5" />
-                  <span>HTLC Escrow</span>
+                  <span>HTLC Escrow ({data.fromToken ?? "A"})</span>
                   <span className="font-mono opacity-60">{data.htlcEscrowAddress.slice(0, 7)}…</span>
+                </a>
+              )}
+              {/* HTLC escrow address — Agent B's chain (toChain / peer chain) */}
+              {data.peerEscrowAddress && (
+                <a href={getExplorerUrl(data.toChain ?? data.fromChain, data.peerEscrowAddress)} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                  style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)", color: "#a78bfa" }}
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  <span>HTLC Escrow ({data.toToken ?? "B"})</span>
+                  <span className="font-mono opacity-60">{data.peerEscrowAddress.slice(0, 7)}…</span>
                 </a>
               )}
               {/* Claim txs */}
@@ -2214,7 +2245,7 @@ export default function ChatPage() {
   const hasAutoSentRef = useRef(false);
   // Cache for afos:htlc-completed events that fire before the swap_progress card is created.
   // Applied immediately when a matching swap_progress card is injected into messages.
-  const pendingCompletionsRef = useRef<Record<string, { agentBClaimTxId?: string; agentAClaimTxId?: string; chain?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string }>>({});
+  const pendingCompletionsRef = useRef<Record<string, { agentBClaimTxId?: string; agentAClaimTxId?: string; chain?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; peerEscrowAddress?: string }>>({});
   useEffect(() => {
     const prefill = sessionStorage.getItem('afos_chat_prefill');
     const autoSend = sessionStorage.getItem('afos_chat_autosend');
@@ -2433,7 +2464,8 @@ export default function ChatPage() {
         agentAClaimTxId?: string; // Agent B's toToken escrow → Agent A
         lockTxId?: string;             // Agent A's lock tx
         counterpartyLockTxId?: string; // Agent B's lock tx (peer lock)
-        escrowAddress?: string;        // HTLC escrow/PDA address
+        escrowAddress?: string;        // HTLC escrow/PDA address on fromChain (Agent A's chain)
+        peerEscrowAddress?: string;    // HTLC escrow/PDA address on toChain (Agent B's chain)
       };
       if (!data?.rfqId) return;
       // Refresh balances to show updated amounts
@@ -2456,6 +2488,7 @@ export default function ChatPage() {
               lockTxId: data.lockTxId,
               counterpartyLockTxId: data.counterpartyLockTxId,
               escrowAddress: data.escrowAddress,
+              peerEscrowAddress: data.peerEscrowAddress,
             };
           }
           return prev;
@@ -2477,12 +2510,12 @@ export default function ChatPage() {
             agentAClaimTxId: data.agentAClaimTxId ?? cardData.agentAClaimTxId,
             lockTxId: data.lockTxId ?? cardData.lockTxId,
             peerLockTxId: data.counterpartyLockTxId ?? cardData.peerLockTxId,
-            htlcEscrowAddress: data.escrowAddress ?? cardData.htlcEscrowAddress,
+             htlcEscrowAddress: data.escrowAddress ?? cardData.htlcEscrowAddress,
+            peerEscrowAddress: data.peerEscrowAddress ?? cardData.peerEscrowAddress,
             confirmedAt: cardData.confirmedAt ?? Date.now(),
           },
         };
         if (alreadyHasSuccessMsg) return updated;
-
         // Build Solscan proof links
         const chain = data.chain ?? cardData.fromChain ?? "solana";
         const explorerBase = chain === "ethereum"     ? "https://etherscan.io/tx/" :
@@ -2810,7 +2843,7 @@ export default function ChatPage() {
                 fromChain:  (quoteData.fromChain as string) ?? "bitcoin",
                 toChain:    (quoteData.toChain   as string) ?? "bitcoin",
                 startedAt:  Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, peerEscrowAddress: pending.peerEscrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -2945,7 +2978,7 @@ export default function ChatPage() {
                 fromChain: (quoteData.fromChain as string) ?? "ethereum",
                 toChain: (quoteData.toChain as string) ?? "ethereum",
                 startedAt: Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, peerEscrowAddress: pending.peerEscrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -3320,7 +3353,7 @@ export default function ChatPage() {
                 fromChain:  "trac_network",
                 toChain:    (quoteData.toChain as string) ?? "bitcoin",
                 startedAt:  Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, peerEscrowAddress: pending.peerEscrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -3457,7 +3490,7 @@ export default function ChatPage() {
               fromChain: (quoteData.fromChain as string) ?? "solana",
               toChain: (quoteData.toChain as string) ?? "solana",
               startedAt: Date.now(),
-              ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
+              ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, peerEscrowAddress: pending.peerEscrowAddress, confirmedAt: Date.now() } : {}),
             },
           };
           if (pending) delete pendingCompletionsRef.current[rfqId];
