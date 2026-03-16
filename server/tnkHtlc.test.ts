@@ -22,8 +22,12 @@ import crypto from "node:crypto";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function sha256Hex(input: string): string {
-  return crypto.createHash("sha256").update(input, "utf8").digest("hex");
+/**
+ * Hash a hex-encoded secret as raw bytes — matches the production sha256Hex in tnkHtlcClaim.ts.
+ * The secretHex is a hex string representing raw bytes; we decode it before hashing.
+ */
+function sha256Hex(secretHex: string): string {
+  return crypto.createHash("sha256").update(Buffer.from(secretHex, "hex")).digest("hex");
 }
 
 /** Build a mock fetch that returns responses in sequence (last one repeats) */
@@ -87,12 +91,16 @@ vi.mock("./db", () => ({
 
 describe("preimage verification (sha256)", () => {
   it("sha256(preimage) matches secretHash for known values", () => {
-    const preimage = "test_secret_preimage";
+    // Use proper 64-char hex strings (32 bytes) matching the real system's randomBytes(32).toString('hex')
+    const preimage = "9c493cf1418b59b562d5544a57190fbe41fb3e6c75c54aa7455fe18b4adc4ac2";
     const hash = sha256Hex(preimage);
     expect(hash).toHaveLength(64);
     expect(hash).toMatch(/^[0-9a-f]+$/);
     expect(sha256Hex(preimage)).toBe(hash);
-    expect(sha256Hex("different_preimage")).not.toBe(hash);
+    const differentPreimage = "aabbccdd00112233445566778899aabbccddeeff00112233445566778899aabb";
+    expect(sha256Hex(differentPreimage)).not.toBe(hash);
+    // Verify known value: sha256(bytes(9c493c...)) = cdfc90...
+    expect(hash).toBe("cdfc901516dc8458fb3e3058f7bc7d3eb6d2aa402b70e3045a8bb9fbdaeca0c8");
   });
 });
 
@@ -256,7 +264,9 @@ describe("submitTnkHtlcLock", () => {
 // ─── claimTnkHtlc tests ───────────────────────────────────────────────────────
 
 describe("claimTnkHtlc", () => {
-  const preimage = "mysecret_preimage_12345";
+  // Use a proper 64-character hex string (32 bytes) as the preimage — matches real system format.
+  // The real system generates: randomBytes(32).toString("hex") which gives a 64-char hex string.
+  const preimage = "9c493cf1418b59b562d5544a57190fbe41fb3e6c75c54aa7455fe18b4adc4ac2";
   const secretHash = sha256Hex(preimage);
   const htlcId = "htlc_a_test456";
   const futureLocktime = Math.floor(Date.now() / 1000) + 3600;

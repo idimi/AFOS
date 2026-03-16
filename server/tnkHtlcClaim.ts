@@ -52,8 +52,14 @@ const TNK_UNIT = BigInt("1000000000000000000");
 /** Escrow wallet address (sender of all TNK transfers) */
 const TNK_ESCROW = process.env.TNK_ESCROW_ADDRESS ?? "";
 
-function sha256Hex(input: string): string {
-  return crypto.createHash("sha256").update(input, "utf8").digest("hex");
+/**
+ * Hash a hex-encoded secret as raw bytes (correct for HTLC preimage verification).
+ * The secretHex is a hex string representing raw bytes — we must decode it first
+ * before hashing, otherwise sha256(utf8(hex)) != sha256(bytes(hex)).
+ * The server stores secretHashHex = sha256(bytes(secretHex)), so we must match that.
+ */
+function sha256Hex(secretHex: string): string {
+  return crypto.createHash("sha256").update(Buffer.from(secretHex, "hex")).digest("hex");
 }
 
 function sleep(ms: number): Promise<void> {
