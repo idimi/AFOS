@@ -117,6 +117,8 @@ The following sequence describes a complete P2P atomic swap between Agent A (ini
 
 9. **Settlement Recording** — `recordSwapAnalytic()` writes the completed swap to `swap_analytics` with `settlementMs` (time from lock to claim). The `htlc_secrets` row is updated with `settledAt` and `settledVia` (one of `helius_webhook`, `browser_notify`, `monitor_fallback`, or `admin_force_claim`).
 
+10. **6 On-Chain Proof Links** — The completed swap card displays six verifiable on-chain records: the Agent A lock tx, Agent B lock tx, Agent A escrow address, Agent B escrow address (`peerEscrowAddress`), Agent A claim tx, and Agent B claim tx. A **Copy Proof** button copies all six explorer links plus the `rfqId` to clipboard. These proof fields are persisted in `htlc_secrets` and loaded from the DB on page refresh via `trpc.history.getSwapProof`, so confirmed swap cards survive browser restarts. The **Swap History** page exposes the same data via a "View Proof" modal on each completed row.
+
 ---
 
 ## P2P Network and IntercomSwap Protocol
@@ -192,7 +194,7 @@ All API procedures are defined in `server/routers.ts` and split across feature-s
 | Router | File | Purpose |
 |---|---|---|
 | `chat` | `routers/chat.ts` | Swap execution, HTLC coordination, AI agent responses |
-| `history` | `routers/history.ts` | Swap history, refund management, stuck swap recovery |
+| `history` | `routers/history.ts` | Swap history, `getSwapProof`, `batchGetSwapProofs`, refund management |
 | `analytics` | `routers/analytics.ts` | Swap volume, fee revenue, settlement metrics |
 | `btcHtlc` | `routers/btcHtlc.ts` | Bitcoin HTLC lock/claim/refund procedures |
 | `htlcWallet` | `routers/htlcWallet.ts` | Agent wallet balance queries across all chains |
@@ -262,7 +264,7 @@ App
 | `Dashboard` | `/app` | Main app shell with sidebar navigation |
 | `ChatPage` | (embedded in Dashboard) | AI agent chat, swap execution, TxSuccessCard |
 | `Swaps` | (embedded in Dashboard) | Order book with live P2P quotes |
-| `SwapHistory` | (embedded in Dashboard) | Open trades, completed swaps, refunds |
+| `SwapHistory` | (embedded in Dashboard) | Open trades, completed swaps, refunds, **View Proof modal** (6 on-chain links per completed swap) |
 | `SwapAnalytics` | (embedded in Dashboard) | Volume charts, fee revenue, settlement metrics |
 | `NetworkPage` | (embedded in Dashboard) | Connected peers, reputation, direct messaging |
 | `AgentSettings` | (embedded in Dashboard) | Light peer config, route preference, limits |
@@ -299,7 +301,9 @@ The `htlc_secrets` table is the heart of the atomic swap settlement system. Beyo
 - `fromChain` / `toChain` — the two chains involved in the swap.
 - `htlcId` — the PDA seed used to derive the on-chain account address.
 - `initiatorAddress` / `counterpartyAddress` — wallet addresses for both parties.
-- `lockTxId` / `revealTxId` — on-chain transaction hashes for audit.
+- `lockTxId` / `counterpartyLockTxId` — Agent A and Agent B lock transaction hashes.
+- `revealTxId` / `counterpartyRevealTxId` — Agent A and Agent B claim transaction hashes (reveal the secret).
+- `escrowAddress` / `peerEscrowAddress` — Agent A and Agent B HTLC escrow contract/PDA addresses.
 - `settledAt` — UTC timestamp when the swap was fully settled.
 - `settledVia` — how settlement was triggered: `helius_webhook` (fastest, sub-30s), `browser_notify` (Agent B's browser was open), `monitor_fallback` (5-minute polling cycle), or `admin_force_claim` (manual recovery).
 
@@ -372,7 +376,10 @@ The following environment variables must be set for full functionality. Variable
 | `ETH_RPC_URL` | Recommended | Ethereum JSON-RPC endpoint (defaults to Cloudflare) |
 | `BTC_AGENT_WIF` | Required for BTC | Bitcoin WIF-encoded private key for fee collection |
 | `BTC_HTLC_WIF` | Recommended | Dedicated Bitcoin WIF key for HTLC escrow |
-| `TNK_AGENT_KEY` | Required for TNK | Trac Network agent key |
+| `TNK_AGENT_KEY` | Required for TNK | Trac Network agent key (PKCS8 DER hex) |
+| `TNK_HTLC_CONTRACT_ADDRESS` | Required for TNK | AFOS HTLC contract address on Trac Network subnet |
+| `TNK_PEER_RPC_URL` | Required for TNK | trac-peer node URL (default: `http://localhost:5001`) |
+| `AFOS_SERVER_SECRET` | Required | Internal secret for authenticating agent/send calls |
 | `TNK_ESCROW_ADDRESS` | Required for TNK | TNK escrow address for incoming locks |
 | `TNK_HTLC_WIF` | Required for TNK | TNK HTLC WIF key |
 | `ZEROX_API_KEY` | Required for ETH DEX | 0x Protocol API key |
@@ -392,8 +399,8 @@ The following environment variables must be set for full functionality. Variable
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/afos-dashboard.git
-cd afos-dashboard
+git clone https://github.com/idimi/AFOS.git
+cd AFOS
 
 # Install dependencies
 pnpm install
@@ -435,7 +442,7 @@ shared/
 
 ## Testing
 
-AFOS has 315 Vitest tests across 25 test files covering the server-side logic. Tests are located alongside the modules they test (e.g., `server/routers/settings.test.ts` tests `server/routers/settings.ts`).
+AFOS has **425 Vitest tests across 33 test files** covering the server-side logic. Tests are located alongside the modules they test (e.g., `server/routers/settings.test.ts` tests `server/routers/settings.ts`).
 
 ```bash
 # Run all tests
@@ -454,6 +461,8 @@ Key test suites include:
 - **`feeModel.test.ts`** — Fee constant values, `QuoteResult` interface shape, fee wallet env var handling.
 - **`peerReputation.test.ts`** — Peer scoring, ping recording, and reputation query procedures.
 - **`webhookHealth.test.ts`** — Webhook status procedure, claim statistics aggregation.
+- **`swapProgressPersistence.test.ts`** — Proof field hydration from DB on page reload, `getSwapProof` query correctness.
+- **`btcSwapP2P.test.ts`** — Bitcoin P2WSH HTLC construction, PSBT signing, mempool.space broadcast.
 
 ---
 
