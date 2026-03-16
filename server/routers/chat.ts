@@ -45,6 +45,7 @@ import { initiateTnkToSolSwap } from "../agentSwapTnkToSol";
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
 import type { SupportedChain } from "@shared/const";
+import { TNK_NETWORK_FEE_TNK } from "@shared/const";
 
 interface AssetDef {
   symbol: string;
@@ -1130,6 +1131,12 @@ export const chatRouter = router({
           platformFee:    swapAmount * (finalFeeBps / 10000),
           platformFeeUsd: estimatedUsd * (finalFeeBps / 10000),
           platformFeeOut: finalToAmount * (finalFeeBps / 10000),
+          // Trac Network transfer fee (0.03 TNK flat) — shown as a separate line item on the quote card.
+          // For SOL→TNK: deducted from user's TNK output (user receives less TNK).
+          // For TNK→SOL: user locks (amount + 0.03 TNK), fee is charged on the input side.
+          networkFeeOut:  (from.chain === "trac_network" || to.chain === "trac_network")
+            ? TNK_NETWORK_FEE_TNK
+            : undefined,
           feeBps:         finalFeeBps,
           feeToken:       finalFeeToken,
           route:          finalRoute,
@@ -1392,12 +1399,13 @@ export const chatRouter = router({
           tnkLockTxHash:   result.tnkLockTxHash,
           htlcId:          result.htlcId,
           secretHashHex:   result.secretHashHex,
-          outAmount:       result.outAmount,
-          htlcExpiresAt:   result.htlcExpiresAt,
-          nextStep:        result.nextStep,
+          outAmount:           result.outAmount,
+          feeAmountOut:        result.feeAmountOut,
+          networkFeeAmountOut: result.networkFeeAmountOut,
+          htlcExpiresAt:       result.htlcExpiresAt,
+          nextStep:            result.nextStep,
         };
       }
-
       // ── Step 3b: TNK → SOL/USDT/USDC direct agent swap ──────────────────────
       // When the source is trac_network and destination is solana, the AFOS agent acts as maker:
       // it locks SOL/USDT/USDC on Solana first, then returns a TNK lock payload for the user.
@@ -1448,11 +1456,12 @@ export const chatRouter = router({
           htlcIdB:            result2.htlcIdB,
           secretHashHex:      result2.secretHashHex,
           solanaLockTxSig:    result2.solanaLockTxSig,
-          outAmount:          result2.outAmount,
-          feeAmountOut:       result2.feeAmountOut,
-          agentTnkAddress:    result2.agentTnkAddress,
-          htlcExpiresAt:      result2.htlcExpiresAt,
-          nextStep:           result2.nextStep,
+          outAmount:           result2.outAmount,
+          feeAmountOut:        result2.feeAmountOut,
+          networkFeeAmountOut: result2.networkFeeAmountOut,
+          agentTnkAddress:     result2.agentTnkAddress,
+          htlcExpiresAt:       result2.htlcExpiresAt,
+          nextStep:            result2.nextStep,
         };
       }
       // ── Step 3: Fallback — Jupiter DEX ────────────────────────────────────

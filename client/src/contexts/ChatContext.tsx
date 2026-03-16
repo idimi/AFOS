@@ -34,6 +34,8 @@ export interface QuoteData {
   platformFee: number;
   platformFeeUsd: number;
   platformFeeOut?: number;
+  /** Trac Network transfer fee in TNK (0.03 TNK flat, paid by user) — only set for TNK swaps */
+  networkFeeOut?: number;
   feeBps?: number;
   feeToken?: string;
   route: string;

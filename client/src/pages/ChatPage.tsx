@@ -432,7 +432,7 @@ function QuoteCard({
               <span className={row.warn ? "text-amber-400" : "text-foreground font-mono"}>{row.value}</span>
             </div>
           ))}
-          {/* Fee breakdown row */}
+          {/* Platform fee row */}
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">
               AFOS Fee ({data.feeBps != null ? `${(data.feeBps / 100).toFixed(2)}%` : "0.20%"})
@@ -450,6 +450,24 @@ function QuoteCard({
               {" "}(${data.platformFeeUsd.toFixed(4)})
             </span>
           </div>
+          {/* Trac Network transfer fee — only shown for TNK swaps */}
+          {data.networkFeeOut != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground flex items-center gap-1">
+                Network Fee
+                <span
+                  className="text-[9px] px-1 py-0.5 rounded"
+                  style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}
+                  title="Flat 0.03 TNK fee charged by the Trac Network for each transfer. Paid by you — not by the platform."
+                >
+                  TNK
+                </span>
+              </span>
+              <span className="text-foreground font-mono">
+                {data.networkFeeOut.toFixed(2)} TNK
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Warning for high price impact */}

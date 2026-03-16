@@ -116,8 +116,10 @@ export interface SolToTnkSwapResult {
   tnkLockTxHash: string | null;
   /** Amount of TNK the user will receive (after fee) */
   outAmount: number;
-  /** Fee in TNK */
+  /** Platform fee in TNK (0.15% of gross TNK output) */
   feeAmountOut: number;
+  /** Trac Network transfer fee in TNK (0.03 TNK flat, paid by user via reduced output) */
+  networkFeeAmountOut: number;
   /** Agent's Solana address (recipient of user's USDT lock) */
   agentSolanaAddress: string;
   /** HTLC expiry timestamp (Unix ms) */
@@ -182,13 +184,16 @@ export async function initiateSolToTnkSwap(params: {
   const htlcExpiresAt = Date.now() + timelockSecs * 1000;
   const timelockUnix  = Math.floor(htlcExpiresAt / 1000);
 
-  // Fee calculation
-  const feeAmountOut  = tnkOutAmount * (P2P_FEE_BPS / 10000);
-  const netTnkOut     = tnkOutAmount - feeAmountOut;
-  // The subnet lock amount includes the Trac Network transfer fee (0.03 TNK) so
-  // the escrow holds enough for the autonomous claim to broadcast without a top-up.
-  // IMPORTANT: The subnet lock records (netTnkOut + fee) but the claim transfer
-  // sends only netTnkOut to the user — the fee is deducted from the escrow by the network.
+  // Fee calculation:
+  //   1. Platform fee: 0.15% of gross TNK output
+  //   2. Network fee: 0.03 TNK flat, charged to user via reduced output (not absorbed by escrow)
+  const feeAmountOut        = tnkOutAmount * (P2P_FEE_BPS / 10000);  // platform fee (TNK)
+  const networkFeeAmountOut = TNK_NETWORK_FEE_TNK;                    // 0.03 TNK network fee
+  // netTnkOut = what the user actually receives after both fees
+  const netTnkOut           = tnkOutAmount - feeAmountOut - networkFeeAmountOut;
+  // The escrow locks exactly (netTnkOut + 0.03 TNK).
+  // The 0.03 TNK is the network fee the escrow pays when broadcasting the claim transfer.
+  // Since the user pre-funded it via reduced output, the escrow is neutral.
   const tnkLockAmount    = netTnkOut + TNK_NETWORK_FEE_TNK;  // escrow holds this
   const tnkAmountRaw     = BigInt(Math.round(tnkLockAmount * 10 ** TNK_DECIMALS)).toString(); // subnet lock amount
   // Net amount the user actually receives (what broadcastTnkTransfer will send)
@@ -225,6 +230,7 @@ export async function initiateSolToTnkSwap(params: {
           tnkLockTxHash: null,
           outAmount: netTnkOut,
           feeAmountOut,
+          networkFeeAmountOut,
           agentSolanaAddress: "",
           htlcExpiresAt,
           message: `TNK lock failed on Trac Network: ${tnkLockResult.error ?? "unknown error"}. Please retry.`,
@@ -244,6 +250,7 @@ export async function initiateSolToTnkSwap(params: {
         tnkLockTxHash: null,
         outAmount: netTnkOut,
         feeAmountOut,
+        networkFeeAmountOut,
         agentSolanaAddress: "",
         htlcExpiresAt,
         message: `TNK lock exception: ${msg}`,
@@ -346,6 +353,7 @@ export async function initiateSolToTnkSwap(params: {
       tnkLockTxHash,
       outAmount: netTnkOut,
       feeAmountOut,
+      networkFeeAmountOut,
       agentSolanaAddress,
       htlcExpiresAt,
       message: `Failed to build Solana lock transaction: ${msg}`,
@@ -402,6 +410,7 @@ export async function initiateSolToTnkSwap(params: {
     tnkLockTxHash,
     outAmount: netTnkOut,
     feeAmountOut,
+    networkFeeAmountOut,
     agentSolanaAddress,
     htlcExpiresAt,
     message:

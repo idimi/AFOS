@@ -34,6 +34,7 @@ import { randomBytes, createHash } from "crypto";
 import { saveHtlcSecret } from "./db.js";
 import { recordSwapAnalytic } from "./htlcMonitor.js";
 import type { SupportedChain } from "@shared/const";
+import { TNK_NETWORK_FEE_TNK } from "@shared/const";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const AFOS_HTLC_PROGRAM_ID = new PublicKey(
@@ -56,12 +57,16 @@ const TOKEN_MINTS: Record<string, { mint: string; decimals: number }> = {
   USDC: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
 };
 
-// TNK uses 8 decimal places
+// TNK uses 8 decimal places for the subnet lock encoding
+// (the on-chain transfer uses 18 decimals, handled in broadcastTnkTransfer)
 const TNK_DECIMALS = 8;
 // Fee: 0.15% on the output (SOL/USDT/USDC) side
 const P2P_FEE_BPS = 15;
 // Default HTLC timelock: 24 hours (in seconds)
 const DEFAULT_TIMELOCK_SECS = 24 * 60 * 60;
+// Trac Network transfer fee: 0.03 TNK per transaction.
+// The USER pays this fee by locking (amount + TNK_NETWORK_FEE_TNK) into the HTLC.
+// The escrow receives the full amount and uses the fee buffer to broadcast the claim.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function deriveHtlcPda(htlcIdBytes: Uint8Array): PublicKey {
@@ -119,8 +124,10 @@ export interface TnkToSolSwapResult {
   solanaLockTxSig: string | null;
   /** Amount of SOL/USDT/USDC the user will receive (after fee) */
   outAmount: number;
-  /** Fee amount in toToken units */
+  /** Platform fee in toToken units (0.15% of gross SOL/USDT/USDC output) */
   feeAmountOut: number;
+  /** Trac Network transfer fee in TNK (0.03 TNK flat, charged to user via extra lock amount) */
+  networkFeeAmountOut: number;
   /** Agent's Trac Network address (recipient of user's TNK lock) */
   agentTnkAddress: string;
   htlcExpiresAt: number;
@@ -183,14 +190,18 @@ export async function initiateTnkToSolSwap(params: {
   const htlcExpiresAt  = timelockUnix * 1000; // ms for frontend
 
   // ── Persist HTLC secret to DB ─────────────────────────────────────────────
+  // fromAmountRaw: the exact raw units the user locks (amount + 0.03 fee), in 18-decimal encoding.
+  // This is used by claimTnkHtlc() DB fallback to know how much to transfer to the recipient.
+  const fromAmountRaw18 = (BigInt(Math.round(amount * 1e9)) * BigInt(1_000_000_000)).toString();
   void saveHtlcSecret({
     rfqId,
     secretHex,
     secretHashHex,
-    fromChain:  "trac_network",
-    toChain:    "solana",
-    expiresAt:  BigInt(htlcExpiresAt),
-    status:     "locked",
+    fromChain:    "trac_network",
+    toChain:      "solana",
+    expiresAt:    BigInt(htlcExpiresAt),
+    status:       "locked",
+    fromAmountRaw: fromAmountRaw18,
   }).catch(err => console.error("[TnkToSol] DB saveHtlcSecret failed:", err));
 
   // ── Step 1: Agent locks SOL/USDT/USDC on Solana ──────────────────────────
@@ -297,6 +308,7 @@ export async function initiateTnkToSolSwap(params: {
         solanaLockTxSig: null,
         outAmount: netSolOut,
         feeAmountOut,
+        networkFeeAmountOut: TNK_NETWORK_FEE_TNK,
         agentTnkAddress,
         htlcExpiresAt,
         message: `Solana lock failed: ${msg}`,
@@ -318,7 +330,11 @@ export async function initiateTnkToSolSwap(params: {
   //   type: "htlc_lock",
   //   value: { htlcId, secretHash, amountRaw, locktime, sender, recipient }
   // }
-  const tnkAmountRaw = Math.round(amount * 10 ** TNK_DECIMALS).toString();
+  // User locks: swap amount + 0.03 TNK network fee.
+  // The fee is charged to the user (not the platform). The escrow receives the full
+  // (amount + fee) and uses the fee buffer to broadcast the claim transfer.
+  const tnkLockTotal = amount + TNK_NETWORK_FEE_TNK;
+  const tnkAmountRaw = Math.round(tnkLockTotal * 10 ** TNK_DECIMALS).toString();
   // User's TNK lock timelock is shorter (12h) — must settle before agent's Solana lock expires
   const tnkTimelockUnix = now + Math.floor(DEFAULT_TIMELOCK_SECS / 2);
 
@@ -327,7 +343,7 @@ export async function initiateTnkToSolSwap(params: {
     value: {
       htlcId:     htlcIdB,
       secretHash: secretHashHex,
-      amountRaw:  tnkAmountRaw,
+      amountRaw:  tnkAmountRaw,  // amount + 0.03 TNK network fee
       locktime:   tnkTimelockUnix,
       sender:     userTnkAddress,
       recipient:  agentTnkAddress,
@@ -356,8 +372,9 @@ export async function initiateTnkToSolSwap(params: {
     htlcIdB,
     secretHashHex,
     solanaLockTxSig,
-    outAmount:        netSolOut,
+    outAmount:           netSolOut,
     feeAmountOut,
+    networkFeeAmountOut: TNK_NETWORK_FEE_TNK,
     agentTnkAddress,
     htlcExpiresAt,
     message:

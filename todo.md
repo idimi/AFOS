@@ -855,7 +855,7 @@ The Overview should be an **operator's command center** — a single glance tell
 - [x] Add server startup warning log when PLATFORM_FEE_WALLET is not configured
 - [x] Update feeModel.test.ts to reflect new no-op behavior (assert address NOT present)
 - [x] 126 tests passing, 0 TypeScript errors
-- [ ] Save checkpoint
+- [x] Checkpoint saved
 
 ## Mode B Removal + Fee Wallet Wiring
 
@@ -3442,3 +3442,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Fix stuck swap rfq_1773612954001_lp-0464c: manually sent 1.91 TNK to Agent B (tx: 0b41f85928a61fb1...)
 - [x] Verify TypeScript compiles cleanly (0 errors)
 - [x] Run tests: 425/425 passing — save checkpoint
+
+## TNK Retry Monitor + Fee Model (2026-03-16)
+- [x] Audit TNK fee model: understand where 0.03 TNK fee is currently absorbed
+- [x] Rework TNK quote: user pays 0.03 TNK network fee on top of swap amount (not platform)
+- [x] Update agentSwapSolToTnk.ts: user receives netTnkOut - 0.03 TNK (fee deducted from output)
+- [x] Update LightPeerContext: TNK lock amount = swapAmount + 0.03 fee (user locks more)
+- [x] Update quote display: show fee breakdown (0.15% platform fee + 0.03 TNK network fee)
+- [x] Added Case 4 to htlcSecretsMonitor.ts: retry stuck TNK claims (locked + fromAmountRaw set + >5min)
+- [x] Case 4 is part of existing htlcSecretsMonitor (already registered in startup)
+- [x] Updated solTnkSwap.test.ts for fee-inclusive amountRaw; all 425 tests passing
+- [x] TypeScript 0 errors, 425/425 tests passing
+- [x] Checkpoint saved

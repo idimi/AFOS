@@ -126,6 +126,94 @@ async function runHtlcSecretsCheck(): Promise<void> {
         }
       }
 
+      // ── Case 4: locked TNK→X swap where initial claim failed ──────────────────
+      // When fromChain=trac_network and the notifyAgentBLocked handler's claimTnkHtlc
+      // failed (subnet unreachable), the row stays 'locked' with revealTxId=null.
+      // After 5 minutes, retry the TNK claim using DB-stored fromAmountRaw.
+      if (
+        row.status === "locked" &&
+        row.fromChain === "trac_network" &&
+        row.fromAmountRaw != null &&
+        row.revealTxId == null &&
+        expiresAt > now  // still within swap window (not expired yet)
+      ) {
+        const lockedAgeMs = Number(now) - row.createdAt.getTime();
+        if (lockedAgeMs >= CLAIM_RETRY_AFTER_MS) {
+          console.log(
+            `[HtlcSecretsMonitor] Case 4: Retrying failed TNK claim rfqId=${row.rfqId} ` +
+            `(locked ${Math.round(lockedAgeMs / 1000)}s ago, fromAmountRaw=${row.fromAmountRaw})`
+          );
+          const htlcIdA = deriveHtlcIdA(row.rfqId);
+          const htlcIdB = deriveHtlcIdB(row.rfqId);
+
+          // Attempt TNK Claim A (user's TNK lock → Agent B)
+          let claimATxId: string | undefined;
+          let claimAAlreadyDone = false;
+          try {
+            const claimA = await claimTnkHtlc(htlcIdA, row.secretHex);
+            if (claimA.ok) {
+              claimATxId = claimA.contractTxHash ?? claimA.sendTxHash;
+              console.log(`[HtlcSecretsMonitor] Case 4: TNK claim A success tx=${claimATxId?.slice(0,16)}… rfqId=${row.rfqId}`);
+            } else if (claimA.error?.includes("already") || claimA.error?.includes("claimed")) {
+              claimAAlreadyDone = true;
+              console.log(`[HtlcSecretsMonitor] Case 4: TNK claim A already settled rfqId=${row.rfqId}`);
+            } else {
+              console.error(`[HtlcSecretsMonitor] Case 4: TNK claim A failed rfqId=${row.rfqId}: ${claimA.error}`);
+            }
+          } catch (errA) {
+            if (isAlreadyClaimedError(errA)) {
+              claimAAlreadyDone = true;
+            } else {
+              console.error(`[HtlcSecretsMonitor] Case 4: TNK claim A error rfqId=${row.rfqId}:`, errA instanceof Error ? errA.message : errA);
+            }
+          }
+
+          // Only release Solana funds (Claim B) if TNK claim succeeded — atomic ordering
+          if (claimATxId || claimAAlreadyDone) {
+            const SPL_TOKENS = new Set(["USDT", "USDC"]);
+            const toTokenSym = row.toToken?.toUpperCase() ?? "SOL";
+            const tokenSymB = SPL_TOKENS.has(toTokenSym) ? toTokenSym : undefined;
+            let claimBTxId: string | undefined;
+            let claimBAlreadyDone = false;
+            const addrs = await getHtlcSwapAddresses(row.rfqId);
+            const initiatorAddr = addrs.initiatorAddress ?? row.initiatorAddress ?? "";
+            try {
+              const claimB = await claimSolanaHtlc({
+                htlcId:           htlcIdB,
+                secretHex:        row.secretHex,
+                recipientAddress: initiatorAddr,
+                tokenSymbol:      tokenSymB,
+              });
+              claimBTxId = claimB.txSignature;
+              console.log(`[HtlcSecretsMonitor] Case 4: Solana claim B success tx=${claimBTxId} rfqId=${row.rfqId}`);
+            } catch (errB) {
+              if (isAlreadyClaimedError(errB)) {
+                claimBAlreadyDone = true;
+                console.log(`[HtlcSecretsMonitor] Case 4: Solana claim B already settled rfqId=${row.rfqId}`);
+              } else {
+                console.error(`[HtlcSecretsMonitor] Case 4: Solana claim B failed rfqId=${row.rfqId}:`, errB instanceof Error ? errB.message : errB);
+              }
+            }
+            await updateHtlcSecretStatus(row.rfqId, "completed", {
+              revealTxId: claimATxId,
+              ...(claimBTxId ? { counterpartyRevealTxId: claimBTxId } : {}),
+              settledAt: new Date(),
+              settledVia: "monitor_tnk_retry",
+            });
+            console.log(`[HtlcSecretsMonitor] Case 4: rfqId=${row.rfqId} marked completed (monitor_tnk_retry)`);
+            const completedMsg = {
+              type: "htlc_completed",
+              rfqId: row.rfqId,
+              message: "Swap completed — TNK and USDT/SOL have been released to both parties.",
+            };
+            if (row.counterpartyPeerId) sendToPeer(row.counterpartyPeerId, completedMsg);
+            if (row.initiatorPeerId)    sendToPeer(row.initiatorPeerId, completedMsg);
+          } else {
+            console.warn(`[HtlcSecretsMonitor] Case 4: TNK claim still failing rfqId=${row.rfqId} — will retry in ${POLL_INTERVAL_MS / 1000}s`);
+          }
+        }
+      }
+
       // ── Case 2 & 3: revealed but not yet completed ───────────────────────────
       if (row.status === "revealed") {
         const revealedAgeMs = Number(now) - row.updatedAt.getTime();

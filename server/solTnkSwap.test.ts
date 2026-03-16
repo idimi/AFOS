@@ -156,7 +156,8 @@ describe("initiateTnkToSolSwap", () => {
     expect(decoded.value.htlcId).toBe(result.htlcIdB);
     expect(decoded.value.secretHash).toBe(result.secretHashHex);
     expect(decoded.value.sender).toBe("tb1qusertracnetworkaddress");
-    expect(decoded.value.amountRaw).toBe(String(Math.round(200 * 10 ** 8)));
+    // amountRaw now includes the 0.03 TNK network fee charged to the user (user pays the fee)
+    expect(decoded.value.amountRaw).toBe(String(Math.round((200 + 0.03) * 10 ** 8)));
     expect(decoded.value.locktime).toBeGreaterThan(Math.floor(Date.now() / 1000));
   });
 
