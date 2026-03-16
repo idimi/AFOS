@@ -2227,6 +2227,7 @@ export default function ChatPage() {
     return () => document.removeEventListener('mousedown', handler);
   }, [showEmoji]);
 
+  const trpcUtils = trpc.useUtils();
   const sendMessage = trpc.chat.sendMessage.useMutation();
   const buildSwapTx = trpc.chat.buildSwapTx.useMutation();
   const executeBtcSwap = trpc.chat.executeBtcSwap.useMutation();
@@ -2268,6 +2269,53 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // ── DB proof hydration on mount ──────────────────────────────────────────────
+  // On every page load, find any confirmed swap_progress cards that are missing
+  // proof fields (e.g. loaded from localStorage before peerEscrowAddress was added)
+  // and backfill them from the DB via history.getSwapProof.
+  useEffect(() => {
+    const confirmedCards = messages.filter(
+      m => m.type === "swap_progress" &&
+           m.swapProgressData?.phase === "confirmed" &&
+           m.swapProgressData?.rfqId &&
+           // Only hydrate if at least one proof field is missing
+           (!m.swapProgressData.lockTxId ||
+            !m.swapProgressData.peerLockTxId ||
+            !m.swapProgressData.htlcEscrowAddress ||
+            !m.swapProgressData.peerEscrowAddress ||
+            !m.swapProgressData.agentBClaimTxId ||
+            !m.swapProgressData.agentAClaimTxId)
+    );
+    if (confirmedCards.length === 0) return;
+
+    // Fetch proof for each incomplete confirmed card
+    confirmedCards.forEach(card => {
+      const rfqId = card.swapProgressData!.rfqId;
+      trpcUtils.history.getSwapProof.fetch({ rfqId })
+        .then(proof => {
+          if (!proof) return;
+          setMessages(prev => prev.map(m => {
+            if (m.type !== "swap_progress" || m.swapProgressData?.rfqId !== rfqId) return m;
+            return {
+              ...m,
+              swapProgressData: {
+                ...m.swapProgressData!,
+                lockTxId:          m.swapProgressData!.lockTxId          ?? proof.lockTxId          ?? undefined,
+                peerLockTxId:      m.swapProgressData!.peerLockTxId      ?? proof.counterpartyLockTxId ?? undefined,
+                htlcEscrowAddress: m.swapProgressData!.htlcEscrowAddress ?? proof.escrowAddress       ?? undefined,
+                peerEscrowAddress: m.swapProgressData!.peerEscrowAddress ?? proof.peerEscrowAddress   ?? undefined,
+                agentBClaimTxId:   m.swapProgressData!.agentBClaimTxId   ?? proof.revealTxId          ?? undefined,
+                agentAClaimTxId:   m.swapProgressData!.agentAClaimTxId   ?? proof.counterpartyRevealTxId ?? undefined,
+              },
+            };
+          }));
+        })
+        .catch(() => { /* silently ignore — proof data is optional */ });
+    });
+  // Run once on mount — messages from localStorage are stable at this point
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Listen for agent_rfq events — show incoming swap card when agent matches this user as counterparty
   useEffect(() => {

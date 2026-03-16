@@ -1022,4 +1022,68 @@ export const historyRouter = router({
 
       return { success: allOk, message: allOk ? 'All claims succeeded' : 'Some claims failed', results };
     }),
+
+  /**
+   * Return all 6 on-chain proof fields for a single swap by rfqId.
+   * Used by SwapProgressCard (on mount refresh) and SwapHistory (View Proof modal).
+   * Returns null when the rfqId is unknown or has no proof data yet.
+   */
+  getSwapProof: publicProcedure
+    .input(z.object({ rfqId: z.string() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+      const [row] = await db
+        .select({
+          rfqId:                  htlcSecrets.rfqId,
+          fromChain:              htlcSecrets.fromChain,
+          toChain:                htlcSecrets.toChain,
+          fromToken:              htlcSecrets.fromToken,
+          toToken:                htlcSecrets.toToken,
+          lockTxId:               htlcSecrets.lockTxId,
+          counterpartyLockTxId:   htlcSecrets.counterpartyLockTxId,
+          escrowAddress:          htlcSecrets.escrowAddress,
+          peerEscrowAddress:      htlcSecrets.peerEscrowAddress,
+          revealTxId:             htlcSecrets.revealTxId,
+          counterpartyRevealTxId: htlcSecrets.counterpartyRevealTxId,
+          status:                 htlcSecrets.status,
+        })
+        .from(htlcSecrets)
+        .where(eq(htlcSecrets.rfqId, input.rfqId))
+        .limit(1);
+      if (!row) return null;
+      return row;
+    }),
+
+  /**
+   * Batch-fetch proof data for multiple rfqIds in a single round-trip.
+   * Used by SwapHistory to load proof availability for all visible rows at once.
+   * Returns a map of rfqId → proof (null entries are omitted).
+   */
+  batchGetSwapProofs: publicProcedure
+    .input(z.object({ rfqIds: z.array(z.string()).max(50) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db || input.rfqIds.length === 0) return {};
+      const rows = await db
+        .select({
+          rfqId:                  htlcSecrets.rfqId,
+          fromChain:              htlcSecrets.fromChain,
+          toChain:                htlcSecrets.toChain,
+          fromToken:              htlcSecrets.fromToken,
+          toToken:                htlcSecrets.toToken,
+          lockTxId:               htlcSecrets.lockTxId,
+          counterpartyLockTxId:   htlcSecrets.counterpartyLockTxId,
+          escrowAddress:          htlcSecrets.escrowAddress,
+          peerEscrowAddress:      htlcSecrets.peerEscrowAddress,
+          revealTxId:             htlcSecrets.revealTxId,
+          counterpartyRevealTxId: htlcSecrets.counterpartyRevealTxId,
+          status:                 htlcSecrets.status,
+        })
+        .from(htlcSecrets)
+        .where(inArray(htlcSecrets.rfqId, input.rfqIds));
+      const map: Record<string, typeof rows[0]> = {};
+      for (const r of rows) map[r.rfqId] = r;
+      return map;
+    }),
 });

@@ -3466,3 +3466,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] Show 6 proof links on Agent B LightPeerPanel card (same structure)
 - [x] Add "Copy Proof" button to confirmed swap cards (copies all explorer links as formatted text)
 - [x] Generalize proof link helper to support ETH (Etherscan) and BTC (mempool.space) future integrations
+
+## Proof Persistence + Swap History Integration
+
+- [x] Audit DB schema: confirm all 6 proof fields exist in htlc_swaps (lockTxId, counterpartyLockTxId, escrowAddress, peerEscrowAddress, revealTxId, counterpartyRevealTxId)
+- [x] Add getSwapProof(rfqId) tRPC query returning all 6 proof fields from htlc_swaps
+- [x] ChatPage: on mount, load proof from DB for any swapProgressData cards that are missing proof fields
+- [x] ChatPage: restore proof fields into swapProgressData state so SwapProgressCard shows links after refresh
+- [x] LightPeerPanel: on mount, load proof from DB for active htlcSigning rfqId if proof fields are missing
+- [x] LightPeerPanel: restore peerEscrowAddress + all proof fields into htlcSigning state after refresh
+- [x] SwapHistory: add "View Proof" button per row (only shown when proof data exists)
+- [x] SwapHistory: build ProofModal component with 6-link structure (same as SwapProgressCard)
+- [x] SwapHistory: wire ProofModal to getSwapProof query by rfqId

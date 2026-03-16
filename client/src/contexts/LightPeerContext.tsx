@@ -381,6 +381,47 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
     } catch { /* ignore */ }
   }, [htlcSigning]);
 
+  // ── DB proof hydration for htlcSigning on mount ────────────────────────────
+  // If htlcSigning was restored from sessionStorage in a "settled" state but is
+  // missing proof fields (e.g. from an older session), backfill from the DB.
+  useEffect(() => {
+    if (!htlcSigning?.rfqId) return;
+    if (htlcSigning.step !== "settled") return;
+    const missing =
+      !htlcSigning.txHash ||
+      !htlcSigning.counterpartyLockTxHash ||
+      !htlcSigning.htlcEscrowAddress ||
+      !htlcSigning.peerEscrowAddress ||
+      !htlcSigning.claimTxHash ||
+      !htlcSigning.counterpartyClaimTxHash;
+    if (!missing) return;
+
+    const rfqId = htlcSigning.rfqId;
+    fetch(`/api/trpc/history.getSwapProof?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, {
+      credentials: "include",
+    })
+      .then(r => r.json())
+      .then((raw: unknown) => {
+        const proof = (raw as Array<{ result: { data: { json: { lockTxId?: string | null; counterpartyLockTxId?: string | null; escrowAddress?: string | null; peerEscrowAddress?: string | null; revealTxId?: string | null; counterpartyRevealTxId?: string | null } | null } } }>)[0]?.result?.data?.json;
+        if (!proof) return;
+        setHtlcSigning(prev => {
+          if (!prev || prev.rfqId !== rfqId) return prev;
+          return {
+            ...prev,
+            txHash:                    prev.txHash                    ?? proof.lockTxId                ?? undefined,
+            counterpartyLockTxHash:    prev.counterpartyLockTxHash    ?? proof.counterpartyLockTxId    ?? undefined,
+            htlcEscrowAddress:         prev.htlcEscrowAddress         ?? proof.escrowAddress            ?? undefined,
+            peerEscrowAddress:         prev.peerEscrowAddress         ?? proof.peerEscrowAddress        ?? undefined,
+            claimTxHash:               prev.claimTxHash               ?? proof.revealTxId               ?? undefined,
+            counterpartyClaimTxHash:   prev.counterpartyClaimTxHash   ?? proof.counterpartyRevealTxId   ?? undefined,
+          };
+        });
+      })
+      .catch(() => { /* silently ignore — proof data is optional */ });
+  // Run once on mount — htlcSigning from sessionStorage is stable at this point
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── localStorage retry fallback for recordHtlcDeposit ──────────────────────
   // If recordHtlcDeposit fails (network error, 400, etc.) the payload is saved
   // to localStorage under "afos_pending_deposits" and retried on the next mount.

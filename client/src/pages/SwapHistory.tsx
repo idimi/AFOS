@@ -46,15 +46,16 @@ interface SwapRecord {
   settlementTime: number; // ms
   settledVia: string | null; // 'helius_webhook' | 'browser_notify' | 'monitor_fallback' | 'admin_force_claim'
   agentExecuted: boolean;
+  rfqId: string | null; // for View Proof lookup
 }
 
 // ─── Chain Config ─────────────────────────────────────────────────────────────
 
-const CHAIN_CONFIG: Record<ChainId, { name: string; color: string; explorer: string; icon: string }> = {
-  bitcoin:      { name: "Bitcoin",       color: "#f7931a", explorer: "https://mempool.space/tx/",         icon: "₿" },
-  ethereum:     { name: "Ethereum",      color: "#627eea", explorer: "https://etherscan.io/tx/",          icon: "Ξ" },
-  solana:       { name: "Solana",        color: "#9945ff", explorer: "https://solscan.io/tx/",            icon: "◎" },
-  trac_network: { name: "Trac Network",  color: "#e87d3e", explorer: "https://explorer.trac.network/tx/", icon: "T" },
+const CHAIN_CONFIG: Record<ChainId, { name: string; color: string; explorer: string; icon: string; addressExplorer?: string }> = {
+  bitcoin:      { name: "Bitcoin",       color: "#f7931a", explorer: "https://mempool.space/tx/",         icon: "₿", addressExplorer: "https://mempool.space/address/" },
+  ethereum:     { name: "Ethereum",      color: "#627eea", explorer: "https://etherscan.io/tx/",          icon: "Ξ", addressExplorer: "https://etherscan.io/address/" },
+  solana:       { name: "Solana",        color: "#9945ff", explorer: "https://solscan.io/tx/",            icon: "◎", addressExplorer: "https://solscan.io/account/" },
+  trac_network: { name: "Trac Network",  color: "#e87d3e", explorer: "https://explorer.trac.network/tx/", icon: "T",  addressExplorer: "https://explorer.trac.network/address/" },
 };
 
 const TOKEN_COLORS: Record<string, string> = {
@@ -90,6 +91,7 @@ function mapDbRowToSwapRecord(row: {
   walletAddress: string | null;
   createdAt: Date;
   settledVia?: string | null;
+  rfqId?: string | null;
 }): SwapRecord {
   const fromSymbol = row.fromToken;
   const toSymbol = row.toToken;
@@ -124,10 +126,186 @@ function mapDbRowToSwapRecord(row: {
     settlementTime,
     settledVia: row.settledVia ?? null,
     agentExecuted: true,
+    rfqId: row.rfqId ?? null,
   };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+/// ─── Proof Explorer URL helper ─────────────────────────────────────────────────────────────
+
+/** Returns the correct explorer URL for a tx hash or address on the given chain. */
+function getProofExplorerUrl(txOrAddr: string, chain: string, isAddress = false): string {
+  const cfg = CHAIN_CONFIG[chain as ChainId];
+  if (!cfg) return `https://solscan.io/tx/${txOrAddr}`;
+  const base = isAddress ? (cfg.addressExplorer ?? cfg.explorer) : cfg.explorer;
+  return base + txOrAddr;
+}
+
+// ─── Proof Modal ──────────────────────────────────────────────────────────────────────────────
+
+type SwapProof = {
+  rfqId: string;
+  fromChain: string;
+  toChain: string;
+  fromToken: string | null;
+  toToken: string | null;
+  lockTxId: string | null;
+  counterpartyLockTxId: string | null;
+  escrowAddress: string | null;
+  peerEscrowAddress: string | null;
+  revealTxId: string | null;
+  counterpartyRevealTxId: string | null;
+  status: string;
+};
+
+function ProofModal({ rfqId, fromChain, toChain, fromToken, toToken, onClose }: {
+  rfqId: string;
+  fromChain: string;
+  toChain: string;
+  fromToken: string;
+  toToken: string;
+  onClose: () => void;
+}) {
+  const { data: proof, isLoading } = trpc.history.getSwapProof.useQuery({ rfqId });
+
+  const proofLinks: Array<{ label: string; txId: string; chain: string; isAddress?: boolean; color: string; bg: string; border: string }> = [];
+  if (proof) {
+    if (proof.lockTxId)
+      proofLinks.push({ label: `Lock Tx (${fromToken})`, txId: proof.lockTxId, chain: fromChain, color: "#06b6d4", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" });
+    if (proof.counterpartyLockTxId)
+      proofLinks.push({ label: `Peer Lock Tx (${toToken})`, txId: proof.counterpartyLockTxId, chain: toChain, color: "#06b6d4", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" });
+    if (proof.escrowAddress)
+      proofLinks.push({ label: `HTLC Escrow (${fromToken})`, txId: proof.escrowAddress, chain: fromChain, isAddress: true, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
+    if (proof.peerEscrowAddress)
+      proofLinks.push({ label: `HTLC Escrow (${toToken})`, txId: proof.peerEscrowAddress, chain: toChain, isAddress: true, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
+    if (proof.revealTxId)
+      proofLinks.push({ label: `USDT Claim Tx`, txId: proof.revealTxId, chain: fromChain, color: "#10b981", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.2)" });
+    if (proof.counterpartyRevealTxId)
+      proofLinks.push({ label: `${fromToken} Claim Tx`, txId: proof.counterpartyRevealTxId, chain: toChain, color: "#10b981", bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.2)" });
+  }
+
+  const copyProof = () => {
+    if (!proof) return;
+    const lines = [`AFOS Atomic Swap Proof — ${fromToken} → ${toToken}`, `RFQ: ${rfqId}`, ""];
+    if (proof.lockTxId)               lines.push(`Lock Tx (${fromToken}): ${getProofExplorerUrl(proof.lockTxId, fromChain)}`);
+    if (proof.counterpartyLockTxId)   lines.push(`Peer Lock Tx (${toToken}): ${getProofExplorerUrl(proof.counterpartyLockTxId, toChain)}`);
+    if (proof.escrowAddress)          lines.push(`HTLC Escrow (${fromToken}): ${getProofExplorerUrl(proof.escrowAddress, fromChain, true)}`);
+    if (proof.peerEscrowAddress)      lines.push(`HTLC Escrow (${toToken}): ${getProofExplorerUrl(proof.peerEscrowAddress, toChain, true)}`);
+    if (proof.revealTxId)             lines.push(`USDT Claim Tx: ${getProofExplorerUrl(proof.revealTxId, fromChain)}`);
+    if (proof.counterpartyRevealTxId) lines.push(`${fromToken} Claim Tx: ${getProofExplorerUrl(proof.counterpartyRevealTxId, toChain)}`);
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      toast.success("Proof copied", { description: "All explorer links copied to clipboard" });
+    }).catch(() => toast.error("Copy failed"));
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 12 }}
+        transition={{ duration: 0.18 }}
+        className="w-full max-w-md rounded-2xl p-5 relative"
+        style={{ background: "var(--card)", border: "1px solid var(--border)", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-sm font-bold text-foreground">Swap Proof</div>
+            <div className="text-[10px] font-mono text-muted-foreground mt-0.5 truncate max-w-[280px]">{rfqId}</div>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+            style={{ background: "var(--muted)", border: "1px solid var(--border)" }}
+          >
+            <span className="text-sm leading-none">×</span>
+          </button>
+        </div>
+
+        {/* Chain route */}
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl" style={{ background: "var(--muted)", border: "1px solid var(--border)" }}>
+          <span className="text-xs font-bold" style={{ color: CHAIN_CONFIG[fromChain as ChainId]?.color ?? "#94a3b8" }}>
+            {CHAIN_CONFIG[fromChain as ChainId]?.icon} {fromToken}
+          </span>
+          <span className="text-muted-foreground text-xs">→</span>
+          <span className="text-xs font-bold" style={{ color: CHAIN_CONFIG[toChain as ChainId]?.color ?? "#94a3b8" }}>
+            {CHAIN_CONFIG[toChain as ChainId]?.icon} {toToken}
+          </span>
+          <span className="ml-auto text-[9px] font-mono text-muted-foreground uppercase tracking-widest">
+            {fromChain} → {toChain}
+          </span>
+        </div>
+
+        {/* Proof links */}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 text-muted-foreground animate-spin mr-2" />
+            <span className="text-xs text-muted-foreground">Loading proof…</span>
+          </div>
+        ) : proofLinks.length === 0 ? (
+          <div className="py-8 text-center">
+            <AlertTriangle className="w-6 h-6 text-amber-400/60 mx-auto mb-2" />
+            <p className="text-xs text-muted-foreground">No on-chain proof available for this swap.</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-1">Only HTLC-routed P2P swaps generate proof links.</p>
+          </div>
+        ) : (
+          <div className="space-y-2 mb-4">
+            {proofLinks.map((link, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                style={{ background: link.bg, border: `1px solid ${link.border}` }}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[9px] font-mono uppercase tracking-widest mb-0.5" style={{ color: link.color }}>{link.label}</div>
+                  <div className="text-[10px] font-mono text-muted-foreground truncate">
+                    {link.txId.slice(0, 20)}…{link.txId.slice(-8)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(link.txId).catch(() => {}); toast.success("Copied"); }}
+                  className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Copy"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+                <a
+                  href={getProofExplorerUrl(link.txId, link.chain, link.isAddress)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-shrink-0 transition-colors hover:opacity-80"
+                  style={{ color: link.color }}
+                  title="View on explorer"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Copy Proof button */}
+        {!isLoading && proofLinks.length > 0 && (
+          <button
+            onClick={copyProof}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-semibold transition-all hover:opacity-90"
+            style={{ background: "rgba(6,182,212,0.12)", border: "1px solid rgba(6,182,212,0.3)", color: "#22d3ee" }}
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Copy Proof
+          </button>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
 function formatTime(date: Date): string {
   const now = Date.now();
@@ -342,6 +520,7 @@ export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [proofModalSwap, setProofModalSwap] = useState<SwapRecord | null>(null);
   const PAGE_SIZE = 8;
 
   // Debounced search for Swaps tab — 350ms delay so we don't fire a server request on every keystroke
@@ -485,6 +664,7 @@ export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
   };
 
   return (
+    <>
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-safe">
       <div className="max-w-[1280px] mx-auto">
       {/* Header */}
@@ -862,10 +1042,25 @@ export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
                                 {swap.txHash && <>
                                   <button onClick={() => copyHash(swap.txHash)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><Copy className="w-3 h-3" /></button>
                                   <button onClick={() => openExplorer(swap)} className="text-slate-600 hover:text-cyan-400 flex-shrink-0"><ExternalLink className="w-3 h-3" /></button>
-                                </>}
+                                </>
+                                }
                               </div>
                             </div>
                           </div>
+                          {/* View Proof button — only for P2P HTLC swaps that have an rfqId */}
+                          {swap.rfqId && swap.status === "complete" && (
+                            <div className="px-4 sm:px-5 py-3 border-b flex items-center gap-3" style={{ borderColor: "var(--border)" }}>
+                              <button
+                                onClick={() => setProofModalSwap(swap)}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
+                                style={{ background: "rgba(6,182,212,0.10)", border: "1px solid rgba(6,182,212,0.25)", color: "#22d3ee" }}
+                              >
+                                <Shield className="w-3 h-3" />
+                                View Proof
+                              </button>
+                              <span className="text-[10px] text-muted-foreground font-mono">{swap.rfqId}</span>
+                            </div>
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -940,6 +1135,21 @@ export default function SwapHistory({ defaultTab }: SwapHistoryProps = {}) {
       </>}
       </div>
     </div>
+
+    {/* Proof Modal — rendered as a portal-like overlay */}
+    <AnimatePresence>
+      {proofModalSwap && proofModalSwap.rfqId && (
+        <ProofModal
+          rfqId={proofModalSwap.rfqId}
+          fromChain={proofModalSwap.fromChain}
+          toChain={proofModalSwap.toChain}
+          fromToken={proofModalSwap.fromSymbol}
+          toToken={proofModalSwap.toSymbol}
+          onClose={() => setProofModalSwap(null)}
+        />
+      )}
+    </AnimatePresence>
+    </>
   );
 }
 
