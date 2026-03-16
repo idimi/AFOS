@@ -70,6 +70,16 @@ vi.mock("./db", () => ({
         where: vi.fn().mockResolvedValue(undefined),
       }),
     }),
+    // Mock select to return empty results (simulates no DB row found)
+    // This causes getHtlcSecretByHtlcId to return null, triggering the
+    // "not found in subnet or DB" error path in claimTnkHtlc.
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
   }),
 }));
 
@@ -284,12 +294,14 @@ describe("claimTnkHtlc", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns ok:false when peer is unreachable", async () => {
+  it("returns ok:false when peer is unreachable and no DB row exists", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
     const { claimTnkHtlc } = await import("./tnkHtlcClaim");
     const result = await claimTnkHtlc(htlcId, preimage);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("trac-peer-unreachable");
+    // When peer is unreachable AND no DB row exists, the function tries DB fallback
+    // and returns "not found in subnet or DB" (the DB mock returns null for select).
+    expect(result.error).toContain("not found");
   });
 
   it("returns ok:false when HTLC not found in subnet", async () => {

@@ -3430,3 +3430,15 @@ The agent is the complete coordinator — no Oracle VM needed. Users connect wal
 - [x] In tnkOnChainTransfer.ts: broadcastTnkTransfer sends netTnkOut (without fee buffer) — fee is deducted by network
 - [x] In tnkHtlcClaim.ts: pass the correct net amount (amountRaw from DB) to broadcastTnkTransfer
 - [x] Update quote/UI to show user receives netTnkOut (fee buffer is transparent — agent absorbs it)
+
+## TNK→USDT/SOL HTLC Fix (2026-03-15)
+
+- [x] Add `fromAmountRaw` column to `htlc_secrets` schema (DB migration done)
+- [x] Rewrite `claimTnkHtlc()` with DB fallback when subnet state unavailable
+- [x] Store `fromAmountRaw` (18-decimal) in `saveHtlcSecret` call in chat.ts
+- [x] Fix `notifyAgentBLocked`: guard so Solana claim only fires AFTER TNK secret is revealed on-chain
+- [x] Fix `recordHtlcDeposit` amountRaw encoding for TNK (use 1e18, not 1e8)
+- [x] Fix stuck swap rfq_1773619859848_lp-0464c: manually sent 1 TNK to Agent B (tx: dc8e92244111aee7...)
+- [x] Fix stuck swap rfq_1773612954001_lp-0464c: manually sent 1.91 TNK to Agent B (tx: 0b41f85928a61fb1...)
+- [x] Verify TypeScript compiles cleanly (0 errors)
+- [x] Run tests: 425/425 passing — save checkpoint

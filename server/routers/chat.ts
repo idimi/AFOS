@@ -1242,11 +1242,27 @@ export const chatRouter = router({
         const htlcHashBytes   = await crypto.subtle.digest("SHA-256", htlcSecretBytes);
         const htlcSecretHash  = Array.from(new Uint8Array(htlcHashBytes)).map(b => b.toString(16).padStart(2, "0")).join("");
         // Persist to DB so reveal survives page refresh
+        // fromAmountRaw: raw units for the fromChain asset
+        //   trac_network (TNK): 18 decimals (1e18 per TNK)
+        //   solana (SOL/USDT): 9 decimals for SOL, 6 for USDT — stored as string
+        //   ethereum (ETH/USDT): 18 decimals for ETH, 6 for USDT
+        //   bitcoin (BTC): 8 decimals (1e8 per BTC)
+        const fromChainForSecret = (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network";
+        const fromAmountRawForSecret = (() => {
+          const fromDecimals = fromChainForSecret === "trac_network" ? 18
+            : fromChainForSecret === "bitcoin" ? 8
+            : fromChainForSecret === "ethereum" ? 18
+            : (fromToken?.toUpperCase() === "SOL" ? 9 : 6); // solana: SOL=9, USDT/USDC=6
+          // Use BigInt to avoid floating point precision loss
+          const multiplier = BigInt(10) ** BigInt(fromDecimals);
+          const rawBigInt = BigInt(Math.round((amount ?? 0) * 1e8)) * multiplier / BigInt(1e8);
+          return rawBigInt.toString();
+        })();
         void saveHtlcSecret({
           rfqId:              p2pQuote.rfqId,
           secretHex:          htlcSecretHex,
           secretHashHex:      htlcSecretHash,
-          fromChain:          (fromChain ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
+          fromChain:          fromChainForSecret,
           toChain:            (toChain   ?? "solana") as "bitcoin" | "ethereum" | "solana" | "trac_network",
           counterpartyPeerId: p2pQuote.peerId ?? undefined,
           initiatorPeerId:    senderPeerId ?? undefined,
@@ -1259,6 +1275,7 @@ export const chatRouter = router({
           counterpartyWallets: p2pQuote.counterpartyWallets ?? undefined, // Full multi-chain map for Tier 1 auto-claim
           fromToken:          (fromToken ?? "SOL").toUpperCase(),
           toToken:            (toToken ?? "USDT").toUpperCase(),
+          fromAmountRaw:      fromAmountRawForSecret,
         }).catch(() => {/* non-fatal */});
         // Push agent_rfq to the matched peer's browser via signaling WebSocket
         const delivered = sendAgentRfqToPeer({
@@ -2939,9 +2956,22 @@ export const chatRouter = router({
       const tokenSymA    = SPL_TOKENS.has(fromTokenSym) ? fromTokenSym : undefined;
       const tokenSymB    = SPL_TOKENS.has(toTokenSym)   ? toTokenSym   : undefined;
 
-      // Fire-and-forget: trigger both claims independently
-      // Each claim is attempted separately so an AlreadyClaimed on one side
-      // does NOT prevent the other side from being claimed.
+      /**
+       * ATOMIC SETTLEMENT — TNK cross-chain guard:
+       *
+       * For TNK↔SOL/USDT swaps, the TNK side (off-chain escrow model) MUST be
+       * settled BEFORE the on-chain Solana funds are released. This prevents a
+       * scenario where Agent A receives USDT but Agent B never receives TNK.
+       *
+       *   TNK→SOL/USDT (fromChain=trac_network): Claim A (TNK→AgentB) first,
+       *     then Claim B (USDT→AgentA) only if Claim A succeeded.
+       *
+       *   SOL/USDT→TNK (toChain=trac_network): Claim B (TNK→AgentA) first,
+       *     then Claim A (SOL→AgentB) only if Claim B succeeded.
+       *
+       *   SOL↔SOL/USDT (both chains=solana): Both claims are independent —
+       *     the Solana HTLC program enforces atomicity at the contract level.
+       */
       void (async () => {
         const isAlreadyClaimed = (e: unknown) =>
           e instanceof Error && (e.message.includes("AlreadyClaimed") || e.message.includes("already claimed") || e.message.includes("not found on-chain"));
@@ -2949,80 +2979,111 @@ export const chatRouter = router({
         const fromChainVal = row.fromChain ?? "solana";
         const toChainVal   = row.toChain   ?? "solana";
 
-        // Claim Agent A's lock → release to Agent B
+        // ── Helper: execute Claim A (Agent A's lock → Agent B receives) ──
         let claimATxId: string | undefined;
-        try {
-          if (fromChainVal === "trac_network") {
-            // Agent A locked TNK on Trac Network — claim via TNK contract
-            const agentBTnkAddress = (senderWallets?.trac_network) ??
-              (row.counterpartyWallets as { trac_network?: string } | null)?.trac_network ??
-              senderWallet;
-            const claimA = await claimTnkHtlc(htlcIdA, row.secretHex);
-            if (claimA.ok) {
-              claimATxId = claimA.contractTxHash ?? claimA.sendTxHash;
-              console.log(`[AgentBWebhook] Claimed Agent A TNK → Agent B (${String(agentBTnkAddress).slice(0,8)}…): tx=${claimATxId?.slice(0,16)}…`);
+        let claimAAlreadyDone = false;
+        const doClaimA = async () => {
+          try {
+            if (fromChainVal === "trac_network") {
+              // Agent A locked TNK — claim via TNK escrow
+              const agentBTnkAddress = (senderWallets?.trac_network) ??
+                (row.counterpartyWallets as { trac_network?: string } | null)?.trac_network ??
+                senderWallet;
+              const claimA = await claimTnkHtlc(htlcIdA, row.secretHex);
+              if (claimA.ok) {
+                claimATxId = claimA.contractTxHash ?? claimA.sendTxHash;
+                console.log(`[AgentBWebhook] ✅ Claim A: TNK → Agent B (${String(agentBTnkAddress).slice(0,8)}…): tx=${claimATxId?.slice(0,16)}…`);
+              } else {
+                console.error(`[AgentBWebhook] ❌ Claim A (TNK) failed rfqId=${rfqId.slice(0,12)}: ${claimA.error}`);
+              }
             } else {
-              console.error(`[AgentBWebhook] Claim A (TNK) failed for rfqId=${rfqId.slice(0, 12)}: ${claimA.error}`);
+              const claimA = await claimSolanaHtlc({
+                htlcId:           htlcIdA,
+                secretHex:        row.secretHex,
+                recipientAddress: senderWallet,
+                tokenSymbol:      tokenSymA,
+              });
+              claimATxId = claimA.txSignature;
+              console.log(`[AgentBWebhook] ✅ Claim A: ${fromTokenSym} → Agent B: ${claimATxId}`);
             }
-          } else {
-            const claimA = await claimSolanaHtlc({
-              htlcId:           htlcIdA,
-              secretHex:        row.secretHex,
-              recipientAddress: senderWallet,
-              tokenSymbol:      tokenSymA,
-            });
-            claimATxId = claimA.txSignature;
-            console.log(`[AgentBWebhook] Claimed Agent A (${fromTokenSym}) → Agent B: ${claimATxId}`);
+          } catch (errA) {
+            if (isAlreadyClaimed(errA)) {
+              claimAAlreadyDone = true;
+              console.log(`[AgentBWebhook] Claim A already on-chain rfqId=${rfqId.slice(0,12)}`);
+            } else {
+              console.error(`[AgentBWebhook] Claim A error rfqId=${rfqId.slice(0,12)}:`, errA instanceof Error ? errA.message : errA);
+            }
           }
-        } catch (errA) {
-          if (isAlreadyClaimed(errA)) {
-            console.log(`[AgentBWebhook] Claim A already settled on-chain rfqId=${rfqId.slice(0, 12)} — continuing to Claim B`);
-          } else {
-            console.error(`[AgentBWebhook] Claim A failed for rfqId=${rfqId.slice(0, 12)}:`, errA instanceof Error ? errA.message : errA);
-          }
-        }
+        };
 
-        // Claim Agent B's lock → release to Agent A (always attempt regardless of Claim A result)
+        // ── Helper: execute Claim B (Agent B's lock → Agent A receives) ──
         let claimBTxId: string | undefined;
-        try {
-          if (toChainVal === "trac_network") {
-            // Agent B locked TNK on Trac Network — claim via TNK contract
-            const claimB = await claimTnkHtlc(htlcIdB, row.secretHex);
-            if (claimB.ok) {
-              claimBTxId = claimB.contractTxHash ?? claimB.sendTxHash;
-              console.log(`[AgentBWebhook] Claimed Agent B TNK → Agent A: tx=${claimBTxId?.slice(0,16)}…`);
+        let claimBAlreadyDone = false;
+        const doClaimB = async () => {
+          try {
+            if (toChainVal === "trac_network") {
+              // Agent B locked TNK — claim via TNK escrow
+              const claimB = await claimTnkHtlc(htlcIdB, row.secretHex);
+              if (claimB.ok) {
+                claimBTxId = claimB.contractTxHash ?? claimB.sendTxHash;
+                console.log(`[AgentBWebhook] ✅ Claim B: TNK → Agent A: tx=${claimBTxId?.slice(0,16)}…`);
+              } else {
+                console.error(`[AgentBWebhook] ❌ Claim B (TNK) failed rfqId=${rfqId.slice(0,12)}: ${claimB.error}`);
+              }
             } else {
-              console.error(`[AgentBWebhook] Claim B (TNK) failed for rfqId=${rfqId.slice(0, 12)}: ${claimB.error}`);
+              const claimB = await claimSolanaHtlc({
+                htlcId:           htlcIdB,
+                secretHex:        row.secretHex,
+                recipientAddress: initiatorAddress,
+                tokenSymbol:      tokenSymB,
+              });
+              claimBTxId = claimB.txSignature;
+              console.log(`[AgentBWebhook] ✅ Claim B: ${toTokenSym} → Agent A: ${claimBTxId}`);
             }
-          } else {
-            const claimB = await claimSolanaHtlc({
-              htlcId:           htlcIdB,
-              secretHex:        row.secretHex,
-              recipientAddress: initiatorAddress,
-              tokenSymbol:      tokenSymB,
-            });
-            claimBTxId = claimB.txSignature;
-            console.log(`[AgentBWebhook] Claimed Agent B (${toTokenSym}) → Agent A: ${claimBTxId}`);
+          } catch (errB) {
+            if (isAlreadyClaimed(errB)) {
+              claimBAlreadyDone = true;
+              console.log(`[AgentBWebhook] Claim B already on-chain rfqId=${rfqId.slice(0,12)}`);
+            } else {
+              console.error(`[AgentBWebhook] Claim B error rfqId=${rfqId.slice(0,12)}:`, errB instanceof Error ? errB.message : errB);
+            }
           }
-        } catch (errB) {
-          if (isAlreadyClaimed(errB)) {
-            console.log(`[AgentBWebhook] Claim B already settled on-chain rfqId=${rfqId.slice(0, 12)}`);
+        };
+
+        // ── Execute in correct order based on chain types ──
+        if (fromChainVal === "trac_network") {
+          // TNK→SOL/USDT: claim TNK first (Claim A), then release Solana (Claim B)
+          await doClaimA();
+          if (claimATxId || claimAAlreadyDone) {
+            await doClaimB();
           } else {
-            console.error(`[AgentBWebhook] Claim B failed for rfqId=${rfqId.slice(0, 12)}:`, errB instanceof Error ? errB.message : errB);
+            console.error(`[AgentBWebhook] 🚫 TNK claim failed — NOT releasing Solana funds for rfqId=${rfqId.slice(0,12)}. Monitor will retry.`);
           }
+        } else if (toChainVal === "trac_network") {
+          // SOL/USDT→TNK: claim TNK first (Claim B), then release Solana (Claim A)
+          await doClaimB();
+          if (claimBTxId || claimBAlreadyDone) {
+            await doClaimA();
+          } else {
+            console.error(`[AgentBWebhook] 🚫 TNK claim failed — NOT releasing Solana funds for rfqId=${rfqId.slice(0,12)}. Monitor will retry.`);
+          }
+        } else {
+          // Both Solana — independent claims (contract-level atomicity)
+          await doClaimA();
+          await doClaimB();
         }
 
-        // Mark completed if at least one claim succeeded (or both were already settled)
-        if (claimATxId || claimBTxId) {
+        // Mark completed if at least one claim succeeded
+        if (claimATxId || claimBTxId || claimAAlreadyDone || claimBAlreadyDone) {
           await updateHtlcSecretStatus(rfqId, "completed", {
             ...(claimATxId ? { revealTxId: claimATxId } : {}),
             ...(claimBTxId ? { counterpartyRevealTxId: claimBTxId } : {}),
             settledAt: new Date(),
             settledVia: "browser_notify",
           });
-          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0, 12)} completed (browser_notify) claimA=${claimATxId ?? "skipped"} claimB=${claimBTxId ?? "skipped"}`);
+          console.log(`[AgentBWebhook] Swap rfqId=${rfqId.slice(0,12)} completed (browser_notify) claimA=${claimATxId ?? (claimAAlreadyDone ? "already_done" : "skipped")} claimB=${claimBTxId ?? (claimBAlreadyDone ? "already_done" : "skipped")}`);
         } else {
-          console.warn(`[AgentBWebhook] Both claims failed/skipped for rfqId=${rfqId.slice(0, 12)} — HtlcSecretsMonitor will retry`);
+          console.warn(`[AgentBWebhook] Both claims failed rfqId=${rfqId.slice(0,12)} — HtlcSecretsMonitor will retry`);
         }
       })();
 

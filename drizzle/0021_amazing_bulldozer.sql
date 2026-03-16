@@ -1,0 +1,1 @@
+ALTER TABLE `htlc_secrets` ADD `fromAmountRaw` varchar(64);

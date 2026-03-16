@@ -483,6 +483,11 @@ export const htlcSecrets = mysqlTable("htlc_secrets", {
   fromToken:           varchar("fromToken", { length: 16 }),
   /** Token symbol locked by Agent B (e.g. USDT, USDC) */
   toToken:             varchar("toToken", { length: 16 }),
+  /**
+   * Raw amount locked by Agent A in the smallest unit (e.g. "1000000000000000000" for 1 TNK).
+   * Used as fallback for claimTnkHtlc when subnet state is unavailable.
+   */
+  fromAmountRaw:       varchar("fromAmountRaw", { length: 64 }),
   /** Timestamp when the swap was fully settled (both claims completed) */
   settledAt:           timestamp("settledAt"),
   /** How the settlement was triggered: 'helius_webhook' | 'browser_notify' | 'monitor_fallback' */

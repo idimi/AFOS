@@ -2519,7 +2519,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
               senderAddress: tnkWalletCtx?.address ?? "",
               recipientAddress: tnkRecipient,
               escrowAddress: result.contractAddress ?? tnkRecipient,
-              amountRaw: String(Math.round(tnkLockAmount * 1e8)),
+              // TNK uses 18 decimals (like ETH), NOT 8 decimals (like BTC).
+              // 1 TNK = 1_000_000_000_000_000_000 raw units (1e18).
+              // Use integer arithmetic to avoid floating-point precision loss.
+              amountRaw: String(BigInt(Math.round(tnkLockAmount * 1e9)) * BigInt(1_000_000_000)),
               token: "TNK",
               secretHash,
               timelock: Math.floor(Date.now() / 1000) + 600,
