@@ -18,7 +18,7 @@
 
 import { publicProcedure, router } from "../_core/trpc";
 import { getCachedPrices } from "../priceCache";
-import { getDb } from "../db";
+import { getDb, updateHtlcSecretStatus } from "../db";
 import { htlcSwaps } from "../../drizzle/schema";
 import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -617,6 +617,13 @@ export const htlcWalletRouter = router({
           counterpartyWallets: input.counterpartyWallets ?? null,
         });
         console.log(`[HTLC] Recorded deposit: ${input.chain} ${input.amountRaw} ${input.token} tx=${input.txHash}`);
+        // Also persist escrowAddress and lockTxId to htlcSecrets so proof links are complete
+        if (input.rfqId && input.isAgentA) {
+          await updateHtlcSecretStatus(input.rfqId, "locked", {
+            lockTxId: input.txHash,
+            escrowAddress: input.escrowAddress,
+          }).catch(() => {/* non-fatal */});
+        }
         return { success: true };
       } catch (err) {
         console.error("[HTLC] Failed to record deposit:", err);

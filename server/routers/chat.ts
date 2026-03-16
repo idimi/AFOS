@@ -2627,6 +2627,8 @@ export const chatRouter = router({
         lockTxId:               row.lockTxId,
         revealTxId:             row.revealTxId,
         counterpartyRevealTxId: row.counterpartyRevealTxId,
+        counterpartyLockTxId:   row.counterpartyLockTxId,
+        escrowAddress:          row.escrowAddress,
       };
     }),
   /**
@@ -2940,7 +2942,8 @@ export const chatRouter = router({
       await updateHtlcSecretStatus(rfqId, "revealed", {
         counterpartyAddress: senderWallet,
         counterpartyWallets: mergedCounterpartyWallets,
-        lockTxId: lockTxHash ?? row.lockTxId ?? undefined,
+        // Store Agent B's lock tx as counterpartyLockTxId — do NOT overwrite Agent A's lockTxId
+        counterpartyLockTxId: lockTxHash ?? undefined,
       });
 
       // Always derive htlcIdA from rfqId using the canonical format.

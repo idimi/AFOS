@@ -2214,7 +2214,7 @@ export default function ChatPage() {
   const hasAutoSentRef = useRef(false);
   // Cache for afos:htlc-completed events that fire before the swap_progress card is created.
   // Applied immediately when a matching swap_progress card is injected into messages.
-  const pendingCompletionsRef = useRef<Record<string, { agentBClaimTxId?: string; agentAClaimTxId?: string; chain?: string }>>({});
+  const pendingCompletionsRef = useRef<Record<string, { agentBClaimTxId?: string; agentAClaimTxId?: string; chain?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string }>>({});
   useEffect(() => {
     const prefill = sessionStorage.getItem('afos_chat_prefill');
     const autoSend = sessionStorage.getItem('afos_chat_autosend');
@@ -2431,6 +2431,9 @@ export default function ChatPage() {
         chain?: string;
         agentBClaimTxId?: string; // Agent A's fromToken escrow → Agent B
         agentAClaimTxId?: string; // Agent B's toToken escrow → Agent A
+        lockTxId?: string;             // Agent A's lock tx
+        counterpartyLockTxId?: string; // Agent B's lock tx (peer lock)
+        escrowAddress?: string;        // HTLC escrow/PDA address
       };
       if (!data?.rfqId) return;
       // Refresh balances to show updated amounts
@@ -2450,6 +2453,9 @@ export default function ChatPage() {
               agentBClaimTxId: data.agentBClaimTxId,
               agentAClaimTxId: data.agentAClaimTxId,
               chain: data.chain,
+              lockTxId: data.lockTxId,
+              counterpartyLockTxId: data.counterpartyLockTxId,
+              escrowAddress: data.escrowAddress,
             };
           }
           return prev;
@@ -2469,6 +2475,9 @@ export default function ChatPage() {
             phase: "confirmed",
             agentBClaimTxId: data.agentBClaimTxId ?? cardData.agentBClaimTxId,
             agentAClaimTxId: data.agentAClaimTxId ?? cardData.agentAClaimTxId,
+            lockTxId: data.lockTxId ?? cardData.lockTxId,
+            peerLockTxId: data.counterpartyLockTxId ?? cardData.peerLockTxId,
+            htlcEscrowAddress: data.escrowAddress ?? cardData.htlcEscrowAddress,
             confirmedAt: cardData.confirmedAt ?? Date.now(),
           },
         };
@@ -2801,7 +2810,7 @@ export default function ChatPage() {
                 fromChain:  (quoteData.fromChain as string) ?? "bitcoin",
                 toChain:    (quoteData.toChain   as string) ?? "bitcoin",
                 startedAt:  Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -2936,7 +2945,7 @@ export default function ChatPage() {
                 fromChain: (quoteData.fromChain as string) ?? "ethereum",
                 toChain: (quoteData.toChain as string) ?? "ethereum",
                 startedAt: Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -3311,7 +3320,7 @@ export default function ChatPage() {
                 fromChain:  "trac_network",
                 toChain:    (quoteData.toChain as string) ?? "bitcoin",
                 startedAt:  Date.now(),
-                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+                ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
               },
             };
             if (pending) delete pendingCompletionsRef.current[rfqId];
@@ -3448,15 +3457,14 @@ export default function ChatPage() {
               fromChain: (quoteData.fromChain as string) ?? "solana",
               toChain: (quoteData.toChain as string) ?? "solana",
               startedAt: Date.now(),
-              ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, confirmedAt: Date.now() } : {}),
+              ...(pending ? { agentBClaimTxId: pending.agentBClaimTxId, agentAClaimTxId: pending.agentAClaimTxId, lockTxId: pending.lockTxId, peerLockTxId: pending.counterpartyLockTxId, htlcEscrowAddress: pending.escrowAddress, confirmedAt: Date.now() } : {}),
             },
           };
           if (pending) delete pendingCompletionsRef.current[rfqId];
           return [...prev, newCard];
         });
         setExecutingId(null);
-        // Bug 5 fix: trigger HTLC lock signing for Agent A via LightPeerContext
-        console.error("[HTLC-DEBUG] About to call initiateHtlcLock", { rfqId: p2p?.rfqId, hasInitiateHtlcLock: typeof initiateHtlcLock });
+        // Step 4: trigger HTLC lock signing via LightPeerContext — same as Solana
         if (p2p?.rfqId) {
           void initiateHtlcLock({
             rfqId:             p2p.rfqId,

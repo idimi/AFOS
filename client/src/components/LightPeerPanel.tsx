@@ -870,12 +870,57 @@ export default function LightPeerPanel() {
                 )}
               </div>
 
-              {peer.htlcSigning.txHash && (
-                <div className="rounded-lg px-3 py-2 mb-4" style={{ background: "var(--muted)" }}>
-                  <div className="text-[9px] text-slate-500 mb-0.5">Transaction Hash</div>
-                  <div className="text-[10px] font-mono text-emerald-400 break-all">{peer.htlcSigning.txHash}</div>
-                </div>
-              )}
+              {/* ── ON-CHAIN PROOF: structured links for all 5 tx types ── */}
+              {(peer.htlcSigning.txHash || peer.htlcSigning.counterpartyLockTxHash || peer.htlcSigning.claimTxHash || peer.htlcSigning.counterpartyClaimTxHash || peer.htlcSigning.htlcEscrowAddress) && (() => {
+                const fromChain = peer.htlcSigning.fromChain ?? "solana";
+                const toChain   = peer.htlcSigning.toChain   ?? "solana";
+                type ProofLink = { label: string; txId: string; chain: string; color: string; bg: string; border: string };
+                const proofLinks: ProofLink[] = [];
+                // 1. Agent B's own lock tx
+                if (peer.htlcSigning.txHash)
+                  proofLinks.push({ label: "Lock Tx", txId: peer.htlcSigning.txHash, chain: fromChain, color: "#06b6d4", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" });
+                // 2. Agent A's lock tx (counterparty lock = peer lock)
+                if (peer.htlcSigning.counterpartyLockTxHash)
+                  proofLinks.push({ label: "Peer Lock Tx", txId: peer.htlcSigning.counterpartyLockTxHash, chain: toChain, color: "#06b6d4", bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.2)" });
+                // 3. HTLC escrow address
+                if (peer.htlcSigning.htlcEscrowAddress)
+                  proofLinks.push({ label: "HTLC Escrow", txId: peer.htlcSigning.htlcEscrowAddress, chain: fromChain, color: "#a78bfa", bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.2)" });
+                // 4. Agent B's claim tx (Agent B claims Agent A's locked toToken)
+                if (peer.htlcSigning.claimTxHash)
+                  proofLinks.push({ label: `${peer.htlcSigning.toToken ?? "Token"} Claim Tx`, txId: peer.htlcSigning.claimTxHash, chain: toChain, color: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.25)" });
+                // 5. Agent A's claim tx (Agent A claims Agent B's locked fromToken)
+                if (peer.htlcSigning.counterpartyClaimTxHash)
+                  proofLinks.push({ label: `${peer.htlcSigning.fromToken ?? "Token"} Claim Tx`, txId: peer.htlcSigning.counterpartyClaimTxHash, chain: fromChain, color: "#34d399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.25)" });
+                if (proofLinks.length === 0) return null;
+                return (
+                  <div className="mb-4">
+                    <p className="text-[9px] font-semibold tracking-widest uppercase mb-1.5" style={{ color: "rgba(255,255,255,0.25)" }}>On-chain proof</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {proofLinks.map(({ label, txId, chain, color, bg, border }) => {
+                        const href = htlcExplorerUrl(chain, txId);
+                        return href ? (
+                          <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all hover:opacity-90 active:scale-95"
+                            style={{ background: bg, border: `1px solid ${border}`, color }}
+                          >
+                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            <span>{label}</span>
+                            <span className="font-mono opacity-60">{txId.slice(0, 7)}…</span>
+                          </a>
+                        ) : (
+                          <span key={label}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium"
+                            style={{ background: bg, border: `1px solid ${border}`, color }}
+                          >
+                            <span>{label}</span>
+                            <span className="font-mono opacity-60">{txId.slice(0, 7)}…</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {(peer.htlcSigning.step === "settled" || peer.htlcSigning.step === "locked" || peer.htlcSigning.step === "failed") && (
                 <button

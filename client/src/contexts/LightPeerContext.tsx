@@ -111,6 +111,7 @@ export interface HtlcSigningState {
   claimTxHash?: string;     // Tx hash of the claim (settlement)
   counterpartyLockTxHash?: string;  // Agent A's lock tx on their chain (seen by Agent B)
   counterpartyClaimTxHash?: string; // Agent A's claim tx (Agent A claims Agent B's funds)
+  htlcEscrowAddress?: string;       // HTLC escrow/PDA address
 }
 
 export interface LightPeerState {
@@ -575,13 +576,15 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             const txRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
             if (txRes.ok) {
               const txJson = await txRes.json();
-              const txData = (txJson as Array<{ result?: { data?: { json?: { revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+              const txData = (txJson as Array<{ result?: { data?: { json?: { revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
               agentBClaimTxId = agentBClaimTxId ?? txData?.revealTxId;
               agentAClaimTxId = agentAClaimTxId ?? txData?.counterpartyRevealTxId;
             }
           } catch { /* non-critical */ }
         }
-        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain, agentBClaimTxId, agentAClaimTxId } }));
+        const txDataFull = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" })
+          .then(r => r.json()).then((j: Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>) => j?.[0]?.result?.data?.json).catch(() => null);
+        window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, chain: fromChain, agentBClaimTxId, agentAClaimTxId, lockTxId: txDataFull?.lockTxId, counterpartyLockTxId: txDataFull?.counterpartyLockTxId, escrowAddress: txDataFull?.escrowAddress } }));
         // Clear retry counter on success
         delete revealRetryCountRef.current[rfqId];
         delete revealRetryTimersRef.current[rfqId];
@@ -619,7 +622,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
             });
             if (!pollRes.ok) return;
             const pollJson = await pollRes.json();
-            const pollData = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+            const pollData = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
             if (pollData?.status === "completed") {
               clearInterval(completionPollingRef.current[rfqId]);
               delete completionPollingRef.current[rfqId];
@@ -629,6 +632,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 chain: fromChain,
                 agentBClaimTxId: pollData.revealTxId,             // Agent A's SOL escrow → Agent B
                 agentAClaimTxId: pollData.counterpartyRevealTxId, // Agent B's USDT escrow → Agent A
+                lockTxId: pollData.lockTxId,
+                counterpartyLockTxId: pollData.counterpartyLockTxId,
+                escrowAddress: pollData.escrowAddress,
               } }));
             }
           } catch (pollErr) {
@@ -1069,7 +1075,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                 const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
                 if (!pollRes.ok) return;
                 const pollJson = await pollRes.json();
-                const pollData2 = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+                const pollData2 = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
                 if (pollData2?.status === "completed") {
                   clearInterval(completionPollingRef.current[rfqId]);
                   delete completionPollingRef.current[rfqId];
@@ -1078,6 +1084,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                     chain: fromChainLocal,
                     agentBClaimTxId: pollData2.revealTxId,
                     agentAClaimTxId: pollData2.counterpartyRevealTxId,
+                    lockTxId: pollData2.lockTxId,
+                    counterpartyLockTxId: pollData2.counterpartyLockTxId,
+                    escrowAddress: pollData2.escrowAddress,
                   } }));
                 }
               } catch { /* non-critical */ }
@@ -2277,7 +2286,7 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                           const pollRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
                           if (!pollRes.ok) return;
                           const pollJson = await pollRes.json();
-                          const pollDataB = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json;
+                          const pollDataB = (pollJson as Array<{ result?: { data?: { json?: { status?: string; revealTxId?: string; counterpartyRevealTxId?: string; lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string } } } }>)?.[0]?.result?.data?.json;
                           if (pollDataB?.status === "completed") {
                             clearInterval(completionPollingRef.current[rfqId]);
                             delete completionPollingRef.current[rfqId];
@@ -2286,6 +2295,9 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
                               chain: "solana",
                               agentBClaimTxId: pollDataB.revealTxId,
                               agentAClaimTxId: pollDataB.counterpartyRevealTxId,
+                              lockTxId: pollDataB.lockTxId,
+                              counterpartyLockTxId: pollDataB.counterpartyLockTxId,
+                              escrowAddress: pollDataB.escrowAddress,
                             } }));
                           }
                         } catch { /* non-critical */ }
@@ -2792,8 +2804,27 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           }).catch(() => {});
           setHtlcSigning(prev => prev ? { ...prev, step: "settled", claimTxHash: txHash } : prev);
           setClaimedRfqIds(prev => new Set(Array.from(prev).concat(rfqId)));
-          // Dispatch completion event so ChatPage can show success message with new balance
-          window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: { rfqId, txHash, chain: "solana" } }));
+          // Fetch all 5 proof fields from DB before dispatching completion event
+          void (async () => {
+            let proofData: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } | null = null;
+            try {
+              const proofRes = await fetch(`/api/trpc/chat.getHtlcSecretHash?batch=1&input=${encodeURIComponent(JSON.stringify({ "0": { json: { rfqId } } }))}`, { credentials: "include" });
+              if (proofRes.ok) {
+                const proofJson = await proofRes.json();
+                proofData = (proofJson as Array<{ result?: { data?: { json?: { lockTxId?: string; counterpartyLockTxId?: string; escrowAddress?: string; revealTxId?: string; counterpartyRevealTxId?: string } } } }>)?.[0]?.result?.data?.json ?? null;
+              }
+            } catch { /* non-critical */ }
+            window.dispatchEvent(new CustomEvent("afos:htlc-completed", { detail: {
+              rfqId,
+              txHash,
+              chain: "solana",
+              agentBClaimTxId: proofData?.revealTxId ?? txHash,
+              agentAClaimTxId: proofData?.counterpartyRevealTxId,
+              lockTxId: proofData?.lockTxId,
+              counterpartyLockTxId: proofData?.counterpartyLockTxId,
+              escrowAddress: proofData?.escrowAddress,
+            } }));
+          })();
         } else {
           // Demo mode: no program deployed — show the secret and instruct user
           toast.success("HTLC Secret Ready", {
@@ -3083,7 +3114,12 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const handler = (e: Event) => {
       const data = (e as CustomEvent).detail as {
-        rfqId?: string; agentBClaimTxId?: string; agentAClaimTxId?: string;
+        rfqId?: string;
+        agentBClaimTxId?: string;
+        agentAClaimTxId?: string;
+        lockTxId?: string;             // Agent A's lock tx
+        counterpartyLockTxId?: string; // Agent B's lock tx (peer lock)
+        escrowAddress?: string;        // HTLC escrow/PDA address
       };
       if (!data?.rfqId) return;
       setHtlcSigning(prev => {
@@ -3093,6 +3129,10 @@ export function LightPeerProvider({ children }: { children: ReactNode }) {
           // For Agent B (non-initiator): agentAClaimTxId is the counterparty's claim tx
           // For Agent A (initiator): agentBClaimTxId is the counterparty's claim tx
           counterpartyClaimTxHash: data.agentAClaimTxId ?? data.agentBClaimTxId ?? prev.counterpartyClaimTxHash,
+          // Populate all 5 proof fields
+          counterpartyLockTxHash: data.lockTxId ?? prev.counterpartyLockTxHash,
+          claimTxHash: data.agentBClaimTxId ?? data.agentAClaimTxId ?? prev.claimTxHash,
+          htlcEscrowAddress: data.escrowAddress ?? prev.htlcEscrowAddress,
         };
       });
     };
