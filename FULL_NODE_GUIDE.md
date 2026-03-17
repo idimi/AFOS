@@ -21,6 +21,17 @@ This guide explains how the AFOS P2P network is layered, what the difference is 
 - [Step 7 — Point Your AFOS Dashboard at Your Node](#step-7--point-your-afos-dashboard-at-your-node)
 - [Step 8 — Verify Connectivity](#step-8--verify-connectivity)
 - [Operating Your Node](#operating-your-node)
+- [TNK (Trac Network) Support](#tnk-trac-network-support)
+  - [What Makes TNK Different](#what-makes-tnk-different)
+  - [TNK Key Types](#tnk-key-types)
+  - [Step A — Generate TNK_HTLC_WIF (Escrow Wallet Key)](#step-a--generate-tnk_htlc_wif-escrow-wallet-key)
+  - [Step B — Derive Your trac1 Escrow Address](#step-b--derive-your-trac1-escrow-address)
+  - [Step C — Generate TNK_AGENT_KEY (Subnet Contract Signing Key)](#step-c--generate-tnk_agent_key-subnet-contract-signing-key)
+  - [Step D — Set Up the trac-peer Node](#step-d--set-up-the-trac-peer-node)
+  - [Step E — Configure AFOS Dashboard Secrets for TNK](#step-e--configure-afos-dashboard-secrets-for-tnk)
+  - [Step F — Fund the TNK Escrow Wallet](#step-f--fund-the-tnk-escrow-wallet)
+  - [TNK Fallback Mode (No trac-peer)](#tnk-fallback-mode-no-trac-peer)
+  - [Supported TNK Swap Pairs](#supported-tnk-swap-pairs)
 - [Security Considerations](#security-considerations)
 - [Troubleshooting](#troubleshooting)
 
@@ -404,13 +415,206 @@ If a swap stalled after the Lightning payment was made but before the Solana cla
 
 ---
 
+## TNK (Trac Network) Support
+
+TNK is the native token of [Trac Network](https://trac.network) — a Bitcoin meta-protocol that uses Bitcoin-compatible P2WPKH addressing (`trac1…` addresses) and Ed25519 signing for contract transactions. AFOS has deep, production-grade TNK integration covering all six bidirectional swap pairs (SOL↔TNK, USDT↔TNK, USDC↔TNK).
+
+TNK support is fully compatible with a self-hosted Full Node, but it requires one additional component — the **trac-peer node** — that the other chains do not need.
+
+### What Makes TNK Different
+
+Because Trac Network does not have native HTLC opcodes, AFOS uses an **agent-escrow model**: TNK is sent to a designated escrow address with a memo in the format `AFOS-HTLC:{secretHash}:{escrow}:{amount}:{expiry}`. The server monitors the Trac Network for incoming transfers to that address and matches them to pending HTLC rows in the database.
+
+The trac-peer node is a separate Node.js process that runs the AFOS HTLC subnet contract — a smart contract layer on top of the Trac Network that manages HTLC lock, claim, and refund state. The AFOS dashboard communicates with it via `TNK_PEER_RPC_URL` (default: `http://localhost:5001`). If the trac-peer is unreachable, the system automatically falls back to **legacy explorer mode** — polling `explorer.trac.network` directly — so TNK swaps still work, just with slightly slower lock detection.
+
+### TNK Key Types
+
+TNK requires three separate keys, each serving a distinct purpose:
+
+| Secret | Format | Purpose |
+|---|---|---|
+| `TNK_HTLC_WIF` | 64-byte hex (128 chars): `seed[32] + pubkey[32]` | Signs real on-chain TNK transfers via `tracapi.trac.network`. This is the escrow wallet that physically holds locked TNK. |
+| `TNK_ESCROW_ADDRESS` | `trac1…` address | The public address derived from `TNK_HTLC_WIF`. Users lock TNK to this address when initiating a swap. |
+| `TNK_AGENT_KEY` | Ed25519 PKCS8 DER hex (96 chars) or raw 64-byte hex (128 chars) | Signs trac-peer subnet contract transactions (HTLC lock/claim/refund commands on the subnet). Separate from the escrow wallet key. |
+| `TNK_HTLC_CONTRACT_ADDRESS` | `trac1…` address | The address of the AFOS HTLC contract deployed on the trac-peer subnet. |
+| `TNK_PEER_RPC_URL` | URL | Base URL of your trac-peer node (e.g. `http://localhost:5001`). Optional — falls back to explorer mode if not set. |
+
+### Step A — Generate TNK_HTLC_WIF (Escrow Wallet Key)
+
+`TNK_HTLC_WIF` is a 64-byte Ed25519 keypair in raw hex format (`seed[32] + pubkey[32]`, 128 hex characters total). Generate it with Node.js:
+
+```bash
+node -e "
+const { generateKeyPairSync } = require('crypto');
+const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+// Export as raw 64-byte hex: seed[32] + pubkey[32]
+const privDer = privateKey.export({ format: 'der', type: 'pkcs8' });
+const seed = privDer.slice(-32);   // last 32 bytes of PKCS8 DER = seed
+const pubDer = publicKey.export({ format: 'der', type: 'spki' });
+const pub = pubDer.slice(-32);     // last 32 bytes of SPKI DER = pubkey
+console.log('TNK_HTLC_WIF=' + Buffer.concat([seed, pub]).toString('hex'));
+"
+```
+
+Save the output securely. This is the private key for the TNK escrow wallet — **anyone who has this key can spend all TNK held in the escrow address**.
+
+> **Alternative:** If you already have a trac-peer node running, you can export the existing agent key from `onchain/trac-peer/keypair.json` and use that as `TNK_HTLC_WIF`. The format is the same 64-byte hex.
+
+### Step B — Derive Your trac1 Escrow Address
+
+The `TNK_ESCROW_ADDRESS` is derived from `TNK_HTLC_WIF` using Bitcoin-compatible P2WPKH addressing (Trac Network uses the same address format as Bitcoin bech32). Derive it with Node.js:
+
+```bash
+node -e "
+const bitcoin = require('bitcoinjs-lib');
+const { ECPair } = require('ecpair');
+const ecc = require('tiny-secp256k1');
+
+// Replace with your TNK_HTLC_WIF value
+const wifHex = process.env.TNK_HTLC_WIF;
+const keyBytes = Buffer.from(wifHex, 'hex');
+// The first 32 bytes are the Ed25519 seed — use as secp256k1 private key for address derivation
+const keyPair = ECPair.fromPrivateKey(keyBytes.slice(0, 32), { compressed: true });
+const { address } = bitcoin.payments.p2wpkh({ pubkey: Buffer.from(keyPair.publicKey) });
+console.log('TNK_ESCROW_ADDRESS=' + address);
+"
+```
+
+First install the required packages if not already present:
+
+```bash
+npm install bitcoinjs-lib ecpair tiny-secp256k1
+```
+
+The derived `trac1…` address is your `TNK_ESCROW_ADDRESS`. This is the address you will fund with TNK inventory and the address that users lock TNK to when swapping.
+
+### Step C — Generate TNK_AGENT_KEY (Subnet Contract Signing Key)
+
+`TNK_AGENT_KEY` is used to sign trac-peer subnet contract transactions (HTLC lock/claim/refund). It is a separate key from the escrow wallet key. Generate it with Node.js:
+
+```bash
+node -e "
+const { generateKeyPairSync } = require('crypto');
+const { privateKey } = generateKeyPairSync('ed25519');
+// Export as PKCS8 DER hex (96 hex chars = 48 bytes)
+const der = privateKey.export({ format: 'der', type: 'pkcs8' });
+console.log('TNK_AGENT_KEY=' + der.toString('hex'));
+"
+```
+
+The AFOS server accepts two formats for `TNK_AGENT_KEY`:
+
+- **PKCS8 DER hex** (96 chars = 48 bytes) — generated by the command above, the recommended format.
+- **Raw 64-byte hex** (128 chars) — the native trac-peer / Solana format (`seed[32] + pubkey[32]`), compatible with keys exported from a trac-peer node.
+
+### Step D — Set Up the trac-peer Node
+
+The trac-peer node is the AFOS HTLC subnet runtime. It is a separate Node.js service that must run alongside your AFOS dashboard server.
+
+**Clone and install:**
+
+```bash
+# The trac-peer node is part of the AFOS server infrastructure
+# Clone the AFOS repo if you have not already
+git clone https://github.com/idimi/AFOS.git
+cd AFOS
+npm install
+```
+
+**Start the trac-peer node:**
+
+```bash
+# The trac-peer node is started as part of the AFOS server
+# Set TNK_PEER_RPC_URL to point to it (default: http://localhost:5001)
+export TNK_PEER_RPC_URL=http://localhost:5001
+export TNK_AGENT_KEY=<your_96_char_hex_key>
+export TNK_HTLC_CONTRACT_ADDRESS=<contract_address>
+
+# Start the trac-peer subnet node
+node server/jobs/tnkHtlcMonitor.js
+```
+
+> **Note:** The `TNK_HTLC_CONTRACT_ADDRESS` is the address of the AFOS HTLC contract deployed on the Trac Network subnet. Contact the AFOS team or check the [Trac Network explorer](https://explorer.trac.network) for the current deployed contract address. If you are running a private subnet for testing, you can deploy your own contract using the trac-peer contract tooling.
+
+**Verify the trac-peer node is healthy:**
+
+```bash
+curl http://localhost:5001/v1/health
+# Expected: { "ok": true }
+```
+
+In the AFOS dashboard, navigate to **Admin Panel → Node Health**. The "TNK HTLC Subnet" row should show green with the current block height.
+
+### Step E — Configure AFOS Dashboard Secrets for TNK
+
+In the AFOS dashboard, navigate to **Admin Panel → Operator Config** (or set these as environment secrets in your deployment) and add the following:
+
+```env
+TNK_HTLC_WIF=<your_128_char_hex_key>
+TNK_ESCROW_ADDRESS=<your_trac1_address>
+TNK_AGENT_KEY=<your_96_char_hex_key>
+TNK_HTLC_CONTRACT_ADDRESS=<contract_trac1_address>
+TNK_PEER_RPC_URL=http://localhost:5001
+VITE_TNK_ESCROW_ADDRESS=<your_trac1_address>
+```
+
+`VITE_TNK_ESCROW_ADDRESS` is the frontend-visible version of the escrow address — it is shown in the Swap UI so users know where to lock TNK. It should be the same value as `TNK_ESCROW_ADDRESS`.
+
+### Step F — Fund the TNK Escrow Wallet
+
+Before your node can act as a maker in SOL→TNK swaps, the escrow wallet must hold TNK inventory.
+
+```bash
+# Check your escrow wallet balance
+curl https://tracapi.trac.network/v1/balance/<your_trac1_address>
+# Response: { "address": "trac1...", "balance": 0 }
+```
+
+Transfer TNK to your `TNK_ESCROW_ADDRESS` from any Trac Network wallet (e.g. Tap Wallet). The escrow wallet also needs a small buffer of TNK to cover the **0.03 TNK network fee** charged per on-chain transfer. A minimum balance of `(expected_inventory) + 1 TNK` is recommended to ensure the fee buffer never runs dry.
+
+**Fee structure for TNK swaps:**
+
+| Fee | Amount | Who pays | When |
+|---|---|---|---|
+| Platform fee | 0.15% of output amount | Deducted from user's received amount | Every swap |
+| Trac Network transfer fee | 0.03 TNK flat | Charged to user via reduced output | Every on-chain TNK transfer |
+| Gas (SOL side) | ~0.000005 SOL | Agent pays from `SOL_HTLC_KEY` | Every Solana HTLC claim |
+
+### TNK Fallback Mode (No trac-peer)
+
+If `TNK_PEER_RPC_URL` is not set or the trac-peer node is unreachable, the AFOS server automatically switches to **legacy explorer mode**. In this mode:
+
+- The TNK HTLC monitor polls `explorer.trac.network` every 60 seconds instead of querying the subnet.
+- Lock detection is slower (up to 60 seconds vs. near-instant with the subnet).
+- Subnet contract state (HTLC lock/claim/refund) is not available — the monitor relies on the public explorer API and the local database.
+- Refunds in legacy mode use a simplified path that may require manual intervention for edge cases.
+
+For production use, running the trac-peer node is strongly recommended. For testing or low-volume deployments, legacy explorer mode is sufficient.
+
+### Supported TNK Swap Pairs
+
+Once your node is configured and funded, the following swap pairs are available through the AFOS Chat and Swap interfaces:
+
+| From | To | Route | Settlement |
+|---|---|---|---|
+| SOL | TNK | Agent locks TNK first → user signs Solana lock → Helius webhook settles | ~30–60 seconds |
+| USDT (Solana) | TNK | Same as SOL→TNK | ~30–60 seconds |
+| USDC (Solana) | TNK | Same as SOL→TNK | ~30–60 seconds |
+| TNK | SOL | Agent locks SOL first → user signs TNK lock via Tap Wallet → TNK monitor settles | ~1–5 minutes |
+| TNK | USDT (Solana) | Same as TNK→SOL | ~1–5 minutes |
+| TNK | USDC (Solana) | Same as TNK→SOL | ~1–5 minutes |
+
+TNK↔ETH and TNK↔BTC pairs are routed through the Oracle VM P2P network (Hyperswarm DHT) and require a counterparty peer advertising those pairs. They do not require additional configuration beyond the keys above.
+
+---
+
 ## Security Considerations
 
 Running a Full Node means holding private keys on a server. The following practices are strongly recommended:
 
 - **Dedicated server** — do not run the node on a machine used for general browsing or development.
 - **Firewall** — expose only the ports you need. The Oracle VM API port (default `9334`) should be accessible only from your AFOS dashboard server, not the public internet.
-- **Key separation** — use dedicated keypairs for the node agent (`SOL_HTLC_KEY`, `ETH_HTLC_KEY`, `BTC_HTLC_WIF`) that are separate from your personal wallets. Fund them with only the inventory you intend to trade.
+- **Key separation** — use dedicated keypairs for the node agent (`SOL_HTLC_KEY`, `ETH_HTLC_KEY`, `BTC_HTLC_WIF`, `TNK_HTLC_WIF`, `TNK_AGENT_KEY`) that are separate from your personal wallets. Fund them with only the inventory you intend to trade.
 - **Trade size limits** — configure `maxTradeUsd` in your node's offer announcements to cap the maximum exposure per trade.
 - **Timelock parameters** — the HTLC timelock (default 24 hours on Solana, 48 hours on Bitcoin) is your safety net. If a counterparty disappears, your funds are automatically refunded after the timelock expires. Do not reduce the timelock below safe values.
 - **Backup** — back up `onchain/` (excluding the `node_modules` and build artifacts) regularly. This directory contains your peer store, keypairs, receipts database, and LN wallet data. Loss of this directory means loss of access to any funds locked in open HTLCs.
@@ -429,6 +633,11 @@ Running a Full Node means holding private keys on a server. The following practi
 | `spawn lncli ENOENT` | LND CLI not in PATH or `ln.impl` not set | Set `ln.cli_bin` in `setup.json` or add `lncli` to PATH |
 | Peer store locked / already running | Previous peer process did not exit cleanly | Run `./scripts/peermgr.sh stop --name mainnet-maker` and restart |
 | Solana claim fails with `insufficient funds` | SOL balance too low for transaction fees | Top up the agent wallet with SOL (0.01 SOL per claim is sufficient) |
+| TNK HTLC Subnet shows "offline" in Node Health | `TNK_PEER_RPC_URL` not set or trac-peer node not running | Start the trac-peer node; the system will fall back to legacy explorer mode automatically |
+| TNK swap stuck in "pending" for >10 minutes | trac-peer unreachable and explorer fallback missed the lock | Check `TNK_ESCROW_ADDRESS` is correct; verify the transfer appears on `explorer.trac.network` |
+| `TNK_HTLC_WIF not set or invalid length` error | Key is not 128 hex chars | Re-generate using the Node.js command in Step A; ensure no spaces or newlines |
+| `TNK_HTLC_WIF derives address X but expected Y` | `TNK_ESCROW_ADDRESS` does not match the key | Re-derive the address using the Node.js command in Step B and update `TNK_ESCROW_ADDRESS` |
+| TNK claim succeeds but on-chain transfer fails | Escrow wallet balance too low (needs amount + 0.03 TNK fee) | Top up the escrow wallet; the monitor will retry the transfer automatically |
 
 ---
 
@@ -439,6 +648,9 @@ Running a Full Node means holding private keys on a server. The following practi
 - [Hyperswarm](https://github.com/hyperswarm/hyperswarm) — the DHT peer discovery library.
 - [LND Neutrino Guide](https://docs.lightning.engineering/lightning-network-tools/lnd/enable-neutrino-mode-in-bitcoin-core) — running a Lightning node without a full Bitcoin node.
 - [Helius Webhooks](https://docs.helius.dev/webhooks-and-websockets/what-are-webhooks) — real-time Solana HTLC event notifications used by the AFOS dashboard.
+- [Trac Network Explorer](https://explorer.trac.network) — block explorer for the Trac Network; used by the TNK HTLC legacy fallback mode.
+- [Trac Network API](https://tracapi.trac.network/v1/confirmed-length) — public REST API for balance queries and transaction broadcasting on Trac Network.
+- [Trac Systems GitHub](https://github.com/Trac-Systems) — upstream repositories for the Trac Network protocol and tooling.
 
 ---
 
