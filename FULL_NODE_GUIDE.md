@@ -641,6 +641,46 @@ Running a Full Node means holding private keys on a server. The following practi
 
 ---
 
+## Balance Display Precision Convention
+
+The AFOS dashboard uses the following decimal precision convention for all wallet balance displays:
+
+| Asset type | Display precision | Example |
+|---|---|---|
+| BTC, TNK | 8 decimal places | `2.00000000 BTC` |
+| ETH, SOL | 6 decimal places | `1.183214 SOL` |
+| USDT, USDC (stablecoins) | 2 decimal places | `100.00 USDT` |
+
+This convention is applied consistently across the **HTLC Escrow Wallet** panel, the **Oracle VM Hot Wallet** panel, and all client-side balance fallbacks.
+
+### Known Issue: Oracle VM TNK Balance Float Truncation
+
+The Oracle VM (`/api/wallet` endpoint) serialises the TNK balance as a JavaScript `Number` (64-bit float). Because TNK uses 18 decimal places internally (raw units = human-readable × 10^18), the float representation loses 8 significant digits of precision:
+
+```
+Raw value:         2000000000000000000  (2 TNK × 10^18)
+Oracle VM sends:   "20000000000.00000000"  (float truncation — 8 digits lost)
+Correct display:   "2.00000000 TNK"
+```
+
+The AFOS dashboard server-side proxy (`server/_core/index.ts`) intercepts `/api/afos/api/wallet` responses and normalises TNK balances by dividing by `1e10` before forwarding to the client. This fix is transparent — it works regardless of whether the Oracle VM is updated.
+
+**If you run your own Oracle VM node**, you can fix this at the source by serialising the TNK balance as a full integer string:
+
+```js
+// ❌ Wrong — float truncation
+balance: tracBalance / 1e18
+
+// ✅ Correct — full precision string
+balance: (BigInt(rawBalance) * 100000000n / BigInt(1e18)).toString() + '.' +
+         String(Number(BigInt(rawBalance) % BigInt(1e10))).padStart(8, '0')
+
+// Or simpler — return the raw BigInt string and let the client divide:
+balance_raw: rawBalance.toString()  // e.g. "2000000000000000000"
+```
+
+---
+
 ## Further Reading
 
 - [IntercomSwap Repository](https://github.com/TracSystems/intercom-swap) — the upstream Full Node runtime, including `SKILL.md` as the canonical installer/runbook.
