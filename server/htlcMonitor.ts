@@ -23,6 +23,7 @@ import { htlcSwaps, swapAnalytics } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import type { SupportedChain } from "@shared/const";
 import { refundSolanaHtlc } from "./solanaHtlcRefund";
+import { refundEthHtlc } from "./ethHtlcRefund";
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // Helius webhooks handle real-time HTLC events (claim/refund/lock).
@@ -139,14 +140,21 @@ async function triggerEthRefund(htlc: typeof htlcSwaps.$inferSelect): Promise<st
     console.log(`[HTLC Monitor] [ETH] HTLC ${htlc.htlcAddress} expired. No ETH_HTLC_KEY — user must claim manually.`);
     return null;
   }
-  // Server has the key — TODO: implement real on-chain ETH refund tx.
-  // Return null until real tx submission is implemented to avoid false DB updates.
+  // Server has the key — call refundEthHtlc() to submit the on-chain refund tx.
+  const contractId = htlc.htlcId ?? htlc.htlcAddress;
+  const label = `monitor_refund_${htlc.htlcAddress.slice(0, 12)}`;
   console.log(
     `[HTLC Monitor] [ETH] Block timeout reached for HTLC contract ${htlc.htlcAddress}. ` +
-    `Server key available but on-chain refund not yet implemented in monitor. ` +
-    `SecretHash: ${htlc.secretHash.slice(0, 16)}…`
+    `Submitting on-chain refund… contractId=${contractId.slice(0, 16)}…`
   );
-  return null;
+  const result = await refundEthHtlc(contractId, label);
+  if (result.ok) {
+    console.log(`[HTLC Monitor] [ETH] ✅ Refund confirmed: ${result.txHash} | gasUsed=${result.gasUsed}`);
+    return result.txHash;
+  } else {
+    console.error(`[HTLC Monitor] [ETH] ❌ Refund failed: ${result.error}`);
+    return null;
+  }
 }
 
 /**

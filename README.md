@@ -19,10 +19,11 @@
 9. [Background Jobs](#background-jobs)
 10. [Fee Model](#fee-model)
 11. [Admin Panel](#admin-panel)
-12. [Environment Variables](#environment-variables)
-13. [Development Setup](#development-setup)
-14. [Testing](#testing)
-15. [Acknowledgements](#acknowledgements)
+12. [Key Architecture](#key-architecture)
+13. [Environment Variables](#environment-variables)
+14. [Development Setup](#development-setup)
+15. [Testing](#testing)
+16. [Acknowledgements](#acknowledgements)
 
 ---
 
@@ -356,6 +357,112 @@ The Admin Panel (`/admin`) is accessible only to users with `role = 'admin'` in 
 - **HTLC Recovery** — view stuck swaps (locked but not settled after 30+ minutes), force-claim individual swaps using the server's agent keypairs, or trigger bulk refunds for expired HTLCs.
 - **Webhook** — live Helius webhook health card showing the registered webhook ID, URL, last event timestamp, total events received, total claims triggered, and a settlement source breakdown (Webhook / Browser / Monitor / Admin percentages). Refreshes every 30 seconds.
 - **Audit Log** — read-only view of all admin configuration changes with timestamps and before/after values.
+
+---
+
+## Key Architecture
+
+AFOS uses **two separate wallet roles per chain**. Understanding this distinction is essential before generating keys, funding wallets, or diagnosing issues. The two roles are independent by design: they use different private keys, hold different funds, and serve completely different purposes in the swap lifecycle.
+
+At a high level, every chain has:
+
+- An **Agent Wallet** — the trading identity of the Oracle VM. It negotiates trades, collects spread fees, and signs DEX aggregator transactions. It is the wallet that earns revenue.
+- An **HTLC Escrow Wallet** — the cryptographic lockbox. It holds the swap inventory and signs every lock, claim, and refund transaction on-chain. It is the wallet that users interact with indirectly when a swap executes.
+
+These two wallets can share the same private key (the simplest setup for development) or use separate keys (the recommended setup for production). The code always prefers the dedicated `_HTLC_KEY` if it is set, and falls back to the `_AGENT_KEY` if it is not.
+
+---
+
+### Role 1 — The Agent Wallet (Trading Peer)
+
+The Agent Wallet is the **identity and fee-collection wallet** of the Oracle VM. It plays the role of the autonomous counterparty in every swap: it receives RFQs from users, quotes prices with a spread, agrees to trades, and retains the platform fee from each completed swap. Over time, this wallet accumulates revenue from every swap the Oracle VM participates in.
+
+The Agent Wallet **never holds swap inventory during a live trade**. It is not the wallet that users send funds to, and it does not lock funds into HTLC contracts. Its on-chain activity is limited to: claiming the spread fee after a swap settles, signing 0x Protocol DEX swap transactions on Ethereum, and acting as the fallback HTLC signer when no dedicated `_HTLC_KEY` is configured.
+
+| Chain | Variable | Format | Primary Uses |
+|---|---|---|---|
+| Solana | `SOL_AGENT_KEY` | Base58-encoded keypair | Fee collection address; Jupiter referral account; fallback HTLC signer if `SOL_HTLC_KEY` is absent |
+| Ethereum | `ETH_AGENT_KEY` | 32-byte hex private key | Fee collection address; 0x Protocol swap signing; fallback HTLC signer if `ETH_HTLC_KEY` is absent |
+| Bitcoin | `BTC_AGENT_WIF` | WIF-encoded private key | Fee collection address; fallback HTLC signer if `BTC_HTLC_WIF` is absent |
+| Trac Network | `TNK_AGENT_KEY` | Ed25519 PKCS8 DER hex (96 chars) or raw 64-byte hex (128 chars) | Signs trac-peer subnet contract transactions (HTLC lock/claim/refund commands on the TNK subnet layer) |
+
+**What accumulates in the Agent Wallet:** After every completed IntercomSwap P2P swap, the platform fee (15 bps by default) is deducted from the user's output amount and remains in the Agent Wallet. For Jupiter and 0x routes, fees are collected via their respective referral mechanisms into `SOL_FEE_WALLET` / `ETH_FEE_WALLET` if those variables are set — otherwise they fall back to the Agent Wallet address. The Admin Panel's **Fee Collection Wallet** panel shows live balances for all Agent Wallet addresses.
+
+**Security posture:** If the Agent Wallet key is compromised, an attacker can drain the accumulated fee revenue. They cannot, however, steal swap inventory or interfere with in-progress HTLCs — those are controlled entirely by the HTLC Escrow Wallet. This is the primary reason the two roles should use separate keys in production.
+
+---
+
+### Role 2 — The HTLC Escrow Wallet (Atomic Swap Lockbox)
+
+The HTLC Escrow Wallet is the **cryptographic lockbox** for atomic swaps. It holds the swap inventory — the actual tokens the Oracle VM offers to traders — and signs every HTLC lock, claim, and refund transaction on-chain. When a user initiates a swap, the Oracle VM locks its side of the trade from this wallet into an HTLC contract. When the user reveals the secret, this wallet claims the user's locked funds. If the timelock expires without a claim, this wallet submits the refund.
+
+The HTLC Escrow Wallet **does not negotiate, quote prices, or collect fees**. Its entire purpose is to execute the atomic swap state machine: lock → claim (if the secret is revealed in time) → refund (if the timelock expires).
+
+| Chain | Variable | Format | Primary Uses |
+|---|---|---|---|
+| Solana | `SOL_HTLC_KEY` | Base58-encoded keypair | Signs `lockToken`, `claim`, and `refund` instructions on the AFOS Solana HTLC program (`XuryiXM1GBQVbFr9m2i4LhrtSbcaUARCDxQvF66ZWRW`) |
+| Ethereum | `ETH_HTLC_KEY` | 32-byte hex private key | Signs EVM HTLC contract `lock`, `claim`, and `refund` calls via `ethers.js` |
+| Bitcoin | `BTC_HTLC_WIF` | WIF-encoded private key | Constructs and signs P2WSH HTLC PSBTs for the lock and refund paths via `bitcoinjs-lib` |
+| Trac Network | `TNK_HTLC_WIF` | 64-byte raw hex: `seed[32] + pubkey[32]` (128 hex chars total) | Signs on-chain TNK transfers to and from the escrow address via `tracapi.trac.network` |
+
+**What the HTLC Escrow Wallet holds:** The swap inventory — the tokens the Oracle VM is willing to sell. For example, if the Oracle VM offers SOL→USDT swaps, the Solana HTLC Escrow Wallet must hold sufficient USDT to lock into the HTLC contract when a trade is agreed. The Admin Panel's **HTLC Escrow Wallet** panel shows live balances for all eight escrow addresses across the four chains, and provides a **Copy All Addresses** button to copy every address in a formatted list.
+
+**Security posture:** If the HTLC Escrow Wallet key is compromised, an attacker can drain the swap inventory. They cannot, however, access the fee revenue accumulated in the Agent Wallet. This is the second reason key separation matters in production.
+
+---
+
+### The TNK Exception — Three Keys, Not Two
+
+Trac Network requires three separate keys because its HTLC model differs from the other chains. Trac Network does not have native HTLC opcodes, so AFOS implements an **agent-escrow model**: TNK is sent to a designated escrow address with a structured memo (`AFOS-HTLC:{secretHash}:{escrow}:{amount}:{expiry}`). The server monitors incoming transfers to that address and matches them to pending HTLC rows in the database. This architecture requires:
+
+| Variable | Role |
+|---|---|
+| `TNK_HTLC_WIF` | The on-chain escrow wallet. Signs real TNK transfers via `tracapi.trac.network`. This is the address users send TNK to when initiating a swap. Anyone who holds this key can spend all TNK in the escrow. |
+| `TNK_ESCROW_ADDRESS` | The public `trac1…` address derived from `TNK_HTLC_WIF`. Stored as a separate env var so the server can verify incoming transfers without re-deriving the address on every request. It must match the address derived from `TNK_HTLC_WIF` exactly. |
+| `TNK_AGENT_KEY` | Signs trac-peer subnet contract transactions (the off-chain coordination layer for HTLC lock/claim/refund commands on the TNK subnet). This is a separate key from the escrow wallet — it does not hold TNK directly. |
+
+See [FULL_NODE_GUIDE.md](./FULL_NODE_GUIDE.md) for step-by-step generation instructions for all three TNK keys, including the Node.js commands to derive `TNK_ESCROW_ADDRESS` from `TNK_HTLC_WIF`.
+
+---
+
+### Fallback Behaviour and the Single-Key Setup
+
+If a dedicated `_HTLC_KEY` variable is not set, the server automatically falls back to the corresponding `_AGENT_KEY`:
+
+```
+ETH_HTLC_KEY  →  falls back to  ETH_AGENT_KEY
+SOL_HTLC_KEY  →  falls back to  SOL_AGENT_KEY
+BTC_HTLC_WIF  →  falls back to  BTC_AGENT_WIF
+```
+
+This means you can run AFOS with **just one key per chain** and everything will work — the same key handles both fee collection and HTLC signing. This is the simplest setup for development and local testing.
+
+For production, using separate keys is strongly recommended:
+
+| Setup | Pros | Cons |
+|---|---|---|
+| **Single key per chain** (only `_AGENT_KEY` set) | Simple — one key to generate, fund, and back up per chain | A single compromise exposes both fee revenue and swap inventory simultaneously |
+| **Separate keys per chain** (both `_AGENT_KEY` and `_HTLC_KEY` set) | Blast radius is contained — a compromised escrow key cannot drain fees, and vice versa | Two keys to generate, fund, and back up per chain |
+
+---
+
+### Complete Key Reference
+
+The following table lists every private key used by AFOS, its role, and where its balance is visible in the Admin Panel.
+
+| Variable | Chain | Role | Admin Panel Location |
+|---|---|---|---|
+| `SOL_AGENT_KEY` | Solana | Agent Wallet — fee collection, Jupiter referral | **Fee Collection Wallet** → Solana row |
+| `SOL_HTLC_KEY` | Solana | HTLC Escrow — signs lock/claim/refund on the AFOS Solana HTLC program | **HTLC Escrow Wallet** → SOL / USDT-SOL / USDC-SOL rows |
+| `ETH_AGENT_KEY` | Ethereum | Agent Wallet — fee collection, 0x swap signing | **Fee Collection Wallet** → Ethereum row |
+| `ETH_HTLC_KEY` | Ethereum | HTLC Escrow — signs EVM HTLC contract calls via `ethers.js` | **HTLC Escrow Wallet** → ETH / USDT-ETH / USDC-ETH rows |
+| `BTC_AGENT_WIF` | Bitcoin | Agent Wallet — fee collection | **Fee Collection Wallet** → Bitcoin row |
+| `BTC_HTLC_WIF` | Bitcoin | HTLC Escrow — signs P2WSH HTLC PSBTs via `bitcoinjs-lib` | **HTLC Escrow Wallet** → BTC row |
+| `TNK_AGENT_KEY` | Trac Network | Subnet contract signing (trac-peer coordination layer) | **Fee Collection Wallet** → TNK row |
+| `TNK_HTLC_WIF` | Trac Network | HTLC Escrow — signs on-chain TNK transfers via `tracapi.trac.network` | **HTLC Escrow Wallet** → TNK row |
+| `TNK_ESCROW_ADDRESS` | Trac Network | Public address derived from `TNK_HTLC_WIF` — users send TNK here to initiate a swap | Displayed in Swap UI and HTLC Escrow panel |
+
+> **Note on `SOL_HTLC_KEY`, `ETH_HTLC_KEY`, and `BTC_HTLC_WIF`:** These are marked **Recommended** in the Environment Variables table below because the server will fall back to the `_AGENT_KEY` equivalents if they are absent. In production, treat them as **Required** — running without key separation means a single compromised key can drain both fee revenue and swap inventory simultaneously.
 
 ---
 

@@ -37,6 +37,7 @@ import { DEFAULT_USER_SETTINGS } from "../../drizzle/schema";
 import { getSignalingPeerList, sendToPeer, broadcastRfqToAll, getActiveRfqs, removeActiveRfq, storePeerInboxRfq, drainPeerInbox } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
 import { claimTnkHtlc } from "../tnkHtlcClaim";
+import { claimEthHtlc, isEthHtlcAlreadyClaimed } from "../ethHtlcClaim";
 import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 import { initiateSolToTnkSwap } from "../agentSwapSolToTnk";
@@ -3013,6 +3014,19 @@ export const chatRouter = router({
               } else {
                 console.error(`[AgentBWebhook] ❌ Claim A (TNK) failed rfqId=${rfqId.slice(0,12)}: ${claimA.error}`);
               }
+            } else if (fromChainVal === "ethereum") {
+              // Agent A locked ETH/ERC-20 — claim via HTLC.sol redeem()
+              const claimA = await claimEthHtlc({
+                contractId: htlcIdA,
+                secretHex:  row.secretHex,
+                label:      `claimA_${rfqId.slice(0, 12)}`,
+              });
+              if (claimA.ok) {
+                claimATxId = claimA.txHash;
+                console.log(`[AgentBWebhook] ✅ Claim A: ${fromTokenSym} (ETH) → Agent B: ${claimATxId}`);
+              } else {
+                console.error(`[AgentBWebhook] ❌ Claim A (ETH) failed rfqId=${rfqId.slice(0,12)}: ${claimA.error}`);
+              }
             } else {
               const claimA = await claimSolanaHtlc({
                 htlcId:           htlcIdA,
@@ -3024,7 +3038,7 @@ export const chatRouter = router({
               console.log(`[AgentBWebhook] ✅ Claim A: ${fromTokenSym} → Agent B: ${claimATxId}`);
             }
           } catch (errA) {
-            if (isAlreadyClaimed(errA)) {
+            if (isAlreadyClaimed(errA) || isEthHtlcAlreadyClaimed(errA)) {
               claimAAlreadyDone = true;
               console.log(`[AgentBWebhook] Claim A already on-chain rfqId=${rfqId.slice(0,12)}`);
             } else {
@@ -3047,6 +3061,19 @@ export const chatRouter = router({
               } else {
                 console.error(`[AgentBWebhook] ❌ Claim B (TNK) failed rfqId=${rfqId.slice(0,12)}: ${claimB.error}`);
               }
+            } else if (toChainVal === "ethereum") {
+              // Agent B locked ETH/ERC-20 — claim via HTLC.sol redeem()
+              const claimB = await claimEthHtlc({
+                contractId: htlcIdB,
+                secretHex:  row.secretHex,
+                label:      `claimB_${rfqId.slice(0, 12)}`,
+              });
+              if (claimB.ok) {
+                claimBTxId = claimB.txHash;
+                console.log(`[AgentBWebhook] ✅ Claim B: ${toTokenSym} (ETH) → Agent A: ${claimBTxId}`);
+              } else {
+                console.error(`[AgentBWebhook] ❌ Claim B (ETH) failed rfqId=${rfqId.slice(0,12)}: ${claimB.error}`);
+              }
             } else {
               const claimB = await claimSolanaHtlc({
                 htlcId:           htlcIdB,
@@ -3058,7 +3085,7 @@ export const chatRouter = router({
               console.log(`[AgentBWebhook] ✅ Claim B: ${toTokenSym} → Agent A: ${claimBTxId}`);
             }
           } catch (errB) {
-            if (isAlreadyClaimed(errB)) {
+            if (isAlreadyClaimed(errB) || isEthHtlcAlreadyClaimed(errB)) {
               claimBAlreadyDone = true;
               console.log(`[AgentBWebhook] Claim B already on-chain rfqId=${rfqId.slice(0,12)}`);
             } else {
@@ -3084,8 +3111,24 @@ export const chatRouter = router({
           } else {
             console.error(`[AgentBWebhook] 🚫 TNK claim failed — NOT releasing Solana funds for rfqId=${rfqId.slice(0,12)}. Monitor will retry.`);
           }
+        } else if (fromChainVal === "ethereum" && toChainVal !== "ethereum") {
+          // ETH→SOL/TNK: claim ETH first (Claim A), then release destination chain (Claim B)
+          await doClaimA();
+          if (claimATxId || claimAAlreadyDone) {
+            await doClaimB();
+          } else {
+            console.error(`[AgentBWebhook] 🚫 ETH claim failed — NOT releasing destination funds for rfqId=${rfqId.slice(0,12)}. Monitor will retry.`);
+          }
+        } else if (toChainVal === "ethereum" && fromChainVal !== "ethereum") {
+          // SOL/TNK→ETH: claim ETH first (Claim B), then release source chain (Claim A)
+          await doClaimB();
+          if (claimBTxId || claimBAlreadyDone) {
+            await doClaimA();
+          } else {
+            console.error(`[AgentBWebhook] 🚫 ETH claim failed — NOT releasing source funds for rfqId=${rfqId.slice(0,12)}. Monitor will retry.`);
+          }
         } else {
-          // Both Solana — independent claims (contract-level atomicity)
+          // Both Solana or both Ethereum — independent claims (contract-level atomicity)
           await doClaimA();
           await doClaimB();
         }
