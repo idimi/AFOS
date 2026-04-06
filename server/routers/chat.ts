@@ -42,6 +42,8 @@ import { notifyOwner } from "../_core/notification";
 import { getOwnerNotifyPrefs } from "../jobs/ownerNotifyPrefs";
 import { initiateSolToTnkSwap } from "../agentSwapSolToTnk";
 import { initiateTnkToSolSwap } from "../agentSwapTnkToSol";
+import { initiateTnkToEthSwap } from "../agentSwapTnkToEth";
+import { initiateEthToTnkSwap } from "../agentSwapEthToTnk";
 
 // ─── Token / chain config ──────────────────────────────────────────────────────
 
@@ -1465,6 +1467,121 @@ export const chatRouter = router({
           nextStep:            result2.nextStep,
         };
       }
+      // ── Step 3c: ETH/USDT(ETH)/USDC(ETH) → TNK direct agent swap ─────────────
+      // When the source is ethereum and destination is trac_network, the AFOS agent
+      // locks TNK on Trac Network first, then returns an ETH HTLC lock tx for the user.
+      if (fromChain === "ethereum" && toChain === "trac_network") {
+        if (!fromToken || !amount) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "fromToken and amount are required for ETH → TNK swaps.",
+          });
+        }
+        if (!recipientAddress) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "recipientAddress (your Trac Network address) is required for ETH → TNK swaps.",
+          });
+        }
+        const quoteRespEthTnk = quoteResponse as Record<string, unknown> | null;
+        const tnkOutAmountEth: number =
+          typeof quoteRespEthTnk?.tnkOutAmount === "number"
+            ? quoteRespEthTnk.tnkOutAmount
+            : typeof quoteRespEthTnk?.outAmount === "number"
+              ? quoteRespEthTnk.outAmount
+              : amount; // 1:1 fallback (demo mode)
+        const rfqIdEthTnk = `rfq_eth_tnk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const resultEthTnk = await initiateEthToTnkSwap({
+          userEthAddress:  input.fromAddress ?? userPublicKey,
+          userTnkAddress:  recipientAddress,
+          fromToken:       fromToken.replace("_ETH", "").toUpperCase(),
+          amount,
+          tnkOutAmount:    tnkOutAmountEth,
+          rfqId:           rfqIdEthTnk,
+        });
+        if (!resultEthTnk.success) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: resultEthTnk.message,
+          });
+        }
+        return {
+          route:               "AFOS ETH\u2192TNK" as const,
+          p2pQuote:            null,
+          swapTransaction:     null,
+          message:             resultEthTnk.message,
+          // ETH lock tx for MetaMask
+          tx:                  resultEthTnk.ethLockTxPayload,
+          ethLockTxBase64:     resultEthTnk.ethLockTxBase64,
+          htlcId:              resultEthTnk.htlcId,
+          secretHashHex:       resultEthTnk.secretHashHex,
+          tnkLockTxHash:       resultEthTnk.tnkLockTxHash,
+          outAmount:           resultEthTnk.outAmount,
+          feeAmountOut:        resultEthTnk.feeAmountOut,
+          networkFeeAmountOut: resultEthTnk.networkFeeAmountOut,
+          agentEthAddress:     resultEthTnk.agentEthAddress,
+          htlcExpiresAt:       resultEthTnk.htlcExpiresAt,
+          nextStep:            resultEthTnk.nextStep,
+        };
+      }
+
+      // ── Step 3d: TNK → ETH/USDT(ETH)/USDC(ETH) direct agent swap ────────────
+      // When the source is trac_network and destination is ethereum, the AFOS agent
+      // locks ETH/USDT/USDC on Ethereum first, then returns a TNK lock payload for the user.
+      if (fromChain === "trac_network" && toChain === "ethereum") {
+        if (!toToken || !amount) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "toToken and amount are required for TNK → ETH swaps.",
+          });
+        }
+        if (!recipientAddress) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "recipientAddress (your Ethereum address) is required for TNK → ETH swaps.",
+          });
+        }
+        const quoteRespTnkEth = quoteResponse as Record<string, unknown> | null;
+        const ethOutAmount: number =
+          typeof quoteRespTnkEth?.ethOutAmount === "number"
+            ? quoteRespTnkEth.ethOutAmount
+            : typeof quoteRespTnkEth?.outAmount === "number"
+              ? quoteRespTnkEth.outAmount
+              : amount; // 1:1 fallback (demo mode)
+        const rfqIdTnkEth = `rfq_tnk_eth_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const resultTnkEth = await initiateTnkToEthSwap({
+          userEthAddress:  recipientAddress,
+          userTnkAddress:  input.senderWallets?.trac_network ?? userPublicKey,
+          toToken:         toToken.replace("_ETH", "").toUpperCase(),
+          amount,
+          ethOutAmount,
+          rfqId:           rfqIdTnkEth,
+        });
+        if (!resultTnkEth.success) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: resultTnkEth.message,
+          });
+        }
+        return {
+          route:               "AFOS TNK\u2192ETH" as const,
+          p2pQuote:            null,
+          swapTransaction:     null,
+          message:             resultTnkEth.message,
+          tnkLockTxPayload:    resultTnkEth.tnkLockTxPayload,
+          htlcIdA:             resultTnkEth.htlcIdA,
+          htlcIdB:             resultTnkEth.htlcIdB,
+          secretHashHex:       resultTnkEth.secretHashHex,
+          ethLockTxHash:       resultTnkEth.ethLockTxHash,
+          outAmount:           resultTnkEth.outAmount,
+          feeAmountOut:        resultTnkEth.feeAmountOut,
+          networkFeeAmountOut: resultTnkEth.networkFeeAmountOut,
+          agentTnkAddress:     resultTnkEth.agentTnkAddress,
+          htlcExpiresAt:       resultTnkEth.htlcExpiresAt,
+          nextStep:            resultTnkEth.nextStep,
+        };
+      }
+
       // ── Step 3: Fallback — Jupiter DEX ────────────────────────────────────
       // No P2P peer found (or P2P skipped / no context). Use Jupiter.
       if (isCrossChain) {
