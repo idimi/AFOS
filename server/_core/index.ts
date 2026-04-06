@@ -12,6 +12,7 @@ import { createProxyMiddleware } from "http-proxy-middleware";
 import { startHtlcMonitor } from "../htlcMonitor";
 import { startTnkHtlcMonitor } from "../jobs/tnkHtlcMonitor";
 import { startHtlcSecretsMonitor } from "../jobs/htlcSecretsMonitor";
+import { startEthHtlcPoller }      from "../jobs/ethHtlcPoller";
 import { attachSignalingServer, getSignalingPeerList, pingSignalingPeer } from "../signaling";
 import { registerHeliusWebhookRoute, ensureHeliusWebhook } from "../webhooks/heliusHtlc";
 
@@ -289,6 +290,9 @@ async function startServer() {
     startHtlcMonitor();
     // Start TNK HTLC escrow monitor — polls Trac Network explorer for incoming TNK locks
     startTnkHtlcMonitor();
+    // Start ETH HTLC Locked event poller — watches HTLC.sol for Locked events and
+    // triggers automatic settlement independent of the browser (Helius equivalent for ETH)
+    startEthHtlcPoller();
     // Start HTLC secrets expiry monitor — marks expired locked secrets and notifies both parties
     startHtlcSecretsMonitor();
     // ── HTLC cleanup job ──────────────────────────────────────────────────────
