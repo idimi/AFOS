@@ -117,13 +117,48 @@ export async function initiateEthToTnkSwap(params: EthToTnkParams): Promise<EthT
   const tnkHtlcWif     = process.env.TNK_HTLC_WIF;
   const isEthKeySet    = !!ethHtlcKey && !!process.env.ETH_HTLC_ADDRESS;
   const isTnkHtlcLive  = !!tnkHtlcWif;
-  const isDemo         = !isEthKeySet || !isTnkHtlcLive;
 
-  if (isDemo) {
-    console.warn(
-      "[EthToTnk] ETH_HTLC_KEY, ETH_HTLC_ADDRESS, or TNK_HTLC_WIF not set — running in demo mode"
-    );
+  // Hard-fail if required env vars are missing — no silent demo mode in production
+  if (!isEthKeySet) {
+    const missing = !ethHtlcKey ? "ETH_HTLC_KEY (or ETH_AGENT_KEY)" : "ETH_HTLC_ADDRESS";
+    return {
+      success: false,
+      demo: false,
+      rfqId,
+      ethLockTxBase64: null,
+      ethLockTxPayload: null,
+      htlcId: "",
+      secretHashHex: "",
+      tnkLockTxHash: null,
+      outAmount: 0,
+      feeAmountOut: 0,
+      networkFeeAmountOut: TNK_NETWORK_FEE_TNK,
+      agentEthAddress: "",
+      htlcExpiresAt: 0,
+      message: `Server misconfiguration: ${missing} is not set. ETH swaps are unavailable.`,
+      nextStep: `Set ${missing} in the Oracle VM environment and restart the server.`,
+    };
   }
+  if (!isTnkHtlcLive) {
+    return {
+      success: false,
+      demo: false,
+      rfqId,
+      ethLockTxBase64: null,
+      ethLockTxPayload: null,
+      htlcId: "",
+      secretHashHex: "",
+      tnkLockTxHash: null,
+      outAmount: 0,
+      feeAmountOut: 0,
+      networkFeeAmountOut: TNK_NETWORK_FEE_TNK,
+      agentEthAddress: "",
+      htlcExpiresAt: 0,
+      message: "Server misconfiguration: TNK_HTLC_WIF is not set. TNK swaps are unavailable.",
+      nextStep: "Set TNK_HTLC_WIF in the Oracle VM environment and restart the server.",
+    };
+  }
+  const isDemo = false; // Both keys confirmed present — never demo mode
 
   // Resolve agent ETH address
   let agentEthAddress = "";
@@ -245,14 +280,9 @@ export async function initiateEthToTnkSwap(params: EthToTnkParams): Promise<EthT
       ethLockTxBase64 = Buffer.from(JSON.stringify(ethLockTxPayload)).toString("base64");
     }
   } else {
-    // Demo mode — return a placeholder payload
-    ethLockTxPayload = {
-      to:    process.env.ETH_HTLC_ADDRESS ?? "0x0000000000000000000000000000000000000000",
-      data:  "0x",
-      value: fromTokenUpper === "ETH" ? "0x" + BigInt(Math.round(amount * 1e18)).toString(16) : "0x0",
-      gas:   "0x30D40",
-    };
-    ethLockTxBase64 = Buffer.from(JSON.stringify(ethLockTxPayload)).toString("base64");
+    // isEthKeySet is guaranteed true here — this branch is unreachable in production
+    // but kept as a safety net to satisfy TypeScript's control flow analysis
+    throw new Error("[EthToTnk] Unreachable: isEthKeySet is false despite early return guard");
   }
 
   // ── Step 3: Save secret to DB ─────────────────────────────────────────────

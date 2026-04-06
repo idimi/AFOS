@@ -22,7 +22,8 @@
 import { getActiveHtlcSecrets, updateHtlcSecretStatus, getHtlcSwapAddresses } from "../db";
 import { sendToPeer, getPeerWalletAddress } from "../signaling";
 import { claimSolanaHtlc } from "../solanaHtlcClaim";
-import { claimTnkHtlc } from "../tnkHtlcClaim";
+import { claimTnkHtlc }    from "../tnkHtlcClaim";
+import { claimEthHtlc, isEthHtlcAlreadyClaimed } from "../ethHtlcClaim";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -244,12 +245,12 @@ async function runHtlcSecretsCheck(): Promise<void> {
             `(revealed ${Math.round(revealedAgeMs / 60_000)}m ago) — retrying server-side claims`
           );
 
-          // Retry Solana and Trac Network claims; ETH/BTC claim retry is a future enhancement
+          // Retry Solana, Trac Network, and Ethereum claims
           const fromChainVal = row.fromChain ?? "solana";
           const toChainVal   = row.toChain   ?? "solana";
-          const supportedChains = new Set(["solana", "trac_network"]);
+          const supportedChains = new Set(["solana", "trac_network", "ethereum"]);
           if (!supportedChains.has(fromChainVal) && !supportedChains.has(toChainVal)) {
-            console.log(`[HtlcSecretsMonitor] Skipping non-Solana/TNK retry for rfqId=${row.rfqId}`);
+            console.log(`[HtlcSecretsMonitor] Skipping unsupported chain retry for rfqId=${row.rfqId} (fromChain=${fromChainVal} toChain=${toChainVal})`);
             continue;
           }
 
@@ -345,6 +346,23 @@ async function runHtlcSecretsCheck(): Promise<void> {
               } else {
                 console.error(`[HtlcSecretsMonitor] Retry claim A (TNK) failed rfqId=${row.rfqId}: ${claimA.error}`);
               }
+            } else if (fromChainVal === "ethereum") {
+              // Agent A locked ETH or ERC-20 on HTLC.sol
+              const claimA = await claimEthHtlc({
+                contractId: htlcIdA,
+                secretHex:  row.secretHex,
+                label:      `monitor_claimA_${row.rfqId.slice(0, 12)}`,
+              });
+              if (claimA.ok) {
+                claimATxSig = claimA.txHash;
+                claimASuccess = true;
+                console.log(`[HtlcSecretsMonitor] Retry claim A (ETH) success: tx=${claimATxSig} | rfqId=${row.rfqId}`);
+              } else if (isEthHtlcAlreadyClaimed(new Error(claimA.error ?? ""))) {
+                claimASuccess = true;
+                console.log(`[HtlcSecretsMonitor] Claim A (ETH) already settled rfqId=${row.rfqId}`);
+              } else {
+                console.error(`[HtlcSecretsMonitor] Retry claim A (ETH) failed rfqId=${row.rfqId}: ${claimA.error}`);
+              }
             } else {
               const claimA = await claimSolanaHtlc({
                 htlcId:           htlcIdA,
@@ -359,7 +377,7 @@ async function runHtlcSecretsCheck(): Promise<void> {
               );
             }
           } catch (errA) {
-            if (isAlreadyClaimedError(errA)) {
+            if (isAlreadyClaimedError(errA) || isEthHtlcAlreadyClaimed(errA)) {
               claimASuccess = true;
               console.log(`[HtlcSecretsMonitor] Claim A already settled on-chain rfqId=${row.rfqId}`);
             } else {
@@ -384,6 +402,22 @@ async function runHtlcSecretsCheck(): Promise<void> {
               } else {
                 console.error(`[HtlcSecretsMonitor] Retry claim B (TNK) failed rfqId=${row.rfqId}: ${claimB.error}`);
               }
+            } else if (toChainVal === "ethereum") {
+              // Agent B locked ETH or ERC-20 on HTLC.sol
+              const claimB = await claimEthHtlc({
+                contractId: htlcIdB,
+                secretHex:  row.secretHex,
+                label:      `monitor_claimB_${row.rfqId.slice(0, 12)}`,
+              });
+              if (claimB.ok) {
+                claimBSuccess = true;
+                console.log(`[HtlcSecretsMonitor] Retry claim B (ETH) success: tx=${claimB.txHash} | rfqId=${row.rfqId}`);
+              } else if (isEthHtlcAlreadyClaimed(new Error(claimB.error ?? ""))) {
+                claimBSuccess = true;
+                console.log(`[HtlcSecretsMonitor] Claim B (ETH) already settled rfqId=${row.rfqId}`);
+              } else {
+                console.error(`[HtlcSecretsMonitor] Retry claim B (ETH) failed rfqId=${row.rfqId}: ${claimB.error}`);
+              }
             } else {
               const claimB = await claimSolanaHtlc({
                 htlcId:           htlcIdB,
@@ -397,7 +431,7 @@ async function runHtlcSecretsCheck(): Promise<void> {
               );
             }
           } catch (errB) {
-            if (isAlreadyClaimedError(errB)) {
+            if (isAlreadyClaimedError(errB) || isEthHtlcAlreadyClaimed(errB)) {
               claimBSuccess = true;
               console.log(`[HtlcSecretsMonitor] Claim B already settled on-chain rfqId=${row.rfqId}`);
             } else {

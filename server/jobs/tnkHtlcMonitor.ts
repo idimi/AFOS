@@ -495,8 +495,18 @@ let monitorInterval: ReturnType<typeof setInterval> | null = null;
 export function startTnkHtlcMonitor(): void {
   if (monitorInterval) return;
 
+  // Warn loudly if TNK_ESCROW_ADDRESS is missing — monitor will silently no-op without it
+  if (!process.env.TNK_ESCROW_ADDRESS || TNK_ESCROW_ADDRESS.includes("placeholder")) {
+    console.warn(
+      "[TNK Monitor] WARNING: TNK_ESCROW_ADDRESS is not set or is still the placeholder value. " +
+      "The TNK HTLC monitor will NOT detect any incoming TNK locks. " +
+      "Set TNK_ESCROW_ADDRESS in the Oracle VM environment and restart the server."
+    );
+  }
+
   console.log(
     `[TNK Monitor] Starting — polling every ${POLL_INTERVAL_MS / 1000}s. ` +
+    `Escrow: ${TNK_ESCROW_ADDRESS.slice(0, 20)}… | ` +
     `Peer RPC: ${process.env.TNK_PEER_RPC_URL ?? "http://localhost:5001"}`
   );
 
